@@ -170,3 +170,149 @@ def test_every_face_reaches_it():
     assert "/plan" in js, "the scrubber shows the same plan the rewind does"
     ws = (JS / "09-websocket.js").read_text()
     assert "case 'checkpoint'" in ws and "case 'timetravel'" in ws
+
+
+# ---- S-06: a rewind writes as the server, so nothing in the table is trusted for being there ----
+
+def _forge(s, home, target, data, mac=""):
+    import hashlib
+    import json
+    h = hashlib.sha256(data).hexdigest()
+    b = home / ".timetravel" / "blobs" / h[:2] / h
+    b.parent.mkdir(parents=True, exist_ok=True)
+    b.write_bytes(data)
+    s.db.execute("INSERT INTO _tt_points(id,ts,seq,conversation_id,run_id,step,tool,detail,files,unseen,state,mac)"
+                 " VALUES ('forged',?,0,'','',0,'write_file','',?,0,'live',?)",
+                 (time.time() + 5, json.dumps([{"path": str(target), "existed": True, "blob": h}]), mac))
+    s.db.commit()
+
+
+def test_a_forged_row_writes_nothing(tmp_path):
+    import pytest
+    s = _store(tmp_path)
+    target = tmp_path / "victim.txt"
+    target.write_text("ORIGINAL")
+    for mac in ("", "0" * 64):
+        s.db.execute("DELETE FROM _tt_points WHERE id='forged'")
+        _forge(s, tmp_path, target, b"ATTACKER", mac)
+        with pytest.raises(tt.Forged):
+            tt.rewind(s.db, tmp_path, "forged")
+        with pytest.raises(tt.Forged):
+            tt.plan(s.db, tmp_path, "forged")
+        assert target.read_text() == "ORIGINAL"
+
+
+def test_a_forged_row_later_in_the_range_writes_nothing_either(tmp_path):
+    s = _store(tmp_path)
+    target = tmp_path / "victim.txt"
+    target.write_text("ORIGINAL")
+    real = tt.checkpoint(s.db, tmp_path, "remember", "a real step")
+    _forge(s, tmp_path, target, b"ATTACKER")
+    pl = tt.plan(s.db, tmp_path, real["id"])
+    assert str(target) not in pl["restore"]
+    assert any("signed" in x["why"] for x in pl["skipped"])
+    tt.rewind(s.db, tmp_path, real["id"])
+    assert target.read_text() == "ORIGINAL"
+
+
+def test_a_row_moved_to_another_home_reads_as_forged(tmp_path):
+    import pytest
+    a, b = tmp_path / "a", tmp_path / "b"
+    a.mkdir()
+    b.mkdir()
+    s = _store(a)
+    f = a / "x.txt"
+    f.write_text("v1")
+    p = tt.checkpoint(s.db, a, "write_file", "w", [f])
+    with pytest.raises(tt.Forged):
+        tt.plan(s.db, b, p["id"])
+    tt.plan(s.db, a, p["id"])                      # and at home it is fine
+
+
+def test_an_edited_row_reads_as_forged(tmp_path):
+    import json
+    import pytest
+    s = _store(tmp_path)
+    f = tmp_path / "x.txt"
+    f.write_text("v1")
+    p = tt.checkpoint(s.db, tmp_path, "write_file", "w", [f])
+    row = tt.get(s.db, p["id"])
+    row["files"][0]["path"] = str(tmp_path / "other.txt")
+    s.db.execute("UPDATE _tt_points SET files=? WHERE id=?", (json.dumps(row["files"]), p["id"]))
+    s.db.commit()
+    with pytest.raises(tt.Forged):
+        tt.rewind(s.db, tmp_path, p["id"])
+
+
+def test_a_blob_that_does_not_match_its_name_is_refused(tmp_path):
+    import pytest
+    s = _store(tmp_path)
+    f = tmp_path / "x.txt"
+    f.write_text("v1")
+    p = tt.checkpoint(s.db, tmp_path, "write_file", "w", [f])
+    h = tt.get(s.db, p["id"])["files"][0]["blob"]
+    (tmp_path / ".timetravel" / "blobs" / h[:2] / h).write_bytes(b"ATTACKER")
+    f.write_text("v2")
+    with pytest.raises(tt.Forged):
+        tt.rewind(s.db, tmp_path, p["id"])
+    assert f.read_text() == "v2"                   # left where it was
+
+
+def test_a_signed_row_still_cannot_write_a_security_file(tmp_path, monkeypatch):
+    from agentos import config as cfgmod
+    monkeypatch.setattr(cfgmod, "AGENTOS_HOME", tmp_path)
+    s = _store(tmp_path)
+    for name in ("users.json", "vault.key", "config.json"):
+        (tmp_path / name).write_text("BEFORE")
+    # capture refuses them, so write the row the way a changed rule would have left it
+    p = tt.checkpoint(s.db, tmp_path, "write_file", "w", [tmp_path / "users.json"])
+    assert tt.get(s.db, p["id"])["files"][0].get("skipped") == "a security file"
+    assert not list((tmp_path / ".timetravel").rglob("*.part"))
+    assert tt.refusal(str(tmp_path / "users.json"), tmp_path)
+    assert tt.refusal(str(tmp_path / "pki" / "x"), tmp_path)
+    assert tt.refusal(str(tmp_path / "workspace" / ".git" / "hooks" / "x"), tmp_path)
+    assert tt.refusal(str(tmp_path / "workspace" / "fine.txt"), tmp_path) == ""
+
+
+def test_a_denied_write_copies_nothing_into_the_callers_blobs(tmp_path, monkeypatch):
+    """The audit's proof: a write that came back [denied] had still kept the victim's key."""
+    from agentos import agent as agentmod
+    from agentos import config as cfgmod
+    from agentos import tools as toolsmod
+    from agentos import users as usersmod
+    monkeypatch.setattr(cfgmod, "AGENTOS_HOME", tmp_path)
+    monkeypatch.setattr(cfgmod, "CONFIG_PATH", tmp_path / "config.json")
+    usersmod.reset_caches()
+    usersmod.set_current("")
+    ada = usersmod.create("ada", "hunter2hunter")["id"]
+    bob = usersmod.create("bob", "hunter2hunter", role="executor")["id"]
+    victim = usersmod.home_for(ada) / "notes.txt"
+    victim.write_text("VICTIM-BYTES")
+    try:
+        cfg = usersmod.cfg_for(bob)
+        tb = toolsmod.Toolbox(cfg, usersmod.store_for(bob))
+
+        async def emit(e):
+            pass
+        ag = agentmod.Agent(cfg, tb, "ollama/x", emit, None, conversation_id="c1")
+        with usersmod.as_user(bob):
+            asyncio.new_event_loop().run_until_complete(
+                ag._checkpoint("write_file", {"path": str(victim), "content": "x"}))
+        blobs = usersmod.home_for(bob) / ".timetravel" / "blobs"
+        kept = [b.read_bytes() for b in blobs.rglob("*") if b.is_file()] if blobs.exists() else []
+        assert b"VICTIM-BYTES" not in kept
+    finally:
+        usersmod.reset_caches()
+        usersmod.set_current("")
+
+
+def test_a_journal_row_cannot_smuggle_sql_in_a_column_name(tmp_path):
+    import json
+    import pytest
+    s = _store(tmp_path)
+    p = tt.checkpoint(s.db, tmp_path, "remember", "r")
+    s.db.execute("INSERT INTO _tt_undo(ts, tbl, op, rid, old) VALUES (?, 'memories', 'u', 1, ?)",
+                 (time.time(), json.dumps({'content"=(SELECT 1)--': "x"})))
+    s.db.commit()
+    with pytest.raises(tt.Forged):
+        tt.rewind(s.db, tmp_path, p["id"])

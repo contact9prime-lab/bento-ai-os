@@ -39,7 +39,7 @@ async function paintStandby(){
       <label class="bk-ws"><input type="checkbox" id="sb-sync" ${d.sync==='active'?'checked':''} onchange="standbySet({sync:this.checked?'active':'copies'})"> Active sync: send every change within seconds ${pInfo('Each chat message, memory, setting and file goes to the cloud as a small sealed update, so a takeover picks up from your last change. Off, the cloud gets a whole copy at most every 10 minutes.')}</label>
       <label class="bk-ws"><input type="checkbox" id="sb-ws" ${d.workspace?'checked':''} onchange="standbySet({workspace:this.checked})"> Include your workspace folder in the copies</label>
       <div><button class="endbtn" onclick="standbyAct('/api/standby/copy',this)">Copy now</button>
-      <button class="endbtn" onclick="standbyAct('/api/standby/move',this,'Hand over to ${esc(d.peer_host)} now? It carries on with your missions and channels, and this machine waits until you bring it back.')">Move to the cloud now</button>
+      <button class="endbtn" onclick="standbyAct('/api/standby/move',this,'Hand over to ${jsq(d.peer_host)} now? It carries on with your missions and channels, and this machine waits until you bring it back.')">Move to the cloud now</button>
       <button class="endbtn" onclick="standbyAct('/api/standby/off',this,'Unpair the two machines? The cloud forgets its copies.')">Unpair</button></div></div>`;
     return}
   // the standby, while it is the one working (a quiet standby shows its own page instead)
@@ -69,7 +69,10 @@ async function standbyPair(btn){
   const url=document.getElementById('sb-url').value.trim(),code=document.getElementById('sb-code').value.trim();
   if(!url||!code)return toast('Give the cloud machine’s address and its code',{kind:'warn'});
   btn.disabled=true;btn.textContent='Pairing…';
-  try{const d=await standbyPost('/api/standby/pair',{url,code});toast(`Paired. ${d.peer_host} now stands by for this machine.`);paintStandby()}
+  try{let d;try{d=await standbyPost('/api/standby/pair',{url,code})}
+    catch(e){if(!String(e.message).includes('--plain-http')||!confirm('Plain http shows the pairing secret to anyone on this network. Pair anyway?'))throw e;
+      d=await standbyPost('/api/standby/pair',{url,code,plain_http:true})}
+    toast(`Paired. ${d.peer_host} now stands by for this machine.`);paintStandby()}
   catch(e){toast('Not paired: '+e.message,{kind:'err'})}finally{btn.disabled=false;btn.textContent='Pair'}
 }
 async function standbyOffer(btn){

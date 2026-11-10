@@ -1,5 +1,8 @@
 # Security & threat model
 
+What each layer defends, the tests behind it and what is not proved yet are in
+[How Bento's security is built and tested](security-testing.md).
+
 An agent with real hands needs a real trust story. AgentOS's posture: **secure by default,
 visible by design** — the 2026 wave of self-hosted agents showed exactly how this goes wrong
 (exposed gateways on 0.0.0.0, no auth, unvetted marketplaces, blanket-trusted commands), and
@@ -10,10 +13,11 @@ AgentOS is built to be the opposite of that story.
 | Boundary | Default | Notes |
 |---|---|---|
 | Network | binds `127.0.0.1` only | nothing is reachable from the LAN until you deliberately open it. [Remote access](remote-access.md) is the only way, it is off by default, and it refuses to enable without a passphrase — `--host 0.0.0.0` alone exits with an error rather than serving an unauthenticated shell |
-| Remote sessions | passphrase + signed cookie | PBKDF2-SHA256 (210k rounds), never the passphrase itself; the cookie is `HttpOnly`, `SameSite=Lax`, and `Secure` over a tunnel; failed attempts back off per source address; the switch itself is only reachable from loopback, so nothing signed in remotely can widen its own access |
+| Remote sessions | passphrase + signed cookie | PBKDF2-SHA256 (210k rounds), never the passphrase itself; the cookie is `HttpOnly`, `SameSite=Lax`, and `Secure` over a tunnel; failed attempts back off per source address; the switch itself needs somebody at the machine who is its admin, so nothing signed in remotely can widen its own access. See [remote access](remote-access.md) for what loopback trust does and does not cover |
 | WebSocket handshakes | origin-checked before auth | every socket (`/ws`, `/ws/terminal`, `/ws/vnc`) passes one gate that refuses a cross-origin — or `null` — Origin, closing the Cross-Site WebSocket Hijacking path a foreign page would otherwise use to reach the shell socket. A browser sets Origin and cannot forge it; a non-browser client with no Origin carries no cookie jar and is left to the auth gate |
 | Clickjacking | the desktop cannot be framed | the desktop's one-click Allow/Deny grants real capability, so it ships `frame-ancestors 'none'` + `X-Frame-Options: DENY`; an app page ships `frame-ancestors 'self'` so only its own desktop may embed it. `nosniff`, `no-referrer`, `same-origin` opener, and HSTS-over-TLS are on every response |
-| Filesystem | OS sandbox ON | agent commands and file tools are jailed to the workspace **plus any safe folders you name** (`sandbox.folders` — see [Configuration](configuration.md#safe-folders)). Linux: **bubblewrap** (whole FS read-only, `/home` hidden). macOS: **sandbox-exec** (whole FS readable, writes confined to those folders + tmp/caches). Same guarantee — the agent's shell cannot modify files outside them. A folder holding another account is refused, so widening the jail can never breach account isolation |
+| Filesystem | OS sandbox ON | agent commands and file tools are jailed to the workspace **plus any safe folders you name** (`sandbox.folders` — see [Configuration](configuration.md#safe-folders)). Linux: **bubblewrap** (whole FS read-only; every home hidden, wherever it is; `/run` blanked; own process, IPC and hostname namespaces; a cleared environment). macOS: **sandbox-exec** (FS readable except the AgentOS home and the usual credential folders, writes confined to those folders + tmp/caches; not yet run on a real Mac). The network stays open to a jailed program. A folder holding another account is refused, so widening the jail can never breach account isolation. Where the sandbox is on and cannot start, see [Containers](#containers-and-a-sandbox-that-cannot-start) |
+| Security files | refused, whatever the settings | `agentos/protected.py`: no agent reads or writes the vault key, session key, accounts file, `config.json`, the databases, `pki/`, sign-ins or a copy of a home, on any machine, with the sandbox on or off, whatever a grant or autonomy says. The rest of a home is closed too unless named as open. With the sandbox switched **off**, an unjailed `run_command` is the person's own shell and this list does not reach it |
 | Capabilities | one policy decision point | every tool/model/MCP/skill/app-data access, for every principal (you, apps, subagents, flows), passes through the PDP: allow / ask / deny + persisted, revocable grants |
 | Shell | risk-classified | read-only commands run free; mutating commands ask; destructive patterns are hard-blocked and non-overridable. `git push`, config writes, and remote changes ask |
 | Secrets | masked & env-injected | API keys and the GitHub token are masked in the API; git auth goes through an askpass helper — tokens never enter command lines, remotes, or logs |
@@ -175,6 +179,12 @@ So AgentOS does not try to detect the attack. It bounds the blast radius:
   a hosted plugin's tool and a git clone or pull now taint the turn like `fetch_url` does.
   A chat forwarded to Claude Code or Gemini CLI that reads the web with its own tools marks
   the team door, so a specialist it starts after that is held too.
+- **Memory is not a way around it.** Auto-learn skips any conversation that read outside
+  content (a forwarded turn that doesn't say what it read counts), each thing it writes is a
+  ledger row, and memories reach the prompt as notes that can't close their block. `update_soul`
+  asks a person every time.
+- **A device's words count too.** `device_get` taints the turn, a mission a device started begins
+  tainted, and its brief carries the item's id and a number, never a name a node chose.
 - Taint survives a turn boundary: a conversation whose history contains fenced content starts
   its next turn tainted. "Fetch this page" … "ok, go ahead" is the obvious way around a
   per-turn rule.
@@ -192,6 +202,172 @@ your own disk is yours, and marking every file read untrusted would escalate hal
 in the OS and train you to click through the prompt. A file you downloaded is the honest gap
 that leaves, and closing it needs provenance on the file rather than on the tool.
 
+## An agent CLI as the brain
+
+Claude Code, Gemini CLI and Codex run their own tools, and those calls never reach this OS's gate.
+So what they can reach is fixed before they start.
+
+- **Your words go on its input, never its command line.** A message can't be read as a flag, and
+  the bridge's token and the system prompt are 0600 files that are removed when the run ends.
+- **A folder's settings are never read.** A person's own chat keeps their user-level settings. A
+  schedule, a mission, a draft, a linked team or a Zero reads no settings at all.
+- **It runs in a jail** where bubblewrap can start: the machine read-only, your home and this OS's
+  data hidden, its own `/tmp`, `/run` and process list. It gets the folders named for the run, its
+  sign-in and this folder's sessions. The network stays open. `bento` isn't available inside.
+- **"Work on AgentOS itself" never opens the gate.** The security modules, `.git/hooks` and `.venv`
+  stay read-only even with it on.
+
+What the jail can't do: the CLI and its shell share it, so a shell can read the CLI's own sign-in.
+That is why a non-admin's shell needs an admin's yes (Settings → Executors).
+
+Where no jail can start, the shell is off until you accept that in Settings → Executors, and a
+non-admin gets no file tools and no shell. The envelope sentence on that page says which applies.
+
+A server installed from the public MCP registry is pinned to the version it listed, shows its
+command on the approval card, and runs in a jail of its own with the network and a home of its
+own. Every stdio server gets only the environment its own settings name.
+
+Gemini CLI and Codex follow their documented forms for all of this and were not run when it was
+written. Claude Code was, on 2.1.319.
+
+## The watcher: if the code changes, you hear and the agents stop
+
+Asked for as "there should be a watcher if the file has been changed by the AI". `agentos/integrity.py`
+hashes the code tree (`agentos/**`, `install.sh`, `pyproject.toml`) when the server starts and looks again
+every 30 seconds. It also watches the locked files in every home: `session.key`, `vault.key`, `ledger.key`,
+the link CA, `users.json`, and the security settings in `config.json`.
+
+When one changes without the OS having done it:
+
+1. The security record gets a line naming the file, and an alert reaches your screens and your Telegram or WhatsApp.
+2. **The agents stop.** The gate refuses every step (`integrity-hold`, ahead of every grant and autonomy level),
+   new turns are refused with a sentence, running turns are ended, and running agent CLIs are stopped.
+3. It stays that way across a restart until a person clears it, at a terminal outside Bento:
+
+```bash
+bento integrity status     # what changed, sealed or not, signed or not, locked or not
+bento integrity accept     # after you've looked. It lists what it takes as correct, and you type the word.
+```
+
+What it looks like, after a file appeared in the code tree:
+
+```
+$ bento integrity status
+  Agents are stopped because agentos/zz_planted.py changed. If that was you, run bento integrity accept at this machine's terminal.
+  code: ~/.local/src/bento
+  differs from the record: agentos/zz_planted.py
+
+$ bento integrity accept
+✗ This needs a person at a terminal, and this isn't a terminal.
+
+$ bento integrity accept
+  Code: ~/.local/src/bento (353 files)
+  This will be taken as correct:
+    agentos/zz_planted.py
+  Type accept to go on: accept
+✓ Accepted. The server lets agents run within a minute.
+
+$ bento integrity status
+  Watching 353 files, sealed, unsigned.
+  code: ~/.local/src/bento
+```
+
+![The Security card with agents stopped](screenshots/security-card-held.png)
+![The same Security card with agents stopped, on a phone](screenshots/security-card-held-phone.png)
+
+With nothing wrong it is one quiet line, and details open under it:
+
+![The Security card when nothing is wrong, on a desktop](screenshots/security-card-quiet.png)
+![The Security card, quiet, on a phone](screenshots/security-card-quiet-phone.png)
+![The Security card with its details open](screenshots/security-card-details.png)
+
+There is no route, button or tool that clears it. The card in Settings → Permissions → Security only reads.
+
+The server and anything that isn't in a jail run as the same Unix user, so here is exactly what each layer does
+about somebody with that access:
+
+| Layer | Same-user code **can't** | Same-user code **can** |
+|---|---|---|
+| Memory baseline | Change a file unseen while the server runs | Kill the server and change files while it's down |
+| Record, unsigned (`bento integrity seal`) | Change code while stopped with nothing noticing, unless it also rewrites the record | Rewrite the record too. It reads "unsigned" everywhere for that reason |
+| Record, signed (`keygen`, `trust`, `seal --key`) | Forge a record, or accept a change, without the key that stays off this machine | Replace `integrity.py` itself so it stops checking, then restart |
+| The hold | Lift it through any tool, route or model | Detach from the server, fake a terminal and type the phrase. On a machine with a signing key that gets nowhere, because accept needs the key |
+| **Root lock (`bento integrity lock`)** | **Write its own gate at all, or swap a dependency in `.venv`** | Read what this user can read, and run its own programs as this user |
+| Ledger key | (Reaching only the database) rewrite a row and have it verify | (Reading `ledger.key`) re-chain the ledger and move the anchor |
+
+The lock is the only real boundary in this table. Everything above it makes a change noticed, or makes it take
+more than one step. For a machine that must hold up against its own agents, run agent CLIs under a separate user
+as well: the lock protects the code, not this user's other files.
+
+### Seal, keys and the lock
+
+```bash
+bento integrity keygen /media/usb/bento.key   # on a USB stick, not on this disk
+bento integrity trust <public key>            # from now on every seal here must be signed
+bento integrity seal --key /media/usb/bento.key
+bento integrity lock                          # chown the checkout to root. Shows the command, then asks
+bento integrity unlock                        # before an update. The update says so if you forget
+```
+
+Without a seal, a change made while Bento is stopped goes unseen, and the card says so. A key is optional, and
+once you add one, `accept`, `seal` and `dev` all need it.
+
+`lock` tries passwordless sudo, then a prompt, then hands you the exact command. It also sets the immutable flag
+on the folder where the filesystem has one. The folders above the checkout are still yours, so whoever runs as you
+can rename them and put another copy there. The status line says so. Installing under `/opt` closes that.
+
+**On a development checkout**, a `.git` folder exempts nothing, because an agent can make one. Your own edits hold
+like anybody's, loudly. `bento integrity dev on` (typed at a terminal) makes that checkout warn instead, and the
+warning includes changes an agent makes.
+
+An update (`bento update`, the Settings button, a Zero asked by its hub) and a rollback re-record the code as
+they finish. Nothing else does: `restart_agentos` re-reads the record, so a change is still a change. A file git
+calls dirty is not adopted.
+
+Measured on this development machine (352 files, 13 MB): 16 ms to hash everything at start, 1 ms for an idle look,
+so 0.003% of a core at one look per 30 s. A Pi 3 has no SHA instructions and reads from an SD card, so expect about
+a second at start and about ten times the look, on a thread either way.
+
+### Signed releases, and what the owner has to do
+
+`updates.SIGNING_KEYS` ships empty. Nothing in this repository holds a private key. Until a key is pinned, an update
+still works when a person runs it and says it isn't signed, and a Zero on automatic updates asks instead of
+installing. A signature that fails is refused whoever asks.
+
+To turn it on, on a machine the key can sit on:
+
+```bash
+bento integrity keygen /media/usb/bento-release.key     # prints the key id and the public key
+# 1. Pin the public half in agentos/updates.py:  SIGNING_KEYS = {"bento-xxxxxxxx": "<public key>"}
+# 2. Commit it, and release as usual. The first signed release has to reach machines unsigned,
+#    because they don't know the key yet.
+# 3. At each release commit, with a clean checkout on the release commit:
+bento integrity sign-release --key /media/usb/bento-release.key
+git push origin bento-<version>
+```
+
+`sign-release` puts one line in an annotated tag `bento-<version>`, an Ed25519 signature over the commit and the
+SHA-256 digest of the code. Updates fetch `bento-*` tags, check the signature before anything moves, and roll back
+if the code that arrived has another digest. Commits between signed tags read as unsigned, so a machine with a key
+pinned takes those only with `bento update --apply --allow-unsigned`. To sign everything on the branch, sign each
+commit you want machines to take.
+
+### The ledger
+
+Each ledger row is an HMAC chained to the one before it, under `ledger.key` beside that home's database. `outcome`,
+`detail` and `duration_ms` have a MAC of their own, because the OS stamps them later. The newest row's sequence and
+hash are also written to `ledger.anchor`, outside the database, so deleting the newest rows shows. It is verified at
+start, every ten minutes for new rows, once a day in full, and when you press Check it. A break raises
+`ledger.broken`.
+
+Rows from before the key verify by the old scheme up to a recorded boundary row, whose hash is in the key file, so
+they can't be rewritten and recomputed. If the old rows already had a break when the key was made, it is noted once
+and isn't a new alarm. After a power cut, up to 64 rows may be gone, which is what a WAL without a sync per commit
+can lose. That is a note in a later boot and a break in the same one. There are no SQL triggers refusing edits:
+anybody who can write the file can drop them.
+
+A decision went from about 85 µs to about 105 µs here, nearly all of it still SQLite's commit.
+
 ## The known trade-offs (read this)
 
 - **Local trust:** the HTTP/WS surface has no authentication — protection is the localhost
@@ -206,7 +382,7 @@ that leaves, and closing it needs provenance on the file rather than on the tool
 - **Plaintext config:** `config.json` stores keys in plaintext under your user (a secrets
   vault is on the roadmap). File permissions are your last line there.
 - **Skills and MCP servers are code you invite in.** Install skills only from sources you
-  trust; MCP servers run with your user's rights. App permission manifests + the store's
+  trust; an MCP server you add by hand runs with your user's rights. App permission manifests + the store's
   checksum flow exist precisely because community marketplaces are the proven attack path.
 
 ## Check yourself
@@ -215,8 +391,8 @@ that leaves, and closing it needs provenance on the file rather than on the tool
 agentos doctor
 ```
 
-flags: port conflicts and duplicate instances, a crash-looping service, DB integrity, VRAM
-pinning — and **network exposure** (e.g. an Ollama configured on `0.0.0.0`, which anyone on
+flags: port conflicts and duplicate instances, a crash-looping service, DB integrity, whether
+agents are held and the code sealed (`bento integrity status`), VRAM pinning — and **network exposure** (e.g. an Ollama configured on `0.0.0.0`, which anyone on
 your network can use; set `OLLAMA_HOST=127.0.0.1` unless you truly mean to share it).
 
 ## Incident recovery
@@ -224,3 +400,52 @@ your network can use; set `OLLAMA_HOST=127.0.0.1` unless you truly mean to share
 Snapshots (one click, or automatic before self-modification) capture config + DB + source;
 restore rolls the OS back in time. `factory-reset` starts truly fresh. The audit trail
 (Logs + the policy ledger) records every tool call and every consent decision.
+
+## Containers and a sandbox that cannot start
+
+The server enters the jail once when it starts, and believes that rather than `which bwrap`. Bubblewrap can be
+installed and still refused: Docker's default seccomp and AppArmor refuse it, and so does Ubuntu 24.04's
+`kernel.apparmor_restrict_unprivileged_userns`.
+
+With the sandbox on and no jail that can start:
+
+- File tools still hold the folder rule and the list above, in the server itself.
+- `run_command`, `run_python` and typing into a terminal ask a person every time, with no "remember", at every
+  autonomy level, whatever a grant says. With nobody there (a schedule, a mission, an app) they are refused. A
+  command a person lets through has no jail: it gets an environment without the server's keys, and it can
+  still read `/proc/<server>/environ`, which is why it is asked.
+- On a machine with accounts the shell and the Terminal are refused outright, as they always were.
+- Settings → Permissions, `bento doctor`, the agent's own prompt and the security record (`jail.missing`) all say so.
+
+The shipped image installs bubblewrap and does not change Docker's defaults, so a plain `docker run` is in
+this reduced mode. That includes hosts where you do not choose the flags, such as Render's free plan: agents
+still answer, read and write the workspace, browse and remember, and a command waits for your yes.
+
+To have the jail in a container on a host you control, this is what was measured to work on Docker with Ubuntu's
+AppArmor rule on:
+
+```sh
+docker run --cap-add SYS_ADMIN --security-opt seccomp=unconfined --security-opt apparmor=unconfined ...
+```
+
+`--security-opt seccomp=unconfined` alone was still refused there, and `--privileged` also works and gives away
+far more. These flags weaken what Docker itself protects the host from, in exchange for what the jail protects
+your keys from. If the machine runs nothing else, that is usually the right trade. Check it with `bento doctor`.
+
+## What a fetch can reach
+
+`agentos/netguard.py` is the one client for an address somebody named: `fetch_url`, a wallpaper or
+asset from a URL, calendars, app and agent imports, skills. It refuses this machine, private and
+link-local networks and cloud metadata addresses, resolves the name once and connects to the address
+it checked, so a name can't change its answer, and it checks again on every redirect.
+
+![Settings, Permissions, with the Local addresses row listing nas.local](screenshots/security-local-addresses.png)
+![The Local addresses row in Permissions on a phone-sized screen](screenshots/security-local-addresses-phone.png)
+
+You can open it for your own network in Settings → Permissions → Local addresses, or with `bento
+security --allow nas.local`. A model can't write that list, an app never gets it, and no list opens a
+metadata address or this server's own port. Loopback needs a named port.
+
+What it does not hold: a shell command (`curl` in `run_command`) and a page's own links in the
+shared browser go through their own rules. git and the training service are judged on the address
+they start from, not on what they are redirected to.

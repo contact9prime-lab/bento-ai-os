@@ -41,8 +41,10 @@ WALK_CAP = 6000
 _PATH = re.compile(r"(?:~|/|\.{1,2}/)?(?:[\w.@+-]+/)*[\w.@()+-]+\.[A-Za-z0-9]{1,8}")
 
 
-def roots(cfg: dict, admin: bool = True) -> list[Path]:
-    """The folders a file may be handed over from, most personal first."""
+def roots(cfg: dict, admin: bool = False) -> list[Path]:
+    """The folders a file may be handed over from, most personal first. `admin` adds the machine's
+    own folders, so it is False unless the caller knows: it was True, and every account could send
+    the machine's workspace over a link by a caller simply not saying."""
     out: list[Path] = []
 
     def add(p):
@@ -55,7 +57,8 @@ def roots(cfg: dict, admin: bool = True) -> list[Path]:
         if r.is_dir() and r not in out:
             out.append(r)
 
-    add((cfg or {}).get("workspace"))
+    from . import users as _users
+    add(_users.workspace_of(cfg or {}))
     # The folders an admin shared with this account. A file the agent made there
     # is as much the person's as one in the workspace, and without this its chip,
     # its download and Telegram's send all refused it.
@@ -78,6 +81,7 @@ def reachable(path: str, rts: list[Path]) -> Path | None:
     raw = str(path or "").strip().strip("`'\"").rstrip(".,;:)")
     if not raw or "\x00" in raw:
         return None
+    from . import protected
     cands = []
     exp = os.path.expanduser(raw)
     if os.path.isabs(exp):
@@ -89,7 +93,8 @@ def reachable(path: str, rts: list[Path]) -> Path | None:
             p = c.resolve()
         except OSError:
             continue
-        if p.is_file() and any(p == r or r in p.parents for r in rts):
+        # a reply is model output and can name a key file: no root makes that a file to hand over
+        if p.is_file() and any(p == r or r in p.parents for r in rts) and not protected.secret(p):
             return p
     return None
 

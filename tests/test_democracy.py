@@ -99,19 +99,23 @@ def test_the_leads_hand_over_goes_to_a_vote_only_where_somebody_is(tmp_path):
 
 # ------------------------------------------------------------------ the council
 
-def test_two_of_three_carries_it_and_one_of_three_does_not(tmp_path):
+def test_the_councils_answer_is_a_view_and_never_a_decision(tmp_path):
+    """The owner's rule: no security is controlled by AI. A council reports what the team
+    thinks. It has no field a caller could read as a yes."""
     c, store, tb, cp = _world(tmp_path)
     calls = []
     _voters(cp, {"validator": "YES\nfine", "writer": "yes, good idea", "analyst": "NO\nwasteful"}, calls)
     v = asyncio.run(cp.council("researcher", "ask x", targets=["validator"]))
-    assert v["decided"] and v["approved"] and (v["yes"], v["of"], v["need"]) == (2, 3, 2)
+    assert v["heard"] and (v["yes"], v["of"]) == (2, 3)
+    assert "approved" not in v and "decided" not in v
+    assert "wasteful" in v["advice"]
     assert "researcher" not in [b["agent"] for b in v["ballots"]], "the one asking does not vote"
     _voters(cp, {"validator": "YES", "writer": "no", "analyst": "I think so"}, calls)
     v = asyncio.run(cp.council("researcher", "ask x"))
-    assert v["decided"] and not v["approved"] and v["yes"] == 1, \
-        "an answer that is not yes or no is not consent"
+    assert v["yes"] == 1, "an answer that is not yes or no is not a yes"
     rows = [r for r in store.audit_list(limit=50) if r["action"] == "team.vote"]
     assert rows and rows[0]["rule"] == "democracy" and "1 of 3" in rows[0]["detail"]
+    assert rows[0]["effect"] == "advice", "the ledger says what it was"
 
 
 def test_fewer_than_two_voters_is_no_council(tmp_path):
@@ -119,7 +123,7 @@ def test_fewer_than_two_voters_is_no_council(tmp_path):
     for n in ("validator", "writer"):
         store.delete_subagent(store.get_subagent(n)["id"])
     v = asyncio.run(cp.council("researcher", "hand work", targets=["analyst"]))
-    assert not v["decided"] and "you are asked" in v["line"]
+    assert not v["heard"] and not v["advice"]
 
 
 def test_the_lead_takes_a_seat_so_three_specialists_still_make_a_council(tmp_path, monkeypatch):
@@ -141,7 +145,7 @@ def test_the_lead_takes_a_seat_so_three_specialists_still_make_a_council(tmp_pat
     calls = []
     _voters(cp, {"validator": "NO\nbusy", "writer": "YES"}, calls)
     v = asyncio.run(cp.council("researcher", "ask validator a question", targets=["validator"]))
-    assert v["decided"] and v["approved"] and (v["yes"], v["of"]) == (2, 3)
+    assert v["heard"] and (v["yes"], v["of"]) == (2, 3)
     assert next(b for b in v["ballots"] if b["agent"] == "Aria")["key"] == "@agent"
 
 
@@ -191,26 +195,51 @@ def _asker(c, tb, asked):
     return a
 
 
-def test_the_council_answers_instead_of_the_person(tmp_path):
+def test_the_person_decides_with_the_teams_view_on_the_card(tmp_path):
     c, store, tb, cp = _world(tmp_path)
     calls, asked = [], []
-    _voters(cp, {"writer": "YES", "analyst": "YES", "validator": "NO"}, calls)
+    _voters(cp, {"writer": "YES\nsensible", "analyst": "YES", "validator": "NO\nbusy"}, calls)
     a = _asker(c, tb, asked)
+    reasons = []
+    inner = a.approver
+
+    async def approver(name, args, reason, offer=None):
+        reasons.append(reason)
+        return await inner(name, args, reason, offer)
+    a.approver = approver
     out, ok, *_ = asyncio.run(a.call_tool("ask_agent", {"agent": "validator", "question": "is 4 right?"}, "c1"))
-    assert not asked, "the person was not asked: the team decided"
-    assert ok and "validator answers" in out
+    assert asked == ["ask_agent"], "the person is asked whatever the team thinks"
+    assert "2 of 3" in reasons[0] and "busy" in reasons[0]
     voters = [n for n, k in calls if k == "vote"]
     assert "researcher" not in voters, "the one asking never votes"
 
 
-def test_a_vote_down_is_a_refusal_with_the_teams_reasons(tmp_path):
+def test_a_unanimous_vote_does_not_open_anything_with_nobody_there(tmp_path):
+    from agentos.policy import needs_person
     c, store, tb, cp = _world(tmp_path)
     calls, asked = [], []
-    _voters(cp, {"writer": "NO\nwe already know", "analyst": "NO\nnot needed"}, calls)
+    _voters(cp, {"writer": "YES", "analyst": "YES", "validator": "YES"}, calls)
     a = _asker(c, tb, asked)
+    seen = []
+
+    async def autonomy_answers(name, args, reason, offer=None):
+        seen.append(needs_person())                  # what every headless approver reads
+        return not needs_person()
+    a.approver = autonomy_answers
     out, ok, *_ = asyncio.run(a.call_tool("ask_agent", {"agent": "validator", "question": "q"}, "c2"))
-    assert not ok and out.startswith("[denied] Your team voted this down")
-    assert "we already know" in out and not asked
+    assert seen and seen[0], "an approver that answers on autonomy must refuse this"
+    assert not ok and out.startswith("[denied]")
+
+
+def test_a_tainted_turn_never_reaches_a_ballot(tmp_path):
+    """A page's words are not sent to the team to be voted on, and swarm does not open."""
+    c, store, tb, cp = _world(tmp_path)
+    calls, asked = [], []
+    _voters(cp, {"writer": "YES", "analyst": "YES"}, calls)
+    a = _asker(c, tb, asked)
+    a.taint.append({"tool": "fetch_url", "source": "https://evil.example"})
+    asyncio.run(a.call_tool("ask_agent", {"agent": "validator", "question": "q"}, "c3"))
+    assert not [k for _n, k in calls if k == "vote"] and asked == ["ask_agent"]
 
 
 def test_with_no_council_the_person_is_asked(tmp_path):
@@ -270,7 +299,7 @@ def test_matrix_and_swarm_huddles_do_not_vote(tmp_path):
 
 def test_every_surface_offers_it():
     st = (ROOT / "agentos/ui/src/js/11-settings.js").read_text()
-    assert "['democracy','Democracy: 2 of 3 decide']" in st
+    assert "Democracy: you decide" in st
     main = (ROOT / "agentos/__main__.py").read_text()
     assert '("off", "matrix", "swarm", "democracy")' in main
     srv = (ROOT / "agentos/server.py").read_text()

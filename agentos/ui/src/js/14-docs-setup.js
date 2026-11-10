@@ -4,7 +4,7 @@ async function renderDocs(body){
   const d=await fetch('/api/docs').then(r=>r.json());
   if(!d.docs.length){body.innerHTML='<div class="pad"><p class="mut">No documentation found on this install.</p></div>';return}
   docsCur=docsCur||d.docs[0].file;
-  const items=d.docs.map(x=>`<div class="item" style="cursor:pointer;${x.file===docsCur?'border-left:3px solid var(--acc,#5eead4)':''}" onclick="docsCur='${esc(x.file)}';refreshApp('docs')">
+  const items=d.docs.map(x=>`<div class="item" style="cursor:pointer;${x.file===docsCur?'border-left:3px solid var(--acc,#5eead4)':''}" onclick="docsCur='${jsq(x.file)}';refreshApp('docs')">
     <div class="grow">${esc(x.title)}</div></div>`).join('');
   const doc=await fetch('/api/docs/'+docsCur).then(r=>r.json());
   body.innerHTML=`<div style="display:flex;height:100%;min-height:0">

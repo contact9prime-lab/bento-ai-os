@@ -20,7 +20,7 @@ bitten a naive port of the Telegram bridge:
 
 - **The webhook is public, so the signature is not optional.** Every delivery
   carries `X-Hub-Signature-256`, an HMAC of the RAW body under the app secret.
-  It is verified with `hmac.compare_digest` before the body is even parsed, on the
+  It is verified in constant time before the body is even parsed, on the
   bytes as received — re-serialising the JSON changes them and the check would
   then fail on every legitimate message and pass on nothing.
 
@@ -59,6 +59,7 @@ from . import channels as chanmod
 from . import config as cfgmod
 from .agent import Agent
 from . import users as usersmod
+from . import constcmp
 
 GRAPH = "https://graph.facebook.com/v21.0"
 CHUNK = 3900              # WhatsApp's body limit is 4096
@@ -176,7 +177,7 @@ def verify_signature(app_secret: str, raw: bytes, header: str) -> bool:
     if got.startswith("sha256="):
         got = got[7:]
     want = hmac.new(app_secret.encode(), raw, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(want, got)
+    return constcmp.same(want, got)
 
 
 class WhatsAppBridge(usersmod.Scoped):
@@ -426,7 +427,7 @@ class WhatsAppBridge(usersmod.Scoped):
     def verify_challenge(self, mode: str, token: str, challenge: str) -> str | None:
         """Meta's one-time GET handshake. Returns the challenge to echo, or None."""
         want = (self._c().get("verify_token") or "").strip()
-        if mode == "subscribe" and want and hmac.compare_digest(want, (token or "").strip()):
+        if mode == "subscribe" and want and constcmp.same(want, (token or "").strip()):
             self.store.log("whatsapp", "webhook verified by Meta")
             return challenge or ""
         return None
@@ -665,8 +666,9 @@ class WhatsAppBridge(usersmod.Scoped):
         async def approver(name, args, reason, offer=None) -> bool:
             # full autonomy answers for you — except a step that must be a
             # person's (policy.needs_person): you are right here, so you are asked
-            from .policy import needs_person
-            if self.cfg.get("autonomy") == "full" and not needs_person():
+            # The channel's own posture counts: "ask over WhatsApp" has to mean it.
+            from .policy import effective_autonomy, needs_person
+            if effective_autonomy(self.cfg, "whatsapp") == "full" and not needs_person():
                 return True
             return await self.ask_approval(wa_id, name, args, reason, offer=offer)
 

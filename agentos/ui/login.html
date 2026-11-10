@@ -88,6 +88,8 @@ const f=document.getElementById('f'),pw=document.getElementById('pw'),
 let mode='pass';                 // 'lock' | 'accounts' | 'pass'
 fetch('/api/users/who').then(r=>r.json()).then(d=>{
   if(!d)return;
+  // a door this browser can't open with a password (Bento itself started it): say so, ask nothing
+  if(d.refused&&!d.any&&!d.lock){sub.textContent=d.refused;f.hidden=true;return}
   if(d.locked){
     mode='lock';
     const nm=(d.display||d.name||'').trim();

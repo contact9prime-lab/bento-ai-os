@@ -84,8 +84,8 @@ function permGrantsView(box){
   const openAll=!!q||groups.length<=4||f.src!=='all'||f.eff!=='all';
   const kind={user:'your agent',subagent:'specialist',flow:'mission',app:'app',team:'linked team'};
   box.innerHTML=`<div class="pr-bar">
-      <span class="seg">${[['all','All'],['allow','Allows'],['deny','Refuses']].map(([k,l])=>`<button class="${f.eff===k?'on':''}" onclick="PERM.gf.eff='${k}';permBody()">${l}</button>`).join('')}</span>
-      <span class="pr-chips">${PERM_SRC.filter(([k])=>k==='all'||counts[k]).map(([k,l])=>`<button class="pr-chip${f.src===k?' on':''}" onclick="PERM.gf.src='${k}';permBody()">${l} <i>${counts[k]}</i></button>`).join('')}</span>
+      <span class="seg">${[['all','All'],['allow','Allows'],['deny','Refuses']].map(([k,l])=>`<button class="${f.eff===k?'on':''}" onclick="PERM.gf.eff='${jsq(k)}';permBody()">${l}</button>`).join('')}</span>
+      <span class="pr-chips">${PERM_SRC.filter(([k])=>k==='all'||counts[k]).map(([k,l])=>`<button class="pr-chip${f.src===k?' on':''}" onclick="PERM.gf.src='${jsq(k)}';permBody()">${l} <i>${counts[k]}</i></button>`).join('')}</span>
       <label class="pr-rev"><input type="checkbox" id="perm-rev" ${PERM.showRevoked?'checked':''}> show removed</label>
     </div>
     <p class="mut pr-sum">${total} rule${total===1?'':'s'} for ${groups.length} ${groups.length===1?'agent or app':'agents and apps'}. Tap ✓ or ✕ to switch a rule; anything not listed asks first.</p>
@@ -116,10 +116,10 @@ function permReview(box){
         <span class="mut">${a.description?esc(a.description):''}</span>
         <span class="pa-meta">${gs.length?gs.length+' rule'+(gs.length===1?'':'s')+' · '+esc(pmSay(gs[0]).replace(/^may /,'can '))+(gs.length>1?' and more':''):'no rules: asks first for everything'}</span></div>
       <span class="pa-acts">
-        ${kind==='wait'?`<button class="endbtn pa-go" onclick="reviewManifest('${a.id}')">Review</button>`:''}
-        ${gs.length?`<button class="endbtn" onclick="PERM.sel='who:app:${a.id}';PERM.tab='map';refreshApp('permissions')">Its rules</button>`:''}
-        <button class="endbtn" title="${kind==='none'?'Read the app and draft the permissions it needs':'Read the app again and draft its permissions'}" onclick="permRescan('${a.id}')">${kind==='none'?'Scan':'Rescan'}</button>
-        <button class="pm-x" title="Export ${esc(a.name)}" aria-label="Export" onclick="window.open('/api/apps/${a.id}/export')">⤓</button>
+        ${kind==='wait'?`<button class="endbtn pa-go" onclick="reviewManifest('${jsq(a.id)}')">Review</button>`:''}
+        ${gs.length?`<button class="endbtn" onclick="PERM.sel='who:app:${jsq(a.id)}';PERM.tab='map';refreshApp('permissions')">Its rules</button>`:''}
+        <button class="endbtn" title="${kind==='none'?'Read the app and draft the permissions it needs':'Read the app again and draft its permissions'}" onclick="permRescan('${jsq(a.id)}')">${kind==='none'?'Scan':'Rescan'}</button>
+        <button class="pm-x" title="Export ${esc(a.name)}" aria-label="Export" onclick="window.open('/api/apps/${jsq(a.id)}/export')">⤓</button>
       </span></div>`};
   const wait=apps.filter(a=>(a.manifest_status||'none')==='proposed');
   const ok=apps.filter(a=>a.manifest_status==='approved');
@@ -149,7 +149,7 @@ function permAttachView(box){
         <span style="width:22px;height:22px;border-radius:6px;background:${tileBg(p.id)};flex:0 0 22px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700">${esc((p.label[0]||'?').toUpperCase())}</span>
         <div class="grow" style="min-width:0"><span style="font-size:12.5px">${esc(p.label)}</span><div class="mut" style="font-size:10px">${esc(p.kind)}</div></div></div>`).join('')||'<p class="mut">none yet</p>'}</div></div>
     <div><div class="tmsec" style="margin:0 0 6px">2 · Capability</div>
-      ${(o.actions||[]).map(a=>`<button class="endbtn" style="margin:0 4px 4px 0;${att.action===a?'border-color:var(--acc,#5eead4);color:var(--acc,#5eead4)':''}" onclick="PERM.att.action='${a}';PERM.att.res=new Set();permBody()">${a}</button>`).join('')}
+      ${(o.actions||[]).map(a=>`<button class="endbtn" style="margin:0 4px 4px 0;${att.action===a?'border-color:var(--acc,#5eead4);color:var(--acc,#5eead4)':''}" onclick="PERM.att.action='${jsq(a)}';PERM.att.res=new Set();permBody()">${a}</button>`).join('')}
       <div style="display:flex;gap:8px;margin-top:14px;align-items:center">
         <span class="mut" style="font-size:12px">Effect:</span>
         <button class="endbtn" onclick="PERM.att.effect=PERM.att.effect==='allow'?'deny':'allow';permBody()" style="color:${att.effect==='deny'?'var(--err,#f87171)':'var(--ok,#5eead4)'};border-color:${att.effect==='deny'?'var(--err,#f87171)':'var(--ok,#5eead4)'}">${att.effect==='deny'?'✕ deny':'✓ allow'}</button>
@@ -157,7 +157,7 @@ function permAttachView(box){
       </div>
       <div style="margin-top:14px">
         <span class="mut" style="font-size:12px">IO gates <span style="font-size:10px">(none picked = every surface)</span>:</span><div style="margin-top:5px">
-        ${PERM_SURFACES.map(s=>`<button class="endbtn" style="margin:0 4px 4px 0;${att.surf.has(s)?'border-color:var(--acc2,#22d3ee);color:var(--acc2,#22d3ee)':''}" onclick="PERM.att.surf.has('${s}')?PERM.att.surf.delete('${s}'):PERM.att.surf.add('${s}');permBody()">${s}</button>`).join('')}</div>
+        ${PERM_SURFACES.map(s=>`<button class="endbtn" style="margin:0 4px 4px 0;${att.surf.has(s)?'border-color:var(--acc2,#22d3ee);color:var(--acc2,#22d3ee)':''}" onclick="PERM.att.surf.has('${jsq(s)}')?PERM.att.surf.delete('${jsq(s)}'):PERM.att.surf.add('${jsq(s)}');permBody()">${s}</button>`).join('')}</div>
         <span class="mut" style="font-size:11px">the rule only applies to calls arriving via these surfaces — elsewhere the IO is denied and logged</span>
       </div></div>
     <div><div class="tmsec" style="margin:0 0 6px">3 · Resources <span class="mut">(${att.res.size} picked)</span></div>
@@ -199,7 +199,7 @@ function permSurfBadge(g){
   const scoped=g.surfaces&&g.surfaces!=='*';
   return `<button class="endbtn" style="font-size:10px;${scoped?'color:var(--acc2,#22d3ee);border-color:var(--acc2,#22d3ee)':''}"
     title="IO gates — which ways in this rule applies on (desktop, terminal, Telegram, WhatsApp, API, tasks, webhooks). Click to change."
-    onclick="permSurfaces('${g.id}','${esc(g.surfaces||'*')}')">⛩ ${scoped?esc(g.surfaces):'all'}</button>`;
+    onclick="permSurfaces('${jsq(g.id)}','${jsq(g.surfaces||'*')}')">⛩ ${scoped?esc(g.surfaces):'all'}</button>`;
 }
 async function permSurfaces(gid,cur){
   const v=await osPrompt('IO gates for this rule',{message:'Comma-separated from: '+PERM_SURFACES.join(', ')+' (* = every surface)',value:cur||'*'});
@@ -300,11 +300,11 @@ function permQuarantine(box){
         ev.tool?', calling <code>'+esc(String(ev.tool).split('→').pop())+'</code>':''}</div>`:''}
       <div class="sub" style="margin-top:6px">Nothing it asks for runs while it is held.</div>
       <div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap">
-        <button onclick="permRelease('${q.id}','once')"
+        <button onclick="permRelease('${jsq(q.id)}','once')"
           title="let it run again — it can be held again if it does this once more">Let it run once</button>
-        <button onclick="permRelease('${q.id}','forever')"
+        <button onclick="permRelease('${jsq(q.id)}','forever')"
           title="never hold this again for going too fast — recorded as your decision">Allow forever</button>
-        <button style="color:var(--err,#f87171)" onclick="permRelease('${q.id}','deleted')"
+        <button style="color:var(--err,#f87171)" onclick="permRelease('${jsq(q.id)}','deleted')"
           title="delete it">Delete it</button>
       </div></div>`;
   }).join('')||`<p class="mut">Nothing is quarantined. If an app, agent or flow starts calling

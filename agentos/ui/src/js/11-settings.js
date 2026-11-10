@@ -100,7 +100,7 @@ function secretField(id,ph,cls){
 function pSecret(id,hasKey,masked,ph){
   if(!hasKey)return secretField(id,ph);
   return `<span class="psecret" id="${id}-wrap"><i>saved</i><code>${esc(masked||'••••')}</code>
-    <button class="endbtn" onclick="pSecretReplace('${id}')">Replace</button></span>`;
+    <button class="endbtn" onclick="pSecretReplace('${jsq(id)}')">Replace</button></span>`;
 }
 function pSecretReplace(id){
   const w=document.getElementById(id+'-wrap');if(!w)return;
@@ -279,6 +279,9 @@ function setTab(body,all){
       pRow('Folder jail',pSwitch('s-sb-on',cfg.sandbox&&cfg.sandbox.enabled),
         {desc:'Runs commands and the Terminal inside a sandbox.',
          more:'Everything outside the folder is read-only and other people\u2019s home files are hidden. A shell can reach whatever this jail allows, even past an executor\u2019s folders.',f:'sandbox jail bubblewrap shell'}),
+      ...((typeof PLATFORM!=='undefined'&&PLATFORM&&PLATFORM.jail&&PLATFORM.jail.words)
+        ?[pRow('Not working here','',{desc:'The sandbox cannot start on this machine, so each command asks you first.',
+           more:PLATFORM.jail.words,f:'sandbox jail bubblewrap missing not working'})]:[]),
       pRow('Folder',pText('s-sb-root',(cfg.sandbox&&cfg.sandbox.root)||cfg.workspace),{f:'sandbox root folder'}),
       pRow('Shared folders','<button class="endbtn" onclick="openApp(\'users\')">Open Users</button>',
         {desc:'Extra folders the agent and the Terminal can use, shared with chosen accounts.',
@@ -366,10 +369,10 @@ function setTab(body,all){
       pRow('Agents message each other',pSelect('s-team-talk',[
           ['matrix','Ask me first (the matrix below)'],
           ['swarm','Swarm: they work together freely'],
-          ['democracy','Democracy: 2 of 3 decide'],
+          ['democracy','Democracy: you decide, with the team\'s view'],
           ['off','Off']],(cfg.team&&cfg.team.talk)||'matrix'),
         {desc:'Let an agent ask a colleague for help in the middle of a task.',
-         more:'The colleague answers with its own model and permissions. In Swarm your lead also hands your specialists work without asking. In Democracy those same steps go to a vote of three of your agents, on different brains where they can be, and a majority decides. Huddles end with a vote too. Loops are refused and each task has a question limit.',
+         more:'The colleague answers with its own model and permissions. In Swarm your lead also hands your specialists work without asking. In Democracy you are asked for those same steps, and the card shows what three of your agents think. Their view is advice. Huddles end with their view too. Loops are refused and each task has a question limit.',
          f:'team agents message talk each other swarm democracy vote quorum matrix permission ask'}),
       pRow('Who may ask whom','<div id="s-team-matrix" class="team-matrix mut">loading…</div>',
         {stack:true,desc:'Rows ask, columns answer. Tap a cell to switch between ask me, allow and block.',
@@ -472,6 +475,10 @@ function setTab(body,all){
         {desc:'How much your agent does before it asks you.',
          more:'Some steps always ask a person, like sending mail or acting on what a web page said. Applies right away.',
          f:'autonomy paranoid balanced full ask approve risky level'}),
+      pRow('Local addresses',pText('s-fetch-allow',((cfg.security&&cfg.security.fetch_allow)||[]).join(', '),'nas.local, 192.168.1.20:8080'),
+        {desc:'Things on your own network your agents and calendars may fetch.',
+         more:'Anything on this machine or a private network is refused until it is listed here. Apps can never reach them. Loopback needs a port.',
+         f:'local address network lan private fetch allow ssrf nas calendar'}),
       pRow('After reading a web page or an MCP reply',pSelect('s-taint',[
         ['ask','Ask before changing anything'],
         ['strict','Refuse to change anything'],
@@ -482,6 +489,8 @@ function setTab(body,all){
     ],{f:'autonomy security untrusted injection'}));
     P.push(`<div class="pgroup" data-f="grants permissions allowed remembered missions matrix linked community apps review quarantine held"><h3>What's allowed right now</h3><div id="s-perm-sum"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
     setTimeout(permSummaryPaint,0);
+    P.push(`<div class="pgroup sec-card" data-f="security watcher integrity seal signed lock alerts held changed code files"><h3>Security</h3><div id="s-sec-card"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
+    setTimeout(secCardPaint,0);
     P.push(pGroup('The ledger',[
       pRow('Stop what can’t be recorded',pSwitch('s-audit-strict',!!(cfg.security&&cfg.security.audit_fail_closed)),
         {desc:'Refuse an action if its ledger row could not be written.',
@@ -847,7 +856,7 @@ function verRollback(d){
   const r=d&&d.rollback;if(!r)return '';
   const when=r.at?new Date(r.at*1000).toLocaleString([],{dateStyle:'medium',timeStyle:'short'}):'';
   return `<div class="upd-back"><span class="mut">Updated${when?' '+esc(when):''}${r.version?' from '+esc(r.version):''}${r.branch?' on '+esc(r.branch):''}.</span>
-    <button class="endbtn" onclick="updateRollback(this,'${esc(r.to)}','${esc(r.version||r.to)}')">Roll back to ${esc(r.version||r.to)}</button></div>`;
+    <button class="endbtn" onclick="updateRollback(this,'${jsq(r.to)}','${jsq(r.version||r.to)}')">Roll back to ${esc(r.version||r.to)}</button></div>`;
 }
 async function updateRollback(btn,to,label){
   if(!confirm('Roll back to '+label+' ('+to+')? AgentOS restarts on the older code. Your data stays, and you can update again later.'))return;
@@ -975,6 +984,7 @@ async function saveSettings(){
   if(on('s-sb-on')!==undefined)patch.sandbox={enabled:on('s-sb-on'),root:(val('s-sb-root')||'').trim()};
   if(val('s-taint')!==undefined||on('s-audit-strict')!==undefined){
     patch.security={};
+    if(val('s-fetch-allow')!==undefined)patch.security.fetch_allow=list('s-fetch-allow');
     if(val('s-taint')!==undefined)patch.security.taint=val('s-taint');
     if(on('s-audit-strict')!==undefined)patch.security.audit_fail_closed=on('s-audit-strict');
   }
@@ -1012,13 +1022,16 @@ async function saveSettings(){
       budget_usd:Number(val('s-exec-budget')||2),
       tools:[...document.querySelectorAll('[data-tool]')].filter(i=>i.checked).map(i=>i.dataset.tool),
       allow_source:on('s-exec-src'),
+      ...(el('s-exec-nojail')?{unjailed_ok:on('s-exec-nojail')}:{}),
+      ...(el('s-exec-accounts')?{shell_for_accounts:on('s-exec-accounts')}:{}),
     }};
   }
   if(!Object.keys(patch).length){if(el('v-tts'))setSavedMark(true);return}
   let ok=false;
-  try{ok=(await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(patch)})).ok}catch(e){}
+  let why='';
+  try{const r=await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(patch)});ok=r.ok;if(!ok)why=(await r.json().catch(()=>({}))).error||''}catch(e){}
   setSavedMark(ok);
-  if(!ok){toast('could not save that setting');return}
+  if(!ok){toast(why?'could not save: '+why:'could not save that setting');return}
   loadModels();loadConfig();
 }
 /* Settings save themselves. There used to be one Save at the foot of every tab, and
@@ -1030,7 +1043,7 @@ async function saveSettings(){
    before its first await, so a field committed by clicking another tab is still in the
    page when it is read. Cards with a form of their own (a channel, a mail account, the
    locale) keep their own button: those talk to another service and can be refused. */
-var SET_AUTO=/^(s-(workspace|steps|name|sb-on|sb-root|taint|audit-strict|hist-compact|ollama-url|ant-|oai-|or-|cus-|goo-|build-model|img-|gh-|upd-on|upd-repo|upd-branch|exec-)|v-(tts|voice|rate|lang|agents|live)$)/;
+var SET_AUTO=/^(s-(workspace|steps|name|sb-on|sb-root|taint|fetch-allow|audit-strict|hist-compact|ollama-url|ant-|oai-|or-|cus-|goo-|build-model|img-|gh-|upd-on|upd-repo|upd-branch|exec-)|v-(tts|voice|rate|lang|agents|live)$)/;
 function setAutoSave(e){
   const t=e&&e.target;if(!t)return;
   if(!(t.dataset&&t.dataset.tool)&&!SET_AUTO.test(t.id||''))return;
@@ -1170,8 +1183,8 @@ async function renderExecutors(){
     const how=off.command?`Install runs ${off.command}${off.available?'':'. '+(off.reason||'It is not available here')}`
       :'There is no installer for it here. Install it yourself and it shows up.';
     const more=[rest,r.why_not&&r.why_not!=='not installed'?r.why_not:'',how,'Licence: '+(r.licence||'unknown')].filter(Boolean).join(' ');
-    const btns=(off.command?`<button class="endbtn" title="${esc(off.command)}" onclick="execInstallComponent('${esc(r.id)}',this)">Install</button>`:'')
-      +(r.docs?`<button class="endbtn" onclick="openInBrowser('${esc(r.docs)}')">Docs</button>`:'');
+    const btns=(off.command?`<button class="endbtn" title="${esc(off.command)}" onclick="execInstallComponent('${jsq(r.id)}',this)">Install</button>`:'')
+      +(r.docs?`<button class="endbtn" onclick="openInBrowser('${jsq(r.docs)}')">Docs</button>`:'');
     return pRow(r.title,btns||'<span class="mut">install it yourself</span>',
       {desc:esc(first(r.what))+` <span class="chdot">${esc(r.licence||'licence unknown')}</span>`,more,f:'install executor '+r.id+' '+r.title});
   });
@@ -1197,7 +1210,7 @@ async function renderExecutors(){
           {desc:`Runs <code>${esc(ex.install_cmd)}</code> in your own account, without sudo.`,
            f:'install claude code executor'})}
         <pre id="exec-instlog" class="exec-log" hidden></pre>`:''}
-      ${ex.install?`<p class="mut"><button class="endbtn" onclick="openInBrowser('${esc(ex.install)}')">Read the docs</button></p>`:''}`;
+      ${ex.install?`<p class="mut"><button class="endbtn" onclick="openInBrowser('${jsq(ex.install)}')">Read the docs</button></p>`:''}`;
     return;
   }
   const c=ex.config||{}, tools=c.tools||[];
@@ -1235,6 +1248,12 @@ async function renderExecutors(){
         ${tool('WebSearch','search the web')}${tool('WebFetch','read a page')}
         ${tool('Write','create files')}${tool('Edit','change files')}${tool('Bash','run commands')}
       </div>`,{stack:true,desc:'Anything left unticked can’t be used.',more:'You choose these before a run starts. This version of Claude Code can’t ask you for approval call by call.',f:'executor allowed tools permissions'})}
+    ${ex.jail&&!ex.jail.ok?pRow('Allow its shell with no jail',pSwitch('s-exec-nojail',c.unjailed_ok),
+      {desc:'Without a jail, its shell can reach everything you can.',
+       more:esc(ex.jail.why||''),f:'executor jail sandbox bubblewrap shell'}):''}
+    ${ex.accounts&&ex.jail&&ex.jail.ok?pRow('Let other accounts use its shell',pSwitch('s-exec-accounts',c.shell_for_accounts),
+      {desc:'Their turns could read this machine’s Claude sign-in.',
+       more:'The shell runs in a jail, but it shares that jail with the CLI, so the sign-in is in reach.',f:'executor jail accounts shell'}):''}
     <div class="ghint" id="exec-envelope">${esc(ex.envelope||'')}</div>`;
   const refresh=()=>{
     const t=[...box.querySelectorAll('[data-tool]')].filter(i=>i.checked).map(i=>i.dataset.tool);
@@ -1398,7 +1417,7 @@ function chanCard(c){
     ${c.id==='whatsapp'?'<div id="wa-extra" class="wa-extra"></div>':''}
     ${(c.scoped_grants?`<div class="ghint mut">${c.scoped_grants} permission rule${c.scoped_grants==1?'':'s'} apply to this channel. See the Permissions app.</div>`:'')}
     <div class="prow"><div class="pl"><small id="ch-${c.id}-msg" class="mut"></small></div>
-      <div class="pc"><button class="endbtn" onclick="chanSave('${esc(c.id)}')">Save</button></div></div>
+      <div class="pc"><button class="endbtn" ${doAttrs('chanSave',c.id)}>Save</button></div></div>
   </div>`;
 }
 async function chanSave(id){
@@ -1474,7 +1493,7 @@ async function paintTeamMatrix(){
       if(a===b)return '<td><div class="tm-self" aria-hidden="true"></div></td>';
       const v=cells[a+'>'+b]||'', cls=v==='allow'?'allow':v==='deny'?'deny':talk==='swarm'?'swarm':talk==='democracy'?'vote':'';
       return `<td><button class="tm-cell ${cls}" data-a="${esc(a)}" data-b="${esc(b)}" data-v="${v}" title="${esc(a)} → ${esc(b)}: ${label(v)}" aria-label="${esc(a)} may ask ${esc(b)}: ${label(v)}">${label(v)}</button></td>`}).join('')}</tr>`).join('')}</table>
-    <div class="tm-legend">${talk==='swarm'?'Swarm: every cell you haven’t blocked is open.':talk==='democracy'?'Vote: your lead and two other agents vote on each empty cell, and 2 of 3 decide. Allow and block still win.':'Ask: you are asked the first time, and “Allow & remember” fills the cell.'}
+    <div class="tm-legend">${talk==='swarm'?'Swarm: every cell you haven’t blocked is open.':talk==='democracy'?'Vote: you are asked for each empty cell, and the card shows what three of your agents think. Allow and block still win.':'Ask: you are asked the first time, and “Allow & remember” fills the cell.'}
       ${dn.length>=2?` <button class="co-link tm-level" data-mode="department">Decide it per department instead</button>`:''}</div>`;
   box.querySelector('.tm-level')?.addEventListener('click',e=>teamMatrixLevel(e.target.dataset.mode));
   box.querySelectorAll('.tm-cell').forEach(b=>b.onclick=async()=>{
@@ -1555,11 +1574,11 @@ function tlkReqHTML(r){
   const team=id.agent_name?` <span class="mut">· ${esc(id.agent_name)}’s team${id.person?', '+esc(id.person):''}</span>`:'';
   if(r.kind==='account')return `<div class="tlk-req">${face}<div><p><b>${who}</b>${team} asks to link teams with you.</p>
       <small class="mut">You’re both on this machine, so there’s nothing to compare.</small></div>
-    <div class="tlk-req-act"><button class="pact" onclick="teamLinkAnswer('${esc(r.id)}','approve')">Approve</button><button class="endbtn" onclick="teamLinkAnswer('${esc(r.id)}','deny')">Deny</button></div></div>`;
+    <div class="tlk-req-act"><button class="pact" ${doAttrs('teamLinkAnswer',r.id,'approve')}>Approve</button><button class="endbtn" ${doAttrs('teamLinkAnswer',r.id,'deny')}>Deny</button></div></div>`;
   return `<div class="tlk-req">${face}<div><p><b>${who}</b>${team} <span class="mut">(${esc(r.addr||'')})</span> asks to link its team with yours.</p>
       <div class="tlk-sas-row">Check that ${who} shows <span class="tlk-sas">${esc(r.sas||'')}</span></div>
       <small class="mut">If the digits differ, something is in between you, so deny it. After you approve, you still choose which of your agents they can ask.</small></div>
-    <div class="tlk-req-act"><button class="pact" onclick="teamLinkAnswer('${esc(r.id)}','approve')">Approve</button><button class="endbtn" onclick="teamLinkAnswer('${esc(r.id)}','deny')">Deny</button></div></div>`;
+    <div class="tlk-req-act"><button class="pact" ${doAttrs('teamLinkAnswer',r.id,'approve')}>Approve</button><button class="endbtn" ${doAttrs('teamLinkAnswer',r.id,'deny')}>Deny</button></div></div>`;
 }
 function tlkOutHTML(r){
   const who=esc(r.name||r.to_name||'?');
@@ -1571,7 +1590,7 @@ function tlkOutHTML(r){
     :st==='denied'?`<b>${who}</b> said no.`
     :st==='expired'?`Nobody at <b>${who}</b> answered in ten minutes.`
     :`<b>${who}</b>: ${esc(r.error||st)}`;
-  return `<div class="tlk-req out"><div><p>${line}</p></div>${st==='pending'?`<div class="tlk-req-act"><button class="endbtn" onclick="teamLinkWithdraw('${esc(r.id)}')">Withdraw</button></div>`:''}</div>`;
+  return `<div class="tlk-req out"><div><p>${line}</p></div>${st==='pending'?`<div class="tlk-req-act"><button class="endbtn" ${doAttrs('teamLinkWithdraw',r.id)}>Withdraw</button></div>`:''}</div>`;
 }
 async function paintTeamLinks(){
   const box=document.getElementById('s-team-links');if(!box)return;
@@ -1587,9 +1606,9 @@ async function paintTeamLinks(){
   const links=(d.links||[]).map(l=>{const id=l.peer_identity||{};return `<div class="tlk-card">
       <div class="tlk-head">${avatarRecipeImg(id.agent,'av-tool',(id.agent_name||'their agent'))}<b>${esc(l.label)}</b>${id.agent_name?`<span class="mut">${esc(id.agent_name)}’s team${id.person?' · '+esc(id.person):''}</span>`:''}<span class="brainchip">${l.kind==='account'?'account here':'machine · mTLS'}</span>
         <span class="mut">${esc(l.kind==='machine'?(l.url||'they can reach you, you can’t reach them'):'')}</span>
-        <button class="endbtn" onclick="openTeamChat('${esc(l.label)}')">Message</button>
-        <button class="endbtn" onclick="teamLinkCheck('${esc(l.label)}',this)">Check</button>
-        <button class="endbtn" onclick="teamLinkRemove('${esc(l.label)}')">Remove</button></div>
+        <button class="endbtn" ${doAttrs('openTeamChat',l.label)}>Message</button>
+        <button class="endbtn" onclick="teamLinkCheck('${jsq(l.label)}',this)">Check</button>
+        <button class="endbtn" ${doAttrs('teamLinkRemove',l.label)}>Remove</button></div>
       ${l.pass?tlPassHTML(l):`<label class="tlk-sub tlk-chk"><input type="checkbox" data-link="${esc(l.label)}" data-agent="lead" ${(l.theirs_may_ask||[]).includes('lead')?'checked':''}> ${avatarImg('@agent','av-tool')}<span>They may hand whole tasks to ${esc(agentName())}, who works them with your team${pInfo('Your lead takes the task, hands parts to your specialists and departments, and answers. It can’t touch this machine’s files or shell for them, and anything that needs a person comes to you.')}</span></label>
       <div class="tlk-sub">Their agents may ask: ${mine.length?mine.map(n=>`<label class="tlk-chk"><input type="checkbox" data-link="${esc(l.label)}" data-agent="${esc(n)}" ${(l.theirs_may_ask||[]).includes(n)?'checked':''}> ${avatarImg(n,'av-tool')}${esc(n)}</label>`).join(''):'<span class="mut">you have no specialists here, so their work comes to your lead</span>'}</div>
       <div class="tlk-sub tlk-runs"><span>Their work here runs on</span>${typeof tieBrainSelect==='function'?tieBrainSelect({label:l.label,owner:l.owner||'',brain:l.brain||{}}).replace('data-tie="brain"','data-link-brain="'+esc(l.label)+'"'):''}</div>
@@ -1673,7 +1692,7 @@ function tlPassHTML(l){
   const face=avatarImg(lent?p.agent:p.agent+'@'+l.label,'av-tool');
   return `<div class="tlk-pass">${face}
     <span>${lent?`You lent <b>${esc(p.agent)}</b>. It answers in words only.`:`<b>${esc(p.agent)}</b> is on loan to you.`} ${left} left</span>
-    ${lent?'':`<button class="endbtn" onclick="tlPassHuddle('${esc(p.agent)}','${lab}')">Bring into a huddle</button>`}</div>`;
+    ${lent?'':`<button class="endbtn" ${doAttrs('tlPassHuddle',p.agent,l.label)}>Bring into a huddle</button>`}</div>`;
 }
 async function tlPassHuddle(agent,label){
   // a huddle seats two or more: the guest and one of yours. Prefilled, never sent.
@@ -1711,12 +1730,12 @@ function tlStandHTML(l,mine,d){
   return `<details class="tlk-stand" data-stand="${lab}"${TL_STAND_OPEN[l.label]?' open':''}><summary>Without asking me${rows.length?' · '+rows.length:''}</summary>
     <p class="mut tlk-why">Questions from ${lab} can make your agents read and answer, but any change needs a person here to say yes. ${pInfo('Allow one thing ahead of time: one agent, one action, in one folder. If the agent also read a web page or an email on the way, you’re asked again.')}</p>
     ${d.standing_note?`<p class="mut tlk-why">${esc(d.standing_note)}</p>`:''}
-    ${rows.map(x=>`<div class="tlk-stand-row">${x.agent==='*'?'':avatarImg(x.agent,'av-tool')}<span><b>${x.agent==='*'?'Any agent here':esc(x.agent)}</b> may ${esc(TL_ACT_WORDS[x.action]||x.action)} <code>${esc(tlScope(x.scope))}</code>${x.expires_at?` <small class="mut">until ${new Date(x.expires_at*1000).toLocaleDateString()}</small>`:''}</span><button class="endbtn" onclick="tlStandRemove('${lab}','${esc(x.id)}')">Remove</button></div>`).join('')}
+    ${rows.map(x=>`<div class="tlk-stand-row">${x.agent==='*'?'':avatarImg(x.agent,'av-tool')}<span><b>${x.agent==='*'?'Any agent here':esc(x.agent)}</b> may ${esc(TL_ACT_WORDS[x.action]||x.action)} <code>${esc(tlScope(x.scope))}</code>${x.expires_at?` <small class="mut">until ${new Date(x.expires_at*1000).toLocaleDateString()}</small>`:''}</span><button class="endbtn" ${doAttrs('tlStandRemove',l.label,x.id)}>Remove</button></div>`).join('')}
     ${mine.length?`<div class="tlk-actions tlk-stand-add"><select data-sa="agent" aria-label="Which of your agents">${mine.map(n=>`<option>${esc(n)}</option>`).join('')}</select>
       <select data-sa="action" aria-label="May do">${(d.standing_actions||[]).map(a=>`<option value="${esc(a)}">${esc(TL_ACT_WORDS[a]||a)}</option>`).join('')}</select>
       <input data-sa="scope" placeholder="~/shared · or ${esc((d.standing_tools||[]).join(', '))}" autocomplete="off" autocapitalize="off" spellcheck="false">
       <input data-sa="days" type="number" min="1" inputmode="numeric" placeholder="days (blank: until removed)">
-      <button class="pact" onclick="tlStandAdd('${lab}',this)">Allow</button></div>`
+      <button class="pact" onclick="tlStandAdd('${jsq(l.label)}',this)">Allow</button></div>`
       :'<p class="mut tlk-why">You have no specialists yet. This is for them.</p>'}
   </details>`;
 }
@@ -1734,7 +1753,7 @@ function tlMissionsHTML(l){
         <span class="brainchip">${m.stopped?'stopped by you':m.enabled===false?'off on their side':'on'}</span>
         ${(m.agents||[]).map(a=>avatarImg(a,'av-tool')+esc(a)).join(' ')}
         <div class="mut tlk-why">${m.schedule?esc(m.schedule)+' · ':''}asked ${m.runs} time${m.runs===1?'':'s'}, last ${esc(when(m.last_used))}${m.text?' · '+esc(m.text):''}</div></div>
-      <button class="endbtn" onclick="tlMissionStop('${lab}','${esc(m.mission)}',${m.stopped?'false':'true'})">${m.stopped?'Allow again':'Stop'}</button></div>`).join('')}
+      <button class="endbtn" ${doAttrs('tlMissionStop',l.label,m.mission,!m.stopped)}>${m.stopped?'Allow again':'Stop'}</button></div>`).join('')}
   </div>`;
 }
 async function tlMissionStop(label,mission,stop){

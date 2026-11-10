@@ -1,13 +1,18 @@
 """SQLite persistence: conversations, messages, long-term memories, scheduled tasks."""
 
+import base64
 import contextlib
 import hashlib
+import hmac
 import json
 import os
+import secrets
 import sqlite3
+import threading
 import time
 import uuid
 from pathlib import Path
+from . import constcmp
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS conversations (
@@ -520,6 +525,7 @@ CREATE TABLE IF NOT EXISTS spaces (
     description TEXT DEFAULT '',  -- shown to the extraction model: what this space IS
     workspace TEXT DEFAULT '',    -- optional filesystem dir this space maps to
     archived INTEGER DEFAULT 0,
+    section INTEGER DEFAULT 0,    -- a Zero's section: reads exactly, never the global rows
     created_at REAL,
     updated_at REAL
 );
@@ -601,11 +607,12 @@ CREATE TABLE IF NOT EXISTS audit (
     -- decision to the one before it, so a deleted or edited row breaks the chain from
     -- that point on and audit_verify() finds where. The hash covers the IMMUTABLE
     -- decision fields only, not outcome/detail/duration — those are stamped later, on
-    -- purpose, by audit_finish.
+    -- purpose, by audit_finish, and have a MAC of their own (out_mac) bound to row_hash.
     seq INTEGER DEFAULT 0,
     prev_hash TEXT DEFAULT '',
     row_hash TEXT DEFAULT '',
-    created_at REAL
+    created_at REAL,
+    out_mac TEXT DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit(ts);
 CREATE INDEX IF NOT EXISTS idx_audit_principal ON audit(principal_kind, principal_id, ts);
@@ -634,6 +641,255 @@ CREATE INDEX IF NOT EXISTS idx_usage_conv ON usage(conversation_id, ts);
 """
 
 
+def plain_app_name(name) -> str:
+    """An app's name is plain text. It comes from a package or from a <title> a model wrote,
+    and it is drawn all over the desktop, so markup and control characters stop here."""
+    return "".join(c for c in str(name or "") if c not in "<>" and (ord(c) >= 32 and ord(c) != 127)).strip()
+
+# ---- the ledger's key and anchor ---------------------------------------------------------------
+#
+# An unkeyed hash chain proves nothing to somebody who can write the database: they recompute it.
+# So the chain is an HMAC under a key kept beside the database, in a file no agent can read
+# (protected.SECRET_FILES). The newest (seq, hash) is written outside the database too, because a
+# chain alone can't see its newest rows being deleted. Same-user code that can read the key can
+# still re-chain and move the anchor: that is the limit, and docs/security.md says so. What this
+# closes is everything that can reach the database but not the key file: SQL on the database, a
+# copied or edited database file, a backup taken to another place.
+#
+# No triggers refusing UPDATE or DELETE. Anybody who can write the file can drop them, so they add
+# no boundary, and an honest factory reset would have to drop them too.
+
+LEDGER_KEY = "ledger.key"
+LEDGER_ANCHOR = "ledger.anchor"
+ANCHOR_SLACK = 64        # rows a power cut may lose after the anchor file reached the disk
+
+
+def _ledger_files(db_path) -> tuple[Path, Path]:
+    p = Path(db_path)
+    if p.stem == "agentos":
+        return p.parent / LEDGER_KEY, p.parent / LEDGER_ANCHOR
+    # a second database in one folder has its own (the suite does this)
+    return p.parent / f"ledger-{p.stem}.key", p.parent / f"ledger-{p.stem}.anchor"
+
+
+def load_ledger_key(db_path) -> dict | None:
+    """The key record, or None when there is none. Unreadable reads as {} : rows keep being
+    written, and verify says the key is the problem."""
+    try:
+        d = json.loads(_ledger_files(db_path)[0].read_text())
+        d["k"] = base64.b64decode(d["key"])
+        return d
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError, KeyError, TypeError):
+        return {}
+
+
+def mint_ledger_key(db, db_path) -> dict:
+    """First keyed write on this database. Records where the old scheme ends, and whether the old
+    rows verified then: a break that was already there is said once, here, and isn't a new alarm
+    (a `bento` verb and the server used to fork the old chain on ordinary use)."""
+    path = _ledger_files(db_path)[0]
+    head = db.execute("SELECT seq, row_hash FROM audit WHERE seq>0 ORDER BY seq DESC LIMIT 1").fetchone()
+    broke = _legacy_walk(db, int(head["seq"]) if head else 0) if head else None
+    rec = {"key": base64.b64encode(secrets.token_bytes(32)).decode(),
+           "boundary_seq": int(head["seq"]) if head else 0,
+           "boundary_hash": (head["row_hash"] or "") if head else "",
+           "legacy_break": broke, "at": time.time()}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(json.dumps(rec))
+    try:
+        os.link(tmp, path)          # complete or not there, and the first process wins
+    except FileExistsError:
+        pass
+    finally:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+    got = load_ledger_key(db_path)
+    return got if got is not None else {}
+
+
+def ledger_mac(key: bytes, prev_hash: str, fields: tuple) -> str:
+    payload = json.dumps([prev_hash, *fields], separators=(",", ":"), ensure_ascii=False)
+    return hmac.new(key, payload.encode("utf-8", "surrogatepass"), hashlib.sha256).hexdigest()
+
+
+def outcome_mac(key: bytes, row_hash: str, outcome: str, detail: str, duration_ms: int) -> str:
+    payload = json.dumps(["out", row_hash, outcome or "", detail or "", int(duration_ms or 0)])
+    return hmac.new(key, payload.encode(), hashlib.sha256).hexdigest()
+
+
+def _boot_id() -> str:
+    try:
+        return Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+    except OSError:
+        return ""
+
+
+_BOOT = _boot_id()
+
+
+def _anchor_bytes(seq: int, row_hash: str) -> bytes:
+    return f'{{"seq": {int(seq)}, "hash": "{row_hash}", "boot": "{_BOOT}"}}'.ljust(240).encode()
+
+
+def write_anchor(db_path, seq: int, row_hash: str) -> None:
+    """Newest row, written in place with no fsync. The page cache folds these into one disk write
+    every half a minute, so an SD card sees no more than the WAL already gives it."""
+    with contextlib.suppress(OSError):
+        path = _ledger_files(db_path)[1]
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT, 0o600)
+        try:
+            os.pwrite(fd, _anchor_bytes(seq, row_hash), 0)
+        finally:
+            os.close(fd)
+
+
+def read_anchor(db_path) -> dict | None:
+    try:
+        return json.loads(_ledger_files(db_path)[1].read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def forget_ledger_anchor(db_path) -> None:
+    """The database was replaced on purpose by the OS (a snapshot restore, a factory reset): the
+    newest row is an older one now, and that isn't tampering."""
+    with contextlib.suppress(OSError):
+        _ledger_files(db_path)[1].unlink()     # an open descriptor sees nlink 0 and makes a new one
+
+
+def _old_fields(r) -> tuple:
+    return (r["seq"], round(r["ts"], 6), r["uid"] or "", r["principal_kind"] or "",
+            r["principal_id"] or "", r["surface"] or "", r["space_id"] or "",
+            r["conversation_id"] or "", r["run_id"] or "", r["action"] or "",
+            r["resource"] or "", r["effect"] or "", r["rule"] or "", r["risk"] or "",
+            r["reason"] or "")
+
+
+def _walk_rows(rows, link) -> dict | None:
+    """The first break among these rows, or None. `link(prev, row)` is the row's expected hash."""
+    prev_hash, prev_seq, n = "", 0, 0
+    for r in rows:
+        n += 1
+        if prev_seq and r["seq"] != prev_seq + 1:
+            return {"reason": "sequence gap (a row was deleted)", "at_seq": r["seq"],
+                    "after_seq": prev_seq, "checked": n}
+        if not prev_seq and r["seq"] != 1:
+            return {"reason": "the first rows are missing (a row was deleted)", "at_seq": r["seq"],
+                    "after_seq": 0, "checked": n}
+        if prev_seq and (r["prev_hash"] or "") != prev_hash:
+            return {"reason": "broken link (a row was deleted or reordered)", "at_seq": r["seq"], "checked": n}
+        if link(r["prev_hash"] or "", r) != (r["row_hash"] or ""):
+            return {"reason": "row was altered after it was recorded", "at_seq": r["seq"], "checked": n}
+        prev_hash, prev_seq = r["row_hash"] or "", r["seq"]
+    return None
+
+
+def _legacy_walk(db, boundary: int) -> dict | None:
+    rows = db.execute("SELECT * FROM audit WHERE seq>0 AND seq<=? ORDER BY seq ASC", (boundary,))
+    return _walk_rows(rows, lambda prev, r: Store._audit_hash(prev, _old_fields(r)))
+
+
+def verify_chain(db, db_path, *, limit: int | None = None, after: tuple | None = None) -> dict:
+    """The whole answer to "has this ledger been changed?". `after` is a (seq, hash) already
+    walked: only newer rows are read, and that row must still say what it said.
+
+    Rows up to the boundary verify by the old unkeyed scheme and the boundary row's hash, so
+    rewriting them shows. Rows past it are HMACs, with the outcome under its own MAC. Then the
+    anchor: the newest row the OS knows it wrote must still be there. A shorter ledger after a
+    reboot, by no more than ANCHOR_SLACK rows, is what a power cut does to a WAL that isn't
+    fsynced per commit, and is reported as a note. In the same boot it is a deletion."""
+    led = load_ledger_key(db_path)
+    head = db.execute("SELECT seq, row_hash FROM audit WHERE seq>0 ORDER BY seq DESC LIMIT 1").fetchone()
+    head_seq = int(head["seq"]) if head else 0
+    head_hash = (head["row_hash"] or "") if head else ""
+    if led is None:
+        rows = db.execute("SELECT * FROM audit WHERE seq>0 ORDER BY seq ASC")
+        marked = db.execute("SELECT seq FROM audit WHERE out_mac<>'' LIMIT 1").fetchone()
+        if marked:
+            return {"ok": False, "reason": "the ledger's key is gone", "at_seq": marked["seq"], "checked": 0}
+        broke = _walk_rows(rows, lambda prev, r: Store._audit_hash(prev, _old_fields(r)))
+        if broke:
+            return {"ok": False, **broke}
+        return {"ok": True, "checked": head_seq, "head_seq": head_seq, "head_hash": head_hash, "keyed": False}
+    if not led.get("k"):
+        return {"ok": False, "reason": "the ledger's key can't be read", "at_seq": 0, "checked": 0}
+    key = led["k"]
+    boundary = int(led.get("boundary_seq") or 0)
+    checked = 0
+    note = ""
+    prev_hash, prev_seq = "", 0
+    if after and int(after[0]) > 0:
+        prev_seq, prev_hash = int(after[0]), str(after[1])
+        at = db.execute("SELECT row_hash FROM audit WHERE seq=?", (prev_seq,)).fetchone()
+        if not at:
+            return {"ok": False, "reason": "rows were deleted since the last check",
+                    "at_seq": prev_seq, "checked": 0}
+        if (at["row_hash"] or "") != prev_hash:
+            return {"ok": False, "reason": "row was altered after it was recorded", "at_seq": prev_seq, "checked": 0}
+    elif boundary:
+        broke = _legacy_walk(db, boundary)
+        was = led.get("legacy_break")
+        same = broke == was or (broke and was and broke.get("at_seq") == was.get("at_seq")
+                                and broke.get("reason") == was.get("reason"))
+        if not same:
+            return {"ok": False, **(broke or {"reason": "older rows changed", "at_seq": boundary, "checked": 0})}
+        at = db.execute("SELECT row_hash FROM audit WHERE seq=?", (boundary,)).fetchone()
+        if not at or (at["row_hash"] or "") != led.get("boundary_hash"):
+            return {"ok": False, "reason": "older rows were rewritten up to the point the key took over",
+                    "at_seq": boundary, "checked": 0}
+        checked += boundary
+        if was:
+            note = f"Rows before {was.get('at_seq')} had a break already when the key was made."
+        prev_seq, prev_hash = boundary, led.get("boundary_hash") or ""
+    start = max(prev_seq, boundary)
+    sql = "SELECT * FROM audit WHERE seq>? ORDER BY seq ASC"
+    rows = db.execute(sql + (" LIMIT ?" if limit else ""), (start, limit) if limit else (start,))
+    anchor = read_anchor(db_path)
+    want = (int(anchor.get("seq") or 0), str(anchor.get("hash") or "")) if anchor else (0, "")
+    walked = prev_seq
+    for r in rows:
+        checked += 1
+        seq = r["seq"]
+        if seq != prev_seq + 1:
+            return {"ok": False, "reason": "sequence gap (a row was deleted)" if prev_seq or seq != 1
+                    else "the first rows are missing (a row was deleted)",
+                    "at_seq": seq, "after_seq": prev_seq, "checked": checked}
+        if (r["prev_hash"] or "") != prev_hash:
+            return {"ok": False, "reason": "broken link (a row was deleted or reordered)",
+                    "at_seq": seq, "checked": checked}
+        fields = _old_fields(r)
+        if not constcmp.same(ledger_mac(key, prev_hash, fields), r["row_hash"] or ""):
+            return {"ok": False, "reason": "row was altered after it was recorded", "at_seq": seq, "checked": checked}
+        if not constcmp.same(
+                outcome_mac(key, r["row_hash"] or "", r["outcome"] or "", r["detail"] or "",
+                            int(r["duration_ms"] or 0)), r["out_mac"] or ""):
+            return {"ok": False, "reason": "what the row says happened was altered after it was recorded",
+                    "at_seq": seq, "checked": checked}
+        if seq == want[0] and (r["row_hash"] or "") != want[1]:
+            return {"ok": False, "reason": "the ledger no longer has the row its anchor names",
+                    "at_seq": seq, "checked": checked}
+        prev_hash, prev_seq = r["row_hash"] or "", seq
+        walked = seq
+    # Rows that can't be walked because they stop short of the head are `limit` doing its job.
+    if not limit and want[0] > head_seq:
+        lost = want[0] - head_seq
+        if anchor.get("boot") and anchor.get("boot") != _BOOT and lost <= ANCHOR_SLACK:
+            note = f"The newest {lost} row(s) were lost when this machine last stopped without warning."
+        else:
+            return {"ok": False, "reason": "the newest rows were deleted", "at_seq": want[0],
+                    "after_seq": head_seq, "checked": checked}
+    out = {"ok": True, "checked": checked, "head_seq": head_seq if not limit else walked,
+           "head_hash": head_hash if not limit else prev_hash, "keyed": True, "boundary": boundary}
+    if note:
+        out["note"] = note
+    return out
+
+
 class Store:
     def __init__(self, db_path: Path | None = None):
         # No path is the machine's own database: the terminal verbs (`bento pool`, `bento
@@ -645,6 +901,7 @@ class Store:
         db_path = Path(db_path)
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self.path = db_path          # kept: retention reports on the file, not the rows
+        self._audit_lock = threading.Lock()   # the head and the row after it are one step
         self.db = sqlite3.connect(str(db_path), check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         # WAL + busy timeout: readers never block the writer, and a second process
@@ -666,6 +923,8 @@ class Store:
 
     def _migrate(self):
         """Add columns introduced after the first release to existing databases."""
+        if "section" not in {r["name"] for r in self.db.execute("PRAGMA table_info(spaces)").fetchall()}:
+            self.db.execute("ALTER TABLE spaces ADD COLUMN section INTEGER DEFAULT 0")
         cols = {r["name"] for r in self.db.execute("PRAGMA table_info(memories)").fetchall()}
         for col, ddl in (("scope", "TEXT DEFAULT 'user'"),
                          ("conversation_id", "TEXT"),
@@ -713,9 +972,12 @@ class Store:
         # audit_verify() treats seq>=1 as the chain and reports where it breaks.
         aucols = {r["name"] for r in self.db.execute("PRAGMA table_info(audit)").fetchall()}
         for col, ddl in (("uid", "TEXT DEFAULT ''"), ("seq", "INTEGER DEFAULT 0"),
-                         ("prev_hash", "TEXT DEFAULT ''"), ("row_hash", "TEXT DEFAULT ''")):
+                         ("prev_hash", "TEXT DEFAULT ''"), ("row_hash", "TEXT DEFAULT ''"),
+                         ("out_mac", "TEXT DEFAULT ''")):
             if col not in aucols:
                 self.db.execute(f"ALTER TABLE audit ADD COLUMN {col} {ddl}")
+        # the chain's head is read on a change of writer, and every insert asks "is this seq free?"
+        self.db.execute("CREATE INDEX IF NOT EXISTS idx_audit_seq ON audit(seq)")
         # Spaces. Purely additive: every existing row defaults to '' (global), so an
         # untouched install reads back exactly as it did before — every memory and
         # every fact stays visible from every space. Nothing is moved, nothing is
@@ -790,6 +1052,12 @@ class Store:
         for t in tables:
             self.db.execute(f"DELETE FROM {t}")
         self.db.commit()
+        # no rows, so no chain: the next decision starts a new one under a new key
+        forget_ledger_anchor(self.path)
+        with contextlib.suppress(OSError):
+            _ledger_files(self.path)[0].unlink()
+        self._ledger_state = None
+        self._audit_head_cache = None
 
     # -- conversations ------------------------------------------------------
 
@@ -925,11 +1193,34 @@ class Store:
     def only(cls, sid: str) -> str:
         return f"{cls.ONLY}{sid}"
 
+    # A Zero's section is the one kind of space that does not see the global rows. Whatever
+    # is asked in it is answered to whoever stands at that Zero's screen, so the hub's own
+    # memory stays out of the prompt, recall and the graph, for the lead and for anybody it
+    # hands to. Decided here because the turn's space is all those doors have in common.
+    def section_ids(self) -> set:
+        ids = getattr(self, "_section_ids", None)
+        if ids is None:
+            ids = self._section_ids = {r["id"] for r in self.db.execute(
+                "SELECT id FROM spaces WHERE COALESCE(section,0)=1").fetchall()}
+        return ids
+
+    def is_section(self, sid: str) -> bool:
+        return bool(sid) and sid in self.section_ids()
+
+    def mark_section(self, sid: str) -> None:
+        if sid and sid not in self.section_ids():
+            self.db.execute("UPDATE spaces SET section=1 WHERE id=?", (sid,))
+            self.db.commit()
+            self.section_ids().add(sid)
+
     def search_memories(self, query: str = "", limit: int = 20, scope: str = "",
                         conversation_id: str = "", space: str = "") -> list[dict]:
         """Search memory. `space` widens nothing and hides nothing global: passing a
         space means "what is true here", which is this space's memories UNION the
-        ones true everywhere. Pass Store.GLOBAL_ONLY for global alone."""
+        ones true everywhere (a Zero's section excepted: see section_ids). Pass
+        Store.GLOBAL_ONLY for global alone."""
+        if self.is_section(space):
+            space = self.only(space)
         where, params = [], []
         if scope:
             where.append("scope=?")
@@ -1226,10 +1517,20 @@ class Store:
 
     @staticmethod
     def _audit_hash(prev_hash: str, fields: tuple) -> str:
-        # Immutable decision fields only — outcome/detail/duration are stamped later by
-        # audit_finish and are deliberately outside the chain.
+        # The old, unkeyed link: rows up to a ledger's boundary keep verifying by it.
         payload = json.dumps([prev_hash, *fields], separators=(",", ":"), ensure_ascii=False)
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    def _ledger(self) -> dict | None:
+        """This ledger's key and boundary, minted the first time. Every row from here on is
+        keyed; the rows before it verify as they always did, up to the recorded boundary."""
+        got = getattr(self, "_ledger_state", None)
+        if got is None:
+            got = load_ledger_key(self.path)
+            if got is None:
+                got = mint_ledger_key(self.db, self.path)
+            self._ledger_state = got
+        return got
 
     def audit_add(self, principal_kind: str = "", principal_id: str = "", surface: str = "",
                   action: str = "", resource: str = "", effect: str = "", rule: str = "",
@@ -1243,23 +1544,42 @@ class Store:
         enabled, refuses an unlogged action)."""
         aid = uuid.uuid4().hex[:12]
         now = time.time()
-        prev_seq, prev_hash = self._audit_head()
-        seq = prev_seq + 1
         res, rea = resource[:500], reason[:500]
-        row_hash = self._audit_hash(prev_hash, (
-            seq, round(now, 6), uid, principal_kind, principal_id, surface, space_id or "",
-            conversation_id or "", run_id or "", action, res, effect, rule, risk, rea))
+        det = detail[:1000]
         try:
-            self.db.execute(
-                "INSERT INTO audit (id, ts, uid, principal_kind, principal_id, surface, "
-                "space_id, conversation_id, run_id, action, resource, effect, rule, risk, "
-                "reason, outcome, detail, duration_ms, seq, prev_hash, row_hash, created_at) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (aid, now, uid, principal_kind, principal_id, surface, space_id or "",
-                 conversation_id or "", run_id or "", action, res, effect, rule,
-                 risk, rea, outcome, detail[:1000], int(duration_ms),
-                 seq, prev_hash, row_hash, now))
-            self.db.commit()
+            with self._audit_lock:
+                key = (self._ledger() or {}).get("k") or b""
+                # A `bento` verb in another process writes this ledger too. Without this its
+                # row and the server's next one both took the same seq, and the chain forked.
+                dv = self.outside_writes()
+                if dv != getattr(self, "_audit_dv", None):
+                    self._audit_dv = dv
+                    self._audit_head_cache = None
+                for _ in range(8):
+                    prev_seq, prev_hash = self._audit_head()
+                    seq = prev_seq + 1
+                    row_hash = ledger_mac(key, prev_hash, (
+                        seq, round(now, 6), uid, principal_kind, principal_id, surface, space_id or "",
+                        conversation_id or "", run_id or "", action, res, effect, rule, risk, rea))
+                    cur = self.db.execute(
+                        "INSERT INTO audit (id, ts, uid, principal_kind, principal_id, surface, "
+                        "space_id, conversation_id, run_id, action, resource, effect, rule, risk, "
+                        "reason, outcome, detail, duration_ms, seq, prev_hash, row_hash, created_at, "
+                        "out_mac) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,? "
+                        "WHERE NOT EXISTS (SELECT 1 FROM audit WHERE seq=?)",
+                        (aid, now, uid, principal_kind, principal_id, surface, space_id or "",
+                         conversation_id or "", run_id or "", action, res, effect, rule,
+                         risk, rea, outcome, det, int(duration_ms),
+                         seq, prev_hash, row_hash, now,
+                         outcome_mac(key, row_hash, outcome, det, int(duration_ms)), seq))
+                    self.db.commit()
+                    if cur.rowcount:
+                        break
+                    self._audit_head_cache = None   # somebody took that seq: read the head again
+                else:
+                    raise sqlite3.OperationalError("could not find the ledger's head")
+                self._audit_head_cache = (seq, row_hash)   # only after the row is committed
+                self._write_anchor(seq, row_hash)
         except Exception as e:  # pragma: no cover - defensive
             try:
                 self.db.execute(
@@ -1269,44 +1589,49 @@ class Store:
             except Exception:
                 pass
             return ""
-        self._audit_head_cache = (seq, row_hash)   # advance only after the row is committed
         return aid
 
-    def audit_verify(self, limit: int = 100000) -> dict:
-        """Walk the chain and report the first break, or that it is intact. A deleted
-        row leaves a seq gap; an edited immutable field makes its recomputed hash not
-        match what is stored, and every row after it inherits the wrong prev_hash."""
-        rows = self.db.execute(
-            "SELECT * FROM audit WHERE seq>0 ORDER BY seq ASC LIMIT ?", (limit,)).fetchall()
-        prev_hash, prev_seq, n = "", 0, 0
-        for r in rows:
-            n += 1
-            if prev_seq and r["seq"] != prev_seq + 1:
-                return {"ok": False, "reason": "sequence gap (a row was deleted)",
-                        "at_seq": r["seq"], "after_seq": prev_seq, "checked": n}
-            expect = self._audit_hash(r["prev_hash"] or "", (
-                r["seq"], round(r["ts"], 6), r["uid"] or "", r["principal_kind"] or "",
-                r["principal_id"] or "", r["surface"] or "", r["space_id"] or "",
-                r["conversation_id"] or "", r["run_id"] or "", r["action"] or "",
-                r["resource"] or "", r["effect"] or "", r["rule"] or "", r["risk"] or "",
-                r["reason"] or ""))
-            if (r["prev_hash"] or "") != prev_hash and prev_seq:
-                return {"ok": False, "reason": "broken link (a row was deleted or reordered)",
-                        "at_seq": r["seq"], "checked": n}
-            if expect != (r["row_hash"] or ""):
-                return {"ok": False, "reason": "row was altered after it was recorded",
-                        "at_seq": r["seq"], "checked": n}
-            prev_hash, prev_seq = r["row_hash"] or "", r["seq"]
-        return {"ok": True, "checked": n, "head_seq": prev_seq}
+    def _write_anchor(self, seq: int, row_hash: str) -> None:
+        """A descriptor kept open, because this is on every decision: 3 µs against 15 to open one.
+        A deleted anchor is noticed by nlink, so it is written again, never into a lost file."""
+        with contextlib.suppress(OSError):
+            fd = getattr(self, "_anchor_fd", None)
+            if fd is None or os.fstat(fd).st_nlink == 0:
+                if fd is not None:
+                    os.close(fd)
+                fd = self._anchor_fd = os.open(_ledger_files(self.path)[1], os.O_WRONLY | os.O_CREAT, 0o600)
+            os.pwrite(fd, _anchor_bytes(seq, row_hash), 0)
+
+    def __del__(self):
+        with contextlib.suppress(Exception):
+            if getattr(self, "_anchor_fd", None) is not None:
+                os.close(self._anchor_fd)
+
+    def audit_keyed(self) -> bool:
+        """Make sure this ledger has its key, at a moment a slow first walk is nobody's turn."""
+        return self._ledger() is not None
+
+    def audit_verify(self, limit: int | None = None) -> dict:
+        """Walk the chain and report the first break, or that it is intact (`verify_chain`).
+        Read here as well as on the timer, so the Verify button can't say something else."""
+        return verify_chain(self.db, self.path, limit=limit)
 
     def audit_finish(self, aid: str, outcome: str, detail: str = "", duration_ms: int = 0):
         """Stamp the result onto a decision already recorded. The decision itself is
-        never rewritten — only the outcome columns, which were empty until now."""
+        never rewritten: only the outcome columns, each time with a MAC bound to the row,
+        so a later edit of what happened is seen as well as an edit of what was decided."""
         if not aid:
             return
+        det = (detail or "")[:1000]
+        row = self.db.execute("SELECT seq, row_hash FROM audit WHERE id=?", (aid,)).fetchone()
+        mac = ""
+        if row:
+            led = self._ledger()
+            if led and int(row["seq"] or 0) > int(led.get("boundary_seq") or 0):
+                mac = outcome_mac(led.get("k") or b"", row["row_hash"] or "", outcome, det, int(duration_ms))
         self.db.execute(
-            "UPDATE audit SET outcome=?, detail=?, duration_ms=? WHERE id=?",
-            (outcome, (detail or "")[:1000], int(duration_ms), aid))
+            "UPDATE audit SET outcome=?, detail=?, duration_ms=?, out_mac=? WHERE id=?",
+            (outcome, det, int(duration_ms), mac, aid))
         self.db.commit()
 
     def audit_list(self, limit: int = 300, effect: str = "", action: str = "",
@@ -1402,7 +1727,10 @@ class Store:
 
     def _space_clause(self, space: str, col: str = "space_id") -> tuple[str, list]:
         """The one visibility rule, in one place: a space sees its own rows and the
-        global ones. Returns ('', []) when no space was asked for."""
+        global ones, and a Zero's section only its own (section_ids). Returns ('', []) when
+        no space was asked for."""
+        if self.is_section(space):
+            space = self.only(space)
         if space == self.GLOBAL_ONLY:
             return f" AND COALESCE({col},'')=''", []
         if space.startswith(self.ONLY):
@@ -1726,7 +2054,7 @@ class Store:
 
     def save_app(self, name: str, icon: str, description: str, html: str,
                  note: str = "", conversation_id: str = "") -> str:
-        name = name.strip()
+        name = plain_app_name(name)
         now = time.time()
         row = self.db.execute("SELECT id, html FROM user_apps WHERE name=? COLLATE NOCASE", (name,)).fetchone()
         if row:
@@ -1755,7 +2083,7 @@ class Store:
             return "app not found"
         sets, params = [], []
         if name and name.strip() and name.strip() != app["name"]:
-            name = name.strip()[:60]
+            name = plain_app_name(name)[:60]
             clash = self.db.execute(
                 "SELECT id FROM user_apps WHERE name=? COLLATE NOCASE AND id!=?",
                 (name, aid)).fetchone()

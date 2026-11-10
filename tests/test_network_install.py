@@ -62,6 +62,8 @@ def pi(tmp_path, monkeypatch):
     monkeypatch.setenv("AGENTOS_SCAN_NETWORKS", "127.0.0.0/8")
     monkeypatch.setenv("AGENTOS_INSTALL_URL", "https://example.test/install.sh")
     monkeypatch.delenv("AGENTOS_REPO", raising=False)
+    from agentos import remoteinstall as _ri
+    monkeypatch.setattr(_ri, "require_pin", lambda host, port=22: None)
     with teamlink.at(tmp_path / "home"):
         yield bin_
 
@@ -94,6 +96,19 @@ def test_the_form_does_not_suggest_a_pi_user():
     assert 'placeholder="pi"' not in js
 
 
+def _trust(home, *hosts):
+    """A person already said yes to this machine's key: what the CLI runs in a process of its
+    own, where a monkeypatch can't reach, so the pin is a real file."""
+    gen = home.parent / "hostkey"
+    if not gen.exists():
+        subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(gen)], check=True)
+    pub = " ".join((home.parent / "hostkey.pub").read_text().split()[:2])
+    (home / "pki").mkdir(parents=True, exist_ok=True)
+    with open(home / "pki" / "known_hosts", "a") as f:
+        for h in hosts:
+            f.write(f"{h} {pub}\n")
+
+
 def _cli(pi, home, *argv, stdin=""):
     env = {**os.environ, "AGENTOS_HOME": str(home), "AGENTOS_VAULT_KEYRING": "0"}
     return subprocess.run([sys.executable, "-m", "agentos", "network", *argv], cwd=ROOT, env=env,
@@ -109,6 +124,7 @@ def test_bento_network_installs_on_a_listed_machine_with_its_ssh_port(pi, tmp_pa
                                     "maker": "Raspberry Pi", "name": "pi3", "os": "", "pi": True,
                                     "seen_by": "port"})
     provision.save(d)
+    _trust(home, "[127.0.0.2]:2222")
     r = _cli(pi, home, "install", "pi3", "--user", "ada", "--password-stdin", "--yes", stdin="right-one\n")
     assert r.returncode == 0, r.stdout + r.stderr
     assert "Bento is installed on 127.0.0.2" in r.stdout and "Raspberry Pi 3" in r.stdout
@@ -123,6 +139,7 @@ def test_bento_network_installs_on_a_listed_machine_with_its_ssh_port(pi, tmp_pa
 
 def test_bento_network_install_says_why_a_login_failed(pi, tmp_path):
     (pi / "keys-only").touch()
+    _trust(tmp_path / "home", "127.0.0.2")
     r = _cli(pi, tmp_path / "home", "install", "127.0.0.2", "--user", "ada", "--password-stdin", "--yes",
              stdin="right-one\n")
     assert r.returncode != 0 and "keys only" in (r.stdout + r.stderr)
@@ -187,7 +204,7 @@ def test_secure_it_lets_your_key_in_before_anything_else(pi, monkeypatch):
     k = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPersonsOwnKeyForTheLiveRun00000000000 you@laptop"
     sent = []
 
-    async def fake_check(host, user, password="", port=22):
+    async def fake_check(host, user, password="", port=22, sudo_password=""):
         return {"done": {s: s != "updates" for s in harden.IDS}, "sudo": True, "apt": True,
                 "login": "key", "host_key": "", "plan": [], "problems": []}
 
@@ -206,7 +223,7 @@ def test_letting_a_person_back_in(pi, monkeypatch):
     k = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPersonsOwnKeyForTheLiveRun00000000000 you@laptop"
     sent = []
 
-    async def fake_check(host, user, password="", port=22):
+    async def fake_check(host, user, password="", port=22, sudo_password=""):
         return {"done": {"key": True, "passwords": True, "firewall": False, "updates": False},
                 "sudo": True, "apt": True, "login": "key", "host_key": "", "plan": [], "problems": []}
 

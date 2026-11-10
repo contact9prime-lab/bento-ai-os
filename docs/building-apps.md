@@ -185,7 +185,7 @@ Apps can run any agent or MCP tool to pull live data or take action:
 
 ```js
 const sys = await appTool('system_info');                       // machine snapshot
-const page = await appTool('fetch_url', { url: 'https://…' });   // fetch a page
+const page = await appTool('fetch_url', { url: 'https://…' });   // fetch a public page; never this machine or its network
 const out  = await appTool('run_command', { command: 'uptime' });
 ```
 

@@ -24,17 +24,17 @@ async function renderFabAgents(body){
   // ago its face, the same one it will wear on the stage and beside its messages
   const [sa]=await Promise.all([fetch('/api/subagents').then(r=>r.json()),avatarsLoad()]);
   window.__subagents=Object.fromEntries(sa.subagents.map(s=>[s.name,s]));
-  const cards=sa.subagents.map(s=>`<div class="teamcard" onclick="openSAW('${esc(s.name)}')">
+  const cards=sa.subagents.map(s=>`<div class="teamcard" onclick="openSAW('${jsq(s.name)}')">
       ${avatarImg(s.name,'av-card')||`<div class="tile">${esc((s.name||'?')[0].toUpperCase())}</div>`}
       <div class="grow">
         <div class="n">${esc(s.name)}${s.builtin?'<span class="badge">built-in</span>':''}</div>
         <div class="meta">${s.brain?brainChip(s.brain.model,s.brain.provider_name):esc(s.model||'inherits OS model')}${s.brain&&s.brain.note?` <span class="mut" title="pinned to ${esc(s.brain.pinned)}">· ${esc(s.brain.note)}</span>`:''} · ${s.tools.length?s.tools.length+' tools':'safe read-only set'}${(s.skills||[]).length?' · '+s.skills.length+' skills':''} · autonomy ≤ ${esc(s.autonomy_cap)} · ${s.max_steps} steps / ${s.max_seconds}s</div>
         <div class="persona">${esc((s.soul||'').slice(0,120))}</div>
       </div>
-      ${AVATARS.off?'':`<button title="change how ${esc(s.name)} looks — everywhere it appears" onclick="event.stopPropagation();avatarEdit('${esc(s.name)}')">Look</button>`}
-      <button title="try it in chat: @${esc(s.name)}" onclick="event.stopPropagation();testSubagent('${esc(s.name)}')">Test in chat</button>
-      ${(typeof USERS!=='undefined'&&(USERS.me||{}).multiuser)?`<button title="share a copy with everybody on this machine" onclick="event.stopPropagation();usersShare('agent','${esc(s.name)}')">Share</button>`:''}
-      <button title="delete" onclick="event.stopPropagation();delSubagent('${s.id}')">✕</button></div>`).join('')
+      ${AVATARS.off?'':`<button title="change how ${esc(s.name)} looks — everywhere it appears" onclick="event.stopPropagation();avatarEdit('${jsq(s.name)}')">Look</button>`}
+      <button title="try it in chat: @${esc(s.name)}" onclick="event.stopPropagation();testSubagent('${jsq(s.name)}')">Test in chat</button>
+      ${(typeof USERS!=='undefined'&&(USERS.me||{}).multiuser)?`<button title="share a copy with everybody on this machine" onclick="event.stopPropagation();usersShare('agent','${jsq(s.name)}')">Share</button>`:''}
+      <button title="delete" onclick="event.stopPropagation();delSubagent('${jsq(s.id)}')">✕</button></div>`).join('')
     ||'<p class="mut">No specialists yet — press ＋ New agent and describe the first one in a sentence.</p>';
   body.innerHTML=`<div class="pad">${fabTabs()}
     <button class="save" style="margin:0 0 12px" onclick="openSAW()">＋ New agent</button>
@@ -227,9 +227,9 @@ function drawSAW(){
       <label for="sw-model">Brain</label><select id="sw-model">${opts}</select>
       <div class="sub saw-hint">A pinned model is used when Settings → Agents lets agents use their own; otherwise it answers on this machine's brain.</div>`;
   }else if(st===2){
-    const chips=Object.keys(SAW_PRESETS).map(p=>`<button class="sawchip" onclick="sawPreset('${p}')">${p}</button>`).join('')
+    const chips=Object.keys(SAW_PRESETS).map(p=>`<button class="sawchip" onclick="sawPreset('${jsq(p)}')">${p}</button>`).join('')
       +`<button class="sawchip" onclick="SAW.d.tools=[];sawRefreshList()">Clear all</button>`;
-    const skl=SAW.skills.map(s=>`<label class="sawrow ${d.skills.includes(s.name)?'on':''}"><input type="checkbox" ${d.skills.includes(s.name)?'checked':''} onchange="sawSkill('${esc(s.name)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
+    const skl=SAW.skills.map(s=>`<label class="sawrow ${d.skills.includes(s.name)?'on':''}"><input type="checkbox" ${d.skills.includes(s.name)?'checked':''} onchange="sawSkill('${jsq(s.name)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
         <div class="grow"><div class="n">${esc(s.name)}</div><div class="d">${esc((s.description||'').slice(0,110))}</div></div></label>`).join('')
       ||'<p class="mut">No skills installed yet — add some in the Skills app.</p>';
     inner=`<div class="sawsub">Pick from what is already on this machine — its tools, connected MCP servers and installed skills. Nothing to type.</div>
@@ -299,7 +299,7 @@ function sawRefreshList(){
   });
   const row=t=>{const on=d.tools.includes(t.name);
     return `<label class="sawrow ${on?'on':''}"><input type="checkbox" ${on?'checked':''}
-      onchange="sawTool('${esc(t.name)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
+      onchange="sawTool('${jsq(t.name)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
       <div class="grow"><div class="n">${esc(t.name)}</div><div class="d">${esc((t.description||'').slice(0,130))}</div></div></label>`};
   box.innerHTML=Object.entries(groups).map(([g,ts])=>
     `<div class="sawgrp">${esc(g)} · ${ts.length}</div>`+ts.slice(0,80).map(row).join('')).join('')
@@ -363,14 +363,14 @@ async function fabPlaneStats(){
   const dur=r=>r.finished_at?`${Math.round(r.finished_at-r.started_at)}s`:'…';
   const badge=s=>`<b style="color:${s==='ok'?'var(--ok,#34d399)':s==='running'?'var(--acc,#5eead4)':'var(--err,#f87171)'}">${esc(s)}</b>`;
   const live=runs.live.map(i=>`<div class="item"><div class="grow"><b>${esc(i.ref)}</b> <span class="sub">beat ${Math.round(Date.now()/1000-i.last_beat)}s ago${i.stale?' · <b style="color:var(--err,#f87171)">STALE</b>':''}</span></div>
-      <button onclick="cancelRun('${i.run_id}')">⏹</button></div>`).join('');
+      <button onclick="cancelRun('${jsq(i.run_id)}')">⏹</button></div>`).join('');
   const planes=Object.entries(o.per_plane).map(([k,p])=>`<tr><td>${esc(k)}</td><td>${p.runs}</td><td>${p.ok}</td>
       <td>${p.faults?`<b style="color:var(--err,#f87171)">${p.faults}</b>`:0}</td>
       <td>${p.runs?Math.round(p.secs/p.runs):0}s</td><td>${p.tokens_in+p.tokens_out}</td></tr>`).join('');
-  const rows=runs.runs.map(r=>`<div class="item" style="cursor:pointer" onclick="showRun('${r.id}')">
+  const rows=runs.runs.map(r=>`<div class="item" style="cursor:pointer" onclick="showRun('${jsq(r.id)}')">
       <div class="grow"><span class="lbadge" style="margin-right:4px">${r.kind==='workflow'?'flow':'agent'}</span><b>${esc(r.ref)}</b> ${badge(r.status)}
         <div class="sub">${new Date(r.started_at*1000).toLocaleString()} · ${dur(r)} · ${(r.tokens_in||0)+(r.tokens_out||0)} tok · model ${esc(r.model||'—')}${r.fault?' · <span style="color:var(--err,#f87171)">'+esc(r.fault.slice(0,80))+'</span>':''}</div></div>
-      ${r.status==='running'?`<button onclick="event.stopPropagation();cancelRun('${r.id}')">⏹</button>`:''}</div>`).join('')
+      ${r.status==='running'?`<button onclick="event.stopPropagation();cancelRun('${jsq(r.id)}')">⏹</button>`:''}</div>`).join('')
     ||'<p class="mut">No fabric runs yet — delegate a task or run a workflow.</p>';
   body.innerHTML=`<div class="pad">${fabTabs()}
     ${live?`<div class="ptitle">Live data planes</div>${live}`:''}
@@ -621,7 +621,7 @@ function fgSvgInner(){
     const sub=n.depth===0
       ?`${FG.nodes.size-1} delegation${FG.nodes.size===2?'':'s'}${tok?' · '+tok+' tok':''}`
       :`${st}${tok?' · '+tok+' tok':''}${n.handle?' · '+n.handle:''}`;
-    boxes+=`<g style="cursor:pointer" onclick="fgSelect('${n.id}')">
+    boxes+=`<g style="cursor:pointer" onclick="fgSelect('${jsq(n.id)}')">
       <rect x="${x}" y="${y}" rx="10" width="${BW}" height="${BH}"
         fill="${FG.sel===n.id?'rgba(94,234,212,.10)':'rgba(255,255,255,.04)'}"
         stroke="${fgCol(st)}" stroke-width="${FG.sel===n.id?2.6:1.6}">${st==='running'||st==='paused'?
@@ -690,7 +690,7 @@ function fgPaint(){
   const rows=[...FG.art.values()];
   all('.fg-board').forEach(bd=>{
     bd.innerHTML=rows.length?rows.map(a=>`<div class="item" style="cursor:pointer;padding:5px 0"
-        onclick="fgOpenHandle('${esc(a.handle)}')">
+        onclick="fgOpenHandle('${jsq(a.handle)}')">
         <div class="grow"><b>${esc(a.handle)}</b> <span class="sub">${esc(a.agent||a.kind)} · ${esc(a.status||'')}
         · ${a.bytes||0} B${a.tainted?' · <span style="color:var(--warn,#f59e0b)">tainted</span>':''}</span>
         <div class="sub">${esc((a.preview||'').slice(0,120))}</div></div></div>`).join('')
@@ -712,7 +712,7 @@ function fgPaint(){
       hd.innerHTML=`<b>${esc(FG.flow||'')}</b> <span class="sub">run ${esc(FG.run.slice(0,8))} · `
         +`<b style="color:${fgCol(m.status)}">${esc(m.status||'…')}</b>`
         +` · ${kids.length} delegation${kids.length===1?'':'s'}${tok?' · '+tok+' tok':''}</span>`
-        +(FG.ended?'':` <button style="float:right" onclick="cancelRun('${FG.run}')">⏹ Stop</button>`);
+        +(FG.ended?'':` <button style="float:right" onclick="cancelRun('${jsq(FG.run)}')">⏹ Stop</button>`);
     });
   }
   fgPaintDetail();
@@ -736,7 +736,7 @@ function fgPaintDetail(){
   box.innerHTML=`<div class="ptitle" style="margin-top:0">${esc(n.label||'')}
       <span class="sub">${esc(n.status||'')}${n.model?' · '+esc(n.model.split('/').pop()):''}
       ${n.handle?' · → '+esc(n.handle):''}</span>
-      ${n.child_run?`<button style="float:right" onclick="showRunInAudit('${esc(n.child_run)}')">full run</button>`:''}</div>
+      ${n.child_run?`<button style="float:right" onclick="showRunInAudit('${jsq(n.child_run)}')">full run</button>`:''}</div>
     ${n.task?`<div class="sub" style="margin-bottom:6px"><b>asked:</b> ${esc(n.task)}</div>`:''}
     ${n.fault?`<div class="sub" style="color:var(--err,#f87171)"><b>fault:</b> ${esc(n.fault)}</div>`:''}
     ${n.approval&&n.approval!=='allowed'?`<div class="sub" style="color:var(--warn,#f59e0b)">⏸ approval ${esc(n.approval)}</div>`:''}
@@ -802,7 +802,7 @@ async function renderFabFlows(body,w){
     const dot=f.enabled?'var(--ok,#34d399)':(f.draft&&f.draft.model?'var(--acc,#5eead4)':'var(--dim2,#5b6474)');
     return `<div class="item" style="cursor:pointer;padding:7px 8px;border-radius:8px;
         background:${f.name===FLOW_SEL?'rgba(94,234,212,.08)':'transparent'}"
-        onclick="flowSelect('${esc(f.name)}')">
+        onclick="flowSelect('${jsq(f.name)}')">
       <span style="color:${dot};font-size:9px;margin-right:6px">●</span>
       <div class="grow"><b>${esc(f.name)}</b>
         <div class="sub">${f.enabled?'live':(f.draft&&f.draft.model?'drafted':'off')}${
@@ -861,10 +861,10 @@ function flowDetail(f,run){
       <span class="sub">· ${f.enabled?'live':'not enabled'}</span>
       <span style="float:right">
         <button class="save" style="margin:0;display:inline-block;width:auto;padding:4px 12px"
-          onclick="enableFlow('${esc(f.name)}',${f.enabled?'false':'true'})">${f.enabled?'Turn off':'Enable'}</button>
-        <button onclick="openFLW('${esc(f.name)}')">✎ Edit</button>
+          onclick="enableFlow('${jsq(f.name)}',${f.enabled?'false':'true'})">${f.enabled?'Turn off':'Enable'}</button>
+        <button onclick="openFLW('${jsq(f.name)}')">✎ Edit</button>
         <button title="${drafted?'discard this draft':'delete'}"
-          onclick="${drafted?`discardFlow('${esc(f.name)}')`:`delFlow('${esc(f.name)}')`}">✕</button></span></div>
+          onclick="${drafted?`discardFlow('${jsq(f.name)}')`:`delFlow('${jsq(f.name)}')`}">✕</button></span></div>
     <div class="sub" style="margin:2px 0 8px">${esc(f.mission||'')}</div>
     <div style="border:1px solid var(--line,#232a35);border-radius:10px;padding:6px;overflow-x:auto">${fgPredictSvg(f)}</div>
     <div class="row" style="margin-top:8px;gap:10px;align-items:flex-start">
@@ -884,15 +884,15 @@ function flowDetail(f,run){
     ${drafted&&(f.draft.agents_created||[]).length?`<div class="sub">✦ created for it: ${esc(f.draft.agents_created.join(', '))}</div>`:''}
     ${drafted?(f.draft.warnings||[]).map(w=>`<div class="sub" style="color:var(--warn,#f59e0b)">⚠ ${esc(w)}</div>`).join(''):''}
     ${hook?`<div class="sub" style="margin-top:6px">hook: <code style="font-size:11px">${esc(hook.url||'')}</code>
-      <button onclick="navigator.clipboard.writeText('${esc(hook.url||'')}');toast('hook URL copied')">copy</button></div>`:''}
+      <button onclick="navigator.clipboard.writeText('${jsq(hook.url||'')}');toast('hook URL copied')">copy</button></div>`:''}
     <div class="row" style="margin-top:10px"><input id="fl-in-${esc(f.name)}" placeholder="input for this run (optional)…">
       <button class="save" style="margin:0;flex:0 0 ${f.enabled?'80':'110'}px"
         title="${f.enabled?'run it now':'try it with you watching — it holds no permissions, so every risky step asks you'}"
-        onclick="runFlow('${esc(f.name)}')">${f.enabled?'Run':'Test run'}</button></div>
+        onclick="runFlow('${jsq(f.name)}')">${f.enabled?'Run':'Test run'}</button></div>
     <div class="sub" style="margin-top:4px">${f.enabled
       ?'Opens the Run Inspector — the graph, the log and every tool call.'
       :'A test run works with you watching: every risky step stops and asks. Nothing fires on its own until you Enable.'}</div>
-    ${run?`<div class="sub" style="margin-top:8px;cursor:pointer" onclick="fgWatch('${run.id}')">
+    ${run?`<div class="sub" style="margin-top:8px;cursor:pointer" onclick="fgWatch('${jsq(run.id)}')">
       last run: ${esc(run.status)} · ${new Date(run.started_at*1000).toLocaleString()}${
       run.fault?' · <span style="color:var(--err,#f87171)">'+esc(run.fault.slice(0,70))+'</span>':''} → open</div>`:''}`;
 }
@@ -984,10 +984,10 @@ async function renderFabRuns(body){
     :s==='partial'?'var(--warn,#f59e0b)':'var(--err,#f87171)'}">${esc(s)}</b>`;
   const chips=['<button class="sawchip'+(EXEC_FILTER?'':' on')+'" onclick="execFilter(\'\')">all flows</button>']
     .concat((d.flows||[]).map(f=>`<button class="sawchip${EXEC_FILTER===f?' on':''}"
-      onclick="execFilter('${esc(f)}')">${esc(f)}</button>`)).join(' ');
+      onclick="execFilter('${jsq(f)}')">${esc(f)}</button>`)).join(' ');
   const rows=(d.runs||[]).map(r=>{
     const when=new Date(r.started_at*1000);
-    return `<div class="item" style="cursor:pointer" onclick="fgWatch('${r.id}')">
+    return `<div class="item" style="cursor:pointer" onclick="fgWatch('${jsq(r.id)}')">
       <div class="grow">
         <b>${esc(r.flow||r.ref)}</b> ${badge(r.status)}
         <span class="sub">· ${r.delegations} delegation${r.delegations===1?'':'s'}
@@ -998,20 +998,20 @@ async function renderFabRuns(body){
         ${r.fault?`<div class="sub" style="color:var(--err,#f87171)">${esc(r.fault.slice(0,140))}</div>`:''}
         ${r.output?`<div class="sub">${esc(r.output.slice(0,150))}</div>`:''}
       </div>
-      ${r.status==='running'?`<button onclick="event.stopPropagation();cancelRun('${r.id}')">⏹</button>`:''}
+      ${r.status==='running'?`<button onclick="event.stopPropagation();cancelRun('${jsq(r.id)}')">⏹</button>`:''}
       </div>`;
   }).join('')||`<p class="mut">Nothing has run yet${EXEC_FILTER?' for “'+esc(EXEC_FILTER)+'”':''}.
     Runs started by a trigger, from chat, from Telegram or by hand all land here.</p>`;
   const live=(d.live||[]).map(i=>`<div class="item"><div class="grow"><b>${esc(i.ref)}</b>
       <span class="sub">${esc(i.state||'running')} · beat ${Math.round(Date.now()/1000-i.last_beat)}s ago
       ${i.stale?'· <b style="color:var(--err,#f87171)">STALE</b>':''}</span></div>
-      <button onclick="fgWatch('${i.run_id}')">watch</button></div>`).join('');
+      <button onclick="fgWatch('${jsq(i.run_id)}')">watch</button></div>`).join('');
   const m=o.main_agent||{};
   const planes=Object.entries(o.per_plane||{}).map(([k,p])=>`<tr><td>${esc(k)}</td><td>${p.runs}</td>
       <td>${p.faults?`<b style="color:var(--err,#f87171)">${p.faults}</b>`:0}</td>
       <td>${p.runs?Math.round(p.secs/p.runs):0}s</td><td>${p.tokens_in+p.tokens_out}</td></tr>`).join('');
   const other=(all.runs||[]).filter(r=>r.kind!=='flow').slice(0,12).map(r=>
-    `<div class="sub" style="cursor:pointer" onclick="showRun('${r.id}')">${esc(r.kind)} ·
+    `<div class="sub" style="cursor:pointer" onclick="showRun('${jsq(r.id)}')">${esc(r.kind)} ·
       <b>${esc(r.ref)}</b> ${esc(r.status)} · ${new Date(r.started_at*1000).toLocaleString()}</div>`).join('');
   body.innerHTML=`<div class="pad">${fabTabs()}
     ${live?`<div class="ptitle" style="margin-top:0">Running now</div>${live}`:''}
@@ -1137,7 +1137,7 @@ async function fgRuns(){
   const col=st=>st==='ok'?'ok':st==='running'?'run':(st==='partial'||st==='cancelled'||st==='parked')?'warn':'err';
   const html=runs.length>1?`<span class="fr-runs-l">Recent runs</span>`+runs.slice().reverse().map(r=>{
       const t=new Date((r.started_at||0)*1000),took=r.finished_at?fgWhen((r.finished_at-r.started_at)*1000):'running';
-      return `<button class="fr-run ${col(r.status)}${r.id===FG.run?' on':''}" onclick="fgWatch('${esc(r.id)}')"
+      return `<button class="fr-run ${col(r.status)}${r.id===FG.run?' on':''}" onclick="fgWatch('${jsq(r.id)}')"
         title="${esc(t.toLocaleString([],{weekday:'short',hour:'2-digit',minute:'2-digit'})+' · '+(r.status||'')+' · '+took)}"
         aria-label="${esc('run at '+t.toLocaleString()+', '+(r.status||''))}"></button>`}).join(''):'';
   document.querySelectorAll('.fg-runs').forEach(el=>el.innerHTML=html);
@@ -1165,8 +1165,8 @@ function fgPaintStory(box){
         <div class="fr-bubble">${esc(String(e.text||'').slice(0,e.phase==='say'?3000:700))}</div></div></div>`;
       case 'done':return `<div class="fr-ev ${e.ok?'ok':'err'}">${fgFace(e.who)}<div><div class="fr-line">${tm}<b>${esc(e.who)}</b> ${
         e.ok?'finished':'stopped ('+esc(e.status||'error')+')'}</div>${e.fault?`<div class="fr-note err">${esc(e.fault)}</div>`:''}
-        ${e.handle?`<button class="fr-link" onclick="fgOpenHandle('${esc(e.handle)}')">See what came back</button>`:''}
-        ${e.node?`<button class="fr-link" onclick="fgSelect('${esc(e.node)}')">Every step</button>`:''}</div></div>`;
+        ${e.handle?`<button class="fr-link" onclick="fgOpenHandle('${jsq(e.handle)}')">See what came back</button>`:''}
+        ${e.node?`<button class="fr-link" onclick="fgSelect('${jsq(e.node)}')">Every step</button>`:''}</div></div>`;
       case 'wait':if(e.resumed)return `<div class="fr-ev sys ${e.state==='allowed'?'ok':'warn'}">${fgFace('')}<div class="fr-line">${tm}<b>Carried on</b> · you said ${e.state==='allowed'?'allow':'deny'}</div></div>`;
         if(e.state==='parked')return `<div class="fr-ev warn">${fgFace(e.who)}<div><div class="fr-line">${tm}<b>${esc(e.who||'an agent')}</b> is waiting for you to allow <code>${esc(e.tool)}</code></div>
         <div class="fr-note">Nobody answered, so the mission is paused here. Answer in the Brief and it carries on.</div>
@@ -1329,7 +1329,7 @@ function flwRoster(nm,on){
 function flwLinkedHTML(d){
   const on=(d.roster||[]).filter(x=>String(x.subagent).includes('@'));
   const rows=on.map(x=>`<label class="sawrow on"><input type="checkbox" checked
-      onchange="flwRoster('${esc(x.subagent)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
+      onchange="flwRoster('${jsq(x.subagent)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
       <div class="grow"><div class="n">${esc(x.subagent)} <span class="lbadge">linked team</span></div>
         <div class="d">works on ${esc(String(x.subagent).split('@')[1])}’s machine under their permissions; its answer is untrusted here</div></div></label>`).join('');
   if(!(FLW.links||[]).length)return rows+(rows?'':'<p class="mut flw-linked-why">Agents on another machine or account can join a mission once you link with them (Settings → Network & Teams).</p>');
@@ -1349,7 +1349,7 @@ async function flwLinkedWho(){
   const r=await fetch('/api/team/links/'+encodeURIComponent(l)+'/roster').then(r=>r.json()).catch(()=>({error:'no answer'}));
   if(!document.body.contains(box))return;
   box.innerHTML=!r.ok?esc(r.error||'not reachable')
-    :(r.agents||[]).length?'You may ask: '+r.agents.map(a=>`<button class="sawchip" onclick="flwAddLinked('${esc(a.name)}')">${esc(a.name)}</button>`).join(' ')
+    :(r.agents||[]).length?'You may ask: '+r.agents.map(a=>`<button class="sawchip" onclick="flwAddLinked('${jsq(a.name)}')">${esc(a.name)}</button>`).join(' ')
     :esc(l)+' has not let your team ask any of their agents yet — that is their choice, on their side.';
 }
 function flwSink(kind,on){
@@ -1453,11 +1453,11 @@ function drawFLW(){
       <span style="width:16px;text-align:center">✦</span>
       <div class="grow"><div class="n">${esc(a.name)} <span class="lbadge">will be created on save</span></div>
         <div class="d">${esc((a.soul||'').slice(0,90))}${(a.tools||[]).length?' · '+esc((a.tools||[]).join(', ')):''}</div></div>
-      <button onclick="event.preventDefault();flwNewAgent(${esc(JSON.stringify(a)).replace(/"/g,'&quot;')})" title="edit and create it now">✎</button>
-      <button onclick="event.preventDefault();flwDropNewAgent('${esc(a.name)}')" title="drop it">✕</button></label>`).join('');
+      <button onclick="event.preventDefault();flwNewAgent(${esc(JSON.stringify(a))})" title="edit and create it now">✎</button>
+      <button onclick="event.preventDefault();flwDropNewAgent('${jsq(a.name)}')" title="drop it">✕</button></label>`).join('');
   const roster=pending+(FLW.subs.map(s=>{const on=(d.roster||[]).some(x=>x.subagent===s.name);
     return `<label class="sawrow ${on?'on':''}"><input type="checkbox" ${on?'checked':''}
-      onchange="flwRoster('${esc(s.name)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
+      onchange="flwRoster('${jsq(s.name)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
       <div class="grow"><div class="n">${esc(s.name)}</div><div class="d">${esc((s.soul||'').slice(0,90))}</div></div></label>`;
   }).join('')||(pending?'':'<p class="mut">No subagents yet — create one below; the master orchestrates, it does not do the work itself.</p>'))
     +flwLinkedHTML(d);
@@ -1465,17 +1465,17 @@ function drawFLW(){
   const tl=FLW.tools.filter(t=>!q||t.name.toLowerCase().includes(q)||(t.description||'').toLowerCase().includes(q))
     .slice(0,60).map(t=>{const on=p.tools.includes(t.name);
       return `<label class="sawrow ${on?'on':''}"><input type="checkbox" ${on?'checked':''}
-        onchange="flwToggle('tools','${esc(t.name)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
+        onchange="flwToggle('tools','${jsq(t.name)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
         <div class="grow"><div class="n">${esc(t.name)}</div><div class="d">${esc((t.description||'').slice(0,100))}</div></div></label>`}).join('');
   const skl=FLW.skills.map(s=>{const on=p.skills.includes(s.name);
     return `<label class="sawrow ${on?'on':''}"><input type="checkbox" ${on?'checked':''}
-      onchange="flwToggle('skills','${esc(s.name)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
+      onchange="flwToggle('skills','${jsq(s.name)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
       <div class="grow"><div class="n">${esc(s.name)}</div></div></label>`}).join('')
     ||'<p class="mut">No skills installed.</p>';
   const sinkBox=['origin','telegram','gui','notify','report'].map(k=>{
     const on=(d.sinks||[]).some(x=>x.kind===k);
     return `<label class="sawchip ${on?'on':''}" style="cursor:pointer"><input type="checkbox" style="margin-right:5px"
-      ${on?'checked':''} onchange="flwSink('${k}',this.checked);this.closest('label').classList.toggle('on',this.checked)">${k}</label>`;
+      ${on?'checked':''} onchange="flwSink('${jsq(k)}',this.checked);this.closest('label').classList.toggle('on',this.checked)">${k}</label>`;
   }).join(' ');
   const trigs=(d.triggers||[]).map((t,i)=>{
     const c=t.config||{};
@@ -1537,7 +1537,7 @@ function drawFLW(){
       ${FLW.draft.notes?`<div class="sub" style="margin-top:4px">assumed: ${esc(FLW.draft.notes)}</div>`:''}
       ${(FLW.draft.warnings||[]).map(w=>`<div class="sub" style="color:var(--warn,#f59e0b)">⚠ ${esc(w)}</div>`).join('')}
       ${(FLW.draft.suggested_mcp||[]).map(p=>`<div class="sub flw-part">✦ might help: <b>${esc(p.title)}</b> — ${esc(p.why||p.description)}
-        ${p.connected?'<span class="mut">(connected — grant it under Permissions)</span>':`<button class="sawchip" onclick="openApp('mcp');toast('find ${esc(p.title)} in the Store and Connect it — then grant it here')">Connect</button>`}</div>`).join('')}
+        ${p.connected?'<span class="mut">(connected — grant it under Permissions)</span>':`<button class="sawchip" onclick="openApp('mcp');toast('find ${jsq(p.title)} in the Store and Connect it — then grant it here')">Connect</button>`}</div>`).join('')}
       ${FLW.draft.request?`<button class="sawchip" style="margin-top:6px" onclick="flwDraftAgain()">✦ Draft again</button>`:''}
       </div>`:''}
     <label>Name</label><input id="flw-name" value="${esc(d.name)}" placeholder="e.g. vendor-digest" ${FLW.exists?'disabled':''}>
@@ -1580,7 +1580,7 @@ function drawFLW(){
     ${trigs||'<p class="mut">Nothing yet — it runs when you press Run.</p>'}
     <div class="row" style="gap:6px;flex-wrap:wrap">
       ${['cron','message','webhook','os_event','flow_done','device'].map(k=>
-        `<button class="sawchip" onclick="flwCollect();flwAddTrigger('${k}')">＋ ${k}</button>`).join('')}
+        `<button class="sawchip" onclick="flwCollect();flwAddTrigger('${jsq(k)}')">＋ ${k}</button>`).join('')}
     </div>
 
     <div class="sawgrp">Where the answer goes</div>

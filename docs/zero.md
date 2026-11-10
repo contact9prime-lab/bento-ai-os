@@ -17,9 +17,11 @@ that, what you ask it is worked on by the hub's team, and any file they make com
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/<you>/bento-ai-os/master/install.sh \
-  | sh -s -- --zero --enroll=bento-enroll-1.… --hub=100.101.102.103,192.168.1.4 \
-             --tailscale-key=tskey-auth-…
+  | AGENTOS_ENROLL=bento-enroll-1.… TS_AUTHKEY=tskey-auth-… \
+    sh -s -- --zero --hub=100.101.102.103,192.168.1.4
 ```
+
+The two keys go in the environment because `ps` shows a command's arguments to anybody on the Pi.
 
 That's all. A minute or two later the Pi is on the hub's list as *set up*, and you get a
 toast saying it was heard over Tailscale or on your network.
@@ -52,7 +54,9 @@ Zero also sends its announcement straight to each hub address in the line. The h
 which way it arrived, read from the address the announcement came from: *over Tailscale* for an
 address in Tailscale's range, *on your network* otherwise.
 
-The Zero carries the hub's automatic key, so the hub sets it up the moment it hears it: no code
+Each line carries an automatic key good for one machine, and the Zero forgets it once it is set
+up. A second machine with the same line waits for you to press Enable, and removing a Zero ends
+its key. The Zero carries the key, so the hub sets it up the moment it hears it: no code
 to type, no button to press. That is still a ledger row on both machines and a toast on the
 hub.
 
@@ -107,10 +111,11 @@ the hub itself was on Claude Code. Update the Zero (Network → Controls → Upd
 
 ![On the Zero: the task went to the hub, and the file came back](screenshots/zero-file-came-back.png)
 
-Files come back with the answer. Anything the hub's answer names by its full path, inside the
-hub's workspace, travels back and lands in the Zero's workspace under `from-<hub>/`. Up to 8
-files, 1.5 MB each and 2.5 MB in all; what's too big is named in the answer and stays on the
-hub. Each time, the hub writes a `link.files` row.
+Files come back with the answer. A file the hub made for that turn, named by its full path in
+the answer and inside the hub's workspace, travels back and lands in the Zero's workspace under
+`from-<hub>/`. An older file or a hidden one stays on the hub, and the answer says so: naming a
+file is not a way to fetch it. Up to 8 files, 1.5 MB each and 2.5 MB in all; what's too big is
+named in the answer and stays on the hub. Each time, the hub writes a `link.files` row.
 
 ## Who it talks to on the hub
 
@@ -140,7 +145,9 @@ Pi can be lost, wiped or reflashed, and its agent still knows what it knew.
 
 - **A Zero sees only its own section.** It never sees the hub's own memory or another Zero's,
   and it can't change or forget anything outside its section. When the hub's team works a
-  task for it, they work inside that section, so what they learn stays with it.
+  task for it, or answers its chat, they work inside that section and read only that, so
+  what they learn stays with it and what they say can't repeat the hub's memory. If a Zero
+  should know something the hub knows, tell it to that Zero.
 - **What it knew before moves once.** A machine that kept memories, facts or a soul before it
   ran on its hub sends them to its section the first time it needs them. The copies on the Pi
   are left where they are and not read again.

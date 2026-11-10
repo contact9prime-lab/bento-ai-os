@@ -35,8 +35,8 @@ async function freeTalkPaint(){
   if(run){
     box.innerHTML=`<div class="ft-live"><div class="ft-faces">${run.agents.map(n=>avatarImg(n,'av-tool')).join('')}</div>
       <div class="ft-now"><b>Your team is talking</b><span class="mut">${run.messages} of ${run.max_messages} messages · <span class="ft-clock">${ftLeft(run)}</span> left${run.topic?' · '+esc(run.topic):''}</span></div>
-      <div class="ft-acts"><button class="endbtn" onclick="freeTalkOpen('${esc(run.conversation_id)}')">Watch in Chat</button>
-      <button class="endbtn danger" onclick="freeTalkStop('${esc(run.id)}')">Stop</button></div></div>`;
+      <div class="ft-acts"><button class="endbtn" onclick="freeTalkOpen('${jsq(run.conversation_id)}')">Watch in Chat</button>
+      <button class="endbtn danger" onclick="freeTalkStop('${jsq(run.id)}')">Stop</button></div></div>`;
     ftTick();
     return;
   }
@@ -47,7 +47,7 @@ async function freeTalkPaint(){
   const opt=(arr,cur,unit)=>arr.map(v=>`<option value="${v}" ${+cur===v?'selected':''}>${v} ${unit}</option>`).join('');
   box.innerHTML=`<div class="ft-form">
     <div class="ft-who">${names.map(n=>`<label class="ft-agent${FREETALK.agents.includes(n)?' on':''}">
-      <input type="checkbox" ${FREETALK.agents.includes(n)?'checked':''} onchange="freeTalkPick('${esc(n)}',this.checked)">${avatarImg(n,'av-tool')}${esc(n)}</label>`).join('')}</div>
+      <input type="checkbox" ${FREETALK.agents.includes(n)?'checked':''} onchange="freeTalkPick('${jsq(n)}',this.checked)">${avatarImg(n,'av-tool')}${esc(n)}</label>`).join('')}</div>
     <input id="ft-topic" type="text" maxlength="500" placeholder="What about? Leave empty to let them choose" value="${esc(FREETALK.topic)}" oninput="FREETALK.topic=this.value">
     <div class="ft-limits">
       <label>For up to <select id="ft-min" onchange="FREETALK.minutes=+this.value">${opt(o.minutes||[5,10,20],FREETALK.minutes,'min')}</select></label>
@@ -114,8 +114,8 @@ async function talkLogPaint(){
         <span class="mut ft-when">${ftAgo(e.when)}${e.kind!=='ask'?' · '+e.messages+' message'+(e.messages===1?'':'s'):''}</span></div>
       ${e.title?`<div class="ft-t">${esc(e.title)}</div>`:''}
       ${e.kind==='ask'&&e.detail?`<div class="ft-a mut">${esc(e.detail)}</div>`:''}
-      <div class="ft-acts">${e.conversation_id?`<button class="endbtn" onclick="freeTalkOpen('${esc(e.conversation_id)}')">Open in Chat</button>`:''}
-        <button class="endbtn" onclick="fgWatch('${esc(e.run_id)}')">Replay the run</button></div></div>`;
+      <div class="ft-acts">${e.conversation_id?`<button class="endbtn" onclick="freeTalkOpen('${jsq(e.conversation_id)}')">Open in Chat</button>`:''}
+        <button class="endbtn" onclick="fgWatch('${jsq(e.run_id)}')">Replay the run</button></div></div>`;
   }).join('');
 }
 
@@ -137,7 +137,7 @@ function freeTalkCard(sid,meta,make){
   const run=(FREETALK.talks||[]).find(t=>t.id===sid&&t.status==='running');
   m.innerHTML=`<div class="who">${freeTalkWho(meta.agents)}</div><div class="huddle" data-kind="freetalk" data-ft="${esc(sid)}">
     <div class="hud-head ft-head"><span>${meta.topic?esc(meta.topic):'about anything useful to you'} · up to ${esc(meta.minutes||'?')} min or ${esc(meta.messages||'?')} messages · ${meta.mode==='act'?'talk and use tools':'talk only'}</span>
-    ${run?`<button class="endbtn danger ft-stop" onclick="freeTalkStop('${esc(sid)}')">Stop</button>`:''}</div></div>`;
+    ${run?`<button class="endbtn danger ft-stop" onclick="freeTalkStop('${jsq(sid)}')">Stop</button>`:''}</div></div>`;
   feed.appendChild(m);
   return m.querySelector('.huddle');
 }

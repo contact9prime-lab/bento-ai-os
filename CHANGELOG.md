@@ -1,23 +1,6 @@
 # Changelog
 
-## 0.7.14 — 2026-11-10
-
-**Blueprints go much deeper.** The agent now puts an outline on the Stage straight away, and then
-every part is filled in on its own, in parallel, with the web allowed: what it does, how it works,
-what it's made of, its limits, three to six numbers with their source, and the parts inside it, three
-levels down. Parts land one by one while you watch, and the panel says how many are done and how much
-was looked up. A part that couldn't be filled in says so and why.
-
-**The first screen shows two levels.** Each part's card carries its key numbers and what's inside it,
-so you see the thing taken apart before you click anything. Towers get three-line labels and the
-inner divisions of each section.
-
-**How it works.** A second view of any level draws what flows between its parts: air, power, fluid,
-heat, data, money and more, each with its own line and its word on it.
-
-**Fixed:** a tower label sitting on the ground line read as "Floors=Concourse=8".
-
-## 0.7.13 — 2026-11-09
+## 0.8.1 — 2026-11-10
 
 **Take anything apart: blueprints on the Stage.** Ask for "a fine blueprint of the Burj Khalifa" and
 it's drawn as an engineer's drawing, to scale, on a navy sheet. Every part opens: point at one to
@@ -32,7 +15,59 @@ went to, every decision the permission gate made (allowed, asked you, refused), 
 it down to the one ledger row that was refused. Missions → History and the Run Inspector have it for
 a mission's run, and `bento stage xray` prints it in a terminal.
 
-**Fixed:** on a phone, a story with a deeper story made the Stage wider than the screen.
+**Blueprints go much deeper.** The agent now puts an outline on the Stage straight away, and then
+every part is filled in on its own, in parallel, with the web allowed: what it does, how it works,
+what it's made of, its limits, three to six numbers with their source, and the parts inside it, three
+levels down. Parts land one by one while you watch, and the panel says how many are done and how much
+was looked up. A part that couldn't be filled in says so and why.
+
+**The first screen shows two levels.** Each part's card carries its key numbers and what's inside it,
+so you see the thing taken apart before you click anything. Towers get three-line labels and the
+inner divisions of each section.
+
+**How it works.** A second view of any level draws what flows between its parts: air, power, fluid,
+heat, data, money and more, each with its own line and its word on it.
+
+**Fixed:** on a phone, a story with a deeper story made the Stage wider than the screen. Also, a tower label sitting on the ground line read as "Floors=Concourse=8".
+
+## 0.8.0 — 2026-11-09
+
+**Security: no AI controls it.** A security audit found 97 issues, and this release fixes them. No agent can
+change autonomy, Rules, the sandbox, tool servers or the gate's own code, whatever its autonomy, and a card's
+Remember never covers a step that must be asked every time. What protects the machine and how each part was
+tested is in [How security is tested](docs/security-testing.md).
+
+**A watcher stops the agents when security code changes.** If the code or a security file changes, you hear it
+on every screen and on your phone, and agents stop until you run `bento integrity accept` at a terminal outside
+Bento. Your own edits on a development checkout do this too: `bento integrity dev on` makes them warn instead.
+`bento integrity lock` makes the code root-owned, which is the real boundary.
+
+**Attacks are on the record.** Failed sign-ins, forged cookies and tokens, refused hosts, a process Bento
+started trying to act as you, and a run of refused steps go in one security record with one alert per
+incident. `bento security` reads it, and so does Settings → Permissions → Security. Your agent is told so it
+can warn you.
+
+**The jail is real.** A command an agent runs sees its own workspace and nothing else of your home, none of the
+server's keys, no other processes and no session bus. Agent CLIs (Claude Code with Bash ticked too) run in a
+jail, get your words on their input instead of the command line, and never read a folder's own settings.
+
+**A browser page can't drive your Bento.** A page that points its name at this machine is refused, turning
+remote access off closes the door at once, and outside text never runs as script on the desktop.
+
+**Accounts stay in their own home.** A non-admin's workspace, files, tool servers, sign-ins and socket
+messages are their own, and the machine's controls are an admin's.
+
+**What you'll notice:**
+- `curl`, `wget` and unusual flags on read-only commands now ask first.
+- Fetches to your LAN, like a calendar or a NAS, need to be listed under Settings → Permissions → Local
+  addresses.
+- A jailed Claude Code shell can't use your SSH keys or `sudo`.
+- A new machine's host key is shown once before any login.
+- A Zero's automatic key sets up one machine.
+- Democracy mode advises you rather than deciding.
+- `bento` verbs typed in Bento's own Terminal that call the server are refused. Use a terminal outside Bento.
+
+No release notes were written for this one; the commits since 0.7.12 are what changed (`bento update` lists them).
 
 ## 0.7.12 — 2026-11-06
 

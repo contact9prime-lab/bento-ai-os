@@ -137,11 +137,11 @@ def test_mcp_registry_roundtrip(tmp_path):
 
 
 def test_mcp_store_to_conf_npm_with_required_key():
-    cand = {"remote_url": "", "registry_type": "npm", "identifier": "@x/server-y",
+    cand = {"remote_url": "", "registry_type": "npm", "identifier": "@x/server-y", "version": "1.2.3",
             "runtime_hint": "", "env": [{"name": "API_KEY", "required": True,
                                          "secret": True, "description": ""}]}
     conf, missing = mcp_store.to_conf(cand)
-    assert conf["command"] == "npx" and "-y @x/server-y" == conf["args"]
+    assert conf["command"] == "npx" and "-y @x/server-y@1.2.3" == conf["args"]
     assert conf["enabled"] is False and missing == ["API_KEY"]
     conf2, missing2 = mcp_store.to_conf(cand, env_values={"API_KEY": "sk-1"})
     assert conf2["enabled"] is True and not missing2

@@ -35,8 +35,8 @@ async function renderSnapshots(body){
   const items=snaps.map(s=>`<div class="item" data-f="${esc(s.label||('Snapshot '+s.id))}">
       <div class="grow"><b>${esc(s.label||('Snapshot '+s.id))}</b>
         <div class="sub">${new Date((s.created_at||s.id)*1000).toLocaleString()}${s.has_source?' · includes source':''}</div></div>
-      <button class="endbtn" onclick="snapRestore('${s.id}')">↩ Restore</button>
-      <button onclick="snapDel('${s.id}')">✕</button></div>`).join('');
+      <button class="endbtn" onclick="snapRestore('${jsq(s.id)}')">↩ Restore</button>
+      <button onclick="snapDel('${jsq(s.id)}')">✕</button></div>`).join('');
   const pb=panelShell(body,{
     title:'Snapshots',
     sub:`${snaps.length} restore point${snaps.length===1?'':'s'}`,

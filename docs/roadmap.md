@@ -103,6 +103,9 @@ system — apps, automations, memory, and a knowledge graph that compound the lo
   ever seeing them; per-secret allowed-tools list
 - ▢ **Privacy ledger** — a UI page answering "what left this machine today?": every outbound
   request grouped by provider/destination, with payload sizes
+- ▢ **An OS user per account (Linux and macOS)**. Every agent runs as its account's own OS user with no
+  sudo or docker, never as the desktop user; root only with an admin's typed yes, one alert per incident
+  ([design/os-accounts.md](design/os-accounts.md))
 - ▢ Dry-run mode — "show me exactly what you would do" before granting full autonomy
 - ▢ Signed packages + permission manifests for store items (see G) — the answer to the
   malicious-skill problem the OpenClaw ecosystem keeps hitting
@@ -279,7 +282,7 @@ look like one OS, not twenty utilities.*
 |---|---|
 | **Now** *(done)* | Memory v2: two-tier + auto-learn + semantic recall + rollup + supersede + KG dedup + Profile · **fabric F0**: subagents + visual workflows + control/data-plane split + heartbeats + observability + heterogeneous models ([design/subagents.md](design/subagents.md)) · **spaces foundation** (pillar J): spaces + scoped KG + timeline + MCP media bridge + asset store + Gallery + the access ledger |
 | **Next — one at a time** | **J1 creator suite** (ffmpeg component + storyboard + Media MCP category + publish via MCP) · **J2 multi-agent for an operator** (async delegate, run registry, budgets, scheduler→subagent, handoff, org chart in GUI *and* TUI) · **J3 approval queue** (durable, answerable in the morning) |
-| **Then (2–6 wks)** | Automations app with event triggers · morning briefing · **UI kit + density pass (Chat, Settings, Memory first)** · **fabric F1: task-envelope wire protocol + mTLS PKI + worker mode** · secrets vault · privacy ledger · registry v0 (git index + signed bundles + publish flow) |
+| **Then (2–6 wks)** | Automations app with event triggers · morning briefing · **UI kit + density pass (Chat, Settings, Memory first)** · **fabric F1: task-envelope wire protocol + mTLS PKI + worker mode** · secrets vault · privacy ledger · **an OS user per account (Linux and macOS)** · registry v0 (git index + signed bundles + publish flow) |
 | **Later** | Fabric F2–F3 (docker workers → remote nodes) · **voice provider layer (ElevenLabs/OpenAI/local TTS + realtime STT)** · mobile PWA · app gardener · self-improvement loop · desktop modes · portable brain · per-app UI modules |
 
 **North-star metrics** — depth over chats: apps + automations per active user; % of turns

@@ -324,11 +324,18 @@ def test_a_restore_is_started_only_by_an_admin_at_the_machine(tmp_path, monkeypa
         assert up.status_code == 200 and up.json()["pending"]["staging"]
         assert cl.get("/api/backup").json()["pending"]
         assert cl.delete("/api/restore").json()["cancelled"]
-        # from another machine on the network: refused, and it says where to do it
+        # from another machine on the network: with remote access off, the gate refuses it first
         monkeypatch.setattr(servermod.remotemod, "is_loopback", lambda h: False)
+        assert cl.post("/api/restore/apply", json={"confirm": True}).status_code == 401
+        # and with it on and a good cookie, the route refuses it and says where to do it
+        rem = servermod.state.machine_cfg()["remote"]
+        rem["pass_hash"], rem["pass_salt"] = servermod.remotemod.hash_passphrase("a good long phrase")
+        rem["enabled"] = True
+        cl.cookies.set(servermod.remotemod.COOKIE, servermod.remotemod.issue_session(servermod.state.machine_cfg()))
         up = cl.post("/api/restore", content=r.content, headers={"X-Bento-Passphrase": PW})
         assert up.status_code == 403 and "machine itself" in up.json()["error"]
         assert cl.post("/api/restore/apply", json={"confirm": True}).status_code == 403
+        rem["enabled"], rem["pass_hash"], rem["pass_salt"] = False, "", ""
     srv = (ROOT / "agentos/server.py").read_text()
     for route in ('("POST", "/api/backup")', '("POST", "/api/restore")', '("DELETE", "/api/restore")'):
         assert route in srv, route
@@ -362,3 +369,24 @@ def test_settings_offers_it_and_a_remote_browser_is_told_where():
     assert "pGroup('Backup'" in settings and "paintBackup" in settings
     ob = (ROOT / "agentos/ui/src/js/14b-onboarding.js").read_text()
     assert "Restore a backup" in ob, "a new machine for somebody who already has one"
+
+
+# ---- S-87: the file does not choose where the workspace lands ----
+
+def test_a_crafted_manifest_cannot_choose_the_workspace_folder(tmp_path, monkeypatch):
+    me = tmp_path / "me"
+    me.mkdir()
+    monkeypatch.setenv("HOME", str(me))
+    home = me / ".agentos"
+    home.mkdir()
+    for evil in ("/etc/cron.d", str(me / ".ssh"), str(me), str(tmp_path), str(home), str(home / "pki"),
+                 str(tmp_path / "elsewhere")):
+        target, moved = backup._workspace_target({"workspace": evil}, home)
+        assert target == me / "AgentOS" and moved, evil
+    ok, moved = backup._workspace_target({"workspace": str(me / "work" / "bento")}, home)
+    assert ok == me / "work" / "bento" and not moved
+    own, moved = backup._workspace_target({"workspace": str(home / "workspace")}, home)
+    assert own == home / "workspace" and not moved
+    # another machine's folders follow the machine, as they always did
+    far, moved = backup._workspace_target({"workspace": "/home/ada/AgentOS", "user_home": "/home/ada"}, home)
+    assert far == me / "AgentOS" and not moved

@@ -52,9 +52,10 @@ ENV DEBIAN_FRONTEND=noninteractive
 # ca-certificates is not optional: without it every HTTPS call inside the agent
 # fails with a certificate error that reads like a network fault.
 # git stays in the runtime image — `bento doctor` looks for it and the self-update
-# path uses it.
+# path uses it. bubblewrap is the agents' sandbox; Docker's default seccomp often refuses it, and
+# then the server says so and asks a person before each command (docs/security.md, Containers).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ca-certificates curl git tini \
+        bubblewrap ca-certificates curl git tini \
     && rm -rf /var/lib/apt/lists/*
 # uv brings its own Python, which is the whole reason it is the bootstrap here:
 # no system python3, no venv module, no version skew with the base image.

@@ -84,7 +84,7 @@ async function renderAudit(body,w){
       <span class="audpill ${cls}"${change?` title="a ${esc(a.effect||'')} rule was ${a.action==='grant.revoke'?'removed':'written'}"`:''}>${change?'changed':esc(a.effect||'?')}</span>
       <div class="grow"><code>${esc(a.action||'')}</code> ${esc(a.resource||'')} ${out} ${where}
         <div class="sub">${esc(who)} · via ${esc(a.surface||'unknown')} · ${a.stage
-          ?`<a href="#" class="aud-at" onclick="audPath(event,'${esc(a.id)}')" title="see the path it took through the gate">decided at ${esc(audStage(a.stage))}</a>`
+          ?`<a href="#" class="aud-at" onclick="audPath(event,'${jsq(a.id)}')" title="see the path it took through the gate">decided at ${esc(audStage(a.stage))}</a>`
           :'rule '+esc(a.rule||'default')}
           ${a.duration_ms?' · '+a.duration_ms+'ms':''}
           ${a.reason?'<br>'+esc(a.reason):''}${a.detail?'<br>'+esc(a.detail.slice(0,200)):''}</div></div></div>`;

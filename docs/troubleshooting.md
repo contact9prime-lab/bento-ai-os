@@ -67,8 +67,13 @@ autonomy or add a policy allowing the specific actions the job needs.
 
 ### The sandbox isn't confining anything
 
-The folder sandbox needs `bubblewrap` (`bwrap`) installed. Without it, the sandbox silently stays off.
-Install it (`sudo apt install bubblewrap`) and enable it in **Settings → Sandbox**.
+The folder sandbox needs `bubblewrap` (`bwrap`) installed, and needs this machine to let it start. `bento doctor`
+says which. Install it with `sudo apt install bubblewrap`. On Ubuntu 24.04 it can also be refused by
+`kernel.apparmor_restrict_unprivileged_userns`, and in Docker by the default security profile
+([Containers](security.md#containers-and-a-sandbox-that-cannot-start)).
+
+Until it can start, file tools stay in the allowed folders and each command asks you first. With nobody there
+to answer, the command is refused.
 
 ### Telegram won't connect / messages do nothing
 

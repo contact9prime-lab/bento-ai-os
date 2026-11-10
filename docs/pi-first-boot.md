@@ -145,11 +145,12 @@ it waits to be set up and you enable it with its code or a key. See
 - **Only your own network.** The scan knocks only on private and link-local addresses on this
   machine's own interfaces, at most 1,024 of them. It never scans by itself. The mDNS ear only
   listens, and a name with a public address is ignored.
-- **The password is never kept.** It goes to the system's own `ssh` through `SSH_ASKPASS` in
-  that one process's environment, and is dropped afterwards. It is never written to a file, a
-  log or the ledger.
-- **The other machine's key is pinned.** Bento keeps its own `known_hosts`. The first visit
-  records the machine's SSH key, and a later visit to a machine whose key changed is refused.
+- **The password is kept only if you tick Remember.** It goes to the system's own `ssh` through `SSH_ASKPASS` in
+  that one process's environment. Remember is off until you tick it. A saved password is in the vault, tied to that
+  machine's SSH key, and is held back from a machine showing any other key.
+- **The other machine's key is pinned, and you see it first.** Bento keeps its own `known_hosts`. The first visit
+  shows the key the machine offers and logs in to nothing until you trust it (`bento network trust IP SHA256:…`). A
+  machine that moved address with the same key needs no second yes. A later visit to a machine whose key changed is refused.
 - **What will run is shown before it runs**, and the install runs the same `install.sh` you
   would run yourself, from this machine's own update source.
 - **A card's key is on the card in clear.** Anyone holding the card holds that key. It is made

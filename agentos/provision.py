@@ -65,6 +65,7 @@ import ssl
 import struct
 import time
 from pathlib import Path
+from . import constcmp
 
 MAGIC = "bento-provision/1"
 UDP_PORT = 8620                 # announcements and "who is there?" (one port, every machine)
@@ -192,33 +193,41 @@ def key_text(k: dict) -> str:
 
 
 def make_key(label: str = "", auto: bool = False, profile: dict | None = None,
-             single: bool = False, owner: str = "") -> dict:
+             single: bool = False, owner: str = "", reusable: bool = False) -> dict:
     """A new enrolment key for this machine's community. The secret is kept here (0600)
     because the leader has to prove the claim with it; it is shown once, to put on cards.
-    `owner` is the account a machine set up with it belongs to ('' is the machine)."""
+    `owner` is the account a machine set up with it belongs to ('' is the machine).
+
+    An automatic key sets up ONE machine on its own. After that it stops being automatic, so
+    a second machine carrying it is a question for a person (see `_spend`). `reusable` keeps it
+    automatic: somebody flashing a batch of cards chose that, and it is written on the key.
+    `single` is for a key made for one known machine, and is deleted when spent."""
     from . import teamlink
     ident = teamlink.ensure_pki()
     d = load()
     k = {"id": secrets.token_hex(4), "secret": secrets.token_urlsafe(24), "cafp": ident["ca_fp"][:16],
          "label": teamlink.plain(label, 40, newlines=False).strip() or "Pis",
          "auto": bool(auto), "profile": clean_profile(profile or {}), "created": time.time(),
-         "single": bool(single), "owner": str(owner or "")}
+         "single": bool(single), "owner": str(owner or ""), "reusable": bool(reusable),
+         "uses": 0, "made_v": 2}
     d["keys"].append(k)
     save(d)
     return {**key_view(k), "text": key_text(k)}
 
 
 def zero_key(owner: str = "") -> dict:
-    """The automatic key every Zero's one line carries (zero.py), made the first time it is
-    asked for. Its text is rebuilt each time the line is asked for, by an admin, on the hub
-    that holds its secret anyway; a Zero that carries it is set up the moment it is heard.
+    """The automatic key the next Zero's one line carries (zero.py). Asking twice before it
+    is used gives the same key, so a line already written still works. Its first machine
+    spends it (`_spend`), and the line after that carries a new one: one key that set up every
+    Zero, kept on every Zero, was a key any lost Pi could stand up more machines with.
 
     One per account: a Zero belongs to the account its line was made for, so the hub
     answers it with that person's agents, memory and integrations (MCP servers, mail,
     channels are USER_KEYS). The machine's own key has owner ''."""
     owner = str(owner or "")
     d = load()
-    k = next((k for k in d["keys"] if k.get("zero") and str(k.get("owner") or "") == owner), None)
+    k = next((k for k in d["keys"] if k.get("zero") and k.get("auto") and not k.get("spent_by")
+              and str(k.get("owner") or "") == owner), None)
     if not k:
         made = make_key("Zero", auto=True, owner=owner)
         d = load()
@@ -231,7 +240,57 @@ def zero_key(owner: str = "") -> dict:
 def key_view(k: dict) -> dict:
     return {"id": k["id"], "label": k.get("label", ""), "auto": bool(k.get("auto")),
             "profile": k.get("profile") or {}, "created": k.get("created", 0),
-            "single": bool(k.get("single")), "owner": str(k.get("owner") or "")}
+            "single": bool(k.get("single")), "owner": str(k.get("owner") or ""),
+            "reusable": bool(k.get("reusable")), "uses": int(k.get("uses") or 0),
+            "spent": bool(k.get("spent_by"))}
+
+
+MAX_SPENT = 32                  # spent keys kept for a second use a person may approve
+
+
+def _spend(d: dict, key: dict, fp: str) -> None:
+    """A machine was just set up with `key`. Mutates `d`; the caller saves. One made for one
+    machine goes. An automatic one stops being automatic, and keeps its secret so a second
+    machine carrying it can still be set up when a person presses Enable."""
+    key["uses"] = int(key.get("uses") or 0) + 1
+    if key.get("single"):
+        d["keys"] = [k for k in d["keys"] if k["id"] != key["id"]]
+        return
+    if key.get("reusable") or not key.get("auto"):
+        return
+    key["auto"] = False
+    key["spent_by"] = fp
+    spent = sorted((k for k in d["keys"] if k.get("spent_by")), key=lambda k: k.get("created", 0))
+    for old in spent[:max(0, len(spent) - MAX_SPENT)]:
+        d["keys"] = [k for k in d["keys"] if k["id"] != old["id"]]
+
+
+def forget_machine(fp: str) -> bool:
+    """A machine's link ended or it was removed. It no longer counts as set up from here, so a
+    new link needs a person, and the key it carried stops working: a spent key is dropped,
+    and any other automatic key that set it up goes back to asking."""
+    if not fp:
+        return False
+    d = load()
+    e = d["enabled"].pop(fp, None)
+    kid = (e or {}).get("key_id")
+    changed = e is not None
+    keep = []
+    for k in d["keys"]:
+        if k.get("spent_by") == fp:
+            changed = True
+            continue
+        if kid and k["id"] == kid and k.get("auto"):
+            k["auto"] = False
+            changed = True
+        keep.append(k)
+    d["keys"] = keep
+    if fp in d["seen"] and d["seen"][fp].get("state") == "enabled":
+        d["seen"].pop(fp, None)
+        changed = True
+    if changed:
+        save(d)
+    return changed
 
 
 def keys() -> list[dict]:
@@ -253,6 +312,8 @@ def set_key_auto(kid: str, on: bool) -> dict | None:
     for k in d["keys"]:
         if k["id"] == kid:
             k["auto"] = bool(on)
+            if on:
+                k.pop("spent_by", None)      # a person armed it again: one more on its own
             save(d)
             return key_view(k)
     return None
@@ -284,6 +345,11 @@ def boot_key() -> str:
 
 
 def adopt_boot_key() -> bool:
+    d = load()
+    if d["claimed"] and d["key"]:
+        # set up before keys were cleared at the claim: it has no use for this secret any more
+        d["key"] = ""
+        save(d)
     k = boot_key()
     if not k:
         return False
@@ -542,6 +608,17 @@ def set_wait(on: bool | None) -> dict:
     return d
 
 
+def drop_own_key() -> bool:
+    """Stop carrying an enrolment key, so this machine shows a code instead. For a machine
+    whose key the hub no longer knows, and for what a Zero kept from before keys were spent."""
+    d = load()
+    if not d["key"]:
+        return False
+    d["key"] = ""
+    save(d)
+    return True
+
+
 def pin() -> str:
     """The code shown on this machine's screen. Made once, changed after PIN_TRIES wrong."""
     d = load()
@@ -594,9 +671,14 @@ def proof(secret: str, leader_fp: str, member_fp: str, nonce: str, side: str = "
 
 
 def check_claim(req: dict, nonce: str) -> tuple[bool, str, str]:
-    """(ok, error, secret used) for a claim on this waiting machine. Counts wrong codes."""
+    """(ok, error, secret used) for a claim on this waiting machine. Counts wrong codes.
+    The lock is on codes alone. Wrong codes from anybody on the network must not shut out the
+    hub holding the real key, and a machine carrying a key shows no code for anyone to read,
+    so it takes none: a code there is only somebody guessing."""
     d = load()
-    if locked():
+    if req.get("how") != "key" and d["key"]:
+        return False, "this machine carries an enrolment key and takes no code (`bento pool enroll forget` there, if it should)", ""
+    if req.get("how") != "key" and locked():
         return False, f"too many wrong codes — this machine takes no claim for {locked() // 60 + 1} minutes", ""
     leader_fp = str((req.get("leader") or {}).get("host_fp") or "")
     if not re.fullmatch(r"[0-9a-f]{64}", leader_fp):
@@ -615,11 +697,11 @@ def check_claim(req: dict, nonce: str) -> tuple[bool, str, str]:
             ca_ok = False
         if not ca_ok:
             return False, "the claim comes from a different community than this machine's key", ""
-        if not hmac.compare_digest(got, proof(k["secret"], leader_fp, mine, nonce)):
+        if not constcmp.same(got, proof(k["secret"], leader_fp, mine, nonce)):
             return False, "the enrolment key did not match", ""
         return True, "", k["secret"]
     code = pin()
-    if hmac.compare_digest(got, proof(code, leader_fp, mine, nonce)):
+    if constcmp.same(got, proof(code, leader_fp, mine, nonce)):
         return True, "", code
     d = load()
     d["pin_bad"] = int(d.get("pin_bad") or 0) + 1
@@ -673,6 +755,7 @@ def apply_claim(cfg: dict, req: dict, peer_addr: str) -> dict:
                     "pool": teamlink.plain(((req.get("pool") or {}).get("name")) or "", 40, newlines=False)}
     d["wait"] = None
     d["pin"] = ""
+    d["key"] = ""          # its job is done: a machine set up keeps no secret that sets up others
     save(d)
     return {"link": lk["label"], "profile": prof}
 
@@ -746,6 +829,42 @@ def hearing_devices(cfg: dict) -> bool:
     return True
 
 
+# Nothing in a beacon is proof, and a first hearing costs a ledger row that is never pruned, a
+# toast and a write to an SD card. So newcomers are budgeted, in memory: the rest are simply
+# not heard yet, and a real machine announces again.
+NEW_PER_ADDR = 6                # machines one address may introduce per window
+NEW_PER_ALL = 24                # machines everybody together may introduce per window
+NEW_WINDOW = 60
+_NEWCOMERS: dict = {}           # this machine's home -> [(time, address)]
+
+
+def newcomer_allowed(addr: str, now: float | None = None) -> bool:
+    """May somebody new be written down now? Says so in the security record once a burst."""
+    from . import teamlink
+    now = time.time() if now is None else now
+    keep = [x for x in _NEWCOMERS.get(str(teamlink.home()), []) if x[0] > now - NEW_WINDOW]
+    _NEWCOMERS[str(teamlink.home())] = keep
+    if len(keep) >= NEW_PER_ALL or sum(1 for x in keep if x[1] == addr) >= NEW_PER_ADDR:
+        from . import secevents
+        secevents.flag("beacon.flood", f"more than {NEW_PER_ALL} new machines a minute, or "
+                                       f"{NEW_PER_ADDR} from one address", source=str(addr))
+        return False
+    keep.append((now, addr))
+    return True
+
+
+def _evict(seen: dict, limit: int) -> None:
+    """Make room in `seen` from what nobody ever acted on, oldest first. A machine set up or
+    hidden is a person's decision and a newcomer must never push it out."""
+    extra = len(seen) - limit
+    if extra <= 0:
+        return
+    idle = sorted((kv for kv in seen.items() if kv[1].get("state", "new") == "new"),
+                  key=lambda kv: kv[1].get("last", 0))
+    for fp, _ in idle[:extra]:
+        seen.pop(fp, None)
+
+
 def note_seen(b: dict) -> bool:
     """Remember a machine heard on the network. True the FIRST time it is heard waiting
     (that is when somebody is asked), never again for the same machine."""
@@ -755,7 +874,7 @@ def note_seen(b: dict) -> bool:
     now = time.time()
     new = False
     if e is None:
-        if not b["waiting"]:
+        if not b["waiting"] or not newcomer_allowed(b.get("addr") or "", now):
             return False
         e = seen[b["fp"]] = {"first": now, "state": "new"}
         new = True
@@ -767,9 +886,7 @@ def note_seen(b: dict) -> bool:
         return False          # heard again, nothing changed: no write (an SD card wears out)
     e.update(fields)
     e["last"] = now
-    if len(seen) > MAX_SEEN:
-        for fp, _ in sorted(seen.items(), key=lambda kv: kv[1].get("last", 0))[:len(seen) - MAX_SEEN]:
-            seen.pop(fp, None)
+    _evict(seen, MAX_SEEN)
     save(d)
     return new
 
@@ -823,6 +940,7 @@ def forget_at(addr: str) -> list[str]:
     for fp in gone:
         d["seen"].pop(fp, None)
         d["enabled"].pop(fp, None)
+        d["keys"] = [k for k in d["keys"] if k.get("spent_by") != fp]
     for e in d.get("devices", {}).values():
         if e.get("ip") == addr and e.get("state") == "installed":
             e["state"] = "new"
@@ -1023,20 +1141,23 @@ class Door:
         from . import teamlink
         teamlink._ROOT.set(self.root)    # this task is this machine, whatever started it
         addr = (writer.get_extra_info("peername") or ("?",))[0]
+        conn: dict = {}                   # this connection's proven claim, waiting for its profile
         try:
-            for _ in range(2):            # hello, then claim: one connection, two lines
+            for _ in range(3):            # hello, claim, profile: one connection, three lines
                 req = await teamlink._read_line(reader, limit=64 * 1024, timeout=20)
-                out = await self._dispatch(req, addr)
+                out = await self._dispatch(req, addr, conn)
                 writer.write((json.dumps(out) + "\n").encode())
                 await writer.drain()
-                if req.get("op") != "hello" or not out.get("ok"):
+                more = req.get("op") == "hello" or (req.get("op") == "claim" and conn.get("claim"))
+                if not out.get("ok") or not more:
                     break
         except Exception:
             pass
         finally:
             writer.close()
 
-    async def _dispatch(self, req: dict, addr: str) -> dict:
+    async def _dispatch(self, req: dict, addr: str, conn: dict | None = None) -> dict:
+        conn = {} if conn is None else conn
         cfg = self.cfg()
         if not waiting(cfg)[0]:
             return {"ok": False, "error": "this machine is not waiting to be set up"}
@@ -1046,7 +1167,13 @@ class Door:
             now = time.time()
             self._nonces = {n: t for n, t in self._nonces.items() if t > now - NONCE_TTL}
             self._nonces[nonce] = now
-            return {"ok": True, **here(cfg), "nonce": nonce}
+            # steps 2: the claim and the member's proof come first, the profile after it
+            return {"ok": True, **here(cfg), "nonce": nonce, "steps": 2}
+        if op == "profile":
+            pending = conn.pop("claim", None)
+            if not pending:
+                return {"ok": False, "error": "no proven claim on this connection — start again"}
+            return self._take(cfg, {**pending, "profile": req.get("profile") or {}}, addr, None)
         if op != "claim":
             return {"ok": False, "error": f"unknown request '{op}'"}
         nonce = str(req.get("nonce") or "")
@@ -1057,15 +1184,31 @@ class Door:
         leader = req.get("leader") or {}
         if not ok:
             self.audit("provision.refused", f"from {addr}: {err}")
+            from . import secevents
+            secevents.flag("provision.refused", err, source=addr)
             return {"ok": False, "error": err}
-        got = apply_claim(cfg, req, addr)
         from . import teamlink
+        ident = teamlink.ensure_pki()
+        back = proof(secret, str(leader.get("host_fp")), ident["host_fp"],
+                     str(req.get("nonce2") or ""), side="member")
+        if req.get("steps") == 2:
+            # Prove this side before anything is taken: the leader checks proof_back and only
+            # then sends the profile (agent souls, names), so a device that copied a key id out
+            # of a beacon never receives it. Nothing is applied until the profile arrives.
+            conn["claim"] = {k: v for k, v in req.items() if k != "profile"}
+            return {"ok": True, "proof_back": back, "host_fp": ident["host_fp"]}
+        # a leader from before steps: it sent the profile already, so take it as it always was
+        return self._take(cfg, req, addr, back if req.get("how") == "key" else None)
+
+    def _take(self, cfg: dict, req: dict, addr: str, back: str | None) -> dict:
+        from . import teamlink
+        leader = req.get("leader") or {}
+        got = apply_claim(cfg, req, addr)
         ident = teamlink.ensure_pki()
         reply = {"ok": True, "name": teamlink.machine_name(cfg), "ca": ident["ca"],
                  "host_fp": ident["host_fp"], "port": teamlink.team_port(cfg), "hw": hardware()}
-        if req.get("how") == "key":
-            reply["proof_back"] = proof(secret, str(leader.get("host_fp")), ident["host_fp"],
-                                        str(req.get("nonce2") or ""), side="member")
+        if back:
+            reply["proof_back"] = back
         self.audit("provision.claimed",
                    f"set up by {leader.get('name') or 'a leader'} at {addr} ({req.get('how')}); "
                    f"profile {json.dumps(got['profile'])}")
@@ -1172,6 +1315,13 @@ async def enable(cfg: dict, target: dict, profile: dict | None = None, code: str
         hello = await say({"op": "hello"})
         if not hello.get("ok"):
             raise ValueError(hello.get("error") or "it did not answer")
+        if int(hello.get("steps") or 0) < 2:
+            # An older machine takes the profile before it proves who it is. Sending it would
+            # hand the standard profile to whatever answered, so say so and stop.
+            raise ValueError(f"{target.get('name') or 'that machine'} runs an older Bento"
+                             f"{' (' + str(hello.get('version')) + ')' if hello.get('version') else ''}"
+                             f" that can't prove itself before it's set up. Update it there "
+                             f"(`bento update`) or install it again, then set it up")
         nonce = str(hello.get("nonce") or "")
         d = load()
         key = next((k for k in d["keys"] if k["id"] == hello.get("key_id")), None)
@@ -1185,21 +1335,33 @@ async def enable(cfg: dict, target: dict, profile: dict | None = None, code: str
                 raise ValueError(f"{target.get('name') or 'that machine'} shows a six-digit code on its "
                                  f"screen (or `bento pool wait` there) — type it in")
             how, secret, prof = "code", code, profile_for(None, profile)
-        out = await say({"op": "claim", "nonce": nonce, "nonce2": nonce2, "how": how,
-                         "key_id": key["id"] if key else "",
-                         "proof": proof(secret, ident["host_fp"], fp, nonce),
-                         "leader": {"name": teamlink.machine_name(cfg), "ca": ident["ca"],
-                                    "host_fp": ident["host_fp"], "port": teamlink.team_port(cfg)},
-                         "pool": pool_info or {}, "profile": prof})
+        # Step one carries no profile: the member proves it holds the key (or knows the code
+        # on its screen) before it is told anything about this community.
+        proved = await say({"op": "claim", "steps": 2, "nonce": nonce, "nonce2": nonce2, "how": how,
+                            "key_id": key["id"] if key else "",
+                            "proof": proof(secret, ident["host_fp"], fp, nonce),
+                            "leader": {"name": teamlink.machine_name(cfg), "ca": ident["ca"],
+                                       "host_fp": ident["host_fp"], "port": teamlink.team_port(cfg)},
+                            "pool": pool_info or {}})
+        if not proved.get("ok"):
+            raise ValueError(proved.get("error") or "it refused")
+        if proved.get("host_fp") != fp:
+            raise ValueError("it answered with a different certificate — refused")
+        if not constcmp.same(str(proved.get("proof_back") or ""),
+                             proof(secret, ident["host_fp"], fp, nonce2, side="member")):
+            raise ValueError("it does not really hold the enrolment key — refused" if key else
+                             "it could not prove it knows the code on its screen — refused")
+        try:
+            out = await say({"op": "profile", "profile": prof})
+        except (OSError, asyncio.TimeoutError, ValueError, json.JSONDecodeError):
+            raise ValueError(f"{target.get('name') or 'that machine'} proved itself and then "
+                             f"stopped answering — look again and set it up again")
     finally:
         writer.close()
     if not out.get("ok"):
         raise ValueError(out.get("error") or "it refused")
     if out.get("host_fp") != fp or not str(out.get("ca") or "").startswith("-----BEGIN CERTIFICATE"):
         raise ValueError("it answered with a different certificate — refused")
-    if key and not hmac.compare_digest(str(out.get("proof_back") or ""),
-                                       proof(secret, ident["host_fp"], fp, nonce2, side="member")):
-        raise ValueError("it does not really hold the enrolment key — refused")
     td = teamlink._load()
     td["links"] = [lk for lk in td["links"] if lk.get("peer_host_fp") != fp]
     name = teamlink._label(out.get("name") or target.get("name") or "machine")
@@ -1211,10 +1373,11 @@ async def enable(cfg: dict, target: dict, profile: dict | None = None, code: str
     d = load()
     d["enabled"][fp] = {"name": name, "at": time.time(), "how": how,
                         "execution": prof.get("execution", "here"),
-                        "via": target.get("via") or _via(addr), "label": lk["label"], "owner": who}
-    if key and key.get("single"):
-        # a key made for one machine (an SSH install, one SD card) is spent on it
-        d["keys"] = [k for k in d["keys"] if k["id"] != key["id"]]
+                        "via": target.get("via") or _via(addr), "label": lk["label"], "owner": who,
+                        **({"key_id": key["id"]} if key else {})}
+    stored = next((k for k in d["keys"] if key and k["id"] == key["id"]), None)
+    if stored:
+        _spend(d, stored, fp)
     if fp in d["seen"]:
         d["seen"][fp].update(state="enabled", name=name)
     save(d)

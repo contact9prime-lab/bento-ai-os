@@ -29,7 +29,10 @@ Four rules keep it honest:
     to every page that browser ever shows.
   * NO SHELL ON THE SCREEN. The console road is a unit with a PAM session, never getty
     autologin: a keyboard plugged into the Pi reaches the kiosk, and Ctrl+Alt+F2 still asks
-    for a password.
+    for a password. The same policy file turns devtools off and blocks every address but this
+    page, because devtools on Bento's page reaches the Terminal socket on a machine with no
+    accounts. Only a machine that accepted root for the mic policy has it, and `screen status`
+    says whether it is there.
 
 TUI: `bento screen status|on|off`. GUI: Settings → Appearance → On this screen, and the
 Install form's "Open on its screen" (install.sh --screen). SUI: not applicable; a machine
@@ -75,7 +78,9 @@ def _port(cfg: dict | None = None) -> int:
 
 def url(cfg: dict | None = None) -> str:
     """The page the screen shows: this machine's own server, as the kiosk."""
-    return f"http://127.0.0.1:{_port(cfg)}/#kiosk"
+    # started from the server with no systemd to hand it to, this browser is the server's child (open_now)
+    ticket = os.environ.get("AGENTOS_DESK_TICKET", "")
+    return f"http://127.0.0.1:{_port(cfg)}/{'?desk=' + ticket if ticket else ''}#kiosk"
 
 
 def _linux() -> bool:
@@ -211,7 +216,17 @@ X-GNOME-Autostart-enabled=true
 def policy_text(cfg: dict | None = None) -> str:
     import json
     origin = f"http://127.0.0.1:{_port(cfg)}"
-    return json.dumps({"AudioCaptureAllowedUrls": [origin], "AutoplayAllowlist": [origin]}, indent=1) + "\n"
+    # A keyboard on the Pi reaches this browser. Devtools on Bento's own page, or a chrome:// or
+    # file:// address, would be a shell for whoever is in the room. A policy holds where
+    # --kiosk only hides the buttons. Only this page is allowed, and its own framed apps.
+    return json.dumps({"AudioCaptureAllowedUrls": [origin], "AutoplayAllowlist": [origin],
+                       "DeveloperToolsAvailability": 2,
+                       "URLBlocklist": ["*"],
+                       # the Stage plays videos from this one host, in a frame
+                       "URLAllowlist": [f"127.0.0.1:{_port(cfg)}", "about:blank", "www.youtube-nocookie.com"],
+                       "DownloadRestrictions": 3, "PrintingEnabled": False,
+                       "IncognitoModeAvailability": 1, "BrowserAddPersonEnabled": False,
+                       "BrowserGuestModeEnabled": False}, indent=1) + "\n"
 
 
 #: The kiosk browser's profile, inside the home. backup.SKIP_TOP leaves it out of every walk of
@@ -273,8 +288,15 @@ def open_now(cfg: dict | None = None) -> bool:
     rd, _ = road()
     if rd != "desktop" or not browser() or showing() or not (_wayland() or os.environ.get("DISPLAY")):
         return False
-    subprocess.Popen(open_argv(), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                     stderr=subprocess.DEVNULL, start_new_session=True)
+    argv = open_argv()
+    env = dict(os.environ)
+    if argv[0] != "systemd-run":
+        # Stays in the server's process tree, which peercheck refuses as it refuses a jailed shell.
+        from . import remote as remotemod
+        if not remotemod.accounts_lock():
+            env["AGENTOS_DESK_TICKET"] = remotemod.mint_ticket()
+    subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL, start_new_session=True, env=env)
     return True
 
 

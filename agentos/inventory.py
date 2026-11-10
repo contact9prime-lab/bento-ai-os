@@ -232,7 +232,7 @@ def rows(cfg: dict | None = None) -> list[dict]:
             r["fp"] = r.get("fp") or lk["peer_host_fp"]
             by_fp[r["fp"]] = r
         r.setdefault("links", []).append({"label": lk.get("label", ""), "owner": lk.get("owner") or "",
-                                          "kind": lk.get("kind")})
+                                          "kind": lk.get("kind"), "fp": lk.get("peer_host_fp") or ""})
         ident = lk.get("peer_identity") or {}
         if ident.get("agent_name") and not r.get("agent"):
             # its lead, as the link last said it: a name and a recipe, painted here (one painter)

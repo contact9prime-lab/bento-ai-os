@@ -17,9 +17,15 @@ Rules that keep it honest (docs/standby.md, tests/test_standby.py):
   * ONE side acts at a time. A passive side starts none of the runners that act on
     somebody's behalf; the state file says which side is active and the epoch counts
     every change of hands.
-  * The copy is sealed end to end with a secret only the two machines hold, so the
-    transport is not what protects it. Pairing still wants HTTPS off a private network,
-    because the bearer token travels in it.
+  * The copy is sealed end to end with a secret only the two machines hold. Pairing wants
+    HTTPS, or Tailscale's own encryption, because that secret and the bearer token travel in
+    it; plain http on a LAN is the person's explicit choice (`--plain-http`).
+  * A copy coming BACK is the cloud's word. Whoever holds the pair's secret can seal one,
+    and a key per direction would not change that: the cloud has to hold the key it seals
+    with. So on the main machine a swap takes the work and leaves what decides what may run:
+    `TRUST_KEYS`, `TRUST_FILES`, `TRUST_TABLES` stay this machine's, and a mission or schedule
+    that is new or changed lands off (`_keep_trust`). What the cloud wrote into memory, skills
+    and souls still arrives, and is only as trustworthy as the cloud. docs/standby.md says so.
   * Nothing is thrown away. A swap moves what was there aside (backup.py's rule); the
     standby's own automatic swaps keep the newest `KEEP_ASIDE`, because every one of them
     is also held by the other machine.
@@ -35,7 +41,6 @@ server down. The server's loops call these functions in a thread.
 from __future__ import annotations
 
 import hashlib
-import hmac
 import ipaddress
 import json
 import os
@@ -48,6 +53,7 @@ import threading
 import time
 from pathlib import Path
 from urllib.parse import urlparse
+from . import constcmp
 
 DIR = ".standby"                   # starts with a PRIVATE prefix of backup.py: never copied or moved
 STATE = "state.json"
@@ -68,6 +74,12 @@ CODE_TRIES = 5
 KEEP_ASIDE = 2
 WORKSPACE_CAP = 1 << 30            # a workspace over 1 GB is left out of the copies, and said
 LOCAL_KEYS = ("remote", "port")    # the machine's own door, never carried
+# What decides what may run here. A copy from the cloud does not change these on the main
+# machine: an MCP entry is a command line, and a provider's base_url receives every prompt.
+TRUST_KEYS = ("mcp_servers", "autonomy", "sandbox", "security", "policies", "executors", "providers",
+              "team", "registry", "tools", "oauth_clients")
+TRUST_FILES = ("users.json", "links.json", "pool.json", "provision.json", "pki")
+TRUST_TABLES = ("grants", "executor_profiles")
 BAD_LIMIT = 20                     # wrong tokens per address per window
 BAD_WINDOW = 600
 _ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
@@ -215,7 +227,7 @@ def accept(body: dict, home=None) -> dict:
         p.unlink(missing_ok=True)
         raise StandbyError("That code has expired. Make a new one on the cloud machine.")
     off["tries"] = off.get("tries", 0) + 1
-    if not hmac.compare_digest(_hash(_norm_code(body.get("code", ""))), off.get("hash", "")):
+    if not constcmp.same(_hash(_norm_code(body.get("code", ""))), off.get("hash", "")):
         if off["tries"] >= CODE_TRIES:
             p.unlink(missing_ok=True)
             raise StandbyError("Too many wrong codes. Make a new one on the cloud machine.")
@@ -241,7 +253,7 @@ def token_ok(presented: str, home=None) -> bool:
     want = st.get("token_hash", "")
     if st.get("role") != "standby" or not want or not presented:
         return False
-    return hmac.compare_digest(_hash(presented), want)
+    return constcmp.same(_hash(presented), want)
 
 
 _BAD: dict[str, list] = {}
@@ -256,28 +268,38 @@ def too_many_bad(addr: str) -> bool:
 
 def note_bad(addr: str) -> None:
     _BAD.setdefault(addr, []).append(time.time())
+    from . import secevents
+    secevents.flag("standby.token", "a wrong pairing code or token at the standby door", source=addr)
 
 
-def url_problem(url: str) -> str:
-    """The standby's address must be HTTPS unless it is on a private network: the bearer
-    token and the pairing secret travel in these requests."""
+def url_problem(url: str, plain_ok: bool = False) -> str:
+    """The standby's address must be HTTPS, this machine, or Tailscale (which encrypts it
+    itself): the pairing secret and the bearer token travel in these requests, and anybody on
+    a LAN can read plain http. `plain_ok` is a person saying they accept that for a private
+    address, and it never covers the internet."""
     u = urlparse((url or "").strip())
     if u.scheme not in ("http", "https") or not u.hostname:
         return "Give the cloud machine's address, like https://bento.example.com."
     if u.scheme == "https":
         return ""
     h = u.hostname
-    if h == "localhost" or h.endswith((".local", ".lan", ".internal", ".ts.net", ".home.arpa")):
+    if h == "localhost" or h.endswith(".ts.net"):
         return ""
+    ip = None
     try:
         ip = ipaddress.ip_address(h)
-        if ip.is_private or ip.is_loopback or ip.is_link_local or \
-                ip in ipaddress.ip_network("100.64.0.0/10"):
+        if ip.is_loopback or ip in ipaddress.ip_network("100.64.0.0/10"):
             return ""
     except ValueError:
         pass
-    return ("Use https:// for a machine on the internet. Plain http is only for a private "
-            "network such as your LAN or Tailscale.")
+    private = h.endswith((".local", ".lan", ".internal", ".home.arpa")) or \
+        bool(ip and (ip.is_private or ip.is_link_local))
+    if private and plain_ok:
+        return ""
+    if private:
+        return ("Plain http would show the pairing secret to anyone on this network. Use https:// or "
+                "Tailscale. To accept that on a network you trust: bento standby pair URL CODE --plain-http")
+    return "Use https:// for a machine on the internet."
 
 
 def _client(timeout: float = 20.0):
@@ -305,13 +327,13 @@ def _call(st: dict, method: str, path: str, *, timeout: float = 20.0, **kw):
     return r
 
 
-def pair(url: str, code: str, home=None) -> dict:
+def pair(url: str, code: str, home=None, plain_ok: bool = False) -> dict:
     """The main machine's half: mint the token and the secret, present the code."""
     import httpx
     st = load(home)
     if st.get("role"):
         raise StandbyError("This machine is already paired. Unpair it first (bento standby off).")
-    if (why := url_problem(url)):
+    if (why := url_problem(url, plain_ok)):
         raise StandbyError(why)
     token, secret = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
     base = url.strip().rstrip("/")
@@ -1083,13 +1105,103 @@ def keep_door(home=None) -> None:
     _write(_dir(home) / DOOR, {k: cfg[k] for k in LOCAL_KEYS if k in cfg})
 
 
+def _user_homes(root: Path) -> list[str]:
+    users = root / "users"
+    return [f"users/{p.name}" for p in sorted(users.iterdir()) if p.is_dir()] if users.is_dir() else []
+
+
+def _keep_tables(new: Path, old: Path) -> int:
+    """Put this machine's grants and hands back, and switch off any mission or schedule that
+    is new or changed. A flow's definition is what writes its grants when it is on, so leaving
+    it on would write back what was just restored. Returns how many were switched off."""
+    con = sqlite3.connect(str(new), timeout=10)
+    held = 0
+    try:
+        have_old = old.exists()
+        if have_old:
+            con.execute("ATTACH DATABASE ? AS was", (str(old),))
+        for table in TRUST_TABLES:
+            if not con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone():
+                continue
+            con.execute(f"DELETE FROM main.{table}")
+            if have_old and con.execute("SELECT 1 FROM was.sqlite_master WHERE type='table' AND name=?",
+                                        (table,)).fetchone():
+                now = {r[1] for r in con.execute(f"PRAGMA main.table_info({table})")}
+                cols = ",".join(f'"{r[1]}"' for r in con.execute(f"PRAGMA was.table_info({table})") if r[1] in now)
+                con.execute(f"INSERT INTO main.{table} ({cols}) SELECT {cols} FROM was.{table}")
+        if con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='flows'").fetchone():
+            same = ("EXISTS (SELECT 1 FROM was.flows o WHERE o.name=flows.name AND o.enabled=1 AND o.mission IS flows.mission "
+                    "AND o.roster IS flows.roster AND o.permissions IS flows.permissions AND o.sinks IS flows.sinks "
+                    "AND o.autonomy_cap IS flows.autonomy_cap)") if have_old else "0"
+            held += con.execute(f"UPDATE main.flows SET enabled=0 WHERE enabled=1 AND NOT {same}").rowcount
+        if con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='tasks'").fetchone():
+            same = ("EXISTS (SELECT 1 FROM was.tasks o WHERE o.id=tasks.id AND o.enabled=1 AND o.prompt IS tasks.prompt)"
+                    if have_old else "0")
+            held += con.execute(f"UPDATE main.tasks SET enabled=0 WHERE enabled=1 AND NOT {same}").rowcount
+        con.commit()
+    finally:
+        con.close()
+    return held
+
+
+def _keep_trust(report: dict, home: Path) -> list[str]:
+    """A copy from the cloud came in. Everything that decides what may run here goes back to
+    what this machine had, from the aside apply just made. Fails closed, per home: a database
+    that can't be put back has its grants emptied rather than left as the copy said."""
+    prev = Path(report.get("previous") or "")
+    if not report.get("previous") or not prev.is_dir():
+        return []
+    notes, held = [], 0
+    for name in TRUST_FILES:
+        src, dst = prev / name, home / name
+        if dst.is_dir():
+            shutil.rmtree(dst, ignore_errors=True)
+        elif dst.exists():
+            dst.unlink()
+        if src.is_dir():
+            shutil.copytree(src, dst)
+        elif src.exists():
+            shutil.copy2(src, dst)
+    for rel in ["", *_user_homes(home)]:
+        here, was = home / rel, prev / rel
+        cfg_p = here / "config.json"
+        if cfg_p.exists():
+            cfg, old = _read(cfg_p), _read(was / "config.json")
+            for k in TRUST_KEYS:
+                if k in old:
+                    cfg[k] = old[k]
+                else:
+                    cfg.pop(k, None)
+            _write(cfg_p, cfg)
+        db = here / "agentos.db"
+        if db.exists():
+            try:
+                held += _keep_tables(db, was / "agentos.db")
+            except sqlite3.Error as e:
+                notes.append(f"Could not restore permissions in {rel or 'this home'} ({e}), so they were cleared.")
+                con = sqlite3.connect(str(db), timeout=10)
+                try:
+                    con.execute("DELETE FROM grants")
+                    con.commit()
+                finally:
+                    con.close()
+    notes.insert(0, "This machine kept its own permissions, MCP servers, AI providers and accounts. "
+                    "Any change to those made in the cloud was not taken.")
+    if held:
+        notes.append(f"{held} mission(s) or schedule(s) from the cloud are new or changed and are off. "
+                     "Look them over in Missions before switching them on.")
+    return notes
+
+
 def after_swap(report: dict, home=None) -> dict:
     """After `backup.apply_pending`, when a standby swap caused it: put this machine's
-    door back and keep only the newest automatic asides."""
+    door back and keep only the newest automatic asides. On the main machine the copy came
+    from the cloud, so what decides what may run stays this machine's too (`_keep_trust`)."""
     home = _home(home)
     door_p = home / DIR / DOOR
     if not door_p.exists():
         return {}
+    kept = _keep_trust(report, home) if load(home).get("role") == "primary" else []
     door = _read(door_p)
     cp = home / "config.json"
     cfg = _read(cp)
@@ -1100,6 +1212,8 @@ def after_swap(report: dict, home=None) -> dict:
             cfg.pop(k, None)
     if cfg:
         _write(cp, cfg)
+        from . import integrity
+        integrity.noted(cp)
     door_p.unlink(missing_ok=True)
     st = load(home)
     swaps = [w for w in st.get("asides", []) if isinstance(w, list)]
@@ -1112,10 +1226,10 @@ def after_swap(report: dict, home=None) -> dict:
     keep = swaps[-KEEP_ASIDE:]
     # the one-machine-answers warnings are this module's job, and the asides are pruned
     skip = ("Telegram:", "WhatsApp:", "Linked teams", "What was here before", "Your workspace is back")
-    notes = [n for n in report.get("attention", []) if not n.startswith(skip)]
+    notes = kept + [n for n in report.get("attention", []) if not n.startswith(skip)]
     st.update(asides=keep, last_swap={"at": time.time(),
                                       "from": st.get("peer_host") or report.get("from_host", ""),
-                                      "notes": notes[:6]})
+                                      "notes": notes[:8]})
     save(st, home)
     return st["last_swap"]
 

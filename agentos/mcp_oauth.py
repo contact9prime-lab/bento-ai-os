@@ -46,12 +46,16 @@ authorising at once.
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import glob
+import hashlib
 import json
 import os
 import time
 from pathlib import Path
 
 from . import config as cfgmod
+from . import users as usersmod
 
 try:
     from mcp.client.auth import OAuthClientProvider, TokenStorage
@@ -63,7 +67,10 @@ except Exception:  # pragma: no cover - very old SDK
     TokenStorage = object       # type: ignore
     HAVE_OAUTH = False
 
-TOKEN_DIR = cfgmod.AGENTOS_HOME / "oauth"
+# A token belongs to one account and one address. It lived here by server name alone, machine
+# wide, so anyone who named a server `notion` and pointed it at their own URL was handed the
+# admin's Notion token, and pointing it at the real URL gave them the admin's Notion.
+# `_token_dir` is where it lives now; old files by name are moved on first use (`_read`).
 
 #: How long a human has to finish the consent page before the attempt is abandoned.
 #: Matches the SDK's own default; a shorter window punishes anyone who has to log in
@@ -78,9 +85,10 @@ AUTH_TIMEOUT = 300.0
 # than as a connection that is simply slow.
 
 class Pending:
-    def __init__(self, name: str, url: str):
+    def __init__(self, name: str, url: str, uid: str = ""):
         self.name = name
         self.url = url
+        self.uid = uid
         self.started = time.time()
         self.event = asyncio.Event()
         self.code = ""
@@ -88,7 +96,7 @@ class Pending:
         self.error = ""
 
 
-_pending: dict[str, Pending] = {}
+_pending: dict[tuple[str, str], Pending] = {}     # (account, server name)
 _notify = None    # async fn(dict) -> None — the websocket broadcast
 _ui_probe = None  # fn() -> bool — is a UI actually watching right now?
 
@@ -107,20 +115,26 @@ def set_notifier(fn, ui_probe=None):
     _ui_probe = ui_probe
 
 
+def _me() -> str:
+    return usersmod.current() or ""
+
+
 def pending_status() -> list[dict]:
-    """What is waiting for a human right now."""
+    """What is waiting for this account right now. The URL carries the flow's `state`."""
+    me = _me()
     return [{"name": p.name, "url": p.url, "waiting_for": int(time.time() - p.started)}
-            for p in _pending.values()]
+            for (uid, _n), p in _pending.items() if uid == me]
 
 
 def pending_url(name: str) -> str:
-    p = _pending.get(name)
+    p = _pending.get((_me(), name))
     return p.url if p else ""
 
 
 def resolve(name: str, code: str, state: str | None, error: str = "") -> bool:
-    """Called by the callback route. True if a flow was actually waiting."""
-    p = _pending.get(name)
+    """Called by the callback route, as whoever the browser is signed in as. True if a flow
+    of THEIRS was waiting: another account's browser finishes nothing."""
+    p = _pending.get((_me(), name))
     if not p:
         return False
     p.code, p.state, p.error = code, state, error
@@ -130,7 +144,7 @@ def resolve(name: str, code: str, state: str | None, error: str = "") -> bool:
 
 def cancel(name: str) -> bool:
     """Abandon a pending authorisation (the user closed the tab, or changed their mind)."""
-    p = _pending.get(name)
+    p = _pending.get((_me(), name))
     if not p:
         return False
     p.error = "cancelled"
@@ -140,21 +154,55 @@ def cancel(name: str) -> bool:
 
 # ---- token storage --------------------------------------------------------------
 
-def _token_path(name: str) -> Path:
-    safe = "".join(c for c in name if c.isalnum() or c in "-_.")[:64] or "server"
-    return TOKEN_DIR / f"{safe}.json"
+def _safe(name: str) -> str:
+    return "".join(c for c in name if c.isalnum() or c in "-_.")[:64] or "server"
 
 
-def _read(name: str) -> dict:
+def _token_dir(uid: str) -> Path:
+    # read at call time: tests and a restore move the home
+    return usersmod.home_for(uid) / "oauth"
+
+
+def _legacy_path(name: str) -> Path:
+    return cfgmod.AGENTOS_HOME / "oauth" / f"{_safe(name)}.json"
+
+
+def _token_path(name: str, url: str, uid: str | None = None) -> Path:
+    who = _me() if uid is None else uid
+    tag = hashlib.sha256(url.strip().encode()).hexdigest()[:16]
+    return _token_dir(who) / f"{_safe(name)}-{tag}.json"
+
+
+def _heir(uid: str) -> bool:
+    """Who a token saved by name alone belongs to: the machine's owner. Without accounts that
+    is the machine; with them, the first admin, who is the person the machine was adopted by."""
+    if not usersmod.enabled():
+        return not uid
+    admins = [u["id"] for u in usersmod._read()["users"] if u.get("role") == "admin"]
+    return bool(admins) and uid == admins[0]
+
+
+def _read(name: str, url: str, uid: str | None = None) -> dict:
+    who = _me() if uid is None else uid
+    p = _token_path(name, url, who)
+    old = _legacy_path(name)
+    # An old file records no address, so it goes to the owner's server of this name once, and
+    # to nobody else's. The first read under its new name is what keeps the connection.
+    if not p.exists() and old.exists() and _heir(who):
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with contextlib.suppress(OSError):
+            p.parent.chmod(0o700)
+        with contextlib.suppress(OSError):
+            os.replace(old, p)
     try:
-        return json.loads(_token_path(name).read_text())
+        return json.loads(p.read_text())
     except Exception:
         return {}
 
 
-def _write(name: str, data: dict):
-    TOKEN_DIR.mkdir(parents=True, exist_ok=True)
-    p = _token_path(name)
+def _write(name: str, url: str, data: dict, uid: str | None = None):
+    p = _token_path(name, url, uid)
+    p.parent.mkdir(parents=True, exist_ok=True)
     tmp = p.with_suffix(".tmp")
     # 0600 before any content is written: a refresh token is a standing credential,
     # and the window between create and chmod is the one an attacker gets.
@@ -163,13 +211,13 @@ def _write(name: str, data: dict):
         json.dump(data, f)
     os.replace(tmp, p)
     try:
-        TOKEN_DIR.chmod(0o700)
+        p.parent.chmod(0o700)
     except OSError:
         pass
 
 
-def has_tokens(name: str) -> bool:
-    return bool(_read(name).get("tokens"))
+def has_tokens(name: str, url: str) -> bool:
+    return bool(_read(name, url).get("tokens"))
 
 
 def forget(name: str) -> bool:
@@ -179,39 +227,42 @@ def forget(name: str) -> bool:
     authorisation the user just asked to end — "Disconnect" has to mean the next
     connect asks again.
     """
-    p = _token_path(name)
-    existed = p.exists()
-    try:
-        p.unlink()
-    except OSError:
-        pass
-    return existed
+    who = _me()
+    gone = list(_token_dir(who).glob(f"{glob.escape(_safe(name))}-*.json"))
+    # this name's old file is the owner's to forget, and nobody else's
+    if _heir(who) and _legacy_path(name).exists():
+        gone.append(_legacy_path(name))
+    for p in gone:
+        with contextlib.suppress(OSError):
+            p.unlink()
+    return bool(gone)
 
 
 class _Storage(TokenStorage):  # type: ignore[misc]
-    """Per-server token + client-registration storage, one JSON file each."""
+    """Token + client-registration storage, one JSON file per (account, server, address).
+    The account is fixed when the connection starts, because the SDK calls back later."""
 
-    def __init__(self, name: str):
-        self.name = name
+    def __init__(self, name: str, url: str, uid: str):
+        self.name, self.url, self.uid = name, url, uid
 
     async def get_tokens(self):
-        raw = _read(self.name).get("tokens")
+        raw = _read(self.name, self.url, self.uid).get("tokens")
         return OAuthToken.model_validate(raw) if raw else None
 
     async def set_tokens(self, tokens) -> None:
-        data = _read(self.name)
+        data = _read(self.name, self.url, self.uid)
         data["tokens"] = json.loads(tokens.model_dump_json(exclude_none=True))
         data["updated_at"] = time.time()
-        _write(self.name, data)
+        _write(self.name, self.url, data, self.uid)
 
     async def get_client_info(self):
-        raw = _read(self.name).get("client")
+        raw = _read(self.name, self.url, self.uid).get("client")
         return OAuthClientInformationFull.model_validate(raw) if raw else None
 
     async def set_client_info(self, client_info) -> None:
-        data = _read(self.name)
+        data = _read(self.name, self.url, self.uid)
         data["client"] = json.loads(client_info.model_dump_json(exclude_none=True))
-        _write(self.name, data)
+        _write(self.name, self.url, data, self.uid)
 
 
 # ---- the provider ---------------------------------------------------------------
@@ -253,10 +304,12 @@ def provider_for(name: str, url: str, scope: str = ""):
     """An `httpx.Auth` that authorises this server, or None if unsupported."""
     if not HAVE_OAUTH:
         return None
+    uid = _me()
+    slot = (uid, name)
 
     async def _redirect(auth_url: str) -> None:
-        p = Pending(name, auth_url)
-        _pending[name] = p
+        p = Pending(name, auth_url, uid)
+        _pending[slot] = p
         watching = False
         try:
             watching = bool(_ui_probe and _ui_probe())
@@ -271,7 +324,7 @@ def provider_for(name: str, url: str, scope: str = ""):
                 pass
 
     async def _callback() -> tuple[str, str | None]:
-        p = _pending.get(name)
+        p = _pending.get(slot)
         if p is None:  # _redirect always runs first; be defensive rather than hang
             raise RuntimeError("no pending authorisation")
         try:
@@ -281,7 +334,7 @@ def provider_for(name: str, url: str, scope: str = ""):
                 f"nobody finished signing in to '{name}' within "
                 f"{int(AUTH_TIMEOUT)}s — press Connect to try again")
         finally:
-            _pending.pop(name, None)
+            _pending.pop(slot, None)
             if _notify:
                 try:
                     await _notify({"type": "mcp_oauth_done", "name": name})
@@ -302,7 +355,7 @@ def provider_for(name: str, url: str, scope: str = ""):
     return OAuthClientProvider(
         server_url=url,
         client_metadata=meta,
-        storage=_Storage(name),
+        storage=_Storage(name, url, uid),
         redirect_handler=_redirect,
         callback_handler=_callback,
         timeout=AUTH_TIMEOUT,

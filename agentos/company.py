@@ -694,10 +694,18 @@ def desk_mission(dept: dict, company: dict) -> str:
             "another department, say which one instead of doing it.")
 
 
+def _declarable(tools: list[str]) -> list[str]:
+    """What a desk or a mission may declare. A definition grant makes a tool silent once it is
+    switched on, so code stays off the list and each run still goes to a person."""
+    from .tools import ASK_FROM_SPECIALISTS
+    return [t for t in tools if t not in ASK_FROM_SPECIALISTS]
+
+
 def _desk_def(dept: dict, company: dict, space_id: str = "") -> dict:
     tools = []
     for p in dept["people"]:
         tools += [t for t in p["tools"] if t not in tools]
+    tools = _declarable(tools)
     return {"name": dept.get("desk") or desk_name(dept["name"]),
             "description": f"{dept['name']}: {dept.get('about') or ''}"[:500],
             "mission": desk_mission(dept, company),
@@ -2021,6 +2029,7 @@ def _mission_def(m: dict, dept: dict, company: dict, goal: str, space_id: str,
     tools = []
     for p in people:
         tools += [t for t in p["tools"] if t not in tools]
+    tools = _declarable(tools)
     co = company.get("name") or "the company"
     mission = (f"{m['title']}: a standing mission of the {dept['name']} department of {co}"
                + (f" ({company['about']})" if company.get("about") else "") + ".\n\n"

@@ -49,6 +49,7 @@ answering from a database that is no longer there.
 from __future__ import annotations
 
 import base64
+import contextlib
 import functools
 import hashlib
 import hmac
@@ -63,6 +64,7 @@ import tarfile
 import tempfile
 import time
 from pathlib import Path, PurePosixPath
+from . import constcmp
 
 FORMAT = "bento-backup/1"
 MAGIC = b"BENTOBK1\n"
@@ -81,6 +83,10 @@ SKIP_TOP = {"snapshots", "speech-cache", "mcp_index.json", "logs", "boot.html",
             # waited 30 s on each of them (standbysync), about 90 s in all.
             "screen-profile"}
 SKIP_NAMES = {"__pycache__", "node_modules", ".DS_Store"}
+# the ledger's anchor names its newest row, and a copy taken mid-write would name one the copied
+# database doesn't have. A restored home starts without one (the key does travel: it verifies the
+# rows). The integrity files are this machine's own and are never moved: see PRIVATE.
+SKIP_FILES = {"ledger.anchor"}
 SKIP_SUFFIX = (".db-wal", ".db-shm", ".db-journal", ".pyc", ".tmp", ".part")
 #: This module's own working names inside the home, never backed up and never moved.
 PRIVATE = (".restoring-", ".before-restore-", ".restore-ready", ".backup-out-",
@@ -88,7 +94,10 @@ PRIVATE = (".restoring-", ".before-restore-", ".restore-ready", ".backup-out-",
            # the cloud standby's pairing, copies and state (standby.py): this machine's own
            ".standby",
            # where this machine keeps its home on GitHub (keep.py): this machine's own
-           ".keep")
+           ".keep",
+           # what the watcher knows about this machine's code (integrity.py). Which tree is
+           # sealed, and what is locked, are facts about this computer.
+           "integrity.")
 READY = ".restore-ready"
 LAST = "last-restore.json"
 
@@ -229,7 +238,7 @@ class _Opener(io.RawIOBase):
             self.prefix = base64.b64decode(h["nonce"])
         except (KeyError, ValueError, TypeError):
             raise BackupError("This backup's header is damaged.")
-        if not hmac.compare_digest(str(h.get("check") or ""), _check(key)):
+        if not constcmp.same(str(h.get("check") or ""), _check(key)):
             raise BackupError("The passphrase is wrong. It is the one chosen when the backup was made.")
         self.box, self.ad, self.i = _aead(key), MAGIC + head, 0
         self.chunk = int(h.get("chunk") or CHUNK)
@@ -337,7 +346,7 @@ def _walk(home: Path):
         for f in sorted(files):
             if not rel_root.parts and (f in SKIP_TOP or _private(f)):
                 continue
-            if f in SKIP_NAMES or f.endswith(SKIP_SUFFIX):
+            if f in SKIP_NAMES or f in SKIP_FILES or f.endswith(SKIP_SUFFIX):
                 continue
             p = r / f
             if p.is_symlink() or not p.is_file():
@@ -680,8 +689,10 @@ def apply(staging, *, home=None, keyring: bool = True) -> dict:
     # the workspace, where this machine keeps it
     ws_src = staging / "outside" / "workspace"
     if ws_src.is_dir():
-        target = Path(_remap(manifest.get("workspace", ""), manifest, home) or
-                      (Path.home() / "AgentOS"))
+        target, moved_it = _workspace_target(manifest, home)
+        if moved_it:
+            report["attention"].append(f"The workspace this backup names is not a folder this machine "
+                                       f"keeps one in, so it was restored to {target}.")
         if target.exists() and any(target.iterdir()):
             prev = target.with_name(f"{target.name}.before-restore-{stamp}")
             try:
@@ -712,6 +723,8 @@ def apply(staging, *, home=None, keyring: bool = True) -> dict:
                                    f"that was there is kept in {report['workspace_previous']}.")
     report["attention"] += _vaults_back(home, manifest, keys, keyring)
     report["paths_rewritten"] = _remap_everywhere(home, manifest)
+    if report["workspace"]:
+        _point_config_at(home, report["workspace"], manifest)
     report["attention"] += _attention(manifest)
     if report["previous"]:
         report["attention"].append(f"What was here before is kept in {report['previous']}. "
@@ -721,7 +734,24 @@ def apply(staging, *, home=None, keyring: bool = True) -> dict:
         (home / LAST).write_text(json.dumps(report, indent=1))
     except OSError:
         pass
+    # The locked files are the restored ones now, by the OS's own hand. Only this machine's home:
+    # a test or a tool restoring elsewhere says nothing about it.
+    from . import integrity
+    if home.resolve() == integrity._home().resolve():
+        integrity.rebaseline_home()
     return report
+
+
+def _point_config_at(home: Path, target: str, manifest: dict) -> None:
+    """A workspace restored somewhere else than the file said: the setting follows it, or the agent
+    would go on working in the folder a crafted file named."""
+    wanted = _remap(str(manifest.get("workspace") or ""), manifest, home)
+    p = home / "config.json"
+    with contextlib.suppress(OSError, ValueError):
+        cfg = json.loads(p.read_text())
+        if wanted != target and cfg.get("workspace") == wanted:
+            cfg["workspace"] = target
+            p.write_text(json.dumps(cfg, indent=2))
 
 
 def restore(path, passphrase: str, *, home=None, keyring: bool = True) -> dict:
@@ -803,6 +833,32 @@ def last_restore(home=None, forget: bool = False) -> dict:
 
 
 # ---- after the swap ------------------------------------------------------------------
+
+def _workspace_target(manifest: dict, home: Path) -> tuple[Path, bool]:
+    """Where the workspace lands: this machine's workspace, whatever the file says. `manifest` came
+    from the file, and an absolute path in it was not checked by anything, so a crafted backup chose
+    a folder to fill and to move aside (~/.ssh, /etc/cron.d). Under this user's home, not hidden and
+    not holding the AgentOS home, or the home's own workspace folder: otherwise the default, and the
+    report says so. (Returns the folder and whether that happened.)"""
+    fallback = Path.home() / "AgentOS"
+    wanted = _remap(str(manifest.get("workspace") or ""), manifest, home)
+    if not wanted or not os.path.isabs(wanted):
+        return fallback, False
+    real = Path(os.path.realpath(wanted))
+    me = Path(os.path.realpath(Path.home()))
+    own = Path(os.path.realpath(home)) / "workspace"
+    if real == own:
+        return real, False
+    try:
+        parts = real.relative_to(me).parts
+    except ValueError:
+        return fallback, True
+    home_real = Path(os.path.realpath(home))
+    if (not parts or any(p.startswith(".") for p in parts) or real == home_real
+            or real in home_real.parents or home_real in real.parents):
+        return fallback, True
+    return real, False
+
 
 def _remap(value: str, manifest: dict, home: Path) -> str:
     """A path recorded on the old machine, where it lives on this one."""

@@ -17,14 +17,21 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 from pathlib import Path
 
 import httpx
+from . import netguard
+from . import protected
+from . import secevents
 from . import users as usersmod
 
 MAX_OUTPUT = 12_000  # chars of tool output fed back to the model
+# A tool's answer carries words this OS did not write: the same string as fabric and agent,
+# and the agent loop strips it and marks the turn (agent.TAINT_CARRIERS).
+TAINTED_REPLY = "[this reply carries content from an untrusted source]\n"
 APP_MAX_OUTPUT = 400_000  # a user-built app parses output in JS — no context to protect
 
 # Per-call override of MAX_OUTPUT. The cap exists to keep a tool result from
@@ -33,111 +40,405 @@ APP_MAX_OUTPUT = 400_000  # a user-built app parses output in JS — no context 
 # response at 12k shreds the JSON it came for.
 output_limit = contextvars.ContextVar("output_limit", default=MAX_OUTPUT)
 
-# Read-only commands that are always safe to run.
-SAFE_COMMANDS = {
-    "ls", "cat", "head", "tail", "grep", "rg", "find", "wc", "sort", "uniq", "cut",
-    "echo", "pwd", "whoami", "id", "date", "cal", "uptime", "uname", "hostname",
-    "df", "du", "free", "ps", "top", "lscpu", "lsblk", "lsusb", "lspci", "ip",
-    "which", "whereis", "type", "file", "stat", "history",
-    "diff", "md5sum", "sha256sum", "basename", "dirname", "realpath",
-    "xrandr", "sensors", "nvidia-smi", "acpi", "ping", "dig", "nslookup", "host",
-    "curl", "wget", "tree", "less", "more", "jq", "column", "nl",
-}
-# Not in the list above, on purpose: `env` and `awk` run other programs (`env rm -rf ~`,
-# `awk 'BEGIN{system(…)}'`), `sed` does too (`sed -n '1e id'`) and writes files (`w`),
-# and `printenv` hands the model every key in the server's environment. Each one was
-# classed safe until 0.6.18, which let a web page's instructions run them unasked.
+# Read-only commands that may run without asking, each with the flags it may run with
+# (_SAFE_FLAGS below). Anything not named there, a flag not listed for it, or a line this
+# reader cannot be sure about, asks.
 #
-# The rest are read-only only in their usual form. Each entry below says what turns
-# one into a write, a run or a change to the machine, and classify_command asks then.
-_VALUE_FLAGS = {  # flags that take the next word as their value
-    "curl": {"-m", "--max-time", "--connect-timeout", "-A", "--user-agent", "-H", "--header",
-             "-w", "--write-out", "--retry", "--retry-delay", "--retry-max-time", "-e",
-             "--referer", "--resolve", "--interface"},
-    "wget": {"-T", "--timeout", "-t", "--tries", "--max-redirect", "-U", "--user-agent",
-             "--header", "-O", "--output-document"},
-}
-_CURL_READ_FLAGS = {"-s", "--silent", "-S", "--show-error", "-L", "--location", "-I", "--head",
-                    "-i", "--include", "-f", "--fail", "--fail-with-body", "--compressed",
-                    "-v", "--verbose", "-G", "--get", "-4", "-6", "-k", "--insecure",
-                    "--http1.1", "--http2", "-N", "--no-buffer", "-sS", "-sL", "-fsSL",
-                    "-sSL", "-Ls", "-sI", "-Is", "-sf", "-fs", "-fsS", "-sSf", "-ks", "-sk"}
-_WGET_READ_FLAGS = {"-q", "--quiet", "-S", "--server-response", "--spider", "-nv",
-                    "--no-verbose", "--no-check-certificate", "-qO-", "-O-"}
+# Not on the list, on purpose: `env` and `awk` run other programs (`env rm -rf ~`,
+# `awk 'BEGIN{system(…)}'`), `sed` does too (`sed -n '1e id'`) and writes files (`w`), and
+# `printenv` hands the model every key in the server's environment. `curl` and `wget` send
+# things as well as fetch them (`curl -H @-`, `--data`, `-o`), and no flag list stays right
+# about that: quoted and attached forms slipped past one that tried.
 
 
-def _flags_ok(base: str, parts: list[str], allowed: set) -> bool:
-    """Every flag is one that only reads; a value flag's value is skipped."""
-    vals = _VALUE_FLAGS.get(base, set())
-    i = 1
-    while i < len(parts):
-        p = parts[i]
-        if p.startswith("-"):
-            name = p.split("=", 1)[0]
-            if name in vals:
-                i += 1 if "=" in p else 2
-                continue
-            if p not in allowed:
-                return False
+class _Word:
+    """One word of a command line as the shell would see it."""
+    __slots__ = ("value", "quoted_name", "escaped", "glob", "lead_glob", "brace", "any_quote", "open_brace")
+
+    def __init__(self):
+        self.value = ""
+        self.quoted_name = False    # a quote in or before a flag's name: `'-o'`, `-ex'ec'`
+        self.escaped = False        # a backslash outside quotes
+        self.glob = False           # an unquoted * ? [
+        self.lead_glob = False      # ...before anything literal, so it can expand to `-o…`
+        self.brace = False          # brace expansion: {-o,FILE}
+        self.any_quote = False
+        self.open_brace = False     # an unquoted {, which a comma or .. makes an expansion
+
+
+def shell_parse(cmd: str) -> list | None:
+    """The command line as segments of words, split where the shell would split it, or
+    None when this reader cannot be sure what the shell would do. str.split left quotes
+    in the word, so `-ex'ec'` read as a harmless string and ran as `-exec`."""
+    segs, words = [], []
+    cur = None
+
+    def end():
+        nonlocal cur
+        if cur is not None:
+            cur.brace = cur.open_brace and ("," in cur.value or ".." in cur.value)
+            words.append(cur)
+            cur = None
+
+    i, n = 0, len(cmd)
+    while i < n:
+        c = cmd[i]
+        if c in " \t":
+            end()
+            i += 1
+        elif c in ";|&":
+            end()
+            j = i
+            while j < n and cmd[j] in ";|&":
+                j += 1
+            if cmd[i:j] not in (";", "|", "||", "&&") or not words:
+                return None
+            segs.append(words)
+            words = []
+            i = j
+        elif c in "()<>`$#" and (c != "#" or cur is None) or ord(c) < 32 or ord(c) == 127:
+            return None
+        else:
+            if cur is None:
+                cur = _Word()
+            if c == "'":
+                close = cmd.find("'", i + 1)
+                if close < 0:
+                    return None
+                cur.any_quote = True
+                if "=" not in cur.value:
+                    cur.quoted_name = True
+                cur.value += cmd[i + 1:close]
+                i = close + 1
+            elif c == '"':
+                cur.any_quote = True
+                if "=" not in cur.value:
+                    cur.quoted_name = True
+                i += 1
+                while True:
+                    if i >= n:
+                        return None
+                    d = cmd[i]
+                    if d == '"':
+                        i += 1
+                        break
+                    if d in "$`":
+                        return None
+                    if d == "\\":
+                        if i + 1 >= n:
+                            return None
+                        if cmd[i + 1] in '"\\$`':
+                            cur.value += cmd[i + 1]
+                        else:
+                            cur.value += cmd[i:i + 2]
+                        i += 2
+                        continue
+                    cur.value += d
+                    i += 1
+            elif c == "\\":
+                if i + 1 >= n or ord(cmd[i + 1]) < 32:
+                    return None
+                cur.escaped = True
+                cur.value += cmd[i + 1]
+                i += 2
+            else:
+                if c == "{":
+                    cur.open_brace = True
+                if c in "*?[":
+                    cur.glob = True
+                    if not cur.value:
+                        cur.lead_glob = True
+                cur.value += c
+                i += 1
+    end()
+    if words:
+        segs.append(words)
+    elif segs and not cmd.rstrip().endswith(";"):
+        return None                 # a pipe or && with nothing after it
+    return segs
+
+
+class _Flags:
+    """What one read-only command may run with. `short` are single-letter switches, `val`
+    are single letters that take a value, `long` is a space-separated list: `--x` alone,
+    `--x=` takes a value, `--x?` may have `=value`. Names are matched whole, because getopt
+    takes abbreviations: `--outp=` IS `--output=`, and only an exact match cannot be fooled."""
+    __slots__ = ("short", "val", "long", "pos", "any", "guard", "esc", "check")
+
+    def __init__(self, short="", val="", long="", pos=None, any=False, guard=True, esc="", check=None):
+        self.short, self.val, self.pos, self.any = short, val, pos, any
+        self.guard, self.esc, self.check = guard, esc, check
+        self.long = {}
+        for w in long.split():
+            if w.endswith("="):
+                self.long[w[:-1]] = "value"
+            elif w.endswith("?"):
+                self.long[w[:-1]] = "optional"
+            else:
+                self.long[w] = "bare"
+
+
+def _flags_safe(spec: _Flags, words: list) -> bool:
+    """`words[0]` is the command. Every flag must be on the command's list; a word that is
+    only a flag once the shell has processed it (quoted, escaped, globbed) is refused, so
+    what is checked here is what the program gets."""
+    i, dd, positional = 1, False, []
+    while i < len(words):
+        w = words[i]
+        v = w.value
         i += 1
+        if w.brace or (w.escaped and v not in spec.esc):
+            return False
+        if dd or v == "-" or not v.startswith("-"):
+            if w.lead_glob and spec.guard:
+                return False
+            positional.append(v)
+            continue
+        if w.quoted_name or w.glob or w.escaped:
+            return False
+        if spec.any:
+            continue
+        if v == "--":
+            dd = True
+            continue
+        name, eq, _ = v.partition("=")
+        kind = spec.long.get(name)
+        if kind is not None:
+            if kind == "bare" and eq:
+                return False
+            if kind == "value" and not eq:
+                if i >= len(words) or words[i].brace or (words[i].lead_glob and spec.guard):
+                    return False
+                i += 1
+            continue
+        if v.startswith("--"):
+            return False
+        for j in range(1, len(v)):
+            c = v[j]
+            if c in spec.val:
+                if j == len(v) - 1:
+                    if i >= len(words) or words[i].brace or (words[i].lead_glob and spec.guard):
+                        return False
+                    i += 1
+                break
+            if c not in spec.short:
+                return False
+    if spec.pos is not None and len(positional) > spec.pos:
+        return False
+    return spec.check(positional) if spec.check else True
+
+
+_DIGITS = "0123456789"
+_JQ_REACH = re.compile(r"\b(env|input_filename|import|include|getpath_env|halt_error)\b")
+_IP_OBJECTS = {"a", "addr", "address", "l", "link", "r", "ro", "route", "n", "neigh",
+               "neighbor", "neighbour", "maddr", "rule"}
+_IP_VERBS = {"show", "s", "sh", "list", "ls", "lst"}
+
+
+def _ip_reads(pos: list) -> bool:
+    if not pos:
+        return True
+    return pos[0] in _IP_OBJECTS and (len(pos) == 1 or pos[1] in _IP_VERBS)
+
+
+# One line each. Unknown flags ask, which costs a click, so these name what people use.
+# `guard=False` means the command has no flag that writes or runs anything, so `cat *`
+# cannot be turned into something else by a file called `-o`.
+_SAFE_FLAGS = {
+    "ls": _Flags("aAbBcCdfFgGhHiklLmnNopqQrRsStuUvxXZ1", "IwT",
+                 "--all --almost-all --human-readable --recursive --reverse --size --directory --classify "
+                 "--inode --dereference --no-group --numeric-uid-gid --si --group-directories-first "
+                 "--full-time --sort= --time= --time-style= --color? --format= --width= --ignore= --hide= "
+                 "--block-size=", guard=False),
+    "cat": _Flags("AbeEnstTuv", "", "--number --number-nonblank --show-all --show-ends --show-tabs "
+                  "--show-nonprinting --squeeze-blank", guard=False),
+    "head": _Flags("qvz" + _DIGITS, "nc", "--lines= --bytes= --quiet --silent --verbose --zero-terminated",
+                   guard=False),
+    "tail": _Flags("qvzfF" + _DIGITS, "ncs", "--lines= --bytes= --quiet --silent --verbose --follow? --retry "
+                   "--sleep-interval= --zero-terminated", guard=False),
+    "grep": _Flags("EFGPiIvwxyclLnHhoqsbUTZraRz" + _DIGITS, "efmABCdD",
+                   "--ignore-case --no-ignore-case --recursive --dereference-recursive --line-number --count "
+                   "--files-with-matches --files-without-match --invert-match --word-regexp --line-regexp "
+                   "--only-matching --quiet --silent --no-messages --with-filename --no-filename --color? "
+                   "--colour? --extended-regexp --fixed-strings --perl-regexp --basic-regexp --byte-offset "
+                   "--binary-files= --text --null --null-data --initial-tab --include= --exclude= --exclude-dir= "
+                   "--max-count= --after-context= --before-context= --context= --regexp= --file=", guard=False),
+    "rg": _Flags("iIsSvwxclLnNoqFPUHaup" + _DIGITS, "egtTmABCMjrd",
+                 "--ignore-case --smart-case --case-sensitive --hidden --no-ignore --files --files-with-matches "
+                 "--files-without-match --count --count-matches --line-number --no-line-number --heading --no-heading "
+                 "--json --vimgrep --fixed-strings --word-regexp --line-regexp --invert-match --only-matching --quiet "
+                 "--multiline --no-messages --with-filename --no-filename --follow --pretty --stats --type= --type-not= "
+                 "--glob= --iglob= --max-count= --max-depth= --context= --after-context= --before-context= --regexp= "
+                 "--color= --sort= --sortr= --threads= --replace= --max-columns="),
+    "find": _Flags("", "", "-H -L -P -depth -follow -mount -xdev -noleaf -daystart -print -print0 -ls -prune -true "
+                   "-false -not -a -o -and -or -empty -readable -writable -executable -nouser -nogroup -warn -nowarn "
+                   "-name= -iname= -path= -ipath= -wholename= -iwholename= -regex= -iregex= -regextype= -lname= "
+                   "-ilname= -type= -xtype= -maxdepth= -mindepth= -mtime= -mmin= -atime= -amin= -ctime= -cmin= "
+                   "-newer= -anewer= -cnewer= -size= -user= -group= -uid= -gid= -perm= -links= -inum= -samefile= "
+                   "-fstype= -printf=", esc="()"),
+    "wc": _Flags("clmwL", "", "--bytes --chars --lines --words --max-line-length", guard=False),
+    "sort": _Flags("bdfgiMhnRrVcCmsuz", "ktS", "--reverse --numeric-sort --unique --human-numeric-sort "
+                   "--general-numeric-sort --version-sort --month-sort --ignore-case --ignore-leading-blanks "
+                   "--dictionary-order --stable --check? --merge --zero-terminated --random-sort "
+                   "--key= --field-separator= --buffer-size="),
+    "uniq": _Flags("cdDiuz", "fsw", "--count --repeated --unique --ignore-case --zero-terminated "
+                   "--skip-fields= --skip-chars= --check-chars=", pos=1),
+    "cut": _Flags("snz", "bcdf", "--only-delimited --complement --zero-terminated --bytes= --characters= "
+                  "--delimiter= --fields= --output-delimiter=", guard=False),
+    "echo": _Flags(any=True, guard=False),
+    "pwd": _Flags("LP", pos=0),
+    "whoami": _Flags(pos=0),
+    "id": _Flags("ugGnrzZ", "", "--user --group --groups --name --real", pos=1),
+    "date": _Flags("uRI", "dr", "--utc --universal --rfc-email --iso-8601? --rfc-3339= --date= --reference=",
+                   check=lambda pos: all(p.startswith("+") for p in pos)),   # `date 0101` sets the clock
+    "cal": _Flags("13ymjwh", "AB", pos=3),
+    "uptime": _Flags("ps", "", "--pretty --since", pos=0),
+    "uname": _Flags("asnrvmpio", "", "--all --kernel-name --nodename --kernel-release --machine", pos=0),
+    "hostname": _Flags("fisIAdy", "", "--fqdn --short --ip-address --all-ip-addresses --all-fqdns --domain", pos=0),
+    "df": _Flags("ahHiklPTx", "tB", "--all --human-readable --si --inodes --local --portability --print-type "
+                 "--output? --type= --exclude-type= --block-size=", guard=False),
+    "du": _Flags("achHsSklmbxLPD0" + _DIGITS, "dtB", "--all --apparent-size --bytes --human-readable --si --summarize "
+                 "--total --one-file-system --dereference --separate-dirs --max-depth= --exclude= --threshold= "
+                 "--block-size= --time?", guard=False),
+    "free": _Flags("bkmghtwlv", "sc", "--human --total --wide --si --bytes --kilo --mega --giga --lohi "
+                   "--seconds= --count=", pos=0),
+    # BSD words are letters too: `ps e` prints every process's environment, keys included
+    "ps": _Flags("efFlyAaNHwjmxTuv", "opUgGCt", "--forest --no-headers --sort= --pid= --ppid= --user= --format= "
+                 "--cols= --columns= --width=",
+                 check=lambda pos: all(re.fullmatch(r"[auxwfTrlm]+|[0-9,]+", p) for p in pos)),
+    "top": _Flags("bcHiSs", "dnpuUwoOE", pos=0),
+    "lscpu": _Flags("aepbcsxyJ", "", "--all --online --offline --json --extended? --parse? --hex"),
+    "lsblk": _Flags("abdDfilmnOpPrStJ", "oxeIT", "--all --bytes --fs --list --json --nodeps --noheadings --paths "
+                    "--perms --raw --topology --ascii --output= --sort= --pairs"),
+    "lsusb": _Flags("vt", "sd", "--verbose --tree"),
+    "lspci": _Flags("mvknxtbDPqQ", "sd"),
+    "ip": _Flags("46sdrhjoc", "", "-br -brief -c -color -j -json -d -details -s -stats -o -oneline -h -human --brief "
+                 "--color? --json --details --stats --oneline --human", check=_ip_reads),
+    "which": _Flags("as", "", "--all"),
+    "whereis": _Flags("bmsu", "", ""),
+    "type": _Flags("afptP"),
+    # -C compiles a magic file, and writes it
+    "file": _Flags("bikLhzZ", "fFe", "--brief --mime --mime-type --mime-encoding --dereference "
+                   "--no-dereference --uncompress --keep-going"),
+    "stat": _Flags("LfternZ", "c", "--dereference --file-system --terse --format= --printf=", guard=False),
+    "history": _Flags(pos=0),                      # -c clears, -w writes
+    "diff": _Flags("aBbdEiNpqrstTuwyZ", "UCIxWF", "--brief --report-identical-files --recursive --unified? "
+                   "--context? --side-by-side --ignore-case --ignore-all-space --ignore-space-change "
+                   "--ignore-blank-lines --new-file --text --color? --exclude= --ignore-matching-lines=",
+                   guard=False),
+    "md5sum": _Flags("bctzw", "", "--binary --check --text --quiet --status --warn --strict", guard=False),
+    "sha256sum": _Flags("bctzw", "", "--binary --check --text --quiet --status --warn --strict", guard=False),
+    "basename": _Flags("az", "s", "--multiple --zero --suffix="),
+    "dirname": _Flags("z", "", "--zero"),
+    "realpath": _Flags("emqsLPz", "", "--canonicalize-existing --canonicalize-missing --quiet --no-symlinks "
+                       "--strip --relative-to= --relative-base=", guard=False),
+    "xrandr": _Flags("q", "", "--query --listmonitors --listactivemonitors --current --verbose --prop --properties",
+                     pos=0),
+    "sensors": _Flags("uAj", "", "--no-adapter --version"),
+    "nvidia-smi": _Flags("qLx", "id", "--query --list-gpus --xml-format --query-gpu= --query-compute-apps= "
+                         "--format= --id= --display=", pos=0),
+    "acpi": _Flags("bBatTcCVsifFpP", "", "--battery --ac-adapter --thermal --cooling --everything --details", pos=0),
+    # -f flood, -p puts chosen bytes in the packet
+    "ping": _Flags("46nqvDO", "ciswWI"),
+    # -f reads names from a file or stdin, -k and -y are keys
+    "dig": _Flags("46rmu", "cpqtx"),
+    "nslookup": _Flags("", "", "-type= -query= -timeout= -port= -debug -nodebug",
+                       # with no name, or `-`, it reads lookups from stdin: `cat key | nslookup`
+                       check=lambda pos: bool(pos) and "-" not in pos),
+    "host": _Flags("aCdlrsTv46", "cNRtW"),
+    "tree": _Flags("adfilsuhDFCJpgxnNtrUv" + _DIGITS, "LIP", "--dirsfirst --noreport --du --si --prune --gitignore "
+                   "--charset= --filelimit= --sort= --matchdirs --ignore-case"),
+    # less and more: `+cmd` runs a command at start, -o and -O keep a log file
+    "less": _Flags("NSRrFXeEiIMmn" + _DIGITS, "xjh", check=lambda pos: not any(p.startswith("+") for p in pos)),
+    "more": _Flags("dlfsu" + _DIGITS, "n", check=lambda pos: not any(p.startswith("+") for p in pos)),
+    # jq reads the environment (`jq -n env`) and loads modules; it never writes
+    "jq": _Flags("rjacCMsSne", "", "--raw-output --raw-output0 --join-output --ascii-output --compact-output "
+                 "--color-output --monochrome-output --slurp --raw-input --sort-keys --null-input --exit-status "
+                 "--tab --indent=", check=lambda pos: not any(_JQ_REACH.search(p) for p in pos)),
+    "column": _Flags("tnexJ", "csNOR", "--table --separator= --columns="),
+    "nl": _Flags("p", "bdfhilnsvw", "--no-renumber"),
+}
+SAFE_COMMANDS = frozenset(_SAFE_FLAGS)
+
+_GIT_DIFF_LONG = ("--stat? --shortstat --numstat --dirstat? --summary --patch --no-patch --raw --minimal --patience "
+                  "--histogram --name-only --name-status --check --no-color --color? --color-moved? --word-diff? "
+                  "--ignore-space-change --ignore-all-space --ignore-blank-lines --ignore-space-at-eol --ignore-cr-at-eol "
+                  "--unified= --abbrev? --no-abbrev --no-ext-diff --no-textconv --full-index --binary --exit-code "
+                  "--quiet --find-renames? --find-copies? --diff-filter= --pickaxe-regex --pickaxe-all --relative? ")
+_GIT_LOG_LONG = (_GIT_DIFF_LONG + "--oneline --graph --all --branches? --tags? --remotes? --decorate? --no-decorate "
+                 "--format= --pretty? --abbrev-commit --no-abbrev-commit --since= --until= --after= --before= --author= "
+                 "--committer= --grep= --max-count= --skip= --follow --reverse --merges --no-merges --first-parent "
+                 "--date= --name-only --show-signature --left-right --cherry-pick --date-order --topo-order "
+                 "--author-date-order --ignore-case --invert-grep --extended-regexp --fixed-strings --no-walk? "
+                 "--source --full-history --simplify-merges --boundary --log-size --relative-date --parents --children")
+_GIT_REV_ANY = {"--all", "--list", "-l", "--contains", "--no-contains", "--merged", "--no-merged", "--points-at"}
+_GIT_SPECS = {
+    "status": _Flags("sbuvz", "", "--short --branch --porcelain? --long --verbose --show-stash --untracked-files? "
+                     "--ignored? --renames --no-renames --ahead-behind --no-ahead-behind --column? --no-column"),
+    "log": _Flags("pswbezumcW" + _DIGITS, "nSGLU", _GIT_LOG_LONG),
+    "show": _Flags("pswbezumcW" + _DIGITS, "SGLU", _GIT_LOG_LONG),
+    "diff": _Flags("pswbzuaRW" + _DIGITS, "SGU", _GIT_DIFF_LONG + "--cached --staged --merge-base"),
+    "shortlog": _Flags("sne", "", "--summary --numbered --email --all --since= --until= --author= --group= --no-merges"),
+    "blame": _Flags("lstfnewcp", "LMC", "--porcelain --line-porcelain --show-name --show-number --show-stats "
+                    "--date= --ignore-rev= --root --abbrev="),
+    "describe": _Flags("", "", "--tags --all --always --long --dirty? --broken? --abbrev= --exact-match --match= "
+                       "--exclude= --first-parent --candidates="),
+    "rev-parse": _Flags("q", "", "--short? --abbrev-ref? --verify --quiet --show-toplevel --show-prefix --show-cdup "
+                        "--git-dir --git-common-dir --absolute-git-dir --is-inside-work-tree --is-inside-git-dir "
+                        "--is-bare-repository --symbolic-full-name --symbolic --sq --default= --all --branches? --tags?"),
+    "ls-files": _Flags("cdmoiskutvz", "x", "--cached --deleted --modified --others --ignored --stage --unmerged "
+                       "--killed --exclude-standard --error-unmatch --full-name --directory --no-empty-directory "
+                       "--exclude= --exclude-from= --eol --deduplicate --recurse-submodules"),
+    "ls-remote": _Flags("qht", "", "--heads --tags --refs --quiet --symref --get-url --sort= --exit-code"),
+    "reflog": _Flags("pswz" + _DIGITS, "n", "--oneline --all --max-count= --date= --format= --pretty? --since= --until= "
+                     "--grep= --author= --stat?", check=lambda pos: not (pos and pos[0] in ("expire", "delete", "drop"))),
+    # `git config <key>` reads, a second word or any of its other switches writes
+    "config": _Flags("lz", "", "--get --get-all --get-regexp --list --show-origin --show-scope --global --local --system "
+                     "--name-only --null --type=", pos=2,
+                     check=lambda pos: len(pos) <= 1),
+    # a bare name creates a branch, a tag or (with `update`) goes to the network
+    "branch": _Flags("arvl", "", "--all --remotes --verbose --list --show-current --no-color --color? --abbrev= "
+                     "--contains? --no-contains? --merged? --no-merged? --points-at= --sort= --format= --column?"),
+    "tag": _Flags("ln" + _DIGITS, "", "--list --contains? --no-contains? --merged? --no-merged? --points-at= --sort= "
+                  "--format= --column? --no-column --ignore-case"),
+    "remote": _Flags("v", "", "--verbose", check=lambda pos: not pos or pos[0] in ("show", "get-url")),
+}
+# Only these read-only subcommands auto-run; everything else asks (or use the structured
+# git_* tools, which carry their own risk levels).
+GIT_SAFE_SUBCOMMANDS = frozenset(_GIT_SPECS)
+
+
+def _git_reads(words: list) -> bool:
+    i = 1
+    if len(words) > i and words[i].value == "--no-pager" and not words[i].any_quote:
+        i += 1
+    # anything else before the subcommand (-c, -C, --exec-path, --git-dir, --config-env)
+    # runs a configured program or points git somewhere else
+    if len(words) <= i or words[i].any_quote or words[i].escaped or words[i].glob:
+        return False
+    sub = words[i].value
+    spec = _GIT_SPECS.get(sub)
+    if spec is None or not _flags_safe(spec, words[i:]):
+        return False
+    rest = {w.value.split("=", 1)[0] for w in words[i + 1:]}
+    if sub in ("branch", "tag"):
+        # listing takes a pattern; without one of these a name creates something
+        names = [w.value for w in words[i + 1:] if not w.value.startswith("-")]
+        if names and not (rest & _GIT_REV_ANY):
+            return False
     return True
 
 
-def _segment_writes(base: str, parts: list[str], seg: str) -> bool:
-    """Does this otherwise read-only command write, run something or change the
-    machine in the form it was written?"""
-    args = parts[1:]
-    flags = {a.split("=", 1)[0] for a in args if a.startswith("-")}
-    words = [a for a in args if not a.startswith("-")]
-    if base == "find":
-        return bool(flags & {"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint",
-                             "-fprint0", "-fprintf", "-fls"})
-    if base == "curl":
-        # anything that sends data, saves a file, reads a config or changes the method
-        return not _flags_ok("curl", parts, _CURL_READ_FLAGS)
-    if base == "wget":
-        # wget SAVES what it fetches unless told to print it or only check it
-        to_stdout = ("-O" in args and args[args.index("-O") + 1:args.index("-O") + 2] == ["-"]) \
-            or any(a in ("-qO-", "-O-", "--output-document=-", "--spider") for a in args)
-        return not to_stdout or not _flags_ok("wget", parts, _WGET_READ_FLAGS)
-    if base == "sort":
-        return bool(flags & {"-o", "--output", "--compress-program"})
-    if base == "uniq":
-        return len(words) > 1                      # `uniq in out` writes out
-    if base == "tree":
-        return "-o" in flags
-    if base == "date":
-        return bool(flags & {"-s", "--set"})
-    if base == "hostname":
-        return bool(words) or bool(flags & {"-F", "--file", "-b", "--boot"})
-    if base == "history":
-        return bool(args)                          # -c clears, -w writes
-    if base == "ip":
-        return bool({"add", "del", "delete", "set", "flush", "change", "replace", "append",
-                     "prepend", "exec", "up", "down"} & set(words))
-    if base == "xrandr":
-        return any(a not in ("-q", "--query", "--listmonitors", "--listactivemonitors",
-                             "--current", "--verbose", "--prop", "--properties")
-                   for a in args)
-    if base == "nvidia-smi":
-        return bool(flags & {"-pl", "--power-limit", "-r", "--gpu-reset", "-pm",
-                             "--persistence-mode", "-c", "--compute-mode", "-ac",
-                             "--applications-clocks", "-rac", "-lgc", "-rgc", "-e",
-                             "--ecc-config", "-am", "-mig", "-lmc", "-rmc"})
-    if base == "sensors":
-        return bool(flags & {"-s", "--set"})
-    if base == "rg":
-        return bool(flags & {"--pre"})             # runs a preprocessor on every file
-    if base == "git":
+def segment_reads(words: list) -> bool:
+    """Does this one command only read, in the form the shell would run it? A program
+    named by a path can be anything (`./ls`), and a quoted program name is never needed."""
+    prog = words[0]
+    if prog.any_quote or prog.escaped or prog.glob or prog.brace or "/" in prog.value:
         return False
-    return False
-# git is NOT blanket-safe: `git push`/`reset --hard`/`clean -fdx` mutate and publish.
-# Only these read-only subcommands auto-run; everything else asks (or use the
-# structured git_* tools, which carry their own risk levels).
-GIT_SAFE_SUBCOMMANDS = {
-    "status", "log", "diff", "show", "branch", "remote", "tag", "describe",
-    "rev-parse", "ls-files", "ls-remote", "shortlog", "blame", "reflog", "config",
-}
+    if prog.value == "git":
+        return _git_reads(words)
+    spec = _SAFE_FLAGS.get(prog.value)
+    return spec is not None and _flags_safe(spec, words)
 # Commands never run even with approval.
 BLOCKED_PATTERNS = [
     r"\brm\s+(-[a-zA-Z]*\s+)*/(\s|$)",   # rm on filesystem root
@@ -150,9 +451,57 @@ CONNECTORS = re.compile(r"\s*(?:\|\||&&|;|\|)\s*")
 # not a connector the classifier splits on, so `ls & rm -rf ~/x` read as one `ls`.
 BACKGROUND = re.compile(r"(?<!&)&(?!&)")
 # What a shell command fetches from outside this machine, and so what taints the turn
-# (agent.is_untrusted): its output is somebody else's words, like fetch_url's.
-FETCHES = re.compile(r"(^|[\s;&|(])(curl|wget|http|lynx|w3m|links|aria2c|nc|ncat|ssh|scp|rsync|"
-                     r"git\s+(clone|pull|fetch))\b|https?://")
+# (agent.is_untrusted): its output is somebody else's words, like fetch_url's. Read from
+# the program each command runs: a pattern over the text missed `/usr/bin/curl`, `cu'rl'`
+# and `sudo curl`, and marked `grep curl notes.txt`.
+FETCH_PROGRAMS = {"curl", "wget", "http", "https", "lynx", "w3m", "links", "elinks", "aria2c", "nc",
+                  "ncat", "netcat", "socat", "ssh", "scp", "sftp", "rsync", "telnet", "ftp"}
+_FETCH_GIT = {"clone", "pull", "fetch", "ls-remote", "submodule"}
+_RUNS_ANOTHER = {"sudo", "doas", "env", "nice", "ionice", "nohup", "timeout", "time", "xargs", "stdbuf",
+                 "setsid", "command", "exec", "builtin", "busybox", "watch", "parallel",
+                 "sh", "bash", "dash", "zsh", "ksh", "fish"}
+_UNNAMED_PROGRAM = re.compile(r"(?:^|[;&|(\n`])\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*([\"']?(?:\$|`)[^\s]*)")
+_URL_IN = re.compile(r"\b(?:https?|ftp)://", re.I)
+# Python and friends: the same question, asked of code rather than of a command line
+FETCHES = re.compile(r"\b(?:curl|wget|aria2c|urllib|urllib2|urllib3|requests|httpx|aiohttp|http\.client|"
+                     r"socket|ftplib|telnetlib|paramiko)\b|\b(?:https?|ftp)://", re.I)
+
+
+def shell_fetches(text: str) -> str:
+    """The word that makes this shell line a download ('' when it is not one). This reads
+    lines the classifier would refuse as well (substitutions, redirects), so it splits
+    wherever a command could start rather than giving up on them. A program it cannot
+    name (`$c url`) counts, because a variable can hold curl."""
+    t = str(text or "")
+    m = _URL_IN.search(t)
+    if m:
+        return m.group(0)
+    m = _UNNAMED_PROGRAM.search(t)
+    if m:
+        return m.group(1).strip()[:40]
+    bare = re.sub(r"\\\n", "", t)
+    bare = re.sub(r"[\"'\\]", "", bare)
+    for seg in re.split(r"[;&|()\n`<>{}]|\$\(", bare):
+        words = [w for w in seg.split() if w]
+        while words and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", words[0]):
+            words.pop(0)
+        if not words:
+            continue
+        if words[0].startswith("$"):
+            return words[0][:40]
+        prog = os.path.basename(words[0])
+        if prog in FETCH_PROGRAMS:
+            return prog
+        if prog == "git" and _FETCH_GIT & set(words[1:]):
+            return "git " + next(w for w in words[1:] if w in _FETCH_GIT)
+        if prog in _RUNS_ANOTHER:
+            for w in words[1:]:
+                if os.path.basename(w) in FETCH_PROGRAMS:
+                    return os.path.basename(w)
+                if os.path.basename(w) == "git" and _FETCH_GIT & set(words):
+                    return "git"
+    return ""
+
 
 # Stock theme ids the desktop ships (keys of THEMES in ui/src/js/02-themes-shells.js);
 # custom themes from the Themes store merge in at call time (list_themes).
@@ -189,13 +538,51 @@ ALWAYS_ASK = {"power_action", "enable_flow", "enable_openclaw_plugin",
               "install_skill",
               # a department or an agent asking for an ability it lacks (running code):
               # the person's yes, every time, whoever asks (agentos/tools.py ABILITIES)
-              "request_capability"}
+              "request_capability",
+              # this OS's own code and a restart that loads it, and who the agent is from now
+              # on. No autonomy level answers these, and neither does a remembered yes
+              "develop_agentos", "restart_agentos", "update_soul",
+              # which folders the jail opens, and which agent answers every turn: one of those
+              # leaves this gate altogether. Admin only, and asked of that admin every time
+              "share_folder", "set_engine",
+              # a whole page the agent wrote, drawn over the desktop. It runs in a sandbox and
+              # reaches nothing, and it can still look like this desktop asking for a password
+              "create_theme_shell"}
+
+
+# The machine's radios: a joined network sees its traffic, and a paired keyboard types on the
+# host. ALWAYS_ASK by name would ask for a status read too, so the loop asks when risk_of says
+# the action changes something (connect, forget, pair...), at every autonomy level.
+RADIO_TOOLS = {"wifi", "bluetooth"}
+# Tools that reach the host itself: its screen, its native windows and apps, its sound and power.
+# A machine has one of each, whoever is signed in, and a native app runs outside every account's
+# jail, so on a machine with accounts these are an admin's (`Toolbox.execute`, the one check),
+# as `machineroutes.py` says of the routes that do the same. With no accounts nothing changes.
+HOST_TOOLS = {
+    "take_screenshot": "see this machine's screen",
+    "open_app": "open things on this machine's screen",
+    "launch_native_app": "start an app on this machine",
+    "list_windows": "see this machine's windows",
+    "focus_window": "change this machine's windows",
+    "manage_window": "change this machine's windows",
+    "system_control": "change this machine's settings",
+    "set_brightness": "change this machine's brightness",
+    "audio": "use this machine's sound",
+    "power_profile": "use this machine's power settings",
+    "lock_screen": "lock this machine's screen",
+    "power_action": "change this machine's power state",
+    "list_notifications": "read this machine's notifications",
+    "app_windows": "use this machine's native apps",
+    "app_window_open": "use this machine's native apps",
+    "app_window_look": "use this machine's native apps",
+    "app_window_act": "use this machine's native apps",
+}
 
 
 # Asked of a PERSON every time a specialist calls them, at every autonomy level, unless
 # somebody wrote an explicit grant (the card's "remember" is one). A department that can
 # run code was the owner's choice on exactly those terms (company.set_code).
-ASK_FROM_SPECIALISTS = {"run_python"}
+ASK_FROM_SPECIALISTS = {"run_python", "run_tests"}
 
 
 # Tools that change nothing outside this OS's own records, named one by one. risk_of
@@ -206,7 +593,7 @@ ASK_FROM_SPECIALISTS = {"run_python"}
 # given its own line in risk_of.
 # Tools that act for ONE app when the caller is that app (its appTool) or is building
 # it (App Studio): the agent loop and /api/tool inject `_app`, never the model or the page.
-APP_BOUND_TOOLS = ("schedule_task", "create_trigger", "update_app_data")
+APP_BOUND_TOOLS = ("schedule_task", "create_trigger", "update_app_data", "fetch_url", "desktop_state")
 
 SAFE_TOOLS = {
     # reading
@@ -225,10 +612,10 @@ SAFE_TOOLS = {
     "linked_teams",
     # the community's shared notes (pool.py): read only, and UNTRUSTED (agent.py)
     "community_recall",
-    # this OS's own records and looks. The ones that write something an agent reads
+    # this OS's own records and looks (create_theme is risky: see risk_of). The ones that write something an agent reads
     # back later (memory, the graph, skills, automations) are held for a person after
     # untrusted content: see policy.TAINT_WATCH.
-    "remember", "forget", "kg_add", "save_skill", "save_automation", "run_automation",
+    "remember", "forget", "kg_add", "save_skill", "run_automation",
     "brief_item", "notify", "save_report", "create_space", "snapshot_os",
     # the Stage: drawn on the person's own screen and kept with the chat (stage.py)
     "show_scene",
@@ -254,43 +641,152 @@ SAFE_TOOLS = {
 def classify_command(command: str) -> str:
     """Return 'safe', 'risky', or 'blocked' for a shell command.
 
-    Safe = every segment of a pipe/&&/; chain is a known read-only command,
-    with no redirects or command substitution anywhere.
+    Safe = every command of a pipe/&&/; chain is a known read-only program, named plainly,
+    running only with flags on its list, with no redirects or substitution anywhere.
     """
     for pat in BLOCKED_PATTERNS:
         if re.search(pat, command):
             return "blocked"
     if DANGEROUS_META.search(command) or BACKGROUND.search(command):
         return "risky"
-    segments = [s for s in CONNECTORS.split(command.strip()) if s.strip()]
+    segments = shell_parse(command.strip())
     if not segments:
-        return "risky"
-    for seg in segments:
-        parts = seg.strip().split()
-        base = os.path.basename(parts[0]) if parts else ""
-        if base == "git":
-            sub = next((p for p in parts[1:] if not p.startswith("-")), "")
-            if sub not in GIT_SAFE_SUBCOMMANDS:
-                return "risky"
-            if any(p.startswith(("--output", "--ext-diff", "--exec")) or p == "-c" for p in parts):
-                return "risky"  # writes a file, or runs a configured program
-            if sub == "config":
-                # `git config <key>` reads; `git config <key> <value>` writes
-                args = [p for p in parts[2:] if not p.startswith("-")]
-                if len(args) > 1:
-                    return "risky"
-            if sub == "branch" and any(p in parts for p in ("-d", "-D", "-m", "-M", "--delete")):
-                return "risky"
-            if sub == "tag" and any(not p.startswith("-") for p in parts[2:]):
-                return "risky"  # creating/deleting a tag; bare `git tag` lists
-            if sub == "remote" and any(p in parts for p in ("add", "remove", "rm", "set-url", "rename")):
-                return "risky"
-            continue
-        if base not in SAFE_COMMANDS:
-            return "risky"
-        if _segment_writes(base, parts, seg):
-            return "risky"
-    return "safe"
+        return "risky"                     # nothing to run, or a line this reader cannot be sure of
+    return "safe" if all(segment_reads(words) for words in segments) else "risky"
+
+
+# An automation an agent started on a turn that had read something from outside. The page
+# replays its steps, so this is how that fact survives the trip: a ticket the server made,
+# looked up here, naming the taint. A step with a ticket nobody knows is treated as tainted.
+_AUTOMATION_RUNS: dict = {}
+AUTOMATION_TICKET_S = 900
+
+
+def automation_ticket(name: str, taint) -> str:
+    now = time.time()
+    for k in [k for k, v in _AUTOMATION_RUNS.items() if v["until"] < now]:
+        del _AUTOMATION_RUNS[k]
+    tok = uuid.uuid4().hex
+    _AUTOMATION_RUNS[tok] = {"name": str(name)[:80], "taint": list(taint or []),
+                             "uid": usersmod.current() or "", "until": now + AUTOMATION_TICKET_S}
+    return tok
+
+
+def automation_taint(ticket: str) -> list:
+    """The taint a replayed step carries. '' is a person pressing Run: nothing."""
+    if not ticket:
+        return []
+    got = _AUTOMATION_RUNS.get(str(ticket))
+    if not got or got["until"] < time.time() or got["uid"] != (usersmod.current() or ""):
+        return [{"tool": "automation", "source": "a saved automation an agent started"}]
+    return list(got["taint"]) or [{"tool": "automation", "source": f"the automation {got['name']}"}]
+
+
+# What `configure_agentos` may touch: an allow-list, because the next key added to config is one
+# nobody thought about here. "A model-reachable path to a security setting is a defect, whatever
+# autonomy level it needs": the sandbox, Rules, autonomy and channels were all on this tool.
+CONFIG_SAFE_KEYS = frozenset({"agent_name", "default_model", "max_steps", "memory"})
+# Named only so the refusal can say where to go instead of reading as a typo.
+CONFIG_PERSON_KEYS = frozenset({
+    "autonomy", "policies", "sandbox", "workspace", "mcp_servers", "telegram", "whatsapp",
+    "security", "remote", "users", "providers", "executors", "engine", "team", "github", "port",
+    "host", "hands", "face", "provision", "updates", "signin", "mail", "calendar", "oauth_clients",
+})
+MAX_STEPS_CEILING = 200
+_MEMORY_VALUES = {"auto_extract": bool, "inject_user": int, "inject_session": int, "inject_facts": int,
+                  "rollup_after_hours": (int, float)}
+
+
+def _memory_value_ok(key: str, value) -> bool:
+    want = _MEMORY_VALUES.get(key)
+    if want is None or (want is not bool and isinstance(value, bool)):
+        return False
+    return isinstance(value, want) and (want is bool or 0 <= value <= 1000)
+
+
+# Named settings that make git start a program, or that change where it reads from. `-c` is read
+# after the repo's own file, so these win over whatever the folder says.
+_GIT_OFF = [c for kv in (
+    "core.hooksPath=/dev/null", "core.fsmonitor=false", "core.attributesFile=/dev/null",
+    "core.pager=cat", "core.editor=true", "sequence.editor=true", "core.askPass=",
+    "core.alternateRefsCommand=true", "credential.helper=", "commit.gpgSign=false", "tag.gpgSign=false",
+    "gpg.program=false", "protocol.ext.allow=never", "gc.auto=0", "maintenance.auto=false",
+    "diff.ignoreSubmodules=all", "status.submoduleSummary=false",
+    "fetch.recurseSubmodules=false", "push.recurseSubmodules=no", "submodule.recurse=false",
+    "safe.bareRepository=explicit", "core.sshCommand=ssh",
+) for c in ("-c", kv)]
+# The environment's own spelling of the same, which git reads first or instead. An empty
+# GIT_PROXY_COMMAND also stops core.gitProxy, which -c cannot, because the first match wins there.
+_GIT_ENV = {"GIT_TERMINAL_PROMPT": "0", "GIT_ASKPASS": "", "SSH_ASKPASS": "", "GIT_PAGER": "cat",
+            "GIT_EDITOR": "true", "GIT_SEQUENCE_EDITOR": "true", "GIT_PROXY_COMMAND": "",
+            "GIT_SSH_COMMAND": "ssh -oBatchMode=yes", "GIT_OPTIONAL_LOCKS": "0",
+            "GIT_ALLOW_PROTOCOL": "https:http:ssh:git:file"}
+_GIT_NAMED = (
+    (re.compile(r"filter\.(.+)\.(clean|smudge|process)", re.S), ""),
+    (re.compile(r"diff\.(.+)\.(command|textconv)", re.S), ""),
+    (re.compile(r"merge\.(.+)\.driver", re.S), "true"),
+    (re.compile(r"remote\.(.+)\.uploadpack", re.S), "git-upload-pack"),
+    (re.compile(r"remote\.(.+)\.receivepack", re.S), "git-receive-pack"),
+    (re.compile(r"remote\.(.+)\.vcs", re.S), ""),
+)
+# What a tool's child must not inherit: this server's keys, and git's own overrides
+_ENV_SECRET = re.compile(r"(?i)^(agentos_|bento_|git_)|token|secret|passw|passphrase|api_?key|_key$|credential|cookie")
+
+
+def _tool_env() -> dict:
+    return {k: v for k, v in os.environ.items() if not _ENV_SECRET.search(k)}
+
+
+def _python_binds(exe: str | None = None, prefixes: tuple | None = None,
+                  hidden: list[str] | None = None) -> list[str]:
+    """The folders this interpreter lives in, when the jail would blank them (a venv under /home).
+    Read-only, and nothing but Python is in them. Every hop of the interpreter's links counts: uv
+    reaches its Python through a folder link (`cpython-3.13-linux-…` to the full version), and the
+    venv's `python` names the link, so binding only the resolved folder left a path that didn't
+    exist in the jail (found by CI, where Python comes from uv under /home/runner)."""
+    exe = exe or sys.executable
+    prefixes = prefixes if prefixes is not None else (sys.prefix, sys.base_prefix)
+    # whatever the jail blanks: /home, and a home anywhere else (/root, /data)
+    hidden = hidden if hidden is not None else ["/home", *_jail_hidden()]
+    out: list[str] = []
+
+    def add(path: str) -> None:
+        for p in (path, os.path.realpath(path)):
+            if os.path.isdir(p) and p not in out and _under_any(p, hidden):
+                out.append(p)
+
+    for p in prefixes:
+        add(p)
+    hop = exe
+    for _ in range(12):
+        folder = os.path.dirname(hop)
+        # an interpreter in .../bin finds its library in the folder above, by the name it was run as
+        add(os.path.dirname(folder) if os.path.basename(folder) == "bin" else folder)
+        if not os.path.islink(hop):
+            break
+        hop = os.path.normpath(os.path.join(folder, os.readlink(hop)))
+    return out
+
+
+def _dashed(value) -> bool:
+    return str(value or "").startswith("-")
+
+
+def _git_overrides(names: list[str]) -> list[str] | None:
+    """`-c` overrides for the settings this repo's config names itself, or None when it points
+    git at another folder altogether."""
+    out: list[str] = []
+    for name in names:
+        name = name.strip("\n")
+        if name == "core.worktree":
+            return None
+        for pat, value in _GIT_NAMED:
+            if pat.fullmatch(name):
+                out += ["-c", f"{name}={value}"]
+                if name.startswith("filter."):
+                    out += ["-c", f"{name.rsplit('.', 1)[0]}.required=false"]
+                break
+    return out
 
 
 class _TextExtractor(html.parser.HTMLParser):
@@ -314,21 +810,96 @@ class _TextExtractor(html.parser.HTMLParser):
             self.parts.append(data.strip())
 
 
+# A failed probe is tried again after this long: a sysctl or an install can fix it while the
+# server runs. A working one is kept for the life of the process.
+JAIL_RETRY_S = 300
+_JAIL: dict = {"mech": None, "why": "", "at": 0.0}
+# The flags the jail really uses, so an old bubblewrap or a container that refuses one of them
+# reads as "cannot be entered" here rather than as every command failing later.
+_JAIL_PROBE = ["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp",
+               "--unshare-pid", "--unshare-ipc", "--unshare-uts", "--die-with-parent",
+               "--new-session", "--clearenv", "/bin/sh", "-c", "exit 0"]
+
+
+def _jail_probe() -> tuple[str, str]:
+    """(mechanism, why not). Runs the jail once. `which bwrap` was the old test, and it answered
+    yes on Docker's default seccomp and on Ubuntu 24.04's AppArmor rule, where the program exists
+    and every run of it dies on "setting up uid map: Permission denied"."""
+    if sys.platform == "darwin":
+        if not shutil.which("sandbox-exec"):
+            return "", "macOS has no sandbox-exec here."
+        try:
+            r = subprocess.run(["sandbox-exec", "-p", "(version 1)(allow default)", "/bin/sh", "-c", "exit 0"],
+                               capture_output=True, text=True, timeout=10)
+        except (OSError, subprocess.SubprocessError) as e:
+            return "", f"sandbox-exec could not start ({type(e).__name__})."
+        return ("sandbox-exec", "") if r.returncode == 0 else ("", "sandbox-exec refused to start here.")
+    if not shutil.which("bwrap"):
+        return "", "bubblewrap is not installed."
+    try:
+        r = subprocess.run(_JAIL_PROBE, capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError) as e:
+        return "", f"bubblewrap could not start ({type(e).__name__})."
+    if r.returncode == 0:
+        return "bwrap", ""
+    last = ((r.stderr or "").strip().splitlines() or ["it exited with an error"])[-1][:160]
+    return "", f"bubblewrap is installed and this machine refuses it: {last}"
+
+
 def sandbox_mechanism() -> str:
-    """Which OS jail is available: 'bwrap' (Linux), 'sandbox-exec' (macOS), or ''."""
-    if sys.platform == "darwin" and shutil.which("sandbox-exec"):
-        return "sandbox-exec"
-    if shutil.which("bwrap"):
-        return "bwrap"
-    return ""
+    """The OS jail that can really be entered here: 'bwrap', 'sandbox-exec', or ''. Cached,
+    because every command asks and the probe is a process."""
+    now = time.time()
+    if _JAIL["mech"] is None or (not _JAIL["mech"] and now - _JAIL["at"] > JAIL_RETRY_S):
+        _JAIL["mech"], _JAIL["why"] = _jail_probe()
+        _JAIL["at"] = now
+    return _JAIL["mech"]
+
+
+def jail_why_not() -> str:
+    """Why `sandbox_mechanism()` is empty, in a sentence ('' when it works)."""
+    return "" if sandbox_mechanism() else (_JAIL["why"] or "No sandbox can start on this machine.")
 
 
 def sandbox_conf(cfg: dict) -> tuple[bool, str]:
-    """(enabled, absolute root). Root defaults to the workspace. Enabled only when a
-    jail mechanism exists for this OS (bubblewrap on Linux, sandbox-exec on macOS)."""
+    """(enabled, absolute root). Root defaults to the workspace. `enabled` is the setting and it
+    stays true on a machine with no working jail: the folder rule still holds in the file tools,
+    and the shell refuses or asks (jail_gap). It used to read false there, so a machine with the
+    sandbox on and no bubblewrap had no walls at all while config and docs said it did."""
     sb = cfg.get("sandbox") or {}
     root = os.path.realpath(os.path.expanduser(sb.get("root") or cfg["workspace"]))
-    return bool(sb.get("enabled")) and bool(sandbox_mechanism()), root
+    # `sandbox.root` is the machine's, and an account that is not an admin starts from its
+    # own folder: `_files_root` and the jail both begin here
+    if usersmod.workspace_problem(cfg.get("_uid"), root):
+        root = os.path.realpath(usersmod.workspace_of(cfg))
+    return bool(sb.get("enabled")), root
+
+
+# A person said yes to this one step knowing there are no walls (agent.py sets it around the call).
+_jail_waived = contextvars.ContextVar("jail_waived", default=False)
+# The tools that run code on this machine, and so need a jail or a person's yes.
+JAILED_TOOLS = ("run_command", "run_python", "terminal_send")
+
+
+def jail_gap(cfg: dict) -> str:
+    """Why a command cannot be jailed although the sandbox is on, or ''. With accounts the shell
+    refuses outright, so this is the one-person machine: a person's yes per step, nothing else."""
+    if usersmod.enabled() or not (cfg.get("sandbox") or {}).get("enabled") or sandbox_mechanism():
+        return ""
+    return ("The sandbox cannot run on this machine, so this would run with the server's own access. "
+            + jail_why_not())
+
+
+def jail_state(cfg: dict) -> dict:
+    """The one answer every face reads: Settings, `bento doctor`, the agent's prompt."""
+    on = bool((cfg.get("sandbox") or {}).get("enabled"))
+    mech = sandbox_mechanism()
+    words = ""
+    if on and not mech:
+        words = ("The sandbox is on and cannot start here. Files stay in the allowed folders, "
+                 "and each command asks you first. " + jail_why_not())
+    return {"enabled": on, "mechanism": mech, "working": bool(on and mech), "words": words,
+            "why": "" if mech else jail_why_not()}
 
 
 # --------------------------------------------------------------------------
@@ -570,54 +1141,173 @@ def jail_python(exe: str) -> str:
     """An interpreter the jail can see. The server's own is usually a venv under /home,
     which bwrap blanks (`--tmpfs /home`), so run_python failed every time with "No such
     file or directory": found when a Research quant tried to backtest. A venv's python
-    links to a real interpreter; use that when it is outside /home, else the system's.
-    The venv's packages do not come along, and nothing here promises they would."""
+    links to a real interpreter; use that when it is outside what the jail hides, else the
+    system's, else the real one again, which bwrap_argv binds back (the image's only Python is
+    uv's, under /root). The venv's packages do not come along, and nothing here promises they would."""
     real = os.path.realpath(exe or "")
-    if real and os.path.exists(real) and not real.startswith("/home/"):
+    if real and os.path.exists(real) and not _under_any(real, ["/home", *_jail_hidden()]):
         return real
-    for cand in ("/usr/bin/python3", "/usr/local/bin/python3", "/opt/homebrew/bin/python3"):
+    for cand in _SYSTEM_PYTHONS:
         if os.path.exists(cand):
             return cand
-    return "python3"
+    return real if real and os.path.exists(real) else "python3"
+
+
+_SYSTEM_PYTHONS = ("/usr/bin/python3", "/usr/local/bin/python3", "/opt/homebrew/bin/python3")
+# What a jailed program keeps of the server's environment. An allow-list, because the server holds
+# provider keys, BENTO_STORAGE_*, AGENTOS_PASSPHRASE and whatever a unit file adds next year, and
+# `cat /proc/self/environ` is classed safe. No DBUS_*, XDG_RUNTIME_DIR or DISPLAY: those are doors.
+JAIL_ENV = ("PATH", "LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE", "LC_MESSAGES", "LC_TIME", "LC_NUMERIC",
+            "TZ", "TERM", "COLORTERM", "USER", "LOGNAME",
+            "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "NODE_EXTRA_CA_CERTS",
+            "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY",
+            "http_proxy", "https_proxy", "no_proxy", "all_proxy")
+_SECRET_ENV = re.compile(r"(KEY|TOKEN|SECRET|PASS|CREDENTIAL|COOKIE|^BENTO_STORAGE|^AGENTOS_PASSPHRASE|^DBUS_)", re.I)
+
+
+def jail_env(root: str) -> dict:
+    """The whole environment of a jailed program. A proxy address with a password in it stays out."""
+    env = {k: os.environ[k] for k in JAIL_ENV
+           if k in os.environ and not ("PROXY" in k.upper() and "@" in os.environ[k])}
+    env.setdefault("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
+    env.setdefault("TERM", "xterm-256color")
+    env.update({"HOME": root, "TMPDIR": "/tmp", "AGENTOS_SANDBOX": "1"})
+    return env
+
+
+def unjailed_env() -> dict:
+    """A command with the sandbox off, or that a person let through with no jail, still has no need
+    of the server's keys. A deny-list here, since it is meant to behave like the person's own shell."""
+    return {k: v for k, v in os.environ.items() if not _SECRET_ENV.search(k)}
+
+
+def _jail_hidden(hide: list[str] | None = None) -> list[str]:
+    """What no jail ever shows: this machine's AgentOS home wherever it is, and the OS user's own
+    home (ssh keys, a Claude Code sign-in). `--tmpfs /home` was the only cover, so a home under
+    /root, /var/lib or /data was in plain view: session.key, config.json, users.json."""
+    out: list[str] = []
+    try:
+        import pwd
+        osuser = pwd.getpwuid(os.getuid()).pw_dir
+    except (ImportError, KeyError):
+        osuser = ""
+    from . import config as cfgmod
+    for p in [*(hide or []), str(cfgmod.AGENTOS_HOME), os.path.expanduser("~"), osuser]:
+        rp = os.path.realpath(p) if p else ""
+        # a home of / or of a system folder is a broken passwd line; blanking it breaks every tool
+        if rp and rp not in out and os.path.isdir(rp) and not _under_any(
+                "/usr/bin", [rp]) and not _under_any("/etc/passwd", [rp]):
+            out.append(rp)
+    return out
+
+
+def _jail_path_ok(path: str) -> bool:
+    """A folder may be bound into a jail only if no agent is refused it anyway. A share naming the
+    home's pki folder would otherwise be a way round everything hidden above."""
+    from . import protected
+    return not protected.secret(path) and not protected.is_a_home(path)
+
+
+def jail_root(root: str) -> str:
+    """The folder to bind. A root that IS a home, or a private part of one, becomes that home's
+    workspace: binding it would hand back every file the jail exists to hide."""
+    from . import protected
+    real = os.path.realpath(root)
+    if _jail_path_ok(real):
+        return real
+    ws = os.path.join(str(protected.home_of(real) or real), "workspace")
+    os.makedirs(ws, exist_ok=True)
+    return ws
+
+
+def account_root(cfg: dict, uid: str | None = None) -> str:
+    """The folder an account's jail is built on: its workspace, never its home. The home holds its
+    vault key, config and database, and the whole of it used to be bound read-write, so `cat
+    vault.key` was a safe command. A workspace set outside the home is ignored here on purpose: a
+    non-admin choosing a workspace must never be a way to reach a folder. The first account's
+    `~/AgentOS` comes in as a share (users.share_own_workspace)."""
+    home = os.path.realpath(str(usersmod.home_for(usersmod.current() if uid is None else uid)))
+    ws = os.path.realpath(os.path.expanduser(str((cfg or {}).get("workspace") or "")))
+    root = ws if ws != home and ws.startswith(home + os.sep) and _jail_path_ok(ws) else os.path.join(home, "workspace")
+    os.makedirs(root, exist_ok=True)
+    return root
 
 
 def bwrap_argv(root: str, tail: list[str], chdir: str | None = None,
                hide: list[str] | None = None, extra: list[str] | None = None,
-               ro_extra: list[str] | None = None) -> list[str]:
-    """Jail: whole FS read-only, /home hidden, only `root` writable & visible.
+               ro_extra: list[str] | None = None, new_session: bool = True,
+               own_ro: list[str] | None = None, own_env: bool = False) -> list[str]:
+    """Jail: whole FS read-only, every home hidden, only `root` writable & visible.
 
     `hide` names extra directories to blank with a tmpfs BEFORE `root` is bound
-    back in — this is how one account's home is hidden from another's shell. The
-    whole FS is bound read-only, so a bare jail can still READ everything; tmpfs'ing
-    the users root and then re-binding only this user's home is what turns "cannot
-    write outside my workspace" into "cannot even see another tenant's files".
+    back in. `_jail_hidden` adds this machine's AgentOS home and the OS user's home
+    to it, wherever they are, so neither depends on sitting under /home.
 
     `extra` are shared folders bound WRITABLE, `ro_extra` the read-only ones. Both
-    come LAST, after the tmpfs'd `hide` list, for the same reason `root` does: a
-    bind is only visible if nothing blanks it afterwards. They have already been
-    refused if they sit at or above the accounts root, so re-binding them cannot
-    undo `hide`.
+    come after the blanking, for the same reason `root` does: a bind is only visible
+    if nothing blanks it afterwards. A bind that CONTAINS a hidden folder (a sandbox
+    root of `~`) brings it back, so that folder is blanked again after it.
 
     A read-only share MUST be --ro-bind here even though the whole filesystem is
     already bound read-only: it may sit under /home, which is tmpfs'd away, and
     without a bind of its own it would simply not exist inside the jail. Binding
-    it writable instead is the bug this argument exists to prevent — the file
+    it writable instead is the bug this argument exists to prevent, since the file
     tools would refuse a write the shell would happily perform.
+
+    /run is blanked whole, /run/user and /run/dbus with it: the session bus starts a process
+    outside the jail with `systemd-run --user`, and a read-only bind stops no connect() on a
+    socket, so /run/docker.sock was root. The network stays (agents need it), which leaves abstract
+    sockets in reach; the server's own door is guarded by a process check, not by this.
+
+    `own_ro` are this OS's own files a tool needs in there, bound past the check a person's share
+    goes through. `own_env` means the caller built the program's whole environment from `jail_env`
+    and set it on the bwrap process itself: what it holds (a server's own API key, a git token) must
+    not go on a command line through --setenv, so the environment is left alone.
+
+    `new_session` cuts the command off the terminal, so it cannot push keystrokes at whatever reads
+    that terminal next. The interactive Terminal keeps it off, because a shell with no controlling
+    terminal has no job control. That costs nothing there: `TIOCSTI` only feeds the slave side of the
+    server's own pty, the one reader of that side is this same jailed shell, and nothing outside the
+    jail reads it. Kernels from 6.2 refuse the call anyway (dev.tty.legacy_tiocsti=0).
     """
+    root = jail_root(root)
+    if chdir is None or not _under_any(os.path.realpath(chdir), [root, *(extra or []), *(ro_extra or [])]):
+        chdir = root
+    hidden = _jail_hidden(hide)
     argv = ["bwrap", "--ro-bind", "/", "/", "--tmpfs", "/home"]
-    for h in (hide or []):
-        argv += ["--tmpfs", h]              # order matters: blank the siblings first…
-    argv += ["--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp",
-             "--bind", root, root]          # …then this user's own home reappears
-    for e in (ro_extra or []):
-        argv += ["--ro-bind", e, e]         # …shared, but not to be written
-    for e in (extra or []):
-        argv += ["--bind", e, e]            # …and the ones shared read-write
-    argv += ["--chdir", chdir or root,
-             "--setenv", "HOME", root,
-             "--setenv", "AGENTOS_SANDBOX", "1",
-             "--die-with-parent",
-             *tail]
+    for h in hidden:
+        argv += ["--tmpfs", h]              # order matters: blank the homes first…
+    argv += ["--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp", "--tmpfs", "/run"]
+    # DNS is the one thing a program needs out of /run: resolv.conf is usually a link into it
+    resolv = os.path.realpath("/etc/resolv.conf")
+    if resolv.startswith("/run/") and os.path.exists(resolv):
+        argv += ["--ro-bind", resolv, resolv]
+    # the interpreter, when the only one this machine has lives in a home we just hid
+    if not any(os.path.exists(c) for c in _SYSTEM_PYTHONS):
+        base = os.path.realpath(sys.base_prefix)
+        if _under_any(base, ["/home", *hidden]):
+            argv += ["--ro-bind", base, base]
+    binds = [("--bind", root)]              # …then this user's own folder reappears
+    binds += [("--ro-bind", e) for e in (ro_extra or []) if _jail_path_ok(e)]   # shared, not to be written
+    binds += [("--bind", e) for e in (extra or []) if _jail_path_ok(e)]         # shared read-write
+    binds += [("--ro-bind", e) for e in (own_ro or [])]
+    holders = [b for b in binds if any(h != b[1] and _under_any(h, [b[1]]) for h in hidden)]
+    for flag, path in holders:
+        argv += [flag, path, path]
+    for h in hidden:
+        if any(_under_any(h, [p]) for _, p in holders):
+            argv += ["--tmpfs", h]
+    for flag, path in binds:
+        if (flag, path) not in holders:
+            argv += [flag, path, path]
+    argv += ["--unshare-pid", "--unshare-ipc", "--unshare-uts", "--die-with-parent"]
+    if new_session:
+        argv.append("--new-session")
+    if not own_env:
+        argv.append("--clearenv")
+        for k, v in jail_env(root).items():
+            argv += ["--setenv", k, v]
+    argv += ["--chdir", chdir, *tail]
     return argv
 
 
@@ -642,7 +1332,17 @@ def _sandbox_exec_profile(root: str, hide: list[str] | None = None,
     machine and not on one with accounts, where reading `~/.agentos/users/<somebody
     else>/agentos.db` is the entire isolation gone — so the shell now refuses it on
     both operating systems, and `tests/test_tenant_isolation.py` asserts it on both.
+
+    The AgentOS home and the usual credential folders are now always hidden too. Not run on a
+    real Mac yet: there is none where this was written, so the profile's text is what is tested.
     """
+    from . import config as cfgmod
+    osh = os.path.expanduser("~")
+    hide = [*(hide or []), os.path.realpath(str(cfgmod.AGENTOS_HOME)),
+            *[os.path.join(osh, d) for d in (".ssh", ".gnupg", ".aws", ".claude", "Library/Keychains")]]
+    extra = [e for e in (extra or []) if _jail_path_ok(e)]
+    ro_extra = [e for e in (ro_extra or []) if _jail_path_ok(e)]
+
     def esc(p):
         return p.replace("\\", "\\\\").replace('"', '\\"')
     writable = [root, *(extra or []), "/tmp", "/private/tmp", "/private/var/tmp",
@@ -671,9 +1371,12 @@ def sandbox_exec_argv(root: str, command: str, chdir: str | None = None,
                       extra: list[str] | None = None,
                       ro_extra: list[str] | None = None) -> list[str]:
     """Wrap a shell command in macOS sandbox-exec with a workspace write-jail."""
+    root = jail_root(root)
     prof = _sandbox_exec_profile(root, hide=hide, extra=extra, ro_extra=ro_extra)
     inner = f'cd {shlex.quote(chdir or root)} && {command}'
-    return ["sandbox-exec", "-p", prof, "/bin/bash", "-lc", inner]
+    # sandbox-exec has no --clearenv: env -i is the same allow-list inside the sandbox
+    env = [f"{k}={v}" for k, v in jail_env(root).items()]
+    return ["sandbox-exec", "-p", prof, "/usr/bin/env", "-i", *env, "/bin/bash", "-lc", inner]
 
 
 def jail_argv(root: str, command: str, chdir: str | None = None,
@@ -688,6 +1391,63 @@ def jail_argv(root: str, command: str, chdir: str | None = None,
         return sandbox_exec_argv(root, command, chdir=chdir, extra=extra,
                                  ro_extra=ro_extra)
     return None
+
+
+WALLPAPER_MAX = 40 * 1024 * 1024
+
+
+def wallpaper_home() -> Path:
+    """Where this person's wallpaper lives: their own home, the machine's with no accounts.
+    It was one machine-wide file any signed-in account could read back."""
+    return Path(usersmod.home_for(usersmod.current() or ""))
+
+
+def save_wallpaper(data: bytes) -> None:
+    """This person's wallpaper. An admin's is also the machine's, which is what the session's
+    background and lock screen read: nobody else's picture reaches those."""
+    home = wallpaper_home()
+    home.mkdir(parents=True, exist_ok=True)
+    (home / "wallpaper.png").write_bytes(data)
+    if usersmod.enabled() and usersmod.is_admin(usersmod.current() or ""):
+        from . import config as cfgmod
+        (Path(cfgmod.AGENTOS_HOME) / "wallpaper.png").write_bytes(data)
+
+
+def clear_wallpaper() -> None:
+    (wallpaper_home() / "wallpaper.png").unlink(missing_ok=True)
+    if usersmod.enabled() and usersmod.is_admin(usersmod.current() or ""):
+        from . import config as cfgmod
+        (Path(cfgmod.AGENTOS_HOME) / "wallpaper.png").unlink(missing_ok=True)
+
+
+def wallpaper_file() -> Path | None:
+    """What this person sees: their own, else the machine's, and only if it is an image. A file
+    planted here before the bytes were checked is never served."""
+    from . import config as cfgmod
+    for p in (wallpaper_home() / "wallpaper.png", Path(cfgmod.AGENTOS_HOME) / "wallpaper.png"):
+        try:
+            with open(p, "rb") as fh:
+                if image_kind(fh.read(16)):
+                    return p
+        except OSError:
+            continue
+    return None
+
+
+def image_kind(data: bytes) -> str:
+    """What the bytes say they are, or ''. Never SVG: a page opened from this origin runs it."""
+    head = bytes(data[:16])
+    if head.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "png"
+    if head.startswith(b"\xff\xd8\xff"):
+        return "jpeg"
+    if head.startswith((b"GIF87a", b"GIF89a")):
+        return "gif"
+    if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+        return "webp"
+    if head.startswith(b"BM"):
+        return "bmp"
+    return ""
 
 
 def _truncate(text: str, limit: int | None = None) -> str:
@@ -833,12 +1593,24 @@ class Toolbox(usersmod.Scoped):
         return ("[denied] this belongs to another account on this machine. Each account's "
                 "files, memory and credentials are private to it.")
 
-    def _sandbox_deny(self, path, write: bool = False) -> str | None:
+    def _sandbox_deny(self, path, write: bool = False, flag: bool = True) -> str | None:
         """`write` is what makes a read-only share mean anything. A shared folder
-        the tools let you overwrite is not read-only, whatever the setting says."""
+        the tools let you overwrite is not read-only, whatever the setting says.
+
+        After the tenant line, the next check answers before the toggle or any grant is read: no
+        agent reads a vault key or writes the gate, on any machine, whatever anybody clicked."""
+        from . import protected
         if (t := self._tenant_deny(path, write=write)):
             return t
         enabled, root = sandbox_conf(self.cfg)
+        why = (protected.write_refused(path) if write else protected.secret(path)) \
+            or protected.outside_agent_area(path, write, [self.cfg.get("workspace") or "",
+                                                          root, *safe_folders(self.cfg, write=write)])
+        if why:
+            from . import secevents
+            flag and secevents.flag("protected.refused", os.path.basename(str(path))[:80],
+                           source="agent", uid=usersmod.current() or "")
+            return f"[denied] {why}"
         if not enabled:
             return None
         rp = os.path.realpath(str(path))
@@ -874,22 +1646,19 @@ class Toolbox(usersmod.Scoped):
                 return ("[denied] this machine has accounts, so a command has to run in a "
                         "per-account jail, and none is available here. Install bubblewrap "
                         "(Linux) so each account's shell is confined to its own home.")
-            home = os.path.realpath(str(usersmod.home_for(usersmod.current())))
-            os.makedirs(home, exist_ok=True)
-            workdir = os.path.realpath(os.path.expanduser(cwd)) if cwd else home
-            if not (workdir == home or workdir.startswith(home + os.sep)) or not os.path.isdir(workdir):
-                workdir = home
+            home = account_root(self.cfg)
+            own = os.path.realpath(os.path.expanduser(self.cfg.get("workspace") or "")) or home
+            workdir = os.path.realpath(os.path.expanduser(cwd)) if cwd else own
             # The same boundary on both, expressed in each jail's own vocabulary:
-            # blank the users root, then give this account's home back. bwrap does it
+            # blank the users root, then give this account's workspace back. bwrap does it
             # with a tmpfs and a re-bind, sandbox-exec with a deny and a re-allow.
             hide = [os.path.realpath(str(usersmod.users_root()))]
             # The shared folders come back in after the blanking, so a command can
             # reach them from inside the per-account jail. They cannot be a way out:
             # check_safe_folder refuses anything at or above the accounts root.
             ro_extra, extra = folder_binds(self.cfg)
-            if cwd and _under_any(os.path.realpath(os.path.expanduser(cwd)),
-                                  [*ro_extra, *extra]):
-                workdir = os.path.realpath(os.path.expanduser(cwd))
+            if not _under_any(workdir, [home, *ro_extra, *extra]) or not os.path.isdir(workdir):
+                workdir = home
             if mech == "bwrap":
                 argv = bwrap_argv(home, ["/bin/bash", "-lc", command], chdir=workdir,
                                   hide=hide, extra=extra, ro_extra=ro_extra)
@@ -904,6 +1673,10 @@ class Toolbox(usersmod.Scoped):
             os.makedirs(root, exist_ok=True)
             # bwrap on Linux, sandbox-exec on macOS
             argv = jail_argv(root, command, chdir=workdir, extra=extra, ro_extra=ro_extra)
+            if argv is None and not _jail_waived.get():
+                # Reached only without a person's yes (an app, a schedule). Unattended, there is
+                # nobody to take the risk, so nothing runs.
+                return f"[denied] {jail_gap(self.cfg) or jail_why_not()} A person has to say yes to each command."
         if argv:
             proc = await asyncio.create_subprocess_exec(
                 *argv,
@@ -919,6 +1692,7 @@ class Toolbox(usersmod.Scoped):
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
                 cwd=workdir,
+                env=unjailed_env(),
             )
         try:
             out, _ = await asyncio.wait_for(proc.communicate(), timeout=120)
@@ -931,34 +1705,56 @@ class Toolbox(usersmod.Scoped):
         return result if code == 0 else f"[exit code {code}]\n{result}"
 
     async def read_file(self, path: str) -> str:
+        from . import safeopen
         p = self._abs(path)
-        if (deny := self._sandbox_deny(p)):
+        real = os.path.realpath(str(p))
+        if (deny := self._sandbox_deny(real)):
             return deny
-        if not p.exists():
-            return f"[error] file not found: {p}"
-        if p.stat().st_size > 2_000_000:
-            return f"[error] file too large ({p.stat().st_size} bytes)"
+        # opened by the path just checked, link by link, so a link flipped since is refused
         try:
-            return _truncate(p.read_text(errors="replace"))
+            fd = safeopen.open_file(real)
+        except FileNotFoundError:
+            return f"[error] file not found: {p}"
         except IsADirectoryError:
             return f"[error] {p} is a directory — use list_dir"
+        except safeopen.Moved:
+            return f"[denied] {p} changed while it was being opened, or is not a plain file."
+        except OSError as e:
+            return f"[error] could not read {p}: {e.strerror or e}"
+        with os.fdopen(fd, "rb") as f:
+            size = os.fstat(f.fileno()).st_size
+            if size > 2_000_000:
+                return f"[error] file too large ({size} bytes)"
+            return _truncate(f.read().decode("utf-8", errors="replace"))
 
     async def write_file(self, path: str, content: str) -> str:
+        from . import safeopen
         p = self._abs(path)
-        if (deny := self._sandbox_deny(p, write=True)):
+        real = os.path.realpath(str(p))
+        if (deny := self._sandbox_deny(real, write=True)):
             return deny
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(content)
+        try:
+            safeopen.write_bytes(real, content.encode("utf-8"))
+        except safeopen.Moved:
+            return f"[denied] {p} changed while it was being opened, or is not a plain file."
+        except OSError as e:
+            return f"[error] could not write {p}: {e.strerror or e}"
         return f"wrote {len(content)} chars to {p}"
 
     async def list_dir(self, path: str = "") -> str:
+        from . import safeopen
         p = self._abs(path or self.cfg["workspace"])
-        if (deny := self._sandbox_deny(p)):
+        real = os.path.realpath(str(p))
+        if (deny := self._sandbox_deny(real)):
             return deny
-        if not p.is_dir():
+        try:
+            entries = safeopen.list_dir(real)
+        except (FileNotFoundError, NotADirectoryError):
             return f"[error] not a directory: {p}"
-        entries = sorted(p.iterdir(), key=lambda e: (e.is_file(), e.name.lower()))
-        lines = [f"{'d' if e.is_dir() else 'f'}  {e.name}" for e in entries[:300]]
+        except safeopen.Moved:
+            return f"[denied] {p} changed while it was being opened."
+        entries.sort(key=lambda e: (not e[1], e[0].lower()))
+        lines = [f"{'d' if d else 'f'}  {n}" for n, d in entries[:300]]
         return f"{p}\n" + ("\n".join(lines) if lines else "(empty)")
 
     # -- accounts: the mailbox and the calendar the person let this machine read ----
@@ -1135,18 +1931,29 @@ class Toolbox(usersmod.Scoped):
                 + (". You can use it from your next step." if target == _from else
                    f". Hand the step to {defn['name']} again: its next run has it."))
 
-    async def fetch_url(self, url: str) -> str:
+    async def fetch_url(self, url: str, _app: str = "") -> str:
         if not url.startswith(("http://", "https://")):
             url = "https://" + url
-        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True,
-                                     headers={"User-Agent": "AgentOS/0.1"}) as client:
-            r = await client.get(url)
+        # `_app` is the caller's, never the model's (APP_BOUND_TOOLS). An app is often a
+        # stranger's, and its fetches are free, so a person's allow-list is not for it.
+        try:
+            async with netguard.client(strict=bool(_app), timeout=30.0, follow_redirects=True,
+                                       headers={"User-Agent": "AgentOS/0.1"}) as client:
+                r = await client.get(url)
+        except netguard.Refused as e:
+            return self._net_refused(e, _app or "fetch_url")
         ctype = r.headers.get("content-type", "")
         if "html" in ctype:
             ex = _TextExtractor()
             ex.feed(r.text)
             return _truncate(f"[{r.status_code}] {url}\n" + "\n".join(ex.parts))
         return _truncate(f"[{r.status_code}] {url}\n{r.text}")
+
+    def _net_refused(self, e: netguard.Refused, who: str) -> str:
+        """A model or an app named an address nobody here offered. A page can ask for it, so
+        it goes on the security record, and the sentence is ours and not the page's."""
+        secevents.flag("net.refused", e.host, source=str(who)[:40], uid=usersmod.current() or "")
+        return f"[denied] {e}"
 
     async def llm_generate(self, prompt: str, system: str = "", model: str = "") -> str:
         from . import providers
@@ -1202,6 +2009,12 @@ class Toolbox(usersmod.Scoped):
 
     async def notify(self, title: str, message: str = "") -> str:
         from . import desktop as desktopmod
+        if usersmod.current() and self._admin_only("x"):
+            # the host's desktop may be somebody else's screen: this person's own pages hear it
+            from . import server as srv
+            await srv.state["broadcast_user"]({"type": "toast", "text": f"{title}: {message}" if message else title},
+                                              usersmod.current() or "")
+            return "notification sent to your screens"
         if desktopmod.send_notification(title, message):
             return "notification sent"
         return "[error] no desktop notification mechanism available"
@@ -1229,7 +2042,9 @@ class Toolbox(usersmod.Scoped):
             # a Zero's memory is on its hub, in its section (zeromind.py)
             return await zeromind.tool(self.cfg, self.store, "remember", content=content,
                                        scope=scope, conversation_id=conversation_id or "")
-        target_space = "" if everywhere else (space_id or "")
+        # a Zero's turn files in its section, whatever the call says: `everywhere` there would
+        # be the room in front of a Pi writing into the hub's own memory
+        target_space = "" if everywhere and not self.store.is_section(space_id) else (space_id or "")
         mid = self.store.add_memory(content, scope=scope,
                                     conversation_id=conversation_id or None, source="agent",
                                     space_id=target_space)
@@ -1335,7 +2150,12 @@ class Toolbox(usersmod.Scoped):
                                              taint=list(_taint or []) or None, space_id=_space or "")
         head = f"[subagent {defn['name']} · {res['status']} · model {res['model']}]"
         body = res["content"] or res["fault"] or "(no output)"
-        return f"{head}\n{body[:3500]}"
+        # what the specialist read comes back with its answer, or the lead acts on a page's
+        # words with no ceiling. Only what is new: taint this turn already carries needs
+        # no second mark, and a new mark would end a link's standing permissions (policy)
+        known = list(_taint or [])
+        fresh = any(t not in known for t in res.get("taint") or []) if "taint" in res else res.get("tainted")
+        return (TAINTED_REPLY if fresh else "") + f"{head}\n{body[:3500]}"
 
     async def linked_teams(self) -> str:
         """Each linked team and who there this team may give work to, asked over the link."""
@@ -1384,7 +2204,7 @@ class Toolbox(usersmod.Scoped):
                                            conversation_id=conversation_id, say=say)
         except ValueError as e:
             return f"[error] {e}"
-        return res["text"]
+        return (TAINTED_REPLY if res.get("tainted") else "") + res["text"]
 
     async def ask_agent(self, agent: str, question: str, _from: str = "", _chain=None,
                         _root: str = "", _run_id: str = "", _conv: str = "", _space: str = "",
@@ -1578,10 +2398,12 @@ class Toolbox(usersmod.Scoped):
         data, src = await self._generate_image(prompt, 1280, 720)
         if data is None:
             return f"[error] image generation failed — {src}"
-        gallery = cfgmod.AGENTOS_HOME / "wallpapers"
+        if not image_kind(data):
+            return "[error] image generation answered with something that is not an image"
+        gallery = wallpaper_home() / "wallpapers"
         gallery.mkdir(parents=True, exist_ok=True)
         (gallery / f"{int(_t.time())}.png").write_bytes(data)       # keep in the gallery
-        (cfgmod.AGENTOS_HOME / "wallpaper.png").write_bytes(data)   # apply as current
+        save_wallpaper(data)                                        # apply as current
         self.store.log("system", f"wallpaper generated via {src}: {prompt[:120]}")
         if self.broadcast:
             await self.broadcast({"type": "wallpaper"})
@@ -1593,26 +2415,45 @@ class Toolbox(usersmod.Scoped):
                     "came from the free service — try again later for the pinned one." + note)
         return f"wallpaper generated with {src} ({len(data) // 1024} KB), saved to the gallery, and applied.{note}"
 
+    def _local_source(self, source: str) -> tuple[Path | None, str]:
+        """A file a tool is about to copy somewhere it can be fetched again: (the real path, a
+        refusal). The same reach as read_file, plus the security files, which no read gets."""
+        p = Path(os.path.realpath(self._abs(source)))
+        if (deny := self._sandbox_deny(p)):
+            return None, deny
+        if (why := protected.secret(p)):
+            return None, f"[denied] {why}"
+        if not p.is_file():
+            return None, f"[error] file not found: {p}"
+        return p, ""
+
     async def set_wallpaper(self, source: str = "") -> str:
-        """Set the desktop wallpaper from a local file or URL; empty source resets to the default."""
-        from . import config as cfgmod
-        dest = cfgmod.AGENTOS_HOME / "wallpaper.png"
+        """Set the desktop wallpaper from a local image or URL; empty source resets to the default."""
         if not source.strip():
-            dest.unlink(missing_ok=True)
+            clear_wallpaper()
             if self.broadcast:
                 await self.broadcast({"type": "wallpaper"})
             return "wallpaper reset to the default"
+        # Served back to whoever is signed in, so only an image may arrive here. Checked by its
+        # bytes: this used to copy any readable file, session.key included, to a served path.
         if source.startswith(("http://", "https://")):
-            async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
-                r = await client.get(source)
-            if r.status_code != 200 or not r.headers.get("content-type", "").startswith("image"):
-                return f"[error] not an image (HTTP {r.status_code})"
-            dest.write_bytes(r.content)
+            try:
+                status, ctype, data = await netguard.read_capped(source, WALLPAPER_MAX)
+            except netguard.Refused as e:
+                return self._net_refused(e, "set_wallpaper")
+            if status != 200 or not ctype.startswith("image"):
+                return f"[error] not an image (HTTP {status})"
         else:
-            p = Path(os.path.expanduser(source))
-            if not p.is_file():
-                return f"[error] file not found: {p}"
-            dest.write_bytes(p.read_bytes())
+            from . import safeopen
+            p, why = self._local_source(source)
+            if why:
+                return why
+            if p.stat().st_size > WALLPAPER_MAX:
+                return f"[error] that file is larger than {WALLPAPER_MAX // (1024 * 1024)} MB"
+            data = safeopen.read_bytes(str(p))
+        if not image_kind(data):
+            return "[error] that file is not an image (PNG, JPEG, GIF or WebP)"
+        save_wallpaper(data)
         if self.broadcast:
             await self.broadcast({"type": "wallpaper"})
         return f"wallpaper set from {source}"
@@ -1627,7 +2468,7 @@ class Toolbox(usersmod.Scoped):
         if zeromind.on_hub(self.cfg):
             return await zeromind.tool(self.cfg, self.store, "kg_add", subject=subject, relation=relation,
                                        object=object, subject_type=subject_type, object_type=object_type)
-        target_space = "" if everywhere else (space_id or "")
+        target_space = "" if everywhere and not self.store.is_section(space_id) else (space_id or "")
         eid = self.store.kg_add(subject, relation, object, subject_type, object_type,
                                 space_id=target_space)
         where = "everywhere" if not target_space else "in this space"
@@ -1694,7 +2535,7 @@ class Toolbox(usersmod.Scoped):
             return "[error] source is required (a local path or an http(s) URL)"
         try:
             if src.startswith(("http://", "https://")):
-                async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
+                async with netguard.client(timeout=120, follow_redirects=True) as client:
                     r = await client.get(src)
                     r.raise_for_status()
                     data, mime = r.content, r.headers.get("content-type", "").split(";")[0]
@@ -1703,16 +2544,17 @@ class Toolbox(usersmod.Scoped):
                     self.store, data, name=name, mime=mime, title=title, source="url",
                     origin_url=src, space_id=space_id, conversation_id=conversation_id)
             else:
-                p = Path(os.path.expanduser(src))
-                deny = self._sandbox_deny(p)
-                if deny:
-                    return deny
-                if not p.is_file():
-                    return f"[error] file not found: {p}"
+                from . import safeopen
+                p, why = self._local_source(src)
+                if why:
+                    return why
+                real = str(p)
                 row = await assetmod.put_bytes(
-                    self.store, p.read_bytes(), name=p.name, title=title or p.name,
+                    self.store, safeopen.read_bytes(real), name=p.name, title=title or p.name,
                     source="tool:save_asset", space_id=space_id,
                     conversation_id=conversation_id)
+        except netguard.Refused as e:
+            return self._net_refused(e, "save_asset")
         except Exception as e:
             return f"[error] could not save asset: {type(e).__name__}: {e}"
         if not row:
@@ -1805,10 +2647,11 @@ class Toolbox(usersmod.Scoped):
         bg3, bg4, line, txt, dim, dim2, acc, acc2, warn, err, ok, glass — hex/rgba). `css` is
         extra CSS to restyle the desktop chrome (#menubar, #taskbar, .win, .aicon, .widget,
         #desktop). Optional web font via font_url + font_family. `shell_html` (optional) is a
-        COMPLETE replacement interface — full HTML+CSS+JS that takes over the whole screen
-        instead of the stock desktop; it can call every endpoint in GET /api/registry (fetch +
-        /ws websocket). Pass shell_html="" to remove an existing shell."""
+        no longer taken here: see create_theme_shell."""
         import json as _j
+        if shell_html is not None:
+            return ("[error] create_theme no longer takes shell_html. Use create_theme_shell, "
+                    "which asks the person first.")
         try:
             v = _j.loads(vars) if isinstance(vars, str) and vars.strip() else (vars or {})
         except Exception as e:
@@ -1828,22 +2671,51 @@ class Toolbox(usersmod.Scoped):
                              "family": font_family or (theme.get("font") or {}).get("family", "")}
         elif font_family and theme.get("font"):
             theme["font"]["family"] = font_family
-        if shell_html is not None:
-            if shell_html.strip():
-                theme["shell"] = shell_html
-            else:
-                theme.pop("shell", None)   # explicit empty string removes the shell
         theme.update(name=name, custom=True, apply=True)
         self.store.save_theme(name, _j.dumps(theme))
-        if self.broadcast:
-            await self.broadcast({"type": "themes"})
-            await self.broadcast({"type": "theme_apply", "theme": theme})
+        await self._theme_tell(theme)
         self.store.log("system", f"theme {'refined' if refining else 'created'} by agent: {name}")
         extras = (" + custom CSS" if theme.get("css") else "") + (" + a full replacement shell" if theme.get("shell") else "")
         changed = ", ".join(sorted(v)) if v else "no color changes"
+        font = str((theme.get("font") or {}).get("url") or "")
+        if font and not font.startswith("https://fonts.googleapis.com/"):
+            # The desktop's content policy loads stylesheets only from Google Fonts (_DESKTOP_CSP)
+            extras += ". That font won't load, because this desktop only takes fonts from fonts.googleapis.com"
         return (f"theme '{name}' {'refined in place (changed: ' + changed + ')' if refining else 'created'} "
                 f"and applied live — {len(theme.get('v') or {})} color variables{extras}. "
                 f"To iterate further, call create_theme again with the SAME name and only the fields to change.")
+
+    async def create_theme_shell(self, name: str, shell_html: str = "") -> str:
+        """Put a whole page of the agent's over the desktop, on a theme by that name, or
+        take it off with shell_html="". The person is asked every time (ALWAYS_ASK). The page
+        runs in a sandboxed frame with an opaque origin and no network: it holds no cookie and
+        cannot call the API or open a socket, so it draws and animates and that is all. It can
+        open a desktop app with parent.postMessage({bento_shell: 'open', app: 'chat'}, '*')."""
+        import json as _j
+        name = (name or "").strip()
+        if not name:
+            return "[error] a shell needs the name of a theme"
+        theme = next((t for t in self.store.list_themes()
+                      if t.get("name", "").lower() == name.lower()), None) \
+            or {"mode": "dark", "v": {}, "css": ""}
+        if (shell_html or "").strip():
+            theme["shell"] = shell_html
+        else:
+            theme.pop("shell", None)
+        theme.update(name=name, custom=True, apply=True)
+        self.store.save_theme(name, _j.dumps(theme))
+        await self._theme_tell(theme)
+        self.store.log("system", f"theme shell {'set' if theme.get('shell') else 'removed'} by agent: {name}")
+        return (f"theme '{name}': the shell is {'on' if theme.get('shell') else 'off'}. It runs "
+                "in a sandbox with no network and cannot reach the API.")
+
+    async def _theme_tell(self, theme: dict) -> None:
+        """A theme is news for its owner's screens only: it lives in their own database."""
+        send = getattr(self, "broadcast_user", None)
+        if send:
+            me = usersmod.current()
+            await send({"type": "themes"}, me)
+            await send({"type": "theme_apply", "theme": theme}, me)
 
     # ---- machine verbs: the things Settings can do, sayable in a sentence ----
     #
@@ -1998,7 +2870,8 @@ class Toolbox(usersmod.Scoped):
         return f"This machine now answers with {msg}."
 
     async def configure_agentos(self, changes: str) -> str:
-        """Apply a JSON config patch to AgentOS itself (autonomy, model, name, policies, MCP, telegram)."""
+        """Change this agent's name, its default model, its step limit or how it remembers.
+        Security and connections are the person's, in Settings (see CONFIG_SAFE_KEYS)."""
         from . import config as cfgmod
         try:
             patch = json.loads(changes) if isinstance(changes, str) else dict(changes)
@@ -2006,33 +2879,42 @@ class Toolbox(usersmod.Scoped):
             return f"[error] changes must be a valid JSON object: {e}"
         if not isinstance(patch, dict):
             return "[error] changes must be a JSON object"
-        allowed = {"agent_name", "default_model", "autonomy", "max_steps", "workspace",
-                   "policies", "telegram", "mcp_servers", "sandbox", "memory"}
-        applied, skipped = [], []
+        applied, skipped, refused = [], [], []
         for k, v in patch.items():
-            if k not in allowed:
+            if k in CONFIG_PERSON_KEYS:
+                refused.append(k)
+            elif k not in CONFIG_SAFE_KEYS:
                 skipped.append(k)
-                continue
-            if k in ("telegram", "mcp_servers", "memory") and isinstance(v, dict):
-                target = self.cfg.setdefault(k, {})
-                for kk, vv in v.items():
-                    if vv is None:
-                        target.pop(kk, None)   # null deletes an entry (e.g. remove an MCP server)
-                    else:
-                        target[kk] = vv
+            elif k == "memory":
+                if not isinstance(v, dict):
+                    skipped.append(k)
+                    continue
+                vals = {kk: vv for kk, vv in v.items() if _memory_value_ok(kk, vv)}
+                skipped += [f"memory.{kk}" for kk in v if kk not in vals]
+                if vals:
+                    self.cfg.setdefault("memory", {}).update(vals)
+                    applied.append(k)
+            elif k == "max_steps":
+                if isinstance(v, bool) or not isinstance(v, int) or not 1 <= v <= MAX_STEPS_CEILING:
+                    skipped.append(k)
+                    continue
+                self.cfg[k] = v
+                applied.append(k)
+            elif not isinstance(v, str) or not v.strip() or len(v) > 200:
+                skipped.append(k)
             else:
                 self.cfg[k] = v
-            applied.append(k)
+                applied.append(k)
+        refusal = (f"[denied] {', '.join(sorted(refused))} can't be changed by an agent. "
+                   "Ask the person to change it in Settings." if refused else "")
         if not applied:
-            return f"[error] nothing applied; allowed keys: {sorted(allowed)}"
+            return refusal or f"[error] nothing applied; allowed keys: {sorted(CONFIG_SAFE_KEYS)}"
         cfgmod.save_config(self.cfg)
         self.store.log("system", f"config changed by agent: {', '.join(applied)}")
-        if "mcp_servers" in applied and self.mcp:
-            await self.mcp.reload()
         if self.broadcast:
             await self.broadcast({"type": "config"})
-        note = f" (ignored unknown keys: {', '.join(skipped)})" if skipped else ""
-        return "updated: " + ", ".join(applied) + note
+        note = f" (ignored: {', '.join(skipped)})" if skipped else ""
+        return "updated: " + ", ".join(applied) + note + (f"\n{refusal}" if refusal else "")
 
     async def create_app(self, name: str, icon: str = "", description: str = "",
                          html: str = "", permissions: str = "", _conv: str = "") -> str:
@@ -2136,10 +3018,21 @@ class Toolbox(usersmod.Scoped):
 
     async def develop_agentos(self, path: str, content: str, restart: bool = False) -> str:
         """Write a file into AgentOS's OWN source tree — modify or extend the operating system itself
-        (e.g. add a new integration like WhatsApp). Set restart=true to reload the service after."""
+        (e.g. add a new integration like WhatsApp). Set restart=true to reload the service after.
+        Admin only, a person's yes every time, and never the gate's own code (protected.py)."""
+        if (deny := self._admin_only("change this OS's code")):
+            return deny
         p = self._repo_path(path)
         if p is None:
             return "[error] path escapes the AgentOS source tree"
+        rel = p.relative_to(self._repo_root()).as_posix()
+        # `p` is resolved, so a link inside the tree cannot name one file and write another
+        existing = ""
+        if rel.startswith("tests/") and p.is_file():
+            existing = p.read_text(errors="replace")
+        if (why := protected.develop_refused(rel, existing)):
+            secevents.flag("develop.refused", rel, source="develop_agentos", uid=usersmod.current() or "")
+            return f"[denied] {why}"
         p.parent.mkdir(parents=True, exist_ok=True)
         # always snapshot before touching our own source — corruption insurance
         snap = self._make_snapshot(f"auto before editing {path}")
@@ -2170,23 +3063,78 @@ class Toolbox(usersmod.Scoped):
             msg += ". Call again with restart=true (or use restart_agentos) to load the change."
         return msg
 
+    def _jailed(self, tail: list[str], workdir: str, ro: list[str] | None = None,
+                own_env: bool = False) -> tuple[list[str] | None, bool, str]:
+        """(argv, is it jailed, refusal) for a program a tool starts for this account, the same
+        walls as run_command: with accounts the account's home with the others blanked, and no
+        jail is a refusal; with the sandbox on its root; off, the person's choice stands."""
+        mech = sandbox_mechanism()
+        hide = None
+        enabled, sb_root = sandbox_conf(self.cfg)
+        if usersmod.enabled():
+            if not mech:
+                secevents.flag("jail.missing", "git or tests", source="tools", uid=usersmod.current() or "")
+                return None, False, ("[denied] this machine has accounts, so this has to run in a "
+                                     "per-account jail, and none is available here. Install "
+                                     "bubblewrap (Linux) so each account's programs stay in its home.")
+            top = os.path.realpath(str(usersmod.home_for(usersmod.current() or "")))
+            hide = [os.path.realpath(str(usersmod.users_root()))]
+        elif enabled:
+            top = sb_root
+        else:
+            return list(tail), False, ""
+        os.makedirs(top, exist_ok=True)
+        ro_extra, extra = folder_binds(self.cfg)
+        if mech == "bwrap":
+            return (bwrap_argv(top, list(tail), chdir=workdir, hide=hide, extra=extra, ro_extra=ro_extra,
+                               own_ro=ro, own_env=own_env), True, "")
+        return sandbox_exec_argv(top, shlex.join(tail), chdir=workdir, hide=hide, extra=extra,
+                                 ro_extra=[*ro_extra, *(ro or [])]), True, ""
+
     async def run_tests(self, path: str = "") -> str:
-        """Run the AgentOS test suite (or a project's tests). The Test pillar's
-        workhorse: self-modification calls this before restarting."""
+        """Run the AgentOS test suite (or a project's tests). The Test pillar's workhorse:
+        self-modification calls this before restarting. A test suite is whatever code the
+        folder holds, so it runs in the jail, with no keys in its environment."""
         import agentos
         src_root = Path(agentos.__file__).resolve().parent.parent
-        workdir = os.path.realpath(os.path.expanduser(path)) if path else str(src_root)
-        if not os.path.isdir(workdir):
-            return f"[error] not a directory: {workdir}"
-        py = sys.executable
-        proc = await asyncio.create_subprocess_exec(
-            py, "-m", "pytest", "-q", "--no-header", cwd=workdir,
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+        scratch = ""
+        env = _tool_env()
+        argv = [sys.executable, "-m", "pytest", "-q", "--no-header"]
+        jailed = False
         try:
-            out, _ = await asyncio.wait_for(proc.communicate(), timeout=600)
-        except asyncio.TimeoutError:
-            proc.kill()
-            return "[error] tests timed out after 600s"
+            if path:
+                workdir = os.path.realpath(self._abs(path))
+                if not os.path.isdir(workdir):
+                    return f"[error] not a directory: {workdir}"
+                if (deny := self._sandbox_deny(workdir)):      # a read-only share stays read-only in the jail
+                    return deny
+                argv, jailed, refusal = self._jailed(argv, workdir, ro=_python_binds())
+                if refusal:
+                    return refusal
+            else:
+                # This OS's own suite, an admin's. Not in the jail: it tests the jail, and a jail
+                # can't start inside one, so a green suite would be impossible. It runs what this
+                # checkout holds, which no agent can write, and which a restart would run anyway.
+                # Its home is a throwaway, because a bare pytest writes the real database.
+                if (deny := self._admin_only("run this OS's test suite")):
+                    return deny
+                workdir = str(src_root)
+                from . import config as cfgmod
+                os.makedirs(cfgmod.AGENTOS_HOME, exist_ok=True)
+                scratch = tempfile.mkdtemp(prefix=".tests-", dir=str(cfgmod.AGENTOS_HOME))
+                env.update(HOME=scratch, AGENTOS_HOME=os.path.join(scratch, "agentos"),
+                           PYTHONDONTWRITEBYTECODE="1", PYTEST_ADDOPTS="-p no:cacheprovider")
+            proc = await asyncio.create_subprocess_exec(
+                *argv, cwd=None if jailed else workdir, env=env,
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+            try:
+                out, _ = await asyncio.wait_for(proc.communicate(), timeout=600)
+            except asyncio.TimeoutError:
+                proc.kill()
+                return "[error] tests timed out after 600s"
+        finally:
+            if scratch:
+                shutil.rmtree(scratch, ignore_errors=True)
         text = out.decode(errors="replace")
         tail = "\n".join(text.strip().splitlines()[-25:])
         summary = next((ln for ln in reversed(text.strip().splitlines())
@@ -2224,6 +3172,8 @@ class Toolbox(usersmod.Scoped):
     async def restart_agentos(self) -> str:
         """Restart the AgentOS service to load code changes — gated on the test
         suite: a self-modification that breaks the tests must not go live."""
+        if (deny := self._admin_only("restart this OS")):
+            return deny
         tests = await self.run_tests()
         if tests.startswith("[exit code"):
             return ("[error] refusing to restart: the test suite fails against the current "
@@ -2236,6 +3186,8 @@ class Toolbox(usersmod.Scoped):
     async def manage_models(self, action: str = "list", name: str = "") -> str:
         """Manage local Ollama models. action: 'list' (installed + GPU), 'pull' (download `name`),
         'remove' (delete `name`). Pulling can take minutes; it runs in the background."""
+        if action != "list" and (deny := self._admin_only("change this machine's models")):
+            return deny
         base = self.cfg["providers"]["ollama"]["base_url"]
         async with httpx.AsyncClient(timeout=None) as c:
             if action == "list":
@@ -2437,7 +3389,10 @@ class Toolbox(usersmod.Scoped):
                 k, v = pair.split("=", 1)
                 env_values[k.strip()] = v.strip()
         key = (name or cand["key"]).strip().replace(" ", "-")
-        conf, missing = mcp_store.to_conf(cand, env_values=env_values)
+        try:
+            conf, missing = mcp_store.to_conf(cand, env_values=env_values)
+        except mcp_store.PackageRefused as e:
+            return f"[denied] {e}"
         self.cfg.setdefault("mcp_servers", {})[key] = conf
         cfgmod.save_config(self.cfg)
         mcp_store.record_install(
@@ -2495,24 +3450,45 @@ class Toolbox(usersmod.Scoped):
     async def save_report(self, title: str, content: str, to_telegram: bool = False) -> str:
         """Save a report as an HTML file in the workspace 'reports' folder (visible in the File Manager,
         opens in the Browser). `content` may be HTML or plain text. Set to_telegram to also send a summary."""
+        import html as _html
         import re as _re
         import time as _t
         root = os.path.expanduser(self.cfg["workspace"])
         reports = Path(root) / "reports"
-        reports.mkdir(parents=True, exist_ok=True)
+        # A planted `reports` link wrote into another account's folder: this tool is safe, so
+        # nobody was asked. A link anywhere on the way is refused, then the real place is judged.
+        if reports.is_symlink():
+            return "[denied] the reports folder is a link, so nothing was saved there."
         slug = _re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")[:50] or "report"
         stamp = _t.strftime("%Y-%m-%d")
         fname = f"{stamp}-{slug}.html"
-        body = content if "<" in content and ">" in content else f"<pre>{content}</pre>"
-        html = (f"<!doctype html><html><head><meta charset='utf-8'><title>{title}</title>"
+        target = reports / fname
+        if target.is_symlink():
+            return "[denied] that report is a link, so nothing was saved there."
+        real = os.path.realpath(target)
+        if (deny := self._sandbox_deny(real, write=True)):
+            return deny
+        if (why := protected.write_refused(real)):
+            return f"[denied] {why}"
+        reports.mkdir(parents=True, exist_ok=True)
+        # The body may be HTML, which is the point of a report, and the page is served in a
+        # sandbox. The title is a line of text, so it stays text.
+        body = content if "<" in content and ">" in content else f"<pre>{_html.escape(content)}</pre>"
+        safe_title = _html.escape(title)
+        html = (f"<!doctype html><html><head><meta charset='utf-8'><title>{safe_title}</title>"
                 "<style>body{background:#0e1116;color:#e6ebf2;font-family:-apple-system,Segoe UI,Roboto,sans-serif;"
                 "line-height:1.6;max-width:820px;margin:0 auto;padding:34px}h1,h2,h3{color:#5eead4}"
                 "a{color:#22d3ee}code,pre{background:#171b22;border:1px solid #232a35;border-radius:6px;padding:2px 6px}"
                 "pre{padding:12px;overflow:auto;white-space:pre-wrap}table{border-collapse:collapse;width:100%}"
                 "td,th{border:1px solid #232a35;padding:6px 9px;text-align:left}"
                 f".meta{{color:#5c6577;font-size:12px;margin-bottom:18px}}</style></head><body>"
-                f"<h1>{title}</h1><div class='meta'>Generated {_t.strftime('%Y-%m-%d %H:%M')}</div>{body}</body></html>")
-        (reports / fname).write_text(html)
+                f"<h1>{safe_title}</h1><div class='meta'>Generated {_t.strftime('%Y-%m-%d %H:%M')}</div>{body}</body></html>")
+        # `reports` is in the workspace, where a jailed shell can make it a link to anywhere
+        from . import safeopen
+        try:
+            safeopen.write_bytes(real, html.encode("utf-8"))
+        except OSError as e:
+            return f"[error] could not save the report: {e.strerror or e}"
         self.store.log("system", f"report saved: reports/{fname}")
         if self.broadcast:
             await self.broadcast({"type": "files"})
@@ -3063,7 +4039,8 @@ class Toolbox(usersmod.Scoped):
         res = await self.fabric.run_flow(defn, input, origin={"surface": "api"},
                                          conversation_id=conversation_id)
         head = (f"[flow {defn['name']} · {res['status']} · {res['delegations']} delegations]")
-        return f"{head}\n{(res['content'] or res['fault'] or '(no output)')[:3500]}"
+        return ((TAINTED_REPLY if res.get("tainted") else "")
+                + f"{head}\n{(res['content'] or res['fault'] or '(no output)')[:3500]}")
 
     async def department_task(self, department: str, task: str, _conv: str = "") -> str:
         """Hand a task to a department of the company: a run of its desk, led by its
@@ -3081,7 +4058,8 @@ class Toolbox(usersmod.Scoped):
         res = got["result"]
         head = (f"[{got['department']} · {res['status']} · led by {got['head'] or 'its head'} · "
                 f"{res['delegations']} hand-over{'' if res['delegations'] == 1 else 's'}]")
-        return f"{head}\n{(res['content'] or res['fault'] or '(no output)')[:3500]}"
+        return ((TAINTED_REPLY if res.get("tainted") else "")
+                + f"{head}\n{(res['content'] or res['fault'] or '(no output)')[:3500]}")
 
     async def telegram_send(self, message: str, chat_id: int = 0) -> str:
         """`chat_id` 0 means the owner's chat. It exists so work that arrived from a
@@ -3135,6 +4113,13 @@ class Toolbox(usersmod.Scoped):
         # Zero's. It is kept in the section, runs as the Zero's chat runs, and its answer goes
         # to the Zero's screen (scheduler.zero_job). Any other turn's space is not recorded.
         zero_space = space_id if space_id and _zero_label_of(space_id) else ""
+        if zero_space:
+            # every firing is a model turn on the hub's money, and anybody at the Pi can ask
+            if schedule_type == "interval" and 0 < int(interval_minutes or 0) < ZERO_MIN_INTERVAL:
+                return f"[error] a Zero's schedule runs at most every {ZERO_MIN_INTERVAL} minutes"
+            if sum(1 for t in self.store.list_tasks() if t.get("space_id") == zero_space) >= ZERO_MAX_SCHEDULES:
+                return (f"[error] this Zero already has {ZERO_MAX_SCHEDULES} schedules. "
+                        f"Remove one in Missions → Schedule on the hub first")
         return self.scheduler.create_task(prompt, schedule_type, interval_minutes, at_time,
                                           delay_minutes, weekday=weekday, app_id=app_id,
                                           space_id=zero_space)
@@ -3253,6 +4238,10 @@ class Toolbox(usersmod.Scoped):
             # definition and may create specialists, which is a change to the OS.
             return "risky", (f"Defines the flow '{args.get('name', '?')}' and any specialists it "
                              f"needs. It stays disabled until you enable it.")
+        if name == "save_automation":
+            # it runs later as if you had started it, so what it holds is shown first
+            return "risky", (f"Saves the routine '{args.get('name', '?')}'. Its steps run when "
+                             f"it fires, the way you would run them yourself.")
         if name == "pool_task":
             n = len(args.get("pieces") or []) if isinstance(args.get("pieces"), list) else 1
             return "risky", (f"Hands {n} piece{'' if n == 1 else 's'} of work to machines in your "
@@ -3287,9 +4276,10 @@ class Toolbox(usersmod.Scoped):
             return "risky", (f"Grants '{args.get('name', '?')}' the permissions its definition "
                              f"declares and arms its triggers.")
         if name in ("git_status", "git_log", "git_diff"):
-            return "safe", ""
+            return "safe", ""     # reading, with everything a repo can make git run switched off (_git)
         if name in ("git_init", "git_commit", "git_branch"):
-            # local, reversible history inside the workspace runs free; outside it, ask
+            # local, reversible history inside the workspace runs free; outside it, ask.
+            # After untrusted content it is held for a person (policy.TAINT_WATCH)
             ws = os.path.realpath(os.path.expanduser(self.cfg["workspace"]))
             p = os.path.realpath(os.path.expanduser(args.get("path") or ws))
             if p == ws or p.startswith(ws + os.sep):
@@ -3324,15 +4314,12 @@ class Toolbox(usersmod.Scoped):
         if name == "trainforge_service":
             return "safe", ""
         if name == "run_tests":
-            # running a test suite executes that project's code
-            p = args.get("path") or ""
-            if not p:
-                return "safe", ""  # AgentOS's own suite
-            ws = os.path.realpath(os.path.expanduser(self.cfg["workspace"]))
-            rp = os.path.realpath(os.path.expanduser(p))
-            if rp == ws or rp.startswith(ws + os.sep):
-                return "safe", ""
-            return "risky", f"Runs the test suite (arbitrary code) in {rp}."
+            # A conftest.py is a program, in the workspace as much as anywhere. Risky is what
+            # also holds it after untrusted content, and a specialist's call goes to a person
+            # (ASK_FROM_SPECIALISTS) unless the mission it works for declared it.
+            p = str(args.get("path") or "")
+            where = os.path.realpath(self._abs(p)) if p else "this OS's own code"
+            return "risky", f"Runs a test suite, which is code, in {where}."
         if name == "request_capability":
             who = str(args.get("who") or args.get("_from") or "an agent")
             return "risky", (f"Gives {who} an ability it does not have: "
@@ -3344,7 +4331,7 @@ class Toolbox(usersmod.Scoped):
         if name == "update_soul":
             return "risky", "Rewrites the agent's soul (its persistent identity and behavior)."
         if name == "configure_agentos":
-            return "risky", "Changes AgentOS configuration (autonomy, policies, integrations)."
+            return "risky", "Changes this agent's name, default model, step limit or memory settings."
         if name == "update_agentos":
             return "risky", "Installs a new version of AgentOS itself."
         if name == "share_folder":
@@ -3354,11 +4341,13 @@ class Toolbox(usersmod.Scoped):
         if name == "list_folders":
             return "safe", ""
         if name == "create_theme":
-            return "safe", ""
+            return "risky", "Restyles the whole desktop, approval cards included."
+        if name == "create_theme_shell":
+            return "risky", "Draws a page the agent wrote over the whole desktop."
         if name == "create_app":
             return "risky", "Installs a UI app (HTML/JS) onto the AgentOS desktop."
         if name in ("develop_agentos", "restart_agentos"):
-            return "risky", "Modifies/restarts AgentOS's own source code (self-modification)."
+            return "risky", "Changes or restarts this OS's own code, which then runs with all its authority."
         if name == "pin_widget":
             return "safe", ""
         if name == "add_mcp_server":
@@ -3435,12 +4424,9 @@ class Toolbox(usersmod.Scoped):
     # ask for approval) and pushes authenticate via the GitHub token from Settings
     # without the token ever appearing in a command line or tool output.
 
-    async def _git(self, repo: str, *argv: str, env: dict | None = None,
-                   timeout: int = 120) -> tuple[int, str]:
-        e = {**os.environ, "GIT_TERMINAL_PROMPT": "0", **(env or {})}
+    async def _git_exec(self, argv: list[str], workdir: str, env: dict, timeout: int) -> tuple[int, str]:
         proc = await asyncio.create_subprocess_exec(
-            "git", "-C", repo, *argv,
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, env=e)
+            *argv, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, env=env)
         try:
             out, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         except asyncio.TimeoutError:
@@ -3448,37 +4434,104 @@ class Toolbox(usersmod.Scoped):
             return 1, f"[error] git timed out after {timeout}s"
         return proc.returncode or 0, out.decode(errors="replace")
 
-    def _git_repo(self, path: str) -> tuple[str | None, str]:
-        p = os.path.realpath(os.path.expanduser(path or self.cfg["workspace"]))
+    async def _git(self, repo: str, *argv: str, env: dict | None = None,
+                   timeout: int = 120) -> tuple[int, str]:
+        """Git, with everything a repository's own files can make it run switched off, inside
+        this account's jail. A repo's config is written by whoever wrote the folder, and git
+        reads it before anything else: `core.fsmonitor` runs on `git status`, hooks on a commit,
+        a filter driver on `git add`. Some of those have names the repo itself chooses, so its
+        config is read first and each is overridden by name (`-c` is read last)."""
+        e = {**_tool_env(), **_GIT_ENV, **(env or {})}
+        ro = [e["GIT_ASKPASS"]] if e.get("GIT_ASKPASS") else []
+        wrap, jailed, refusal = self._jailed(["git"], repo, ro=ro, own_env=True)
+        if refusal:
+            return 1, refusal
+        if jailed:
+            # inside the jail $HOME is a folder the agent writes, so a ~/.gitconfig there is the
+            # repo's words too, and some settings are honoured only from that file
+            e = {**jail_env(repo), **_GIT_ENV, **(env or {}), "GIT_CONFIG_GLOBAL": os.devnull}
+        code, names = await self._git_exec([*wrap, "-C", repo, "config", "--list", "--name-only", "-z"],
+                                           repo, e, timeout)
+        extra = _git_overrides(names.split("\0")) if code == 0 else []
+        if extra is None:
+            return 1, "[error] this repository's config points git at another folder, so it was not touched"
+        return await self._git_exec([*wrap, *_GIT_OFF, *extra, "-C", repo, *argv], repo, e, timeout)
+
+    def _git_repo(self, path: str, write: bool = False) -> tuple[str | None, str]:
+        p = os.path.realpath(self._abs(path or self.cfg["workspace"]))
         if (deny := self._sandbox_deny(Path(p), write=True)):
             return None, deny
         if not os.path.isdir(p):
             return None, f"[error] not a directory: {p}"
+        if write:
+            # a pull, a branch switch or a commit in this OS's own checkout is a write to its
+            # code by another door, and `.git` itself is a folder of programs
+            why = protected.write_refused(os.path.join(p, "x"))
+            code = str(protected._code_root())
+            if not why and (p == code or p.startswith(code + os.sep)):
+                why = "This is this OS's own code. No agent can change it."
+            if why:
+                return None, f"[denied] {why}"
         return p, ""
 
-    def _git_auth_env(self) -> dict:
+    def _git_auth_env(self, url: str) -> dict:
         """GIT_ASKPASS-based credentials: the token comes from config (Settings →
-        github.token) via the environment — never argv, never remotes, never output."""
+        github.token) via the environment — never argv, never remotes, never output.
+        Only for `url`'s host when the token belongs there: a remote is a line in a repository's
+        config, and anyone who wrote that folder could name a server that collects it. The
+        script checks git's own prompt too, for what a redirect or a rewrite changes afterwards."""
         token = (self.cfg.get("github") or {}).get("token", "")
-        if not token:
+        host = self._git_token_host(url)
+        if not token or not host:
             return {}
         from . import config as cfgmod
         askpass = cfgmod.AGENTOS_HOME / "git-askpass.sh"
-        if not askpass.exists() or "AGENTOS_GIT" not in askpass.read_text():
+        if not askpass.exists() or "AGENTOS_GIT_HOST" not in askpass.read_text():
             askpass.write_text("#!/bin/sh\n# AGENTOS_GIT askpass helper\n"
+                               "case \"$1\" in\n"
+                               "  *\"://$AGENTOS_GIT_HOST'\"*|*\"@$AGENTOS_GIT_HOST'\"*) ;;\n"
+                               "  *) exit 1;;\n"
+                               "esac\n"
                                "case \"$1\" in\n"
                                "  *sername*) echo \"${AGENTOS_GIT_USER:-x-access-token}\";;\n"
                                "  *) echo \"$AGENTOS_GIT_TOKEN\";;\n"
                                "esac\n")
             askpass.chmod(0o700)
-        return {"GIT_ASKPASS": str(askpass), "AGENTOS_GIT_TOKEN": token,
+        return {"GIT_ASKPASS": str(askpass), "AGENTOS_GIT_TOKEN": token, "AGENTOS_GIT_HOST": host,
                 "AGENTOS_GIT_USER": (self.cfg.get("github") or {}).get("username") or "x-access-token"}
+
+    def _git_token_host(self, url: str) -> str:
+        """The host in `url` if the GitHub token may go there, else ''. https only, because
+        http would carry it in the clear. `github.host` in config names a GitHub Enterprise."""
+        url = str(url or "").strip()
+        if not url or "\\" in url or any(ord(c) <= 32 for c in url):
+            return ""
+        try:
+            from urllib.parse import urlsplit
+            u = urlsplit(url)
+            host, port = (u.hostname or "").lower(), u.port
+        except ValueError:
+            return ""
+        if u.scheme != "https" or port not in (None, 443) or not host:
+            return ""
+        return host if host in {"github.com", str((self.cfg.get("github") or {}).get("host") or "").lower()} else ""
+
+    async def _git_auth_for(self, repo: str, remote: str, push: bool = False) -> dict:
+        """The credentials for one remote of a repository, as git itself resolves its URLs
+        (`insteadOf` included). Every URL it would use must be one the token belongs to."""
+        if "://" in remote:
+            urls = [remote]
+        else:
+            code, out = await self._git(repo, "remote", "get-url", "--all", *(["--push"] if push else []), remote)
+            urls = out.split() if code == 0 else []
+        envs = [self._git_auth_env(u) for u in urls]
+        return envs[0] if envs and all(envs) else {}
 
     async def git_status(self, path: str = "") -> str:
         repo, err = self._git_repo(path)
         if err:
             return err
-        code, out = await self._git(repo, "status", "--short", "--branch")
+        code, out = await self._git(repo, "status", "--short", "--branch", "--ignore-submodules=all")
         if code != 0:
             return f"[error] {out.strip()[:800]}"
         _, remotes = await self._git(repo, "remote", "-v")
@@ -3496,7 +4549,9 @@ class Toolbox(usersmod.Scoped):
         repo, err = self._git_repo(path)
         if err:
             return err
-        argv = ["diff", "--stat", "-p"]
+        if _dashed(ref):
+            return "[error] a ref cannot start with a dash"
+        argv = ["diff", "--stat", "-p", "--no-ext-diff", "--no-textconv"]
         if staged:
             argv.append("--staged")
         if ref:
@@ -3505,14 +4560,14 @@ class Toolbox(usersmod.Scoped):
         return _truncate(out or "(no changes)") if code == 0 else f"[error] {out.strip()[:800]}"
 
     async def git_init(self, path: str) -> str:
-        repo, err = self._git_repo(path)
+        repo, err = self._git_repo(path, write=True)
         if err:
             return err
         code, out = await self._git(repo, "init", "-b", "main")
         return out.strip() if code == 0 else f"[error] {out.strip()[:800]}"
 
     async def git_commit(self, path: str, message: str, add_all: bool = True) -> str:
-        repo, err = self._git_repo(path)
+        repo, err = self._git_repo(path, write=True)
         if err:
             return err
         if not message.strip():
@@ -3522,19 +4577,36 @@ class Toolbox(usersmod.Scoped):
             if code != 0:
                 return f"[error] git add: {out.strip()[:800]}"
         # per-invocation identity fallback so a fresh machine can still commit
-        idargs = []
-        code, _ = await self._git(repo, "config", "user.email")
-        if code != 0:
-            idargs = ["-c", "user.name=AgentOS", "-c", "user.email=agentos@localhost"]
+        idargs = await self._git_identity(repo)
         code, out = await self._git(repo, *idargs, "commit", "-m", message)
         if code != 0 and "nothing to commit" in out:
             return "nothing to commit — working tree clean"
         return out.strip()[:800] if code == 0 else f"[error] {out.strip()[:800]}"
 
+    async def _git_identity(self, repo: str) -> list[str]:
+        """Who a commit is from. The jail can't see the person's ~/.gitconfig, so with no accounts
+        it is read here, from that file alone. An account's commits are the repo's or AgentOS's."""
+        code, _ = await self._git(repo, "config", "user.email")
+        if code == 0:
+            return []
+        if not usersmod.enabled():
+            got = []
+            for key in ("user.name", "user.email"):
+                proc = await asyncio.create_subprocess_exec(
+                    "git", "config", "--global", key, env=_tool_env(),
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+                out, _ = await proc.communicate()
+                got.append(out.decode(errors="replace").strip())
+            if all(got):
+                return ["-c", f"user.name={got[0]}", "-c", f"user.email={got[1]}"]
+        return ["-c", "user.name=AgentOS", "-c", "user.email=agentos@localhost"]
+
     async def git_branch(self, path: str, name: str = "", checkout: bool = True) -> str:
-        repo, err = self._git_repo(path)
+        repo, err = self._git_repo(path, write=bool(name))
         if err:
             return err
+        if _dashed(name):
+            return "[error] a branch name cannot start with a dash"
         if not name:
             code, out = await self._git(repo, "branch", "-a", "-v")
             return _truncate(out) if code == 0 else f"[error] {out.strip()[:800]}"
@@ -3543,9 +4615,11 @@ class Toolbox(usersmod.Scoped):
         return out.strip()[:400] if code == 0 else f"[error] {out.strip()[:800]}"
 
     async def git_remote_set(self, path: str, url: str, name: str = "origin") -> str:
-        repo, err = self._git_repo(path)
+        repo, err = self._git_repo(path, write=True)
         if err:
             return err
+        if _dashed(name) or _dashed(url):
+            return "[error] a remote cannot start with a dash"
         code, out = await self._git(repo, "remote", "get-url", name)
         if code == 0:
             code, out = await self._git(repo, "remote", "set-url", name, url)
@@ -3554,29 +4628,41 @@ class Toolbox(usersmod.Scoped):
         return f"remote {name} -> {url}" if code == 0 else f"[error] {out.strip()[:800]}"
 
     async def git_pull(self, path: str = "", remote: str = "origin", branch: str = "") -> str:
-        repo, err = self._git_repo(path)
+        repo, err = self._git_repo(path, write=True)
         if err:
             return err
+        if _dashed(remote) or _dashed(branch):
+            return "[error] a remote or branch cannot start with a dash"
         argv = ["pull", remote] + ([branch] if branch else [])
-        code, out = await self._git(repo, *argv, env=self._git_auth_env(), timeout=300)
+        code, out = await self._git(repo, *argv, env=await self._git_auth_for(repo, remote), timeout=300)
         return _truncate(out) if code == 0 else f"[error] {out.strip()[:800]}"
 
     async def git_clone(self, url: str, path: str) -> str:
         parent, err = self._git_repo(os.path.dirname(os.path.expanduser(path)) or self.cfg["workspace"])
         if err:
             return err
-        dest = os.path.realpath(os.path.expanduser(path))
-        proc_env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", **self._git_auth_env()}
-        proc = await asyncio.create_subprocess_exec(
-            "git", "clone", url, dest,
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, env=proc_env)
-        try:
-            out, _ = await asyncio.wait_for(proc.communicate(), timeout=600)
-        except asyncio.TimeoutError:
-            proc.kill()
-            return "[error] git clone timed out after 600s"
-        text = out.decode(errors="replace")
-        return _truncate(text) if proc.returncode == 0 else f"[error] {text.strip()[:800]}"
+        dest = os.path.realpath(self._abs(path))
+        if (deny := self._sandbox_deny(dest, write=True)):
+            return deny
+        if (why := protected.write_refused(os.path.join(dest, "x"))):
+            return f"[denied] {why}"
+        if url.startswith(("http://", "https://")):
+            try:
+                await netguard.check_url(url)
+            except netguard.Refused as e:
+                return self._net_refused(e, "git_clone")
+            except httpx.HTTPError:
+                pass                   # a name that does not resolve: git says so
+        auth = self._git_auth_env(url)
+        e = {**_tool_env(), **_GIT_ENV, **auth}
+        ro = [e["GIT_ASKPASS"]] if e.get("GIT_ASKPASS") else []
+        wrap, jailed, refusal = self._jailed(["git"], parent, ro=ro, own_env=True)
+        if refusal:
+            return refusal
+        if jailed:
+            e = {**jail_env(parent), **_GIT_ENV, **auth, "GIT_CONFIG_GLOBAL": os.devnull}
+        code, text = await self._git_exec([*wrap, *_GIT_OFF, "clone", "--", url, dest], parent, e, 600)
+        return _truncate(text) if code == 0 else f"[error] {text.strip()[:800]}"
 
     async def _github_api(self, method: str, path: str, body: dict | None = None) -> tuple[int, dict]:
         token = (self.cfg.get("github") or {}).get("token", "")
@@ -3596,6 +4682,8 @@ class Toolbox(usersmod.Scoped):
         repo, err = self._git_repo(path)
         if err:
             return err
+        if _dashed(remote) or _dashed(branch):
+            return "[error] a remote or branch cannot start with a dash"
         if not branch:
             code, out = await self._git(repo, "rev-parse", "--abbrev-ref", "HEAD")
             branch = out.strip() if code == 0 else "main"
@@ -3618,12 +4706,22 @@ class Toolbox(usersmod.Scoped):
             add_code, add_out = await self._git(repo, "remote", "add", remote, clone_url)
             if add_code != 0:
                 return f"[error] {add_out.strip()[:400]}"
-        env = self._git_auth_env()
+        env = await self._git_auth_for(repo, remote, push=True)
         if not env:
-            hint = " (no GitHub token configured — add one in Settings → Integrations for private/auth pushes)"
+            hint = (" (the GitHub token goes only to https://github.com, so it wasn't offered to this remote)"
+                    if (self.cfg.get("github") or {}).get("token") else
+                    " (no GitHub token configured — add one in Settings → Integrations for private/auth pushes)")
         else:
             hint = ""
-        code, out = await self._git(repo, "push", "-u", remote, branch, env=env, timeout=300)
+        # A remote on a local path: its receive-pack starts in THAT repo and drops our `-c`, so
+        # the hooks a planted bare repo holds would run. Over a network the far side runs its own.
+        over = []
+        got, where = await self._git(repo, "remote", "get-url", "--push", remote)
+        where = where.strip()
+        if got == 0 and ("://" not in where or where.startswith("file://")) \
+                and not re.match(r"^[^/]+:", where):
+            over = ["--receive-pack=git -c core.hooksPath=/dev/null -c core.fsmonitor=false receive-pack"]
+        code, out = await self._git(repo, "push", *over, "-u", remote, branch, env=env, timeout=300)
         if code != 0:
             return f"[error] git push failed{hint}: {out.strip()[:600]}"
         done = f"pushed {branch} -> {remote}"
@@ -3688,6 +4786,8 @@ class Toolbox(usersmod.Scoped):
         return _truncate(body if code < 400 else f"[error] HTTP {code}: {body[:800]}")
 
     async def trainforge_service(self, action: str = "status") -> str:
+        if action in ("start", "stop") and (deny := self._admin_only("start or stop this machine's services")):
+            return deny
         tf, err = self._tf()
         if err:
             return err
@@ -3722,6 +4822,13 @@ class Toolbox(usersmod.Scoped):
                 body["name"] = name
             code, data = await tf.api("POST", "/api/datasets/import-hub", body)
         elif action == "import_url":
+            # the training service does the fetching, so this judges the address it starts from
+            try:
+                await netguard.check_url(url)
+            except netguard.Refused as e:
+                return self._net_refused(e, "train_datasets")
+            except httpx.HTTPError as e:
+                return f"[error] {e}"
             code, data = await tf.api("POST", "/api/datasets/import-url",
                                       {"url": url, **({"name": name} if name else {})})
         elif action == "get":
@@ -3793,19 +4900,28 @@ class Toolbox(usersmod.Scoped):
     _NO_SHELL = ("[error] not supported on this platform: no desktop shell channel — "
                  "the browser UI is the shell and it isn't connected")
 
-    async def desktop_state(self) -> str:
+    async def desktop_state(self, _app: str = "") -> str:
         """One live snapshot of the desktop: shell apps, native windows + focus,
         workspace, battery, power profile, network, volume, brightness, and unread
-        notifications. Every section is best-effort; unavailable ones are omitted."""
+        notifications. Every section is best-effort; unavailable ones are omitted.
+        An app asking (`_app`, the runtime's and never the model's) doesn't hear which other
+        apps are open: an app's id was how one app reached another's source and data."""
         from . import host
         out: dict = {}
         if self.shell is not None:
             try:
                 ok, data = await self.shell("list_open_apps", {}, timeout=3)
+                if ok and _app and isinstance(data, dict):
+                    data = {**data, "open": [w for w in data.get("open") or []
+                                             if not str(w.get("app", "")).startswith("ua_")
+                                             or w.get("app") == f"ua_{_app}"]}
                 if ok:
                     out["shell_apps"] = data
             except Exception:
                 pass
+        if self._admin_only("x"):
+            # the host's windows, sound and power are the machine's (HOST_TOOLS)
+            return json.dumps(out, indent=1) if out else "(no desktop state available for this account)"
         try:
             w = host.list_windows()
             if w.get("available"):
@@ -4081,7 +5197,9 @@ class Toolbox(usersmod.Scoped):
             return "[error] nothing to run"
         from . import edgecode
         enabled, root = sandbox_conf(self.cfg)
-        base = root if enabled else os.path.expanduser(self.cfg["workspace"])
+        jailed = enabled or usersmod.enabled()
+        base = account_root(self.cfg) if usersmod.enabled() else (
+            jail_root(root) if enabled else os.path.expanduser(self.cfg["workspace"]))
         os.makedirs(base, exist_ok=True)
         # On a machine a hub set up, small code runs here inside the edge's limits and big
         # code goes to the hub (edgecode.py). Anywhere else nothing below changes.
@@ -4100,7 +5218,7 @@ class Toolbox(usersmod.Scoped):
         try:
             with open(path, "w") as fh:
                 fh.write(code)
-            py = jail_python(sys.executable) if enabled else sys.executable
+            py = jail_python(sys.executable) if jailed else sys.executable
             if hub:
                 out = await self.run_command(edgecode.local_command(py, path, cwd))
             else:
@@ -4128,15 +5246,23 @@ class Toolbox(usersmod.Scoped):
             out.append(f"- {a['name']}  ({len(a['steps'])} steps: {steps})")
         return "\n".join(out)
 
-    async def run_automation(self, name: str) -> str:
-        """Fire a saved automation on the desktop, exactly as the user set it up."""
+    async def run_automation(self, name: str, _taint=None) -> str:
+        """Fire a saved automation on the desktop, exactly as the user set it up. The page
+        replays the steps, so what this turn has read goes with them under a ticket the
+        server made (automation_ticket): the page carries it, and /api/tool and an `agent`
+        step look it up. `_taint` is the agent loop's, never the model's."""
         a = self.store.get_automation(name)
         if not a:
             known = ", ".join(r["name"] for r in self.store.list_automations()) or "none saved"
             return f"[error] no automation named {name!r}. Saved: {known}"
         self.store.mark_automation_run(a["id"])
-        if self.broadcast:
-            await self.broadcast({"type": "automation.run", "automation": a})
+        # Its id, to its owner's screens: the page reads the steps from its own account's list.
+        # The ticket is what carries this turn's taint through /api/tool (policy: automation_ticket).
+        send = getattr(self, "broadcast_user", None)
+        if send:
+            await send({"type": "automation.run", "id": a["id"], "name": a["name"],
+                        **({"run": automation_ticket(a["name"], _taint)} if _taint else {})},
+                       usersmod.current())
         self.store.log("automation", f"ran {a['name']}", {"via": "agent"})
         return f"ran automation '{a['name']}' ({len(a['steps'])} steps)"
 
@@ -4163,6 +5289,8 @@ class Toolbox(usersmod.Scoped):
 
     async def wifi(self, action: str = "status", ssid: str = "", password: str = "") -> str:
         """Wifi via NetworkManager: status | list | connect | forget | enable | disable."""
+        if action in ("connect", "forget", "enable", "disable") and not usersmod.is_admin(usersmod.current()):
+            return "[denied] only an admin can change this machine's wifi"
         try:
             from .hostctl import HostCtlError, network
         except Exception as e:
@@ -4201,6 +5329,8 @@ class Toolbox(usersmod.Scoped):
 
     async def bluetooth(self, action: str = "status", device: str = "") -> str:
         """Bluetooth via BlueZ: status | scan | pair | connect | disconnect | forget."""
+        if action in ("pair", "connect", "disconnect", "forget") and not usersmod.is_admin(usersmod.current()):
+            return "[denied] only an admin can change this machine's bluetooth"
         try:
             from .hostctl import HostCtlError
             from .hostctl import bluetooth as bt
@@ -4394,6 +5524,18 @@ class Toolbox(usersmod.Scoped):
             return f"[error] {e}"
 
     async def browser_open(self, url: str, new_tab: bool = False) -> str:
+        # The agent's own navigation: never this machine or a metadata address. A person's
+        # typed address is not this path, and a page's own links and redirects are the
+        # browser's (docs/live-windows.md). The LAN stays open here, as for a person.
+        from . import cdpbrowser
+        try:
+            if (u := cdpbrowser.normalise(url)).startswith(("http://", "https://")):
+                await netguard.check_url(u, local_ok=True)
+                netguard.refuse_loopback(u)
+        except netguard.Refused as e:
+            return self._net_refused(e, "browser_open")
+        except httpx.HTTPError:
+            pass                    # a name that does not resolve: the browser says so better
         return await self._browser_do(lambda m, b: m.tool_open(b, url, bool(new_tab)))
 
     async def browser_read(self) -> str:
@@ -4567,6 +5709,8 @@ class Toolbox(usersmod.Scoped):
         fn = getattr(self, name, None)
         if fn is None or name not in {t["name"] for t in TOOL_SCHEMAS}:
             return f"[error] unknown tool: {name}"
+        if name in HOST_TOOLS and (deny := self._admin_only(HOST_TOOLS[name])):
+            return deny
         if set(args.keys()) == {"_raw"}:
             # the streamed tool-call JSON was cut off mid-argument (output token limit)
             return (f"[error] your {name} tool call was cut off at the output token limit — "
@@ -4574,7 +5718,7 @@ class Toolbox(usersmod.Scoped):
                     f"payload (e.g. a whole app's html), emit it as a ```html code block in "
                     f"plain text instead of a tool call, or produce a smaller version.")
         try:
-            keep = ({"_flow", "_run_id"} if name == "brief_item" else {"_conv"} if name in ("create_app", "department_task", "show_scene", "create_subagent") else {"_from"} if name == "request_capability" else {"_who", "_why"} if name in ("device_get", "device_set") else {"_taint", "_space", "_files", "_files_note", "_root"} if name == "delegate" else
+            keep = ({"_flow", "_run_id"} if name == "brief_item" else {"_conv"} if name in ("create_app", "department_task", "show_scene", "create_subagent") else {"_from"} if name == "request_capability" else {"_who", "_why"} if name in ("device_get", "device_set") else {"_taint", "_space", "_files", "_files_note", "_root"} if name == "delegate" else {"_taint"} if name == "run_automation" else
                     {"_app"} if name in APP_BOUND_TOOLS else
                     {"_from", "_chain", "_root", "_run_id", "_conv", "_space", "_taint"}
                     if name == "ask_agent" else set())
@@ -5007,10 +6151,8 @@ TOOL_SCHEMAS = [
                        "(corner radii), el-2..el-5 (shadows), glass-tint/glass-blur (the glass recipe), "
                        "fs-base (text size)). `css` is extra CSS to restyle chrome: windows (.win, .ttl), the top menu "
                        "bar (#menubar), the dock (#taskbar), app icons (.aicon), widgets (.widget), the desktop "
-                       "(#desktop). Optional web font (font_url + font_family, e.g. a Google Fonts URL). For a "
-                       "TOTAL redesign pass shell_html: complete HTML+CSS+JS that replaces the stock desktop with "
-                       "your own interface — it runs same-origin and may use every endpoint listed by GET "
-                       "/api/registry (REST + the /ws websocket), so it can do anything the stock UI does. "
+                       "(#desktop). Optional web font (font_family + font_url, a Google Fonts URL: other hosts "
+                       "don't load). For a page that replaces the desktop, see create_theme_shell. "
                        "Applies live; saved to the Themes app. Use when the user asks to restyle, redesign, "
                        "tweak, or completely reimagine the UI.",
         "parameters": {
@@ -5022,9 +6164,24 @@ TOOL_SCHEMAS = [
                 "css": {"type": "string", "description": "extra CSS restyling the desktop chrome/widgets; omit when refining to keep the current css"},
                 "font_url": {"type": "string", "description": "optional stylesheet URL for a web font, e.g. a Google Fonts CSS link"},
                 "font_family": {"type": "string", "description": "the CSS font-family name that font provides, e.g. 'Inter'"},
-                "shell_html": {"type": "string", "description": "optional full replacement interface (HTML+CSS+JS) that takes over the screen; omit to keep an existing shell, pass \"\" to remove it; call GET /api/registry for the endpoints it can use"},
             },
             "required": ["name", "vars"],
+        },
+    },
+    {
+        "name": "create_theme_shell",
+        "description": "Replace the desktop with a page you write (HTML, CSS and JS), on a theme by that name, or "
+                       "take it off with shell_html=\"\". The person is asked every time. It runs in a sandboxed "
+                       "frame with no network: it cannot call the API, open a socket or load scripts from elsewhere, "
+                       "so it can only draw. It may open a desktop app with parent.postMessage({bento_shell: 'open', "
+                       "app: 'chat'}, '*').",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "the theme this shell belongs to"},
+                "shell_html": {"type": "string", "description": "the whole page, or \"\" to remove the shell"},
+            },
+            "required": ["name"],
         },
     },
     {
@@ -5069,12 +6226,11 @@ TOOL_SCHEMAS = [
                          "required": ["engine"]},
     }, {
         "name": "configure_agentos",
-        "description": "Reconfigure AgentOS itself. Pass a JSON object with any of: agent_name, "
-                       "default_model, autonomy ('paranoid'|'balanced'|'full'), max_steps, workspace, "
-                       "policies (list of {action:'allow'|'deny', match:'pattern *'}), "
-                       "telegram ({enabled, bot_token}), mcp_servers ({name:{transport:'stdio', command, args, "
-                       "env, enabled} or name:null to remove}). Use when the user asks to change settings, "
-                       "add MCP servers, set policies, etc.",
+        "description": "Change your own name, the default model, the step limit or how you remember. "
+                       "Pass a JSON object with any of: agent_name, default_model, max_steps, memory "
+                       "({auto_extract, inject_user, inject_session, inject_facts, rollup_after_hours}). "
+                       "Autonomy, permissions, the sandbox, the workspace, MCP servers and channels are "
+                       "the person's, in Settings: tell them where, you can't change those.",
         "parameters": {
             "type": "object",
             "properties": {"changes": {"type": "string", "description": "JSON object of config changes."}},
@@ -5126,7 +6282,8 @@ TOOL_SCHEMAS = [
     {
         "name": "develop_agentos",
         "description": "Modify or EXTEND AgentOS itself by writing a file into its own source tree "
-                       "(e.g. add a WhatsApp integration module, a new API endpoint, or a new tool). "
+                       "(e.g. add a WhatsApp integration module). An admin says yes every time, and its "
+                       "security modules, tests of them and the page can't be written from here at all. "
                        "Python files are syntax-checked before writing and the previous version is backed up. "
                        "Set restart=true to reload the service and apply the change. Read the relevant source "
                        "with read_source first so your edit fits the existing code.",
@@ -6478,6 +7635,10 @@ TOOL_SCHEMAS.extend(CAPABILITY_REQUEST_SCHEMAS)
 
 #: Tools whose reads and writes belong to the turn's space. The agent loop injects
 #: `space_id` for these; nothing else in the OS decides scope on the model's behalf.
+ZERO_MAX_SCHEDULES = 16         # schedules one Zero's screen may have standing on its hub
+ZERO_MIN_INTERVAL = 5           # minutes between a repeating one's firings
+
+
 def _zero_label_of(space_id: str) -> str:
     """The Zero whose section `space_id` is, on the hub that set it up, or ''."""
     from . import provision

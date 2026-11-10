@@ -34,7 +34,7 @@ function jobHistRow(r){
   const door=r.run_id?`<button class="endbtn" data-open-run="${esc(r.run_id)}">Open run</button>`
     :r.conversation_id?`<button class="endbtn" data-open-conv="${esc(r.conversation_id)}">Open in Chat</button>`:'';
   // a run that refreshed an app is read in the app itself
-  const app=r.app_name?`<button class="endbtn" onclick="taskOpenApp('${esc(r.app_id)}')">Open app</button>`:'';
+  const app=r.app_name?`<button class="endbtn" onclick="taskOpenApp('${jsq(r.app_id)}')">Open app</button>`:'';
   // everything this run did as one JSON file, to read or hand to an AI (trace.py)
   const tr=r.run_id?`<a class="endbtn" download href="/api/trace/run/${encodeURIComponent(r.run_id)}" title="Download what this run did as JSON">⤓ JSON</a>`
     :r.conversation_id?`<a class="endbtn" download href="/api/trace/conversation/${encodeURIComponent(r.conversation_id)}" title="Download what this run did as JSON">⤓ JSON</a>`:'';

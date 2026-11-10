@@ -179,14 +179,18 @@ def pending_for(state: str) -> dict | None:
     return _pending.get(state)
 
 
-def pending_status() -> list[dict]:
+def pending_status(uid: str = "") -> list[dict]:
+    """What is waiting for THIS account. The URL carries the single-use `state`, so anyone
+    who could read another account's could consent with their own mailbox, and that person's
+    mail and calendar would then read the wrong one."""
     _sweep()
     return [{"provider": v["provider"], "uses": v["uses"], "waiting_for": int(time.time() - v["started"]),
-             "url": v["url"]} for v in _pending.values()]
+             "url": v["url"]} for v in _pending.values() if v.get("uid", "") == (uid or "")]
 
 
-def cancel(provider: str) -> int:
-    gone = [s for s, v in _pending.items() if v["provider"] == provider]
+def cancel(provider: str, uid: str | None = None) -> int:
+    gone = [s for s, v in _pending.items() if v["provider"] == provider
+            and (uid is None or v.get("uid", "") == (uid or ""))]
     for s in gone:
         _pending.pop(s, None)
     return len(gone)
@@ -209,7 +213,7 @@ def finish(cfg: dict, state: str, code: str, error: str = "") -> dict:
     # the attempt that finished is the one that counts: an earlier click's entry
     # would otherwise read as "waiting for you" under a card that says signed in
     for s_, v in list(_pending.items()):
-        if v["provider"] == provider:
+        if v["provider"] == provider and v.get("uid", "") == pend.get("uid", ""):
             _pending.pop(s_, None)
     p = PROVIDERS[provider]
     if error:

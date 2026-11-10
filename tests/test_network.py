@@ -69,7 +69,7 @@ def sudo_ok():
         sys.stderr.write("sudo: a password is required\n"); sys.exit(1)
     if "sudo -S " in remote and stdin.strip() != st["password"]:
         sys.stderr.write("sudo: incorrect password\n"); sys.exit(1)
-if remote.startswith("echo key="):
+if "echo key=" in remote:
     print("key=" + yes(st["authorized"]))
     print("passwords=" + yes(st["passwords_off"]))
     print("firewall=" + yes(st["firewall"]))
@@ -113,6 +113,8 @@ def pi(tmp_path, monkeypatch):
     monkeypatch.setenv("PATH", f"{bin_}{os.pathsep}{os.environ['PATH']}")
     monkeypatch.setenv("AGENTOS_SCAN_NETWORKS", "127.0.0.0/8")
     monkeypatch.setenv("BENTO_SSH_PASSWORD", "leaked-from-the-parent")
+    from agentos import remoteinstall as _ri
+    monkeypatch.setattr(_ri, "require_pin", lambda host, port=22: None)
     state = {"password": "raspberry-1", "authorized": False, "passwords_off": False, "firewall": False,
              "updates": False, "sudo_nopw": True}
     (bin_ / "machine.json").write_text(json.dumps(state))
@@ -395,3 +397,59 @@ def test_every_face_has_it():
         assert piece in js, piece
     zero = (ROOT / "agentos/ui/src/js/00k-zeroface.js").read_text()
     assert "'network'" in zero, "a Zero's network is its hub's business"
+
+
+# ---- "secured" is what sshd says, not what our file says (S-95) ---------------------------------
+
+def test_the_check_reads_sshd_and_the_loaded_firewall_not_our_own_files():
+    script = harden._check_script("ssh-ed25519 AAAA x")
+    assert "sshd -T" in script and "nft list table inet bento" in script
+    assert "sshd_config.d/10-bento.conf" not in script, "another file or a Match block can keep passwords on"
+    assert "! sudo -n true" not in script, "not being able to look is not a pass"
+
+
+def _measure_shell(tmp_path, sshd_all: str, sshd_this: str = "", root: bool = True):
+    """Run the real script through a real shell, with stand-ins for sudo, sshd and nft."""
+    import subprocess as sp
+    b = tmp_path / "shbin"
+    b.mkdir()
+    (b / "sudo").write_text("#!/bin/sh\n" + ("exit 1\n" if not root else
+                            'shift\n[ "$1" = true ] && exit 0\nexec "$@"\n'))
+    (b / "sshd").write_text("#!/bin/sh\nif [ \"$2\" = -C ]; then cat <<'E'\n" + sshd_this + "\nE\nelse cat <<'E'\n" + sshd_all + "\nE\nfi\n")
+    (b / "nft").write_text("#!/bin/sh\nexit 0\n")
+    for f in b.iterdir():
+        f.chmod(0o755)
+    out = sp.run(["sh", "-c", harden._measure(False) + '; echo "PW=$PW"; echo "FW=$FW"'], capture_output=True, text=True,
+                 env={"PATH": f"{b}:{os.environ['PATH']}", "SSH_CLIENT": "10.0.0.9 1 22"}).stdout
+    return dict(ln.split("=", 1) for ln in out.splitlines() if "=" in ln)
+
+
+OFF = "passwordauthentication no\nkbdinteractiveauthentication no\npermitrootlogin no"
+
+
+def test_passwords_off_only_when_sshd_says_so_for_this_login(tmp_path):
+    assert _measure_shell(tmp_path, OFF, OFF)["PW"] == "ok"
+
+
+def test_an_earlier_file_keeping_passwords_on_reads_as_not_done(tmp_path):
+    on = OFF.replace("passwordauthentication no", "passwordauthentication yes")
+    assert _measure_shell(tmp_path, on, on)["PW"] == "no"
+
+
+def test_a_match_block_that_keeps_passwords_on_reads_as_not_done(tmp_path):
+    on = OFF.replace("passwordauthentication no", "passwordauthentication yes")
+    assert _measure_shell(tmp_path, OFF, on)["PW"] == "no"
+
+
+def test_without_root_it_says_it_can_not_tell(tmp_path):
+    got = _measure_shell(tmp_path, OFF, OFF, root=False)
+    assert got["PW"] == "unknown"
+    assert got["FW"] == "no", "and our own file is not there, so the firewall is not set up"
+
+
+def test_a_check_reports_what_it_could_not_tell(pi):
+    st = json.loads((pi / "machine.json").read_text())
+    real = (pi / "ssh").read_text()
+    (pi / "ssh").write_text(real.replace('print("passwords=" + yes(st["passwords_off"]))', 'print("passwords=unknown")'))
+    c = asyncio.run(harden.check("127.0.0.2", "pi", st["password"]))
+    assert "passwords" in c["unknown"] and not c["done"]["passwords"]

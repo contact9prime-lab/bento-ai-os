@@ -24,7 +24,7 @@ def test_every_named_rule_in_the_gate_lands_on_a_step():
 
 
 def test_the_steps_are_in_the_gates_order():
-    assert KEYS == ["hard", "builtin", "reach", "channel", "taint", "rate", "team",
+    assert KEYS == ["held", "hard", "builtin", "reach", "channel", "taint", "rate", "team",
                     "rules", "default", "person"]
     assert stage_of("hard-block") == "hard"
     assert stage_of("taint") == "taint"
@@ -58,7 +58,7 @@ def test_the_trace_route_walks_the_steps_and_records_nothing(tmp_path):
         r = cl.post("/api/policy/trace", json={"principal_kind": "user", "tool": "run_command",
                                                "detail": "rm -rf /"}).json()
         assert r["effect"] == "deny" and r["stage"] == "hard"
-        assert [s["state"] for s in r["steps"]][:2] == ["decided", "skipped"]
+        assert [s["state"] for s in r["steps"]][:3] == ["passed", "decided", "skipped"]
         assert r["resource"] == "tool:run_command rm -rf /"
         r = cl.post("/api/policy/trace", json={"principal_kind": "user", "tool": "write_file",
                                                "detail": "notes.md", "after_web": True}).json()

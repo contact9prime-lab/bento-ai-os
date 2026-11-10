@@ -92,8 +92,9 @@ def test_the_shell_classifier_holes_are_closed():
              "uniq a b", "ip link set lo down", "hostname evil", "date -s 2020",
              "xrandr --output HDMI-1 --off", "find . -fprint /tmp/x", "find ~ -delete",
              "ls & rm -rf ~/x", "rg --pre sh x", "git log --output=/tmp/x", "history -c"]
-    safe = ["ls -la", "cat a.txt | grep x | wc -l", "git status", "curl -s https://example.com",
-            "curl -sL https://example.com -H 'Accept: json'", "wget -qO- https://example.com",
+    risky += ["curl -s https://example.com", "curl -sL https://example.com -H 'Accept: json'",
+              "wget -qO- https://example.com"]      # S-23: no flag list stays right about these
+    safe = ["ls -la", "cat a.txt | grep x | wc -l", "git status",
             "ip a", "sort a.txt", "date", "xrandr", "find . -name x", "df -h"]
     for c in risky:
         assert classify_command(c) == "risky", c
@@ -222,7 +223,7 @@ def test_an_app_cannot_pass_the_loops_own_arguments(tmp_path):
     src = (ROOT / "agentos/server.py").read_text()
     body = src[src.index('async def api_run_tool('):]
     body = body[:body.index("\n@app.")]
-    assert 'if not str(k).startswith("_")' in body
+    assert "args = strip_forged(name, args" in body
     assert "base_risk=toolbox.base_risk(name, args)" in body
 
 

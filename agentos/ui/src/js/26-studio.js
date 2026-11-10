@@ -40,10 +40,10 @@ async function renderStudio(body,w){
   STUDIO._logKey=STUDIO.sel||'new';
   const cur=d.apps.find(a=>a.id===STUDIO.sel)||null;
   const sideItems=d.apps.map(a=>`
-    <button class="stapp${a.id===STUDIO.sel?' on':''}" data-f="${esc(a.name+' '+(a.description||''))}" onclick="studioSelect('${a.id}')">
+    <button class="stapp${a.id===STUDIO.sel?' on':''}" data-f="${esc(a.name+' '+(a.description||''))}" onclick="studioSelect('${jsq(a.id)}')">
       ${iconTile(a.icon,a.name,a.id,26)}
       <span class="nm"><b>${esc(a.name)}</b><span>${esc(a.description||'')}</span></span>
-      <span class="stren" title="rename this app" onclick="event.stopPropagation();renameUserApp('${a.id}','studio')">✏️</span>
+      <span class="stren" title="rename this app" onclick="event.stopPropagation();renameUserApp('${jsq(a.id)}','studio')">✏️</span>
     </button>`).join('');
   const pb=panelShell(body,{
     title:'App Studio',
@@ -272,20 +272,20 @@ window.addEventListener('message',ev=>{
   const d=ev.data;
   if(!d||d.agentos!=='app_error')return;
   if(!STUDIO.sel||d.app_id!==STUDIO.sel||!STUDIO.log||!STUDIO.log.isConnected||STUDIO.building)return;
-  if(STUDIO._lastErr===d.message)return;   // don't spam repeats (e.g. errors in a poll loop)
-  STUDIO._lastErr=d.message;
-  studioLog(`<span style="color:var(--err)">app runtime error: ${esc(d.message)}${d.source&&d.source!==':0'?' @ '+esc(d.source):''}</span>
-    <button style="font-size:11px;padding:3px 10px;margin-left:6px" onclick="studioAutoFix()">Fix automatically</button>`);
-  // a just-deployed app that errors on first load gets ONE automatic repair build
-  if(STUDIO._justBuilt&&Date.now()-STUDIO._justBuilt<8000&&!STUDIO._autofixed){
-    STUDIO._autofixed=true;
-    studioLog('<span class="mut">the fresh build crashed on load — repairing automatically…</span>');
-    studioAutoFix();
-  }
+  // Only the frame showing this app. What it says is the app's own text, so a person decides
+  // whether to act on it: this used to start a build by itself, as if they had asked.
+  const prefix='/api/apps/'+STUDIO.sel+'/page';
+  if(![...document.querySelectorAll('iframe')].some(f=>f.contentWindow===ev.source&&(f.getAttribute('src')||'').startsWith(prefix)))return;
+  const msg=String(d.message||'').slice(0,300);
+  if(STUDIO._lastErr===msg)return;   // don't spam repeats (e.g. errors in a poll loop)
+  STUDIO._lastErr=msg;
+  studioLog(`<span style="color:var(--err)">app runtime error: ${esc(msg)}${d.source&&d.source!==':0'?' @ '+esc(String(d.source).slice(0,120)):''}</span>
+    <button style="font-size:11px;padding:3px 10px;margin-left:6px" onclick="studioAutoFix()">Fix it</button>`);
 });
 function studioAutoFix(){
   const p=$('#st-prompt');if(!p||!STUDIO._lastErr)return;
-  p.value='Fix this runtime error, keep everything else identical: '+STUDIO._lastErr;
+  STUDIO._fixErr=STUDIO._lastErr;     // travels apart from the request, fenced by the server
+  p.value='Fix the runtime error this app reported, and keep everything else identical.';
   STUDIO._lastErr=null;
   studioBuild();
 }
@@ -295,18 +295,18 @@ function studioActions(){
   const app=(USERAPPS||[]).find(a=>a.id===STUDIO.sel);
   const size=(app&&app.widget_size)||'m';
   box.innerHTML=STUDIO.sel
-    ?`<button class="endbtn" onclick="openApp('ua_${STUDIO.sel}')">↗ Open window</button>
-      <button class="endbtn" onclick="${pinned?`unpinWidget('${STUDIO.sel}')`:`pinWidget('${STUDIO.sel}')`};studioActions()">${pinned?'Unpin':'Pin to Desktop '+curDesk}</button>
+    ?`<button class="endbtn" onclick="openApp('ua_${jsq(STUDIO.sel)}')">↗ Open window</button>
+      <button class="endbtn" onclick="${pinned?`unpinWidget('${jsq(STUDIO.sel)}')`:`pinWidget('${jsq(STUDIO.sel)}')`};studioActions()">${pinned?'Unpin':'Pin to Desktop '+curDesk}</button>
       <span class="wgsize" title="How big this app is when pinned as a widget">
         <span class="mut">Widget</span>
         ${Object.entries(WIDGET_SIZES).map(([k,d])=>
-          `<button class="${k===size?'on':''}" onclick="setWidgetSize('${STUDIO.sel}','${k}')" title="${d.label} — ${d.w}×${d.h}">${k.toUpperCase()}</button>`).join('')}
+          `<button class="${k===size?'on':''}" onclick="setWidgetSize('${jsq(STUDIO.sel)}','${jsq(k)}')" title="${d.label} — ${d.w}×${d.h}">${k.toUpperCase()}</button>`).join('')}
       </span>
       <button class="endbtn" onclick="studioPreviewSurface()">${STUDIO.surface==='widget'?'Preview desktop':'Preview widget'}</button>
-      <button class="endbtn" onclick="window.open('/api/apps/${STUDIO.sel}/export')">Export</button>
+      <button class="endbtn" onclick="window.open('/api/apps/${jsq(STUDIO.sel)}/export')">Export</button>
       ${(typeof USERS!=='undefined'&&(USERS.me||{}).multiuser&&app)
-        ?`<button class="endbtn" onclick="usersShare('app',${JSON.stringify(app.name).replace(/"/g,'&quot;')})">Share</button>`:''}
-      <button class="endbtn" onclick="studioDel('${STUDIO.sel}')">Delete</button>`:'';
+        ?`<button class="endbtn" onclick="usersShare('app',${esc(JSON.stringify(app.name))})">Share</button>`:''}
+      <button class="endbtn" onclick="studioDel('${jsq(STUDIO.sel)}')">Delete</button>`:'';
 }
 /* The preview switches between the app's two surfaces, at the exact size the
    widget will be — so "does it still read at S?" is answered before pinning. */
@@ -383,7 +383,7 @@ async function studioVersions(){
       <span class="mut" style="flex:0 0 40px">${ago(v.created_at)}</span>
       <span style="flex:1;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(v.note||'')}">${esc(v.note||'')}</span>
       ${v===cur?'<span style="font-size:10.5px;color:var(--ok)">live</span>'
-        :`<button style="flex:0 0 auto;font-size:11px;padding:2px 10px" onclick="studioRestore(${v.version})">Restore</button>`}
+        :`<button style="flex:0 0 auto;font-size:11px;padding:2px 10px" onclick="studioRestore(${+v.version})">Restore</button>`}
     </div>`).join('')||'<p class="mut" style="font-size:12px">No versions yet — every build or edit creates one.</p>');
 }
 /* Permissions, in the same window the app was built in. An app that needs the
@@ -516,6 +516,7 @@ function studioBuild(){
   const nm=($('#st-name')?.value||'').trim();
   if(nm)msg.name=nm;
   if(!STUDIO.sel&&STUDIO.newIcon)msg.icon=STUDIO.newIcon;
+  if(STUDIO._fixErr){msg.app_error=STUDIO._fixErr;STUDIO._fixErr=null}
   ws.send(JSON.stringify(msg));
   p.value='';
 }
@@ -614,7 +615,7 @@ function studioBuildEvent(ev){
       if(ev.app_id){
         const wasNew=(STUDIO._logKey||'new')==='new';
         STUDIO.sel=ev.app_id;STUDIO._lastErr=null;
-        STUDIO._justBuilt=Date.now();STUDIO._autofixed=false;   // arm the load-crash auto-repair
+        
         STUDIO.newName='';STUDIO.newIcon='';                    // consumed by this build
         studioLog(`<span style="color:var(--ok)">✓ ${esc(ev.name||'app')} ready — deployed live</span>`);
         if(ev.warnings&&ev.warnings.length)

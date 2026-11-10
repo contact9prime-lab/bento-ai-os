@@ -257,20 +257,30 @@ function _applyThemeObj(t){
 
 /* ================= experience shells ================= */
 let EXPERIENCE='standard';
+var SHELL_CSP="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src data: https://fonts.gstatic.com; img-src data: blob: https:; media-src data: blob:; connect-src 'none'; form-action 'none'; base-uri 'none'";
+/* The one thing a shell may ask of the desktop: open one of its apps. Only from the frame we drew. */
+window.addEventListener('message',e=>{
+  const d=e.data;if(!d||d.bento_shell!=='open')return;
+  const f=document.querySelector('#custom-shell iframe');
+  if(!f||e.source!==f.contentWindow)return;
+  const id=String(d.app||'');
+  if(typeof APPS!=='undefined'&&Object.prototype.hasOwnProperty.call(APPS,id)&&!id.startsWith('ua_'))openApp(id);
+});
 function setExperience(exp,shellHtml){
   const cs=$('#custom-shell');
   if(exp==='custom'&&cs){
-    // An AI-designed shell fully replaces the desktop. It runs in a same-origin iframe:
-    // its scripts get their own global scope (no collisions with the desktop's globals)
-    // while keeping full access to the REST API and the /ws websocket.
+    // A shell is text somebody's model wrote, so it runs like an app: an opaque-origin
+    // frame holding no cookie, with no network of its own (SHELL_CSP). It used to be a
+    // same-origin frame with the REST API and the terminal socket, which made a theme the
+    // way to run script as whoever had this page open.
     try{
       cs.innerHTML='';
       const f=document.createElement('iframe');
       f.style.cssText='flex:1;width:100%;height:100%;border:none;background:var(--bg)';
+      f.setAttribute('sandbox','allow-scripts');
+      f.title='Theme shell';
+      f.srcdoc='<!doctype html><meta http-equiv="Content-Security-Policy" content="'+SHELL_CSP+'">'+(shellHtml||'');
       cs.appendChild(f);
-      f.contentDocument.open();
-      f.contentDocument.write(shellHtml||'');
-      f.contentDocument.close();
     }catch(e){cs.innerHTML='';toast('shell failed to load: '+e.message);exp='standard'}
   }else if(cs){cs.innerHTML=''}
   if(exp===EXPERIENCE&&exp!=='custom')return;

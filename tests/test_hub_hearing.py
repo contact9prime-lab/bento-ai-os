@@ -86,5 +86,5 @@ def test_it_is_wired_where_it_has_to_be():
     assert '"edge_run", "hear")' in (ROOT / "agentos/teamlink.py").read_text()
     srv = (ROOT / "agentos/server.py").read_text()
     assert 'req.get("op") == "hear"' in srv and "grant_hub(" in srv
-    assert '"speech.hear")' in (ROOT / "agentos/fabric.py").read_text().split("def forget_link_grants")[1][:600]
+    # revoked with the link: forget_link_grants takes every row on it (test_team_security)
     assert edgecode.set_up_here is not None

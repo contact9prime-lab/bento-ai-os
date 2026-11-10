@@ -37,6 +37,14 @@ import struct
 import time
 from pathlib import Path
 
+
+def _plain(text, limit: int) -> str:
+    """Words another machine put on the network, as they are kept: one line, no terminal
+    escapes or bidi overrides. Done here, where they arrive, so no view has to remember."""
+    from .teamlink import plain
+    return plain(text, limit, newlines=False)
+
+
 SSH_PORT = 22
 BENTO_PORTS = (8321,)               # the desktop's default port
 PROBE_TIMEOUT = 0.8
@@ -189,7 +197,7 @@ async def _touch(ip: str, port: int, timeout: float, banner_too: bool = False) -
     banner = ""
     try:
         if banner_too:
-            banner = (await asyncio.wait_for(r.readline(), timeout)).decode(errors="replace").strip()[:120]
+            banner = _plain((await asyncio.wait_for(r.readline(), timeout)).decode(errors="replace"), 120)
     except Exception:
         pass
     finally:
@@ -206,7 +214,7 @@ async def _knock(ip: str, port: int, timeout: float, banner_too: bool = False) -
 async def _name(ip: str) -> str:
     try:
         n = await asyncio.wait_for(asyncio.to_thread(socket.gethostbyaddr, ip), 1.5)
-        return n[0][:63]
+        return _plain(n[0], 63)
     except Exception:
         return ""
 
@@ -323,9 +331,9 @@ def _records(buf: bytes):
 
 def parse_mdns(buf: bytes) -> list[tuple[str, str]]:
     """(name, IPv4) pairs from the A records of one mDNS message, answers and additionals.
-    A malformed packet gives []; it is somebody else's bytes."""
+    A malformed packet gives []; it is somebody else's bytes, and a name goes to a terminal."""
     try:
-        return [(name, socket.inet_ntoa(buf[off:off + 4]))
+        return [(_plain(name, 80), socket.inet_ntoa(buf[off:off + 4]))
                 for name, rtype, off, rdlen in _records(buf) if rtype == 1 and rdlen == 4]
     except Exception:
         return []
@@ -346,7 +354,7 @@ def parse_reverse(buf: bytes) -> dict[str, str]:
                 out.setdefault(socket.inet_ntoa(buf[off:off + 4]), name)
     except Exception:
         pass
-    return {ip: (n[:-6] if n.endswith(".local") else n)[:63] for ip, n in out.items() if n and allowed(ip)}
+    return {ip: _plain(n[:-6] if n.endswith(".local") else n, 63) for ip, n in out.items() if n and allowed(ip)}
 
 
 def _question(names: list[str], qtype: int = 12) -> bytes:
@@ -473,7 +481,7 @@ class MdnsEar:
                 if len(data) > 9000:
                     return
                 for name, ip in parse_mdns(data):
-                    if name.endswith(".local") and allowed(ip):
+                    if name.endswith(".local") and allowed(ip) and name[:-6]:
                         try:
                             ear.on_seen(name[:-6], ip)
                         except Exception:
@@ -516,10 +524,14 @@ def remember(seen: dict, d: dict) -> bool:
         if quiet and k in ("ssh", "seen_by") and e.get("ssh"):
             continue
         if d.get(k) not in (None, "", []):
-            e[k] = d[k]
+            e[k] = _plain(d[k], 120) if isinstance(d[k], str) else d[k]
     e["last"] = time.time()
     seen[key] = e
     if len(seen) > 256:
-        for k, _ in sorted(seen.items(), key=lambda kv: kv[1].get("last", 0))[:len(seen) - 256]:
+        # only what nobody acted on makes room: a name on the network must not push out a
+        # machine that was installed or hidden
+        idle = sorted((kv for kv in seen.items() if kv[1].get("state", "new") == "new"),
+                      key=lambda kv: kv[1].get("last", 0))
+        for k, _ in idle[:len(seen) - 256]:
             seen.pop(k, None)
     return new

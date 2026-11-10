@@ -39,11 +39,11 @@ async function renderMCP(body){
       </details>`:''}
     </div>${badge(s)}
     ${s.auth==='oauth'?(s.authorized
-        ?`<button title="sign out and forget the tokens" onclick="mcpSignOut('${esc(s.name)}')">Sign out</button>`
-        :`<button class="pact" title="sign in with your browser" onclick="mcpSignIn('${esc(s.name)}')">Sign in</button>`):''}
-    ${REG[s.name]&&REG[s.name].doc_file?`<button title="open this server's generated manual in Docs" onclick="docsCur='${esc(REG[s.name].doc_file)}';openApp('docs');refreshApp('docs')">📖</button>`:''}
-    <button title="enable/disable" onclick="mcpToggle('${esc(s.name)}')">${s.enabled?'⏸':'▶'}</button>
-    <button title="remove" onclick="mcpDel('${esc(s.name)}')">✕</button></div>`}).join('');
+        ?`<button title="sign out and forget the tokens" ${doAttrs('mcpSignOut',s.name)}>Sign out</button>`
+        :`<button class="pact" title="sign in with your browser" ${doAttrs('mcpSignIn',s.name)}>Sign in</button>`):''}
+    ${REG[s.name]&&REG[s.name].doc_file?`<button title="open this server's generated manual in Docs" onclick="docsCur='${jsq(REG[s.name].doc_file)}';openApp('docs');refreshApp('docs')">📖</button>`:''}
+    <button title="enable/disable" ${doAttrs('mcpToggle',s.name)}>${s.enabled?'⏸':'▶'}</button>
+    <button title="remove" ${doAttrs('mcpDel',s.name)}>✕</button></div>`}).join('');
   const pb=panelShell(body,{
     title:'MCP Servers',
     sub:`${d.servers.filter(s=>s.status==='connected').length} connected · ${d.servers.length} configured`,
@@ -60,7 +60,7 @@ async function renderMCP(body){
       return `<div data-fgroup>
       <div class="sect">${esc(cat.title)} <span class="mut" style="font-weight:400">· sign in with your browser, no key to paste</span></div>
       <div class="cat">${es.map(e=>`
-        <button class="catcard${e.installed?' inst':''}" data-f="${esc(e.title+' '+e.description+' '+e.vendor)}" onclick="mcpConnectCurated('${esc(e.registry_name)}')">
+        <button class="catcard${e.installed?' inst':''}" data-f="${esc(e.title+' '+e.description+' '+e.vendor)}" ${doAttrs('mcpConnectCurated',e.registry_name)}>
           <span class="cn">${esc(e.title)}</span><span class="cd">${esc(e.description)}</span>
           <span class="ck">${e.installed?'added':'OAuth — opens your browser'}</span>
         </button>`).join('')}
@@ -69,7 +69,7 @@ async function renderMCP(body){
     <div data-fgroup>
     <div class="sect">${esc(g)}</div>
     <div class="cat">${MCP_CATALOG.filter(e=>e.g===gi).map(e=>`
-      <button class="catcard${MCPCFG[e.k]?' inst':''}" data-f="${esc(e.n+' '+e.d)}" onclick="mcpPreset('${e.k}')">
+      <button class="catcard${MCPCFG[e.k]?' inst':''}" data-f="${esc(e.n+' '+e.d)}" onclick="mcpPreset('${jsq(e.k)}')">
         <span class="cn">${esc(e.n)}</span><span class="cd">${esc(e.d)}</span>
         ${mcpBadge(e)}
       </button>`).join('')}
@@ -266,8 +266,8 @@ async function renderTelegram(body){
         <div class="grow"><b>${esc(c.title||c.chat_id)}</b>${c.username?` <span class="mut">@${esc(c.username)}</span>`:''}${c.chat_id===d.owner_chat_id?' <span class="badge ok">owner</span>':''}
           <div class="sub">${esc(c.type)} · ${c.msg_count} msg · last ${new Date(c.last_seen*1000).toLocaleString()}</div></div>
         <span class="badge ${c.allowed?'ok':'err'}">${c.allowed?'enabled':'blocked'}</span>
-        <button title="${c.allowed?'disable':'enable'}" onclick="tgAllow(${c.chat_id},${c.allowed?0:1})">${c.allowed?'⏸':'▶'}</button>
-        <button onclick="tgDelChat(${c.chat_id})">✕</button>
+        <button title="${c.allowed?'disable':'enable'}" onclick="tgAllow(${+c.chat_id},${c.allowed?0:1})">${c.allowed?'⏸':'▶'}</button>
+        <button onclick="tgDelChat(${+c.chat_id})">✕</button>
       </div>`).join('')||'<p class="mut">No chats registered yet.</p>'}
     </div>
   </div>`;

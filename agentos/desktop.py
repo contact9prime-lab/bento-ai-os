@@ -149,7 +149,9 @@ def _server_up(port: int) -> bool:
 
 def _start_server_thread(port: int):
     import uvicorn
-    config = uvicorn.Config("agentos.server:app", host="127.0.0.1", port=port, log_level="warning")
+    # proxy_headers off for the reason given in __main__.serve
+    config = uvicorn.Config("agentos.server:app", host="127.0.0.1", port=port, log_level="warning",
+                            proxy_headers=False, forwarded_allow_ips="")
     server = uvicorn.Server(config)
     threading.Thread(target=server.run, daemon=True).start()
     for _ in range(60):
@@ -168,6 +170,10 @@ def app_mode():
         _start_server_thread(port)
         started_here = True
     url = f"http://127.0.0.1:{port}"
+    # With the server in this process the window is its child, which peercheck refuses: it comes with a
+    # ticket for a session cookie instead. Harmless when the server is somebody else's.
+    from . import remote as remotemod
+    url = remotemod.ticket_url(url)
 
     browser = find_browser()
     if browser:
@@ -622,6 +628,21 @@ def service_restart() -> tuple[bool, str]:
     if not stopped and _server_up(port):
         return False, why
     return _spawn_server(port)
+
+
+def served_home_matches(port: int | None = None) -> bool:
+    """A server answers on the port and says it serves this home."""
+    import urllib.error
+    import urllib.request
+    from . import config as _c
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port or _port()}/api/platform", timeout=2) as r:
+            theirs = r.headers.get("X-Bento-Home") or ""
+    except urllib.error.HTTPError as e:
+        theirs = e.headers.get("X-Bento-Home") or ""
+    except Exception:
+        return False
+    return bool(theirs) and theirs == _c.home_id()
 
 
 def served_root(port: int | None = None) -> "Path | None":

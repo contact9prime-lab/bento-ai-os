@@ -184,15 +184,17 @@ def test_the_wait_loop_ends_on_the_answer(two):
 
 def test_a_machine_in_the_middle_makes_the_six_digits_disagree(two, tmp_path):
     # M terminates the TLS from home with ITS OWN certificate (it has no other choice:
-    # it does not hold office's key) and relays the request to office unchanged.
+    # it does not hold office's key) and asks office itself, since a request passed on
+    # unchanged is refused now (next test). It must show office its own certificate too.
     A, B, loop = two
     M = _machine(tmp_path / "mallory", "mallory")
 
     async def relay(reader, writer):
-        line = await reader.readline()
+        import json
+        await reader.readline()
         with teamlink.at(M["home"]):
-            import json
-            got, _, _ = await teamlink._once("127.0.0.1", A["port"], json.loads(line))
+            p = await teamlink.request_link(f"127.0.0.1:{A['port']}", "", cfg=M["cfg"])
+            got = {"ok": True, "token": p["token"], "name": "office", "expires_in": 60}
         writer.write((json.dumps(got) + "\n").encode())
         await writer.drain()
         writer.close()
@@ -215,6 +217,85 @@ def test_a_machine_in_the_middle_makes_the_six_digits_disagree(two, tmp_path):
     with teamlink.at(A["home"]):
         office_fp = teamlink.ensure_pki()["host_fp"]
     assert p["fp"] != office_fp, "home pinned the relay's certificate, not office's"
+
+
+def test_a_request_passed_on_by_another_machine_is_refused_at_the_door(two, tmp_path):
+    A, B, loop = two
+    M = _machine(tmp_path / "mallory", "mallory")
+
+    async def relay(reader, writer):
+        import json
+        line = await reader.readline()
+        with teamlink.at(M["home"]):
+            got, _, _ = await teamlink._once("127.0.0.1", A["port"], json.loads(line))
+        writer.write((json.dumps(got) + "\n").encode())
+        await writer.drain()
+        writer.close()
+
+    async def start():
+        with teamlink.at(M["home"]):
+            srv = await asyncio.start_server(relay, "127.0.0.1", 0, ssl=teamlink._server_ctx(teamlink.ensure_pki()))
+        return srv, srv.sockets[0].getsockname()[1]
+    srv, mport = loop.run_until_complete(start())
+
+    async def ask():
+        with teamlink.at(B["home"]):
+            return await teamlink.request_link(f"127.0.0.1:{mport}", "", cfg=B["cfg"])
+    try:
+        with pytest.raises(ValueError, match="could not prove"):
+            loop.run_until_complete(ask())
+    finally:
+        srv.close()
+    assert _waiting(A) == []
+
+
+def test_somebody_elses_certificate_cannot_replace_their_card(two, tmp_path):
+    """A certificate is public. A request that carries one must be signed by its key, or a
+    replay takes the real machine's card off the screen while the digits still match."""
+    A, B, loop = two
+    _ask(B, A, loop)
+    real = _waiting(A)[0]
+    with teamlink.at(B["home"]):
+        ident = teamlink.ensure_pki()
+
+    async def replay(extra):
+        with teamlink.at(B["home"]):
+            got, _, _ = await teamlink._once("127.0.0.1", A["port"], {
+                "op": "request", "name": "attacker", "ca": ident["ca"], "host": ident["host"], "to": "admin", **extra})
+        return got
+    got = loop.run_until_complete(replay({}))
+    assert not got["ok"] and "did not prove" in got["error"]
+    got = loop.run_until_complete(replay({"proof": "AAAA", "ts": int(__import__("time").time())}))
+    assert not got["ok"] and "could not prove" in got["error"]
+    assert _waiting(A)[0]["id"] == real["id"] and _waiting(A)[0]["name"] == real["name"]
+
+
+def test_an_old_signature_is_refused(two):
+    A, B, loop = two
+    with teamlink.at(A["home"]):
+        office = teamlink.ensure_pki()["host_fp"]
+    with teamlink.at(B["home"]):
+        ident = teamlink.ensure_pki()
+        ts = int(__import__("time").time()) - teamlink.REQUEST_SKEW - 60
+        proof = teamlink.request_proof(ident, office, "home", "", 0, ts)
+        assert "too old" in teamlink._request_proved(ident["host"], office, {
+            "name": "home", "to": "", "port": 0, "ts": ts, "proof": proof})
+
+
+def test_one_address_cannot_fill_the_waiting_cards(two, tmp_path):
+    A, B, loop = two
+    for i in range(teamlink.PENDING_PER_ADDR + 1):
+        m = _machine(tmp_path / f"m{i}", f"m{i}")
+        async def go(m=m):
+            with teamlink.at(m["home"]):
+                return await teamlink.request_link(f"127.0.0.1:{A['port']}", "", cfg=m["cfg"], my_port=0)
+        try:
+            loop.run_until_complete(go())
+        except ValueError as e:
+            assert i == teamlink.PENDING_PER_ADDR and "too many link requests waiting" in str(e)
+        else:
+            assert i < teamlink.PENDING_PER_ADDR
+    assert len(_waiting(A)) == teamlink.PENDING_PER_ADDR
 
 
 def test_asking_is_metered_per_address(two):

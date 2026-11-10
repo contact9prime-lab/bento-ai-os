@@ -130,7 +130,7 @@ function menuNative(w){
 function raiseShell(on){
   if(typeof suiRaise==='function'&&suiRaise(on))return Promise.resolve();
   if(PLATFORM.mode!=='de')return Promise.resolve();
-  return fetch('/api/shell/raise',{method:'POST',headers:{'Content-Type':'application/json'},
+  return fetch('/api/shell/raise',{method:'POST',quiet:true,headers:{'Content-Type':'application/json'},
     body:JSON.stringify({on:on!==false})}).catch(()=>{});
 }
 /* ---- the menu bar renders the focused window's menus ---- */
@@ -173,9 +173,7 @@ function paintMenuBar(box,menus,live){
       let set=menus;
       try{set=live()||menus}catch(e){}
       const items=(set[+b.dataset.i]||menus[+b.dataset.i])[1];
-      showCtxItems({clientX:r.left,clientY:r.bottom+2,preventDefault(){}},
-        items.map(it=>it&&({...it,
-          label:it.keys?`${it.label}<span class="mk">${esc(it.keys)}</span>`:it.label})),
+      showCtxItems({clientX:r.left,clientY:r.bottom+2,preventDefault(){}},items,
         {anchor:b,close:()=>b.classList.remove('on')});
     };
     b.onclick=()=>{if(b.classList.contains('on'))popClose($('#ctxmenu'));else open()};

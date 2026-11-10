@@ -54,7 +54,8 @@ def test_every_bound_reaches_the_command_line():
                       model="opus", budget_usd=3.5).sanitized()
     cmd = ex.build_command("do the thing", env)
 
-    assert "--print" in cmd and "do the thing" in cmd
+    assert "--print" in cmd and "do the thing" not in cmd, "the words go on stdin, never in argv"
+    assert ex.prompt_of("do the thing", env) == "do the thing"
     # a program is driving this, so the machine-readable stream is not optional
     assert cmd[cmd.index("--output-format") + 1] == "stream-json"
     assert "--verbose" in cmd, "the CLI rejects stream-json without it"
@@ -506,13 +507,13 @@ def test_copilot_context_reaches_the_delegated_run():
     env = ex.Envelope(workspace="/tmp/ws",
                              context="App: Notes. Live app state: editing note 2").sanitized()
     cmd = ex.build_command("make the button bigger", env)
-    assert "--append-system-prompt" in cmd
-    assert "editing note 2" in cmd[cmd.index("--append-system-prompt") + 1]
+    assert "--append-system-prompt" not in cmd, "a system prompt in argv is readable by any process"
+    assert "editing note 2" in open(cmd[cmd.index("--append-system-prompt-file") + 1]).read()
 
 
 def test_no_context_means_no_flag():
     cmd = ex.build_command("hello", ex.Envelope(workspace="/tmp/ws").sanitized())
-    assert "--append-system-prompt" not in cmd
+    assert "--append-system-prompt-file" not in cmd
 
 
 def test_context_drops_the_tool_list_the_executor_does_not_have():
@@ -557,9 +558,11 @@ def test_a_builtin_app_with_source_is_told_where_to_look():
 def test_context_is_capped_and_stripped():
     """It lands in a system prompt and comes from the UI."""
     env = ex.Envelope(workspace="/tmp/ws",
-                             context="a" * 9000 + "\x00\x07bad").sanitized()
-    assert len(env.context) <= 4096
+                             context="a" * 9000 + "\x00\x07bad" + "b" * ex.MAX_CONTEXT).sanitized()
+    assert len(env.context) <= ex.MAX_CONTEXT
     assert "\x00" not in env.context and "\x07" not in env.context
+    assert "a" * 9000 in env.context, "what this OS composes is about 8,000 characters and must survive"
+    assert len(ex.context_for("u" * 9000)) < ex.MAX_UI_CONTEXT + 1000, "a page's own text keeps the old cap"
 
 
 # ------------------------------- editing an app that is not a file on disk

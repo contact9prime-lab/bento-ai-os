@@ -242,7 +242,7 @@ async function omniShoot(){
     omniFocus();
   }catch(e){toast('screenshot failed')}
 }
-async function omniAsk(q){
+async function omniAsk(q,automation){
   q=(q||'').trim();
   const imgs=OMNI.imgs.slice();
   if(!q&&!imgs.length)return;
@@ -265,7 +265,7 @@ async function omniAsk(q){
       &&!(typeof devChatKeeps==='function'&&devChatKeeps()))close()},30000);
   }});
   const ok=agentTurn({text:q,cid:OMNI.cid,origin:'omni',title:omniTitle(q),images:imgs,
-    context:omniContext(),sink,onCid:id=>{OMNI.cid=id;card.dataset.cid=id},
+    context:omniContext(),sink,automation,onCid:id=>{OMNI.cid=id;card.dataset.cid=id},
     onQueued:stop=>{
       const tools=card.querySelector('.oc-tools');
       // Only one stop on a card that has not started: "Stop" would kill the turn

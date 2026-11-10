@@ -283,8 +283,9 @@ def test_the_forwarded_lead_hears_who_does_the_work_first(tmp_path):
         assert ctx.index("YOUR COMPANY") < ctx.index("MISSIONS") < ctx.index("FINDING WHAT")
         assert "- animator:" not in ctx, "another company's people are that company's"
         assert "- auditor:" not in ctx
+        assert executors.COMPANY_DOOR_LINE.strip() in ctx, "a jailed CLI has no bento, so it hears where a company is made"
         argv = executors.build_command("x", env)
-        conf = json.loads(argv[argv.index("--mcp-config") + 1])
+        conf = json.loads(open(argv[argv.index("--mcp-config") + 1]).read())
         assert conf["mcpServers"]["bento"]["timeout"] == executors.BRIDGE_CALL_MS >= 30 * 60 * 1000
     finally:
         mcpbridge.close_session(tok)
@@ -292,7 +293,8 @@ def test_the_forwarded_lead_hears_who_does_the_work_first(tmp_path):
 
 def test_a_mission_on_claude_code_waits_for_its_specialists():
     src = (ROOT / "agentos/executors.py").read_text()
-    assert src.count('"timeout": BRIDGE_CALL_MS') == 2
+    # chat and missions write the same `--mcp-config` file
+    assert src.count('"timeout": BRIDGE_CALL_MS') == 1 and src.count("_mcp_file(scratch, url, token)") == 2
 
 
 def test_the_lead_signs_off_without_tools():
@@ -424,7 +426,7 @@ def test_who_you_are_reaches_every_forwarded_turn():
     fw = src[src.index("async def forward("):][:4500]
     assert "if not token:" in fw and "identity_note(cfg, _store_of(cfg))" in fw
     door = src[src.index("def open_team_door("):][:6000]
-    assert "identity_note(cfg, store, company=False)" in door
+    assert "identity_note(cfg, store, company=False, space_id=space_id)" in door
     co = (ROOT / "agentos/company.py").read_text()
     assert "def profile_note(" in co
 

@@ -51,7 +51,9 @@
 #   --hub=ADDR[,ADDR]         the hub's addresses: this machine announces itself to them
 #                             as well as on its own network (Tailscale has no broadcast)
 #   --tailscale-key=KEY       install Tailscale and join the tailnet with this auth key
-#                             (or TS_AUTHKEY). Nothing keeps it after the join.
+#                             (or TS_AUTHKEY, which keeps it off the command line, as
+#                             AGENTOS_ENROLL or --enroll-file=FILE do for the enrolment key).
+#                             Nothing keeps it after the join.
 #   --screen                  open Bento on this machine's own screen when it starts: the
 #                             Office, full screen, listening (`bento screen on`). On a machine
 #                             with no desktop it installs cage and Chromium to draw it.
@@ -112,12 +114,15 @@ PORT_WANTED="${AGENTOS_PORT:-}"
 # run and writes down what it chose.
 PROFILE="${AGENTOS_PROFILE:-}"
 # Set up by another Bento (provision.py): a key to carry, or just "wait and show a code".
+# A key arrives in the environment or in a file, so that it is on no command line `ps` can show.
 ENROLL="${AGENTOS_ENROLL:-}"
+unset AGENTOS_ENROLL
 WAIT_SETUP=""
 # A Zero (zero.py): set up by the hub with its standard profile, nobody at it.
 ZERO=""
 HUBS="${AGENTOS_HUBS:-}"
 TS_KEY="${TS_AUTHKEY:-}"
+unset TS_AUTHKEY
 # Open Bento on this machine's screen at start (screen.py): asked for by name, never assumed.
 SCREEN=""
 PISCREEN=""
@@ -133,6 +138,10 @@ for a in "$@"; do
     --lite) PROFILE=lite ;;
     --full) PROFILE=full ;;
     --enroll=*) ENROLL="${a#--enroll=}" ;;
+    --enroll-file=*)
+      ENROLL_FILE="${a#--enroll-file=}"
+      ENROLL=$(cat "$ENROLL_FILE" 2>/dev/null || true)
+      rm -f "$ENROLL_FILE" ;;
     --wait) WAIT_SETUP=1 ;;
     --zero) ZERO=1; PROFILE=lite ;;
     --hub=*) HUBS="${a#--hub=}" ;;
@@ -1178,9 +1187,14 @@ if [ -n "$TS_KEY" ]; then
   fi
   if command -v tailscale >/dev/null 2>&1; then
     TS_NAME="bento-$(hostname 2>/dev/null | tr -cd 'A-Za-z0-9-' | cut -c1-40)"
-    if ts_root tailscale up --authkey="$TS_KEY" --hostname="$TS_NAME" >/dev/null 2>&1; then
+    # tailscale reads the key from a file when it starts with file:, so it is not on a command line
+    TS_FILE=$(mktemp)
+    printf '%s' "$TS_KEY" > "$TS_FILE"
+    if ts_root tailscale up --authkey="file:$TS_FILE" --hostname="$TS_NAME" >/dev/null 2>&1; then
+      rm -f "$TS_FILE"
       ok "on your tailnet as $TS_NAME ($(tailscale ip -4 2>/dev/null | head -n1))"
     else
+      rm -f "$TS_FILE"
       warn "Tailscale did not accept that key (or needs root)"
       gap "join yourself: sudo tailscale up --hostname=$TS_NAME"
     fi
@@ -1203,7 +1217,7 @@ fi
 # that machine's admin (or their automatic key) enables this one.
 if [ -n "$ENROLL" ]; then
   say "carrying your community's enrolment key"
-  if uv run bento pool enroll "$ENROLL" >/dev/null 2>&1; then
+  if printf '%s\n' "$ENROLL" | uv run bento pool enroll - >/dev/null 2>&1; then
     ok "this machine is set up by your community's leader as soon as it hears it"
   else
     warn "that is not an enrolment key (it starts with bento-enroll-1.)"

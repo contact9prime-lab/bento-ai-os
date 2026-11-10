@@ -33,6 +33,7 @@ import re
 import time
 
 import httpx
+from . import netguard
 
 from . import users as usersmod
 
@@ -151,7 +152,7 @@ async def search(query: str, limit: int = 8) -> list[dict]:
     if not want:
         return []
     out: list[dict] = []
-    async with httpx.AsyncClient(timeout=20, follow_redirects=True, headers=UA) as client:
+    async with netguard.client(timeout=20, follow_redirects=True, headers=UA) as client:
         for repo in CURATED:
             try:
                 sha, paths = await _tree(client, repo)
@@ -212,7 +213,7 @@ async def read(source: str) -> dict:
     description, text, findings, extra, choices}; `choices` is set, and nothing is
     kept, when a repository holds several skills."""
     src = (source or "").strip()
-    async with httpx.AsyncClient(timeout=20, follow_redirects=True, headers=UA) as client:
+    async with netguard.client(timeout=20, follow_redirects=True, headers=UA) as client:
         if src.startswith("https://"):
             if not src.lower().endswith(".md"):
                 raise ValueError("an address must point at a .md file")

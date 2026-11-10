@@ -28,7 +28,7 @@ ROOT = Path(__file__).parent.parent
 
 
 def test_apply_leaves_the_loop_free(monkeypatch):
-    def slow(cfg, run_tests=True, log=None, switch=False):
+    def slow(cfg, run_tests=True, log=None, switch=False, need_verified=False, allow_unsigned=False):
         if log:
             log("working")
         time.sleep(0.6)

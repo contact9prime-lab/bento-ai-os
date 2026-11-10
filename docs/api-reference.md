@@ -46,7 +46,7 @@ A PTY bridge for the Terminal app. Send `{ "type": "input", "data" }` and
 ### Tools & registry
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/registry` | **the API registry** — self-describing list of every REST/WS endpoint, tool, realtime event and injected page global. The contract AI-built apps, themes and full replacement shells code against |
+| GET | `/api/registry` | **the API registry** — self-describing list of every REST/WS endpoint, tool, realtime event and injected page global. The contract AI-built apps code against. A theme's shell runs in a sandbox with no network and cannot reach it |
 | GET | `/api/tools` | list callable tools (built-in + MCP) |
 | POST | `/api/tool` | run a tool: `{ name, args }` → `{ output }` (risk-gated) |
 

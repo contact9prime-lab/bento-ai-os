@@ -218,8 +218,8 @@ def test_the_doors():
     assert {"device_get", "device_set"} <= set(fabric.ZERO_CHAT_TOOLS)
     tl = (ROOT / "agentos/teamlink.py").read_text()
     assert '"device_get", "device_set"' in tl
-    ag = (ROOT / "agentos/agent.py").read_text()
-    assert 'name == "device_set" and dec.effect == "allow"' in ag
+    gate = (ROOT / "agentos/policy.py").read_text()
+    assert 'name == "device_set" and dec.effect == "allow"' in gate
     js = (ROOT / "agentos/ui/src/js/24n-network.js").read_text()
     assert "function netHwPermHTML" in js and "/api/devices/permits" in js
     assert '"permit"' in (ROOT / "agentos/__main__.py").read_text()
