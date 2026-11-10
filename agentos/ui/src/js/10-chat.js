@@ -347,6 +347,7 @@ async function openConv(cid){
   }
   if(typeof fileChips==='function')fileChips(feed);
   if(typeof stageAttach==='function')stageAttach(cid);   // each answer's story, after its reply
+  if(typeof xrayAttach==='function')xrayAttach(cid);     // each answer, taken apart from the records
   setRunning(RUNNING.has(cid));
   renderQueue();
   loadConvs();scrollDown();

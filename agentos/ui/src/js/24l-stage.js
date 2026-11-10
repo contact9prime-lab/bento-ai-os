@@ -91,6 +91,13 @@ function stageEvent(ev){
   else{STAGE.tab='now';stagePaint();}
   if(Date.now()>STAGE.held)stageSay(ev.scene);
 }
+/* A blueprint filling itself in (bpfill.py): the part that landed is redrawn where you are. */
+function stageFill(ev){
+  const hit=(STAGE.scenes||[]).find(s=>s.id===ev.id);
+  if(!hit)return;
+  const old=hit.scene;hit.scene=ev.scene;
+  document.querySelectorAll('.bp-art').forEach(art=>{if(art._bp&&art._bp.sc===old)bpRefill(art._bp,ev.scene)});
+}
 function stagePaintIfOpen(){const w=typeof WM!=='undefined'&&WM.wins.get('stage');if(w)stagePaint()}
 function stageToApp(aid,ev){
   let frames=document.querySelectorAll('iframe[src^="/api/apps/'+aid+'/page"]');
@@ -169,8 +176,8 @@ async function stageAttach(cid){
    keeps a way back. Asked for as "the look and feel is really horrible, it needs a very
    good immersive experience", with background sound, pictures and videos. */
 var STAGE_KIND={chart:'Chart',map:'Map',numbers:'Key numbers',timeline:'Timeline',steps:'How it works',
-  table:'Table',image:'Picture',video:'Video',film:'Film'};
-var STAGE_HUE={chart:255,map:200,numbers:280,timeline:170,steps:320,table:225,image:30,video:350,film:265};
+  table:'Table',image:'Picture',video:'Video',film:'Film',blueprint:'Blueprint'};
+var STAGE_HUE={chart:255,map:200,numbers:280,timeline:170,steps:320,table:225,image:30,video:350,film:265,blueprint:205};
 async function renderStage(body,w){
   body.classList.add('stage-body');
   if(w&&w.app&&!w.app.onClose)w.app.onClose=()=>{stageMusic(false,true);STAGE.playing=false};
@@ -272,19 +279,29 @@ function stageNow(main){
   const play=sEl('button','stg-b stg-play',STAGE.playing?'❚❚':'▶');play.title=STAGE.playing?'Pause':'Play the story';play.onclick=stagePlay;
   const next=sEl('button','stg-b','›');next.title='Next scene';next.disabled=STAGE.at>=n-1;next.onclick=()=>stageGo(STAGE.at+1);
   bar.append(prev,play,next);
-  const deep=sEl('button','stg-b stg-deep','⤵ ');deep.append(sEl('span','stg-long','Go deeper'),sEl('span','stg-short','Deeper'));
-  deep.title='Ask for this scene as its own story';
-  deep.onclick=()=>stageDeeper(cur.seq);bar.append(deep);
+  if(!STAGE.cur.xray){
+    const deep=sEl('button','stg-b stg-deep','⤵ ');deep.append(sEl('span','stg-long','Go deeper'),sEl('span','stg-short','Deeper'));
+    deep.title='Ask for this scene as its own story';
+    deep.onclick=()=>stageDeeper(cur.seq);bar.append(deep);
+  }else{
+    // an X-ray is read from the records, so it can be read again while a run is still going
+    const re=sEl('button','stg-b','↻ ');re.append(sEl('span','stg-long','Read again'));re.title='Read the records again';
+    re.onclick=()=>stageXray(STAGE.cur.xray,STAGE.cur.question);bar.append(re);
+    if(STAGE.cur.xray.conversation||STAGE.cur.xray.run){const j=document.createElement('a');j.className='stg-b';
+      j.textContent='⤓ JSON';j.title='Everything it did, as one file to read or hand to an AI';j.setAttribute('download','');
+      j.href=STAGE.cur.xray.run?'/api/trace/run/'+encodeURIComponent(STAGE.cur.xray.run)
+        :'/api/trace/conversation/'+encodeURIComponent(STAGE.cur.xray.conversation);bar.append(j)}
+  }
   const kids=(STAGE.cur.deeper||{})[String(cur.seq)]||[];
   kids.forEach((a,i)=>{const k=sEl('button','stg-b stg-kid',kids.length>1?`Deeper story ${i+1} ›`:'The deeper story ›');
     k.onclick=()=>stageOpen(STAGE.cur.cid,a,0);bar.append(k)});
   const sp=sEl('span','stg-sp');bar.append(sp);
-  const keep=sEl('button','stg-b','★');keep.append(sEl('span','stg-long',' Keep'));
-  keep.title='Keep this story as a board, and refresh it if you like';keep.setAttribute('aria-label','Keep');
-  keep.onclick=()=>stageKeepMenu(keep);
-  const chat=sEl('button','stg-b','Chat');chat.title='Open the conversation';
-  chat.onclick=()=>{if(typeof openConv==='function'){openApp('chat');openConv(STAGE.cur.cid)}};
-  bar.append(keep,chat);
+  if(!STAGE.cur.xray){const keep=sEl('button','stg-b','★');keep.append(sEl('span','stg-long',' Keep'));
+    keep.title='Keep this story as a board, and refresh it if you like';keep.setAttribute('aria-label','Keep');
+    keep.onclick=()=>stageKeepMenu(keep);bar.append(keep)}
+  if(STAGE.cur.cid){const chat=sEl('button','stg-b','Chat');chat.title='Open the conversation';
+    chat.onclick=()=>{if(typeof openConv==='function'){openApp('chat');openConv(STAGE.cur.cid)}};
+    bar.append(chat)}
   th.append(bar);
   if(STAGE.awaiting)th.append(stageWaiting());
   stageMusicMood(sc.kind);
@@ -294,6 +311,7 @@ function stageNow(main){
    before stays one tap away. Asked for as "update the stage or add a new face to the same
    stage with the previous one there as well, like a new version". */
 async function stageVersions(c){
+  if(c.xray)return;
   try{const d=await apiJSON('/api/stage?conversation='+encodeURIComponent(c.cid));
     c.versions=(d.stories||[]).filter(s=>!s.parent).map(s=>s.answer_to);
     if(STAGE.cur===c&&c.versions.length>1)stagePaintIfOpen()}catch(e){}
@@ -328,7 +346,7 @@ function stagePlay(){
       if(STAGE.at>=STAGE.scenes.length-1){STAGE.playing=false;STAGE.held=0;stagePaint();return}
       STAGE.at++;stagePaint();step()},900);
     // a video plays at its own pace: the story waits on it rather than cutting it off
-    const hold=sc.kind==='video'?20000:sc.kind==='film'?stageFilmSeconds(sc)*1000:0;
+    const hold=sc.kind==='video'?20000:sc.kind==='film'?stageFilmSeconds(sc)*1000:sc.kind==='blueprint'?bpTourMs(sc):0;
     if(typeof VOICE!=='undefined'&&VOICE.tts&&typeof speakAs==='function'&&line)speakAs(agentName(),line,()=>setTimeout(after,hold));
     else setTimeout(after,Math.max(4500,line.length*60)+hold);
   };
@@ -336,11 +354,11 @@ function stagePlay(){
 }
 /* Go deeper: the scene becomes a question in its own chat, sent as the person's message,
    and the story that answers it plays here next with a way back up. */
-async function stageDeeper(seq){
-  const c=STAGE.cur;if(!c)return;
+async function stageDeeper(seq,part){
+  const c=STAGE.cur;if(!c||c.xray)return;
   let d;
   try{const r=await fetch('/api/stage/deeper',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({conversation_id:c.cid,answer_to:c.answer_to,seq})});
+      body:JSON.stringify({conversation_id:c.cid,answer_to:c.answer_to,seq,part:part||''})});
     d=await r.json();if(!r.ok)throw new Error(d.error||r.status)}
   catch(e){toast('could not go deeper: '+(e.message||e));return}
   STAGE.awaiting={cid:c.cid,at:Date.now()};
@@ -510,7 +528,7 @@ function stageBoards(main){
 /* ================= drawing ================= */
 function stageDraw(art,sc){
   ({chart:stageChart,map:stageMap,numbers:stageNumbers,timeline:stageTimeline,steps:stageSteps,table:stageTable,
-    image:stageImage,video:stageVideo,film:stageFilm}[sc.kind]||(()=>{}))(art,sc);
+    image:stageImage,video:stageVideo,film:stageFilm,blueprint:stageBlueprint}[sc.kind]||(()=>{}))(art,sc);
   if(stageReduced())art.classList.add('still');
 }
 

@@ -36,7 +36,8 @@ import re
 import time
 import uuid
 
-KINDS = ("chart", "map", "numbers", "timeline", "steps", "table", "image", "video", "film")
+KINDS = ("chart", "map", "numbers", "timeline", "steps", "table", "image", "video", "film",
+         "blueprint")
 CHART_TYPES = ("line", "area", "bar", "scatter", "pie")
 NEEDS_SOURCE = ("chart", "map", "numbers", "table")   # the kinds that carry measurements
 
@@ -62,7 +63,37 @@ FIELDS = {
     "image": ("url", "asset", "alt", "credit"),
     "video": ("url", "start"),
     "film": ("shots", "look"),
+    "blueprint": ("subject", "form", "unit", "parts", "links", "unknowns", "facts"),
 }
+
+# A blueprint takes a thing apart instead of presenting it: its parts, how they connect,
+# the real numbers and how sure anyone is of each, and what nobody can tell from outside.
+# Asked for as "give me a fine blueprint of Burj Khalifa … opens the building inside out and
+# I can literally drill into anything". The parts nest, so the person drills on the page
+# without waiting on a model; past the last level, Go deeper asks for that part's own.
+# `form` is how a level is laid out: tower (built in layers along a height, bottom first),
+# exploded (a thing made of parts round a core) or flow (a process, in order).
+BP_FORMS = ("tower", "exploded", "flow")
+BP_CERTAINTY = ("known", "estimated", "unclear")
+# a state is never colour alone: the page draws each with its icon and its word
+BP_STATUS = ("ok", "refused", "asked", "waiting", "failed", "stopped", "running")
+BP_DEPTH = 4             # levels of parts under the subject
+BP_CHILDREN = 12         # parts at one level: more than that is a list, not a drawing
+BP_NODES = 160           # parts in all; a blueprint is drawn on a phone too
+BP_FACTS = 6
+BP_LINKS = 160
+BP_UNKNOWNS = 6
+BP_HEADLINE = 8          # the whole's own key numbers, the spec table
+# what a part carries besides its parts: what it does (role), HOW it works, what it is made
+# of, its limits or how it fails. A blueprint that only names parts is a list with lines.
+BP_PART = ("name", "id", "role", "detail", "how", "made_of", "limits", "facts", "from", "to",
+           "width", "certainty", "status", "source", "evidence", "form", "parts", "unknowns")
+# what flows along a link. Each is drawn with its own line and a word, never colour alone.
+BP_FLOWS = ("load", "power", "fluid", "heat", "air", "data", "signal", "control", "material",
+            "money", "people")
+# a part with fewer facts than this and no how is THIN: the page says so rather than letting
+# a name with a line under it pass for a part that was taken apart
+BP_THIN_FACTS = 2
 
 # A film is a short 3D animation the page plays from a shot list, asked for as "stage
 # generation should have video generation too … the AI should decide the level". The model
@@ -145,7 +176,8 @@ def clean(spec: dict) -> tuple[dict, list[str]]:
     measured = (kind in NEEDS_SOURCE and not (kind == "map" and not any(
         r.get("value") is not None for r in sc.get("regions", []) + sc.get("points", [])))) or (
         kind == "film" and any(sh.get("value") is not None or sh.get("items")
-                               for sh in sc.get("shots", [])))
+                               for sh in sc.get("shots", []))) or (
+        kind == "blueprint" and (bool(sc.get("facts")) or _bp_measured(sc.get("parts", []))))
     if measured and not sc["source"] and not sc["illustrative"]:
         raise ValueError("say where these numbers came from (source: a site, a dataset or "
                          "a URL), or set illustrative: true when they are an example")
@@ -328,6 +360,40 @@ class _KIND:
         sc.update(shots=shots, look=look)
 
     @staticmethod
+    def blueprint(spec, sc, dropped):
+        """A thing taken apart: parts that nest, each with what it does, its numbers, how sure
+        anyone is, and its own parts. Read field by field at every level; what is dropped is
+        named with where it was (parts[2].colour), so the model can correct itself."""
+        form = str(spec.get("form") or "").strip().lower()
+        if form and form not in BP_FORMS:
+            dropped.append(f"form {form!r}")
+            form = ""
+        seen: set[str] = set()
+        count = [0]
+        parts = _bp_parts(spec.get("parts"), 1, "parts", seen, count, dropped)
+        if len(parts) < 2:
+            raise ValueError("a blueprint needs parts: at least two [{name, role, parts?: […]}], "
+                             "each part what it is and what it does")
+        if count[0] > BP_NODES:
+            dropped.append(f"{count[0] - BP_NODES} parts past the limit of {BP_NODES}")
+        links = []
+        for i, ln in enumerate(_list(spec.get("links"))[:BP_LINKS]):
+            if not isinstance(ln, dict):
+                continue
+            a, b = _bp_ref(ln.get("from"), seen), _bp_ref(ln.get("to"), seen)
+            if not a or not b or a == b:
+                dropped.append(f"links[{i}] (names a part that is not there)")
+                continue
+            links.append(_bp_link(ln, a, b, f"links[{i}]", dropped))
+        sc.update(subject=_s(spec.get("subject") or sc["title"], 80) or "The whole",
+                  form=form or _bp_form_of(parts), unit=_s(spec.get("unit"), 12), parts=parts,
+                  links=links, facts=_bp_facts(spec.get("facts"), BP_HEADLINE),
+                  unknowns=[_s(u, 160) for u in _list(spec.get("unknowns"))[:BP_UNKNOWNS]
+                            if str(u or "").strip()])
+        if not sc["title"]:
+            sc["title"] = sc["subject"]
+
+    @staticmethod
     def table(spec, sc, dropped):
         cols = [_s(c, 40) for c in _list(spec.get("columns"))[:MAX_COLS]]
         rows = []
@@ -339,6 +405,133 @@ class _KIND:
         if not cols or not rows:
             raise ValueError("a table needs columns: [...] and rows: [[...], …]")
         sc.update(columns=cols, rows=rows)
+
+
+def _bp_slug(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:32] or "part"
+
+
+def _bp_ref(v, seen: set) -> str:
+    """A link end: a part's id, or its name as the model wrote it."""
+    v = str(v or "").strip()
+    if v in seen:
+        return v
+    sl = _bp_slug(v)
+    return sl if sl in seen else ""
+
+
+def _bp_link(ln: dict, a: str, b: str, at: str, dropped: list) -> dict:
+    kind = str(ln.get("kind") or "").strip().lower()
+    if kind and kind not in BP_FLOWS:
+        dropped.append(f"{at}.kind {kind!r}")
+        kind = ""
+    return {"from": a, "to": b, "verb": _s(ln.get("verb"), 40), "kind": kind}
+
+
+# what a model writes in a unit when there is none
+_NO_UNIT = {"n/a", "na", "none", "-", "—", "null"}
+
+
+def _bp_facts(raw, cap: int = BP_FACTS) -> list:
+    out = []
+    for f in _list(raw)[:cap]:
+        if isinstance(f, dict) and str(f.get("value") if f.get("value") is not None else "").strip():
+            unit = _s(f.get("unit"), 12)
+            out.append({"label": _s(f.get("label"), 40), "value": _s(f.get("value"), 28),
+                        "unit": "" if unit.lower() in _NO_UNIT else unit})
+    return out
+
+
+def bp_thin(p: dict) -> bool:
+    """A part that names a thing and says almost nothing about it."""
+    return len(p.get("facts") or []) < BP_THIN_FACTS and not p.get("how") and not p.get("detail")
+
+
+def _bp_form_of(parts: list) -> str:
+    """The layout a level gets when the model named none: heights mean a tower."""
+    return "tower" if any(p.get("from") is not None or p.get("to") is not None for p in parts) \
+        else "exploded"
+
+
+def _bp_parts(raw, depth: int, where: str, seen: set, count: list, dropped: list) -> list:
+    out = []
+    items = _list(raw)
+    if len(items) > BP_CHILDREN:
+        dropped.append(f"{where}: {len(items) - BP_CHILDREN} past {BP_CHILDREN} at one level")
+    for i, p in enumerate(items[:BP_CHILDREN]):
+        at = f"{where}[{i}]"
+        if isinstance(p, str):
+            p = {"name": p}
+        if not isinstance(p, dict) or not str(p.get("name") or "").strip():
+            dropped.append(f"{at} (a part needs a name)")
+            continue
+        count[0] += 1
+        if count[0] > BP_NODES:
+            continue
+        dropped += [f"{at}.{k}" for k in p if k not in BP_PART and not str(k).startswith("_")]
+        name = _s(p.get("name"), 60)
+        pid = _bp_slug(str(p.get("id") or name))
+        base, n = pid, 2
+        while pid in seen:
+            pid, n = f"{base}-{n}", n + 1
+        seen.add(pid)
+        cert = str(p.get("certainty") or "known").strip().lower()
+        if cert not in BP_CERTAINTY:
+            dropped.append(f"{at}.certainty {cert!r}")
+            cert = "known"
+        status = str(p.get("status") or "").strip().lower()
+        if status and status not in BP_STATUS:
+            dropped.append(f"{at}.status {status!r}")
+            status = ""
+        form = str(p.get("form") or "").strip().lower()
+        if form and form not in BP_FORMS:
+            dropped.append(f"{at}.form {form!r}")
+            form = ""
+        facts = _bp_facts(p.get("facts"))
+        lo, hi = _num(p.get("from")), _num(p.get("to"))
+        if lo is not None and hi is not None and hi < lo:
+            lo, hi = hi, lo
+        w = _num(p.get("width"))
+        node = {"id": pid, "name": name, "role": _s(p.get("role"), 160),
+                "detail": _s(p.get("detail"), 600), "how": _s(p.get("how"), 600),
+                "made_of": _s(p.get("made_of"), 200), "limits": _s(p.get("limits"), 300),
+                "facts": facts, "certainty": cert,
+                "status": status, "source": _s(p.get("source"), 200),
+                "evidence": _s(p.get("evidence"), 240),
+                "unknowns": [_s(u, 160) for u in _list(p.get("unknowns"))[:4] if str(u or "").strip()],
+                "from": lo, "to": hi,
+                # 0 to 1 is a share of the widest; over 1 is the real width in the scene's unit
+                "width": (round(max(0.02, w), 3) if w <= 1 else round(min(w, 1e7), 3))
+                if w is not None and w > 0 else None}
+        kids = []
+        if p.get("parts"):
+            if depth >= BP_DEPTH:
+                dropped.append(f"{at}.parts (deeper than {BP_DEPTH} levels; Go deeper asks for them)")
+            else:
+                kids = _bp_parts(p.get("parts"), depth + 1, f"{at}.parts", seen, count, dropped)
+        node["parts"] = kids
+        node["form"] = (form or _bp_form_of(kids)) if kids else ""
+        out.append(node)
+    return out
+
+
+def _bp_measured(parts: list, covered: bool = False) -> bool:
+    """True when a part carries numbers (facts, heights) that nothing says the source of.
+    A part's own source covers it and everything inside it."""
+    for p in parts:
+        mine = covered or bool(p.get("source"))
+        if not mine and (p.get("facts") or p.get("from") is not None or p.get("to") is not None):
+            return True
+        if _bp_measured(p.get("parts") or [], mine):
+            return True
+    return False
+
+
+def bp_walk(parts: list, depth: int = 1):
+    """Every part with its depth, parents before children: the terminal's and the tests' view."""
+    for p in parts:
+        yield p, depth
+        yield from bp_walk(p.get("parts") or [], depth + 1)
 
 
 _ASSET = re.compile(r"^[A-Za-z0-9_-]{4,64}$")
@@ -442,6 +635,14 @@ def text(sc: dict) -> str:
             if sh.get("points"):
                 out.append("       " + ", ".join(p["label"] or f"{p['lat']:.1f}, {p['lon']:.1f}"
                                                 for p in sh["points"]))
+    elif k == "blueprint":
+        u = sc.get("unit") or ""
+        out.append(f"  ⌖ {sc['form']} · {sum(1 for _ in bp_walk(sc['parts']))} parts")
+        if sc.get("facts"):
+            out.append("  " + " · ".join(f"{f['label']} {bp_value(f)}".strip() for f in sc["facts"]))
+        out += _bp_lines(sc["parts"], "  ", u)
+        for x in sc.get("unknowns") or []:
+            out.append(f"  ? {x}")
     elif k == "table":
         w = [max(len(c), *(len(r[i]) if i < len(r) else 0 for r in sc["rows"])) for i, c in enumerate(sc["columns"])]
         w = [min(x, 24) for x in w]
@@ -453,6 +654,39 @@ def text(sc: dict) -> str:
     elif sc.get("source"):
         out.append(f"  source: {sc['source']}")
     return "\n".join(x for x in out if x != "")
+
+
+BP_MARK = {"ok": "✓", "refused": "✕", "asked": "?", "waiting": "⏸", "failed": "⚠",
+           "stopped": "■", "running": "●"}
+
+
+def bp_value(f: dict) -> str:
+    """A fact's value with its unit: '828 m', '$1.69', '12%'. A word unit gets a space."""
+    v, u = str(f.get("value") or ""), str(f.get("unit") or "")
+    if not u or u in v:          # "$1.69" with unit "$" already says it
+        return v
+    return f"{v} {u}" if u[:1].isalpha() else v + u
+
+
+def _bp_lines(parts: list, pad: str, unit: str) -> list[str]:
+    out = []
+    for i, p in enumerate(parts):
+        last = i == len(parts) - 1
+        span = ""
+        if p.get("from") is not None or p.get("to") is not None:
+            span = f" [{_fmt(p.get('from'))} → {_fmt(p.get('to'))}{(' ' + unit) if unit else ''}]"
+        mark = f"{BP_MARK[p['status']]} " if p.get("status") else ""
+        cert = "" if p.get("certainty", "known") == "known" else f" ({p['certainty']})"
+        facts = "; ".join(f"{f['label']} {bp_value(f)}".strip() for f in p.get("facts") or [])
+        out.append(f"{pad}{'└─' if last else '├─'} {mark}{p['name']}{span}{cert}"
+                   + (f" — {p['role']}" if p.get("role") else "") + (f"  · {facts}" if facts else ""))
+        more = pad + ("   " if last else "│  ")
+        if p.get("how"):
+            out.append(f"{more}  how: {p['how'][:160]}")
+        if p.get("evidence"):
+            out.append(f"{more}  ↳ {p['evidence']}")
+        out += _bp_lines(p.get("parts") or [], pad + ("   " if last else "│  "), unit)
+    return out
 
 
 # -- kept with the chat ------------------------------------------------------------------
@@ -513,19 +747,45 @@ def _who() -> str:
         return ""
 
 
-def ask_deeper(store, conversation_id: str, answer_to: str, seq: int) -> str:
+def ask_deeper(store, conversation_id: str, answer_to: str, seq: int, part: str = "") -> str:
     """Remember that the next story in this chat goes deeper on that scene, and return
-    the question to send. Refused for a scene that is not there."""
+    the question to send. Refused for a scene that is not there. `part` is a blueprint
+    part's id: the question asks for that part taken apart, named with where it sits."""
     scenes = story(store, conversation_id, answer_to)
     hit = next((s for s in scenes if s["seq"] == int(seq)), None)
     if not hit:
         raise ValueError("that scene is not there")
     sc = hit["scene"]
+    path = []
+    if part:      # checked before it is remembered: a refusal must not move the link
+        if sc.get("kind") != "blueprint":
+            raise ValueError("only a blueprint has parts")
+        path = _bp_path(sc.get("parts") or [], str(part))
+        if not path:
+            raise ValueError("that part is not in this blueprint")
     _DEEPER[(_who(), conversation_id)] = (answer_to, int(seq), time.time())
+    if path:
+        p, within = path[-1], [x["name"] for x in path[:-1]]
+        where = " › ".join([sc.get("subject") or sc.get("title") or "it"] + within)
+        return (f"Go deeper on \"{p['name']}\" in {where}"
+                + (f" ({p['role']})" if p.get("role") else "")
+                + ". Take it apart as its own blueprint on the Stage: what it is made of, how the "
+                  "pieces work together, the real numbers with their source, and what is unclear.")
     about = sc.get("title") or sc["kind"]
     return (f"Go deeper on \"{about}\"" + (f" ({sc['caption']})" if sc.get("caption") else "")
             + ". Explain it properly and show it as its own story on the Stage: what is behind it, "
               "the numbers, places, pictures or videos that make it clear.")
+
+
+def _bp_path(parts: list, pid: str) -> list:
+    """The parts from the top down to the one with this id, or []."""
+    for p in parts:
+        if p.get("id") == pid:
+            return [p]
+        sub = _bp_path(p.get("parts") or [], pid)
+        if sub:
+            return [p] + sub
+    return []
 
 
 def links(store, conversation_id: str) -> dict:
@@ -732,6 +992,22 @@ def settings(cfg: dict) -> dict:
     return {"big": bool(st.get("big", DEFAULTS["big"])), "app": str(st.get("app") or "")}
 
 
+BP_LINE = ("Asked what is inside something, how a building, a machine, a body, an organisation or a "
+           "system is built, or for a blueprint, show ONE blueprint scene, and make it the main scene: it "
+           "takes the thing apart so the person can open any part on their screen. form is tower for "
+           "something built in layers along a height (a building, a rocket, the earth; parts bottom "
+           "first, with from and to as heights in unit, and width as how wide each part really is in the "
+           "same unit, so the outline is drawn to scale; only when you cannot know it, 0 to 1 as a share "
+           "of the widest), exploded for a thing made of parts round a core (an engine, "
+           "a watch, a cell, a company) or flow for a process in order. Show the OUTLINE quickly: six to "
+           "ten parts, each with its role, how it works (how), two or three facts, and the names of the "
+           "parts inside it; the whole's own key numbers in facts; links between parts (from, to, a "
+           "verb, and kind: what flows along it, one of " + ", ".join(BP_FLOWS) + "); what nobody "
+           "outside can know in unknowns. The Stage then fills in every part on its own, looked up and "
+           "three levels deep, so show it once and do not show it again while it fills. Each part may "
+           "say what it is made of (made_of), its limits or how it fails (limits), and how sure anyone "
+           "is (certainty known, estimated or unclear). A child part may take another form (a tower's "
+           "foundation drawn exploded).")
 BIG_LINE = ("Answer BIG: the person watches your answers on the Stage, so anything worth seeing is "
             "SHOWN with show_scene before you write the text: three to six scenes, in story order. "
             "Tell a story, not a slide: open on what matters most (the headline numbers, or a "
@@ -755,11 +1031,13 @@ BIG_LINE = ("Answer BIG: the person watches your answers on the Stage, so anythi
             "on Wikipedia or the maker's site) or one you made with generate_image. Use real "
             "figures you looked up and name the source; if a picture is only an example, set "
             "illustrative: true. A plain question (a fact, a yes or no, small talk) gets no scenes. "
+            + BP_LINE + " "
             "When the person asks to change what is on the Stage (add a place, another chart, "
             "newer figures), show the whole story again with the change: it is kept as a new "
             "version beside the old one.")
 ASKED_LINE = ("show_scene puts a chart, a map, key numbers, a timeline, steps, a table, a picture, a "
-              "YouTube video or a film (a short 3D animation from a shot list) on the "
+              "YouTube video, a film (a short 3D animation from a shot list) or a blueprint (a thing "
+              "taken apart into parts the person can open, level by level) on the "
               "person's screen. Use it when they ask to see something; name the source of any "
               "numbers, or set illustrative: true. Asked to change what is on the Stage, show the "
               "whole story again with the change; the old version is kept.")
@@ -776,7 +1054,8 @@ def note(cfg: dict, tool: str = "show_scene", surface: str = "") -> str:
     phone channel the Stage line said "the person watches your answers on the Stage", which
     was not true there, and Claude Code answered a Nifty question in words: the phone line
     says where the scenes go instead."""
-    line = BIG_LINE if settings(cfg)["big"] else ASKED_LINE
+    # asking for a blueprint is asking to see one, so its guidance goes with Answer BIG off too
+    line = BIG_LINE if settings(cfg)["big"] else ASKED_LINE + " " + BP_LINE
     out = "THE STAGE. " + line.replace("show_scene", tool)
     if surface in ("telegram", "whatsapp"):
         out += " " + PHONE_LINE.format(surface={"telegram": "Telegram", "whatsapp": "WhatsApp"}[surface])
@@ -829,6 +1108,11 @@ def still_caption(sc: dict, i: int, n: int) -> str:
         out.append(f"Source: {sc['source']}")
     if sc.get("kind") == "video" and sc.get("video"):
         out.append(f"https://www.youtube.com/watch?v={sc['video']}")
+    if sc.get("kind") == "blueprint":
+        # a picture cannot be drilled: the caption says what is inside each part
+        out += [f"{k}. {p['name']}" + (f": {p['role']}" if p.get("role") else "")
+                + (f" ({len(p['parts'])} part{'s' if len(p['parts']) != 1 else ''} inside)" if p.get("parts") else "")
+                for k, p in enumerate(sc.get("parts") or [], 1)][:12]
     if sc.get("kind") == "film":
         # the picture is the storyboard; the caption says each shot, so it reads aloud
         out += [f"{k}. {sh['text']}" for k, sh in enumerate(sc.get("shots") or [], 1) if sh.get("text")]
@@ -837,7 +1121,7 @@ def still_caption(sc: dict, i: int, n: int) -> str:
 
 STILL_KIND = {"chart": "Chart", "map": "Map", "numbers": "Numbers", "timeline": "Timeline",
               "steps": "How it works", "table": "Table", "image": "Picture", "video": "Video",
-              "film": "Film"}
+              "film": "Film", "blueprint": "Blueprint"}
 
 
 # A photograph per scene (stagestill.py): the page's chrome goes, each card stands alone with
@@ -882,6 +1166,9 @@ def _inline_asset(store, sc: dict) -> dict:
 
 
 REPORT_IMG_CAP = 3 * 1024 * 1024
+# the Stage's painters, which the phone's page embeds as they are: one painter, two places
+PAINTER_JS = ("24l-stage.js", "24v-blueprint.js")
+PAINTER_CSS = ("31-stage.css", "40-blueprint.css")
 
 
 def report_html(store, conversation_id: str, answer_to: str, answer: str = "",
@@ -898,8 +1185,8 @@ def report_html(store, conversation_id: str, answer_to: str, answer: str = "",
     scenes = [_inline_asset(store, dict(s["scene"])) for s in story(store, conversation_id, answer_to)]
     row = store.db.execute("SELECT content FROM messages WHERE id=?", (answer_to,)).fetchone()
     question = _question(row[0] if row else "")
-    js = (_UI / "src/js/24l-stage.js").read_text(encoding="utf-8")
-    css = (_UI / "src/css/31-stage.css").read_text(encoding="utf-8")
+    js = "\n".join((_UI / f"src/js/{f}").read_text(encoding="utf-8") for f in PAINTER_JS)
+    css = "\n".join((_UI / f"src/css/{f}").read_text(encoding="utf-8") for f in PAINTER_CSS)
     world = (_UI / "assets/world-110m.json").read_text(encoding="utf-8") \
         if any(s["kind"] == "map" for s in scenes) else "null"
     data = json.dumps({"scenes": scenes}).replace("</", "<\\/")

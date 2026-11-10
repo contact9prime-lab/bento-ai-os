@@ -610,6 +610,7 @@ function handle(ev){
       if(JARVIS.on&&JARVIS.busy){JARVIS.busy=false;
         if(!speechLiveEnd(_cid,reply,()=>{if(JARVIS.on)jarvisListen();else jarvisSetPhase('idle')}))jarvisSpeakAndListen(reply);}
       else if(!speechLiveEnd(_cid,reply))speak(reply);
+      if(curBody&&typeof xrayLive==='function')xrayLive(_cid,curBody.closest('.msg'));
       setRunning(false); curBody=null; curThink=null; curText=''; loadConvs(); break;}
     case 'queue_update':{
       if(ev.queue&&ev.queue.length)QUEUES[_cid]=ev.queue; else delete QUEUES[_cid];
@@ -836,6 +837,7 @@ function handle(ev){
     /* A schedule saved into an app's data (update_app_data): every open frame of that
        app hears it as an `appdata` event and reloads what it shows. */
     case 'stage': if(typeof stageEvent==='function')stageEvent(ev); break;
+    case 'stage_fill': if(typeof stageFill==='function')stageFill(ev); break;
     case 'stage_board': STAGE.lib=null; if(typeof stagePaintIfOpen==='function'){if(WM.wins.get('stage'))stageLoadLib()} break;
     case 'stage_settings': if(ev.settings){STAGE.settings=ev.settings;stagePaintIfOpen()} break;
     case 'app_data':

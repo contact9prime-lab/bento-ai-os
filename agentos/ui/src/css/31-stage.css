@@ -148,7 +148,7 @@ body.dev-mobile .st-big span{font-size:var(--fs-xs)}
    by word, and the controls sit on glass at the bottom. */
 .st-main.now{padding:0;gap:0;overflow:hidden}
 /* a grid: the drawing takes every pixel the bars leave, at any window size */
-.stg{--hue:250;position:relative;flex:1;min-height:0;display:grid;grid-template-rows:auto auto minmax(0,1fr) auto;overflow:hidden;contain:paint;transform:translateZ(0);container-type:size;
+.stg{--hue:250;position:relative;flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto minmax(0,1fr) auto;overflow:hidden;contain:paint;transform:translateZ(0);container-type:size;
   color:#eef1ff;background:#05060e;isolation:isolate}
 .stg-bg{position:absolute;inset:-20%;z-index:-1;pointer-events:none;
   background:
@@ -276,7 +276,10 @@ body.dev-mobile .stg-long{display:none}
 body.dev-mobile .st-top{flex-wrap:nowrap;gap:8px;padding:8px 10px}
 body.dev-mobile .st-top .st-tabs button{padding-left:10px;padding-right:10px}
 body.dev-mobile .st-big{margin-left:auto;gap:6px}
-body.dev-mobile .stg-bar{flex-wrap:nowrap;gap:6px;padding:6px}
+/* one row on a phone, and a row that cannot fit scrolls and snaps: a story with a deeper story
+   has one button more, and the row grew the whole Stage past the screen */
+body.dev-mobile .stg-bar{flex-wrap:nowrap;gap:6px;padding:6px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none}
+body.dev-mobile .stg-bar>*{scroll-snap-align:start;flex:0 0 auto}
 body.dev-mobile .stg-b{padding:0 11px}
 body.dev-mobile .win:fullscreen{padding-bottom:0}
 .stg-b,.st-top .st-icon{white-space:nowrap}

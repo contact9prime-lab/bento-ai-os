@@ -7466,6 +7466,26 @@ def _stage_cli(args) -> int:
             return 1
         print("board removed; its stories stay with their chats")
         return 0
+    if act == "xray":
+        # one answer or one run taken apart from the records (xray.py): the same scene the
+        # Stage draws, as a tree, readable over SSH with the server down
+        from . import xray as xraymod
+        ref = what or ""
+        try:
+            if ref and store.db.execute("SELECT 1 FROM fabric_runs WHERE id=?", (ref,)).fetchone():
+                sc = xraymod.run(store, cfg, ref)
+            else:
+                cid = ref or (store.db.execute("SELECT conversation_id FROM messages WHERE role='user' "
+                                               "ORDER BY created_at DESC LIMIT 1").fetchone() or [""])[0]
+                if not cid:
+                    print("Nothing to X-ray yet: ask something first.")
+                    return 0
+                sc = xraymod.turn(store, cfg, cid, args.answer)
+        except KeyError:
+            print(f"no chat, message or run {ref or args.answer!r} here")
+            return 1
+        print(stagemod.text(sc))
+        return 0
     cid = what or stagemod.latest_conversation(store)
     if act == "keep":
         st = stagemod.stories(store, cid) if cid else []
@@ -9732,10 +9752,11 @@ def main():
     p_brief.add_argument("--ai", choices=["on", "off"], help="schedule: an AI summary on top")
     p_st = verb("stage", help="answers shown, not only written: the Stage's stories, boards and Answer BIG")
     p_st.add_argument("action", nargs="?", default="show",
-                      choices=["show", "list", "boards", "big", "keep", "drop"])
+                      choices=["show", "list", "boards", "big", "keep", "drop", "xray"])
     p_st.add_argument("what", nargs="?", default="",
                       help="show: a chat id (the last chat with a story by default) · big: on|off · "
-                           "keep: the chat id · drop: a board id")
+                           "keep: the chat id · drop: a board id · xray: a chat id or a run id")
+    p_st.add_argument("--answer", default="", help="xray: the question (message id) to take apart; the last by default")
     p_st.add_argument("--every", default="", choices=["", "hour", "day", "week"],
                       help="keep: ask the question again this often (needs the server running)")
     p_st.add_argument("--user", default="", help="whose stage, on a machine with users")

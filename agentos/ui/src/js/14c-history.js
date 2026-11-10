@@ -38,6 +38,9 @@ function jobHistRow(r){
   // everything this run did as one JSON file, to read or hand to an AI (trace.py)
   const tr=r.run_id?`<a class="endbtn" download href="/api/trace/run/${encodeURIComponent(r.run_id)}" title="Download what this run did as JSON">⤓ JSON</a>`
     :r.conversation_id?`<a class="endbtn" download href="/api/trace/conversation/${encodeURIComponent(r.conversation_id)}" title="Download what this run did as JSON">⤓ JSON</a>`:'';
+  // the same record, taken apart on the Stage (xray.py): who did what, every decision, the cost
+  const xr=r.run_id?`<button class="endbtn" data-xray-run="${esc(r.run_id)}" title="Take this run apart on the Stage">⌖ X-ray</button>`
+    :r.conversation_id?`<button class="endbtn" data-xray-conv="${esc(r.conversation_id)}" title="Take this run apart on the Stage">⌖ X-ray</button>`:'';
   return `<div class="item job-hrow ${esc(r.status)}">
     <div class="grow">
       <div class="job-hhead"><span class="job-hst ${esc(r.status)}">${esc(JOB_HIST_WORD[r.status]||r.status)}</span>
@@ -45,7 +48,7 @@ function jobHistRow(r){
       <div class="sub">${esc(jobHistWhen(r.started_at))}${r.seconds!=null&&r.status!=='skipped'?' · took '+esc(jobHistTook(r.seconds)):''} · ${esc(r.started_by)}${
         r.tokens?' · '+r.tokens.toLocaleString()+' tokens':''}</div>
       ${r.said?`<div class="sub job-hsaid">${esc(r.said)}</div>`:''}
-    </div>${app}${door}${tr}</div>`;
+    </div>${app}${door}${xr}${tr}</div>`;
 }
 async function renderJobHistory(body){
   const f=JOBS.hist||{};
@@ -68,5 +71,7 @@ async function renderJobHistory(body){
   body.querySelectorAll('[data-show]').forEach(b=>b.onclick=()=>{JOBS.histShow=b.dataset.show;renderJobHistory(body)});
   const all=body.querySelector('[data-all]');if(all)all.onclick=()=>{JOBS.hist=null;renderJobHistory(body)};
   body.querySelectorAll('[data-open-run]').forEach(b=>b.onclick=()=>fgWatch(b.dataset.openRun));
+  body.querySelectorAll('[data-xray-run]').forEach(b=>b.onclick=()=>stageXray({run:b.dataset.xrayRun},'X-ray · '+b.closest('.job-hrow').querySelector('b').textContent));
+  body.querySelectorAll('[data-xray-conv]').forEach(b=>b.onclick=()=>stageXray({conversation:b.dataset.xrayConv},'X-ray · '+b.closest('.job-hrow').querySelector('b').textContent));
   body.querySelectorAll('[data-open-conv]').forEach(b=>b.onclick=()=>{openApp('chat');setTimeout(()=>openConv(b.dataset.openConv),150)});
 }
