@@ -164,6 +164,17 @@ def one_line(cfg: dict, key_text: str, hubs: list[str], tailscale_key: str = "")
     return f"curl -fsSL {url} | {keys} sh -s -- " + " ".join(parts)
 
 
+def line_parts(line: str) -> tuple[str, str]:
+    """(enrolment key, hubs) read back out of `one_line`. The one reader, kept beside the one
+    writer: the key moved from `--enroll=` into the environment and the warehouse demo, which
+    still read the flag, failed on every fresh start with "'NoneType' has no attribute group"."""
+    k = re.search(r"AGENTOS_ENROLL=(\S+)", line or "")
+    h = re.search(r"--hub=(\S+)", line or "")
+    if not k:
+        raise ValueError("the Zero line carries no enrolment key")
+    return k.group(1), (h.group(1) if h else "")
+
+
 # ---- the machine it became ----------------------------------------------------------------
 
 def state(cfg: dict) -> dict:
