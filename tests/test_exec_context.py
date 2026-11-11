@@ -148,7 +148,7 @@ def test_every_surface_that_forwards_a_thread_carries_it():
     srv = (ROOT / "agentos/server.py").read_text()
     assert "execmod.carry_over(" in srv and '"exec_session": exec_sid' in srv
     # the save happens in `finally`, so a stopped turn is not forgotten
-    body = srv[srv.index("await execmod.run_task(text, env, _relay, run)"):]
+    body = srv[srv.index("await execmod.run_task(_stage_words(data) + text, env, _relay, run)"):]
     fin = body[body.index("finally:"):body.index("# Say what was saved")]
     assert "set_exec_session" in fin
     for f in ("telegram.py", "whatsapp.py"):
@@ -162,7 +162,7 @@ def test_a_stored_reply_keeps_the_break_where_a_tool_ran():
     """The page draws the tool card between the two halves of a forwarded answer; the
     stored reply has no card, and a reload read "for you.Here are the three points"."""
     srv = (ROOT / "agentos/server.py").read_text()
-    relay = srv[srv.index("async def _relay(ev: dict):"):srv.index("await execmod.run_task(text, env, _relay, run)")]
+    relay = srv[srv.index("async def _relay(ev: dict):"):srv.index("await execmod.run_task(_stage_words(data) + text, env, _relay, run)")]
     brk = relay.index('collected.append("\\n\\n")')
     assert relay.index('"tool_start"') < brk < relay.index("BRIDGE_SERVER"), \
         "the break is kept for the bridge's own tool events too, before they are dropped"

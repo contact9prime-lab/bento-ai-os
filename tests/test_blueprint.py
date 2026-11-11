@@ -265,7 +265,7 @@ def test_the_doors_to_an_xray():
     srv = (ROOT / "agentos/server.py").read_text()
     assert '@app.get("/api/stage/xray")' in srv and 'part=str(b.get("part") or "")' in srv
     cli = (ROOT / "agentos/__main__.py").read_text()
-    assert '"xray", "contact"])' in cli and "xraymod.turn(store, cfg, cid, args.answer)" in cli
+    assert '"xray", "contact", "export"])' in cli and "xraymod.turn(store, cfg, cid, args.answer)" in cli
 
 
 def test_the_xray_route_answers_in_words(tmp_path, monkeypatch):
