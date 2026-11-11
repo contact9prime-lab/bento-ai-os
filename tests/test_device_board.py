@@ -444,3 +444,73 @@ def test_the_alarm_table_blinks_what_is_new_and_says_it_in_words():
     assert "No alarms of your own" not in s and "Your alarms" not in s
     assert "--ph:-" in s, "a repaint must not restart the blink"
     assert "dvs-flash" in css and "prefers-reduced-motion:reduce){.dvs-blink,.dvs-sev.blink" in css
+
+
+# ---- the rules section, and a reading's history ----------------------------------------------
+# Reported as "edit rule comes in but it is not very elaborate. There should be a rule section for
+# the alarms", and "if I click on the charts it should show the deep historical chart".
+
+def test_a_rule_has_a_name_a_note_and_can_be_paused_without_changing_what_it_is():
+    base = {"machine": "zone-cold", "item": TEMP, "when": "above", "value": -15, "for": 120}
+    a = devboard.clean_rule(base)
+    b = devboard.clean_rule({**base, "name": "Cold room\x1b[31m too warm " + "x" * 80,
+                             "note": "Check‮ the compressor", "paused": True})
+    assert b["id"] == a["id"], "words and a pause never change the rule's id, or its alarm's ack"
+    assert "\x1b" not in b["name"] and len(b["name"]) <= devboard.NAME_MAX
+    assert "‮" not in b["note"] and b["paused"] is True
+    assert "paused" not in devboard.clean_rule({**base, "paused": "yes"}), "only a real true pauses"
+    al = devboard.Alarms()
+    hot = {("zone-cold", TEMP): _ev(TEMP, -10.0, time.time() - 300, "Cold room temperature")}
+    rule = {"id": b["id"], "config": b, "level": "alarm", "source": "alarm"}
+    now, _, _ = al.judge("", [rule], hot, {"zone-cold": True})
+    assert not [x for x in now if x["id"] == b["id"]], "a paused rule raises nothing"
+    on = {**rule, "config": {**b, "paused": False}}
+    now, raised, _ = al.judge("", [on], hot, {"zone-cold": True})
+    x = next(x for x in now if x["id"] == b["id"])
+    assert x["label"] == b["name"] and x["note"] == b["note"], "the alarm carries what the person wrote"
+    rows = devboard.rule_rows([rule], {("zone-cold", TEMP): ("Cold room temperature", "°C")})
+    assert rows[0]["now"] == "paused" and rows[0]["paused"] and rows[0]["label"] and rows[0]["unit"] == "°C"
+
+
+def test_a_reading_on_the_board_opens_its_history(monkeypatch):
+    from fastapi.testclient import TestClient
+    from agentos import server, telemetry
+    here = None
+    with TestClient(server.app) as c:
+        here = server._here_name()
+        ms = [{"machine": here, "key": "here", "here": True, "up": True, "tkey": "here", "things": [
+            {"id": TEMP, "name": "Cold room A: Temperature", "unit": "°C", "kind": "sensor", "onoff": False,
+             "group": "esp.cold-1", "group_name": "Cold room A"}]}]
+        monkeypatch.setattr(server, "_board_machines", lambda owner: ms if owner == "" else [])
+        asked = []
+        monkeypatch.setattr(telemetry, "series", lambda key, item, rng: asked.append((key, item, rng)) or
+                            {"start": 0, "end": 1, "step": 60, "range": rng, "words": "the last week",
+                             "points": [[0.5, -18, -19, -17]], "stats": {"last": -18}})
+        r = c.get("/api/devices/history", params={"machine": here, "item": TEMP, "range": "week"})
+        assert r.status_code == 200 and asked == [(telemetry.HERE_KEY, TEMP, "week")]
+        assert r.json()["name"] == "Cold room A: Temperature" and r.json()["unit"] == "°C"
+        assert c.get("/api/devices/history", params={"machine": "nobody", "item": TEMP}).status_code == 404
+        assert c.get("/api/devices/history", params={"machine": here, "item": "esp.x.sensor.y"}).status_code == 404
+        assert c.get("/api/devices/history", params={"machine": here, "item": TEMP, "range": "year"}).status_code == 400
+        monkeypatch.setattr(server, "_demo_shows", lambda me: False)
+        assert c.get("/api/devices/history", params={"machine": "zone-cold", "item": TEMP, "demo": 1}).status_code == 403
+
+
+def test_the_rules_are_a_page_and_the_readings_open_their_history():
+    s = (JS / "01h-devscene.js").read_text()
+    dev = (JS / "24o-devices.js").read_text()
+    chart = (JS / "24u-devchart.js").read_text()
+    # a page of its own on the scene, and the same section in the Devices app
+    assert 'data-dvs="page" data-v="rules"' in s and "page==='rules'?devRulesHTML(d)" in s
+    assert "devRulesHTML(d)" in dev and "devRulesWire(sec,devAlarmsPaint,devAlarmsLoad)" in dev
+    # the editor: a sentence, a level, a name, a note, a pause, and a preview against the reading now
+    for w in ('data-f="name"', 'data-f="note"', 'data-f="paused"', 'data-f="forUnit"', "dvr-preview",
+              "So it would stay clear.", "There's already a rule for exactly this", "Yes, remove it",
+              "Duplicate", "'Resume':'Pause'"):
+        assert w in s, w
+    # a reading is a button to its history, drawn by the Hardware chart with its own range
+    assert 'data-dvs="hist"' in s and "/api/devices/history?" in s and "devChartDraw(slot,d,false,opts)" in s
+    assert "function devChartDraw(slot,d,loading,opts)" in chart and "opts.onRange(id)" in chart
+    assert "Alarm rule for this" in s
+    # a caret in the editor stops the board's refresh from redrawing it
+    assert "INPUT|SELECT|TEXTAREA" in s and "INPUT|SELECT|TEXTAREA" in dev

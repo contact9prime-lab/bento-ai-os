@@ -42,6 +42,7 @@ from . import devtrig
 LEVELS = ("alarm", "warning")
 MAX_RULES = 50
 JUDGED = ("on", "off", "above", "below", "offline")      # a state; 'changes' and 'online' are moments
+NAME_MAX, NOTE_MAX = 60, 240                             # a rule's own name, and what to do when it goes off
 GRACE_S = 150                                            # how long a restart waits for a reading before giving up on one
 
 
@@ -59,6 +60,17 @@ def clean_rule(conf: dict) -> dict:
     if lvl not in LEVELS:
         raise ValueError("an alarm's level is alarm or warning")
     out["level"] = lvl
+    # what the person calls it and what to do when it goes off: words shown beside the alarm,
+    # never part of what it judges, so naming or pausing a rule keeps its id (and its ack)
+    from .teamlink import plain
+    name = plain(c.get("name") or "", NAME_MAX, newlines=False)
+    note = plain(c.get("note") or "", NOTE_MAX, newlines=False)
+    if name:
+        out["name"] = name
+    if note:
+        out["note"] = note
+    if c.get("paused") is True or c.get("enabled") is False:
+        out["paused"] = True
     out["id"] = _rule_id(out)
     return out
 
@@ -173,17 +185,20 @@ class Alarms:
         for r in rules:
             c = r.get("config") or {}
             when = c.get("when")
-            if when not in JUDGED:
+            if when not in JUDGED or c.get("paused"):
+                if c.get("paused"):
+                    self.since.pop((owner, r["id"]), None)
                 continue
             m = str(c.get("machine") or "")
             ml = m.lower()
             aid = r["id"]
+            words = {"label": c.get("name") or "", "note": c.get("note") or ""}
             if when == "offline":
                 if up.get(ml) is False:
                     since = hold(aid, now)
                     found[aid] = {"id": aid, "level": r.get("level") or "alarm", "machine": m, "item": "",
                                   "name": m, "text": text_of(c), "since": since, "for": int(c.get("for") or 0),
-                                  "source": r.get("source") or "alarm", "flow": r.get("flow") or ""}
+                                  "source": r.get("source") or "alarm", "flow": r.get("flow") or "", **words}
                 continue
             ev = last.get((ml, c.get("item")))
             if not ev:
@@ -197,7 +212,7 @@ class Alarms:
             found[aid] = {"id": aid, "level": r.get("level") or "alarm", "machine": m, "item": c.get("item"),
                           "name": name or c.get("item"), "text": text_of(c, name, unit), "value": ev.get("value"),
                           "unit": unit, "since": since, "for": int(c.get("for") or 0),
-                          "source": r.get("source") or "alarm", "flow": r.get("flow") or ""}
+                          "source": r.get("source") or "alarm", "flow": r.get("flow") or "", **words}
         # what nobody wrote a rule for, and is still wrong: a machine set up here not answering,
         # a sensor with no number
         for ml, ok in up.items():
@@ -319,7 +334,9 @@ def rule_rows(rules: list[dict], names: dict | None = None, alarms=()) -> list[d
         out.append({"id": r["id"], "machine": c.get("machine"), "item": c.get("item") or "", "when": c.get("when"),
                     "value": c.get("value"), "for": int(c.get("for") or 0), "level": r.get("level") or "alarm",
                     "source": r.get("source") or "alarm", "flow": r.get("flow") or "",
-                    "editable": r.get("source") == "alarm", "text": text_of(c, name, unit), "now": now.get(r["id"]) or "clear"})
+                    "editable": r.get("source") == "alarm", "text": text_of(c, name, unit),
+                    "label": c.get("name") or "", "note": c.get("note") or "", "paused": bool(c.get("paused")),
+                    "unit": unit, "now": "paused" if c.get("paused") else now.get(r["id"]) or "clear"})
     return out
 
 

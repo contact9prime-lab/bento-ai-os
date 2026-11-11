@@ -19,6 +19,19 @@ with its steps, numbers and what's inside it in the caption under each picture.
 Wikimedia asks a client to name a contact before it answers lookups. Set one with
 `bento stage contact <your web address or email>`; without it lookups may be refused, and the
 Drawing view offers Draw one instead.
+**Alarm rules have a page of their own.** The Devices scene has Board and Alarm rules at the top,
+and Devices has the same section under its alarms. Each rule is a card, grouped by machine. It
+says in words what it watches, what that thing reads now, whether it's raised, and how often it
+went off in the last day. You fill in the editor as a sentence (machine, thing, condition, value,
+how long it must hold, alarm or warning). A rule can also have a name and a note on what to do,
+and a preview says what it would do with the reading right now. Rules can be paused, duplicated
+and removed (removing takes a second tap). A raised alarm shows the rule's name and note, and so
+does its toast.
+
+**A reading on the board opens its history.** Tap a number or its sparkline to see that thing over
+a day, a week, 30 days or 90 days. It's the same chart as Devices → Hardware, and anyone who sees
+the board can open it, including the warehouse demo's things. "＋ Alarm rule for this" starts a
+rule from there.
 
 ## 0.8.3 — 2026-11-11
 

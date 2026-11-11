@@ -51,6 +51,7 @@ import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -227,6 +228,16 @@ def hub_ack(alarm: str, timeout: float = 3) -> dict | None:
         req = urllib.request.Request(urls()["hub"] + "api/devices/alarms/ack", method="POST",
                                      data=json.dumps({"id": alarm}).encode(),
                                      headers=_hub_headers())
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read() or b"{}")
+    return None
+
+
+def hub_history(machine: str, item: str, rng: str, timeout: float = 5) -> dict | None:
+    """One of the demo's things over a range, from the demo's hub, which keeps its readings."""
+    q = urllib.parse.urlencode({"machine": machine, "item": item, "range": rng})
+    with contextlib.suppress(Exception):
+        req = urllib.request.Request(urls()["hub"] + "api/devices/history?" + q, headers=_hub_headers())
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return json.loads(r.read() or b"{}")
     return None

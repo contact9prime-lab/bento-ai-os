@@ -16662,6 +16662,50 @@ async def api_device_alarms_set(body: dict):
     return {"ok": True, "alarms": kept, "dropped": dropped}
 
 
+@app.get("/api/devices/history")
+async def api_device_history(machine: str = "", item: str = "", range: str = "day", demo: int = 0):
+    """One thing on the Devices board over a day, a week, 30 or 90 days: the same answer as
+    /api/devices/readings, found the way the board finds it, so whoever sees a number on the board
+    can open its history (a Zero's owner as well as an admin). The demo's things are its hub's,
+    and that hub is asked. Reads only what this hub keeps."""
+    from . import devevents, telemetry
+    if range not in telemetry.RANGES:
+        return JSONResponse({"error": "range is day, week, month or quarter"}, 400)
+    me = usersmod.current() or ""
+    if demo:
+        if not _demo_shows(me):
+            return JSONResponse({"error": "the warehouse demo isn't yours to read"}, 403)
+        from .demos import warehouse as wh
+        got = await asyncio.get_running_loop().run_in_executor(None, wh.hub_history, machine, item, range)
+        if not got:
+            return JSONResponse({"error": "the warehouse demo's hub isn't answering"}, 502)
+        return got
+    whose = sorted({"", me}) if usersmod.is_admin(me) else [me]
+    m = next((x for o in whose for x in _board_machines(o) if x["machine"].lower() == machine.lower()), None)
+    if not m:
+        return JSONResponse({"error": "no such machine on your board"}, 404)
+    t = next((x for x in m["things"] if x["id"] == item), None)
+    if not t:
+        return JSONResponse({"error": f"{m['machine']} has nothing called {item}"}, 404)
+    key = telemetry.HERE_KEY if m.get("here") else (m.get("tkey") or "")
+    s = await asyncio.get_running_loop().run_in_executor(None, telemetry.series, key, item, range)
+    evs = []
+    with contextlib.suppress(Exception):
+        evs = [{"at": e["at"], "event": e["event"], "text": e["text"]}
+               for e in _alarm_lines(set(whose), limit=800)
+               if e["at"] >= s["start"] and m["machine"].lower() in str(e.get("text") or "").lower()
+               and (e["item"] == item if e.get("item") else str(t["name"]).lower() in str(e.get("text") or "").lower())]
+        stores = [state["store"]]
+        with usersmod.as_user(""):
+            stores.append(state["store"])
+        evs += [{"at": e["at"], "event": e["event"], "text": e["text"]}
+                for e in devevents.gather(stores, who=m["machine"], limit=400)
+                if e["at"] >= s["start"] and e["event"] in ("power", "offline", "online", "updated")]
+    evs.sort(key=lambda e: e["at"])
+    return {**s, "machine": m["machine"], "name": t["name"], "unit": t.get("unit") or "",
+            "kind": t.get("kind"), "events": evs[-60:]}
+
+
 @app.get("/api/devices/readings")
 async def api_device_readings(key: str = "", item: str = "", range: str = "day"):
     """One item's readings over a range (Devices → Hardware → a sensor): at most
