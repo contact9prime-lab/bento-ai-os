@@ -172,3 +172,13 @@ def test_the_mission_is_made_once_and_a_kept_one_is_left_alone(tmp_path, monkeyp
     calls.clear()
     sup.mission()
     assert calls == [], "made once; a mission the person deleted stays deleted"
+
+
+def test_the_demo_reads_the_zero_line_the_hub_writes():
+    """The key moved from --enroll= into the line's environment; the demo kept reading the flag
+    and every fresh start died with "'NoneType' object has no attribute 'group'"."""
+    from agentos import zero
+    line = zero.one_line({}, "bento-enroll-1.abc", ["127.0.0.1"])
+    assert zero.line_parts(line) == ("bento-enroll-1.abc", "127.0.0.1")
+    src = (Path(__file__).resolve().parents[1] / "agentos" / "demos" / "warehouse.py").read_text()
+    assert "--enroll=" not in src and "line_parts" in src

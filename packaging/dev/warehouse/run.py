@@ -104,14 +104,13 @@ def main():
         for x in zr.MACHINES:
             zr.config(*x)
         zr.start(HUB)
-        st, z = zr.http(HUB, "POST", "/api/provision/zero", {"hubs": ["127.0.0.1"]})
-        assert st == 200, z
-        enroll = zr.re.search(r"--enroll=(\S+)", z["line"]).group(1)
-        hubs = zr.re.search(r"--hub=(\S+)", z["line"]).group(1)
-        for zone in ZONES:
+        from agentos import zero as zeromod
+        for zone in ZONES:                  # a Zero key is spent by its first machine: one line each
+            st, z = zr.http(HUB, "POST", "/api/provision/zero", {"hubs": ["127.0.0.1"]})
+            assert st == 200, z
+            enroll, hubs = zeromod.line_parts(z["line"])
             assert zr.bento(zone, "pool", "hub", hubs).returncode == 0
             zr.start(zone, {"AGENTOS_ENROLL": enroll, **sim_env(zone)})
-        for zone in ZONES:
             zr.wait(f"{zone} is set up by the key",
                     lambda: zr.http(zone, "GET", "/api/provision")[1]["this"]["claimed"] or None, limit=90)
 

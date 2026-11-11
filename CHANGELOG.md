@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.2 — 2026-11-10
+
+**The warehouse demo starts again on a fresh machine.** A first start stopped at step 3 with
+"'NoneType' object has no attribute 'group'": the Zero line now carries its key in the
+environment, not as `--enroll=`, and the demo still looked for the flag. It also set all three
+zones up with one key, which the hub now spends on the first machine, so it asks for a line per
+zone. A start that had already finished once wasn't affected.
+
 ## 0.8.1 — 2026-11-10
 
 **Take anything apart: blueprints on the Stage.** Ask for "a fine blueprint of the Burj Khalifa" and

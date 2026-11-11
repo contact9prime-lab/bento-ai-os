@@ -494,7 +494,6 @@ class _Supervisor:
         return next((r for r in (v.get("rows") or []) if any(lk.get("label") == zone for lk in r.get("links") or [])), None)
 
     def run(self) -> None:
-        import re
         from . import esp_sim
         brain = json.loads((where() / "brain.json").read_text())
         resume = (where() / "ready.json").exists()
@@ -519,15 +518,17 @@ class _Supervisor:
                 self.serve_bento(z)
         else:
             self.step(2)
-            st, z = _http(HUB, "POST", "/api/provision/zero", {"hubs": ["127.0.0.1"]})
-            if st != 200:
-                raise RuntimeError(f"The hub wouldn't make a Zero line: {z.get('error') or st}")
-            enroll = re.search(r"--enroll=(\S+)", z["line"]).group(1)
-            hubs = re.search(r"--hub=(\S+)", z["line"]).group(1)
+            from .. import zero as zeromod
+            # One line per zone, each claimed before the next is asked for: a Zero key is spent
+            # by the first machine it sets up, so asking once for all three left two zones
+            # waiting on a key the hub would no longer take.
             for zone in ZONES:
-                self.bento(zone, "pool", "hub", hubs)
+                st, z = _http(HUB, "POST", "/api/provision/zero", {"hubs": ["127.0.0.1"]})
+                if st != 200:
+                    raise RuntimeError(f"The hub wouldn't make a Zero line: {z.get('error') or st}")
+                enroll, hubs = zeromod.line_parts(z["line"])
+                self.bento(zone, "pool", "hub", hubs or "127.0.0.1")
                 self.serve_bento(zone, {"AGENTOS_ENROLL": enroll})
-            for zone in ZONES:
                 _wait(f"for {zone} to be set up by the hub",
                       lambda: (_http(zone, "GET", "/api/provision")[1].get("this") or {}).get("claimed"), limit=120)
             keys = {zone: _wait(f"for {zone} on the hub's list", lambda: self.row(zone), limit=120)["key"] for zone in ZONES}
