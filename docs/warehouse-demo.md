@@ -118,17 +118,33 @@ alarm carries on, with its first time and your acknowledgement. If it isn't, it'
 that says why. A machine that can't be reached keeps its alarms on "Checking", because nobody can say
 yet. A row that says "Ended, time not recorded" is from before this existed.
 
-**Alarm rules** on the board lists everything that can raise an alarm, what each one reads now and
-who it belongs to. The **Rule** button on an alarm opens its rule. Edit or remove any rule, or add
-one: a machine, one of its things, above or below a number, on or off, for how long, and whether it's
-an alarm or a warning. The demo's nine are in the same list, on your own desktop as well as on its
-hub. A mission's rules are listed too and you change those in the mission. A machine that stops
-answering and a sensor with no reading are always on. From a terminal, `bento network alarms` lists
-them, and `add` and `remove` change your own.
+**Alarm rules** is a page of its own: switch between **Board** and **Alarm rules** at the top of the
+scene, or open them from the alarm table. Each rule is a card, grouped by machine, saying what it
+watches, what that thing reads now, whether it's raised and how often it went off in the last day.
+The filters pick what's raised now, yours, the demo's, the missions' or the paused ones. The demo's
+rules are in the same list, on your own desktop as well as on its hub. A mission's rules are listed
+too, and you change those in the mission. A machine that stops answering and a sensor with no
+reading are always on.
 
-Away from the board, a new alarm is a toast with the way to it, and Devices has the same table.
+**＋ New rule** and **Edit** open the editor beside the cards. You fill it in as a sentence: a
+machine, one of its things, above or below a number (or on, off, open, shut), for how long, and
+whether it's an alarm or a warning. A name and a note on what to do are optional, and both show on
+the alarm when it goes off. The preview under it says what the rule would do with the reading right
+now. **Pause** keeps a rule but stops it raising anything, **Duplicate** starts a new one from it,
+and **Remove** asks for a second tap. The **Rule** button on an alarm opens its rule. Devices has
+the same section under its alarm table. From a terminal, `bento network alarms` lists them, and
+`add` and `remove` change your own.
 
-![Alarm rules on the board: every rule, what it reads now, and the form to edit one](screenshots/devices-scene-alarms.png)
+![Alarm rules: a card per rule, grouped by machine, with one raised and its note](screenshots/devices-scene-alarms.png)
+
+![The rule editor: the condition as a sentence, the level, a name, a note and a preview](screenshots/devices-scene-rule-editor.png)
+
+**Tap a reading on the board to see its history.** The sparkline is the last hour; the sheet shows
+the same thing over a day, a week, 30 days or 90 days, with its last, lowest, highest and average
+reading and the machine's events on the line. **＋ Alarm rule for this** starts a rule for that
+thing with its current reading filled in.
+
+![A reading's history: the cold room's temperature over the last week](screenshots/devices-scene-history.png)
 
 ![The Devices scene on a phone: the alarms first, then each zone](screenshots/devices-scene-phone.png)
 

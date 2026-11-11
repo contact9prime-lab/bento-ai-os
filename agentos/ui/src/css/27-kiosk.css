@@ -337,6 +337,7 @@ body.dev-touch .net-hw-open{min-height:var(--tap,40px);align-items:center}
 .dc-tip{position:absolute;pointer-events:none;display:flex;flex-direction:column;gap:1px;padding:6px 8px;border-radius:8px;
   background:var(--bg3,var(--bg2,#1b1d24));border:1px solid color-mix(in srgb,var(--txt) 12%,transparent);
   box-shadow:0 4px 14px rgba(0,0,0,.25);font-size:11px;white-space:nowrap;z-index:2}
+.dc-tip[hidden]{display:none}
 .dc-tip b{font-size:13px}
 .dev-chart-empty,.dev-chart-since{margin:0;font-size:var(--fs-sm,12px)}
 .dev-chart-table summary{cursor:pointer;font-size:11px;color:color-mix(in srgb,var(--txt) 60%,transparent)}

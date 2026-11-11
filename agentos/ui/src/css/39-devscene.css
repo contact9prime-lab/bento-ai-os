@@ -172,16 +172,86 @@ body.imm-devices .hm-greet,body.imm-devices .hm-chips,body.imm-devices .hm-play,
 @keyframes dvs-blink{from{background:color-mix(in srgb,var(--acc) 28%,transparent)}}
 @media (prefers-reduced-motion:reduce){.dvs-blink,.dvs-sev.blink,.dvs-row.fresh .dvs-st.new{animation:none!important}}
 
-/* the person's alarm rules */
-.dvs-rules{margin:0 0 14px;padding:12px 14px;border-radius:var(--r-lg);background:color-mix(in srgb,var(--bg2) 92%,transparent);
-  border:1px solid var(--line)}
-.dvs-rules h2{margin:0 0 8px;font-size:var(--fs-md)}
-.dvs-rules h3{margin:10px 0 6px;font-size:var(--fs-sm);font-weight:600}
-.dvs-always{margin:8px 0 0;font-size:var(--fs-xs)}
-.dvs-rules tr.focus td,.dvs-rules tr.editing td{background:color-mix(in srgb,var(--acc) 14%,transparent)}
-.dvs-form{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.dvs-form select,.dvs-form input{min-height:var(--tap,34px);max-width:100%}
-.dvs-form input[data-f=value]{width:90px}.dvs-form input[data-f=for]{width:64px}
+/* Board | Alarm rules, under the header */
+.dvs-pages{flex:1 1 100%;align-self:stretch;display:flex;gap:4px}
+.dvs-pages button{min-height:var(--tap,34px)}
+.dvs-pages em{font-style:normal;opacity:.7;font-variant-numeric:tabular-nums;margin-left:4px}
+/* a reading is a button: it opens its history (devHistOpen) */
+button.dvs-t{width:calc(100% + 12px);font:inherit;font-size:var(--fs-sm);color:inherit;text-align:left;background:none;border:0;cursor:pointer}
+button.dvs-t:hover{background:color-mix(in srgb,var(--acc) 10%,transparent)}
+button.dvs-t:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
+
+/* the alarm rules (01h devRulesHTML): cards grouped by machine, and the editor beside them */
+.dvs-rules{margin:0 0 14px;padding:14px 16px;border-radius:var(--r-lg);background:color-mix(in srgb,var(--bg2) 92%,transparent);
+  border:1px solid var(--line);container-type:inline-size}
+.dvs-rules h2{margin:0;font-size:var(--fs-lg)}
+.dvs-always{margin:12px 0 0;font-size:var(--fs-xs)}
+.dvr-top{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:10px}
+.dvr-sum{margin:2px 0 0;font-size:var(--fs-sm);color:var(--dim)}
+.dvr-sum b.bad{color:var(--err)}.dvr-sum b.ok{color:var(--ok)}
+.dvr-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:12px 0}
+.dvr-q{flex:1 1 180px;max-width:280px;min-height:var(--tap,32px)}
+.dvr-body{display:grid;gap:14px;grid-template-columns:minmax(0,1fr)}
+@container (min-width:760px){.dvr-body.with-ed{grid-template-columns:minmax(0,1fr) minmax(320px,400px)}
+  .dvr-ed{position:sticky;top:0;align-self:start}}
+.dvr-group+.dvr-group{margin-top:12px}
+.dvr-group h3{margin:0 0 6px;font-size:var(--fs-2xs);letter-spacing:.06em;text-transform:uppercase;color:var(--dim);font-weight:600}
+.dvr-group h3 em{font-style:normal;opacity:.7}
+.dvr-cards{display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr))}
+.dvr-card{display:flex;flex-direction:column;gap:6px;padding:10px 12px;border-radius:var(--r-lg);border:1px solid var(--line);
+  border-left:4px solid color-mix(in srgb,var(--err) 60%,transparent);background:color-mix(in srgb,var(--bg) 40%,transparent)}
+.dvr-card.warning{border-left-color:color-mix(in srgb,var(--warn) 70%,transparent)}
+.dvr-card.raised{background:color-mix(in srgb,var(--err) 10%,transparent)}
+.dvr-card.warning.raised{background:color-mix(in srgb,var(--warn) 10%,transparent)}
+.dvr-card.paused{opacity:.65;border-left-style:dashed}
+.dvr-card.editing,.dvr-card.focus{box-shadow:0 0 0 2px color-mix(in srgb,var(--acc) 60%,transparent)}
+.dvr-card header{display:flex;align-items:center;gap:8px;min-width:0}
+.dvr-card h4{margin:0;font-size:var(--fs-sm);font-weight:650;min-width:0;overflow-wrap:anywhere;flex:1}
+.dvr-state{font-size:var(--fs-xs);white-space:nowrap;color:var(--dim)}
+.dvr-state.raised{color:var(--err);font-weight:700}.dvr-card.warning .dvr-state.raised{color:var(--warn)}
+.dvr-state.ok{color:var(--ok)}.dvr-state.wait{color:var(--warn)}
+.dvr-cond,.dvr-meta,.dvr-note{margin:0;font-size:var(--fs-sm);overflow-wrap:anywhere}
+.dvr-meta{font-size:var(--fs-xs);color:var(--dim)}
+.dvr-note{font-size:var(--fs-xs);padding:4px 8px;border-radius:var(--r-sm);background:color-mix(in srgb,var(--txt) 6%,transparent)}
+.dvr-card footer{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;margin-top:2px}
+.dvr-card footer button{min-height:var(--tap,28px)}
+.dvr-del{margin-left:auto;color:var(--dim)}.dvr-del.sure{color:var(--err);font-weight:650}
+.dvr-empty{padding:18px;border:1px dashed var(--line);border-radius:var(--r-lg);text-align:center}
+.dvr-empty p{margin:4px 0}
+.dvr-ed{display:flex;flex-direction:column;gap:12px;padding:14px;border-radius:var(--r-lg);border:1px solid color-mix(in srgb,var(--acc) 45%,var(--line));
+  background:var(--bg2)}
+.dvr-ed h3{margin:0;font-size:var(--fs-md)}
+.dvr-sent{display:flex;flex-direction:column;gap:8px}
+.dvr-sent label,.dvr-field{display:grid;grid-template-columns:92px minmax(0,1fr);align-items:center;gap:8px;font-size:var(--fs-sm)}
+.dvr-sent label>span:first-child,.dvr-field>span{color:var(--dim)}
+.dvr-field{grid-template-columns:1fr}
+.dvr-field small,.dvr-level small,.dvr-check small{color:var(--dim)}
+.dvr-ed select,.dvr-ed input:not([type=radio]):not([type=checkbox]),.dvr-ed textarea{min-height:var(--tap,34px);width:100%;min-width:0;font:inherit;font-size:var(--fs-sm)}
+.dvr-ed textarea{resize:vertical}
+.dvr-num{display:flex;align-items:center;gap:6px}
+.dvr-num input{flex:1 1 80px}.dvr-num select{flex:0 0 auto;width:auto!important}.dvr-num em{font-style:normal;color:var(--dim)}
+.dvr-level{border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.dvr-level legend{font-size:var(--fs-sm);color:var(--dim);margin-bottom:4px}
+.dvr-level label,.dvr-check{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:var(--fs-sm);min-height:var(--tap,28px);cursor:pointer}
+.dvr-preview{padding:10px 12px;border-radius:var(--r-md);background:color-mix(in srgb,var(--txt) 6%,transparent);font-size:var(--fs-sm)}
+.dvr-preview p{margin:0}.dvr-preview p+p{margin-top:4px}
+.dvr-would{color:var(--warn);font-weight:600}
+.dvr-bad{color:var(--err)!important;font-weight:600}
+.dvr-acts{display:flex;align-items:center;gap:12px}
+.dev-rules{margin:0 0 14px}
+.dvs-what .dvs-note{color:var(--txt);margin-top:2px}
+
+/* a reading's history (01h devHistOpen): a sheet over the board, the Hardware chart inside */
+.dvh{position:fixed;inset:0;z-index:9000;display:flex;align-items:center;justify-content:center;padding:16px;
+  background:color-mix(in srgb,#000 45%,transparent)}
+.dvh[hidden]{display:none}
+.dvh-card{width:min(920px,100%);max-height:calc(100% - 32px);overflow:auto;padding:16px 18px;border-radius:var(--r-xl);
+  background:var(--bg2);color:var(--txt);border:1px solid var(--line);box-shadow:var(--el-5)}
+.dvh-card header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:6px}
+.dvh-card h2{margin:0;font-size:var(--fs-lg)}.dvh-card header p{margin:2px 0 0;font-size:var(--fs-sm)}
+.dvh-x{flex:none;width:var(--tap,36px);height:var(--tap,36px);border:0;border-radius:var(--r-md);background:color-mix(in srgb,var(--txt) 8%,transparent);color:var(--txt);cursor:pointer;font-size:16px}
+body.dev-mobile .dvh{padding:0;align-items:flex-end}
+body.dev-mobile .dvh-card{max-height:92%;border-radius:var(--r-xl) var(--r-xl) 0 0}
 body.dev-mobile #devscene{left:12px;right:12px}
 body.dev-mobile .dvs-grid{grid-template-columns:1fr}
 
