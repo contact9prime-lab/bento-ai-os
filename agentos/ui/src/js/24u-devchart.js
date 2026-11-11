@@ -7,7 +7,7 @@
    text nodes only: an item's name came from another machine. */
 var DEVCHART={key:'',item:'',range:'day',data:null,busy:false};
 var DEVCHART_RANGES=[['day','Day'],['week','Week'],['month','30 days'],['quarter','90 days']];
-var DEVCHART_EVENT={found:'＋',gone:'－',power:'⚡',offline:'○',online:'●',updated:'⬆',board:'▦'};
+var DEVCHART_EVENT={found:'＋',gone:'－',power:'⚡',offline:'○',online:'●',updated:'⬆',board:'▦',alarm:'⚠',cleared:'✓',acknowledged:'👁'};
 
 function devChartOpen(key,item){
   const same=DEVCHART.key===key&&DEVCHART.item===item;
@@ -29,12 +29,13 @@ async function devChartFill(box){
   }catch(e){slot.textContent='';const p=document.createElement('p');p.className='mut';p.textContent=String(e.message||e);slot.appendChild(p);return}
   document.querySelectorAll('.dev-chart').forEach(s=>devChartDraw(s,DEVCHART.data));
 }
-function devChartBinary(d){return d.kind==='gpio'||d.item==='power.throttle'}
+function devChartBinary(d){return d.kind==='gpio'||d.item==='power.throttle'||/^(binary_sensor|switch|light|fan)$/.test(d.kind||'')}
 function devChartFmt(d,v){
   if(v==null)return '—';
   if(devChartBinary(d)){
     if(d.item==='power.throttle')return v>=.5?'under-voltage or throttled':'fine';
-    return v===1?'high':v===0?'low':`high ${Math.round(v*100)}% of the time`;
+    const [hi,lo]=d.kind==='gpio'?['high','low']:/door/i.test(d.name||'')?['open','shut']:['on','off'];
+    return v===1?hi:v===0?lo:`${hi} ${Math.round(v*100)}% of the time`;
   }
   const n=Math.abs(v)>=100?Math.round(v):Math.round(v*10)/10;
   return `${n}${d.unit==='°C'?'°C':d.unit?' '+d.unit:''}`;
@@ -51,19 +52,23 @@ function devEl(tag,attrs,text){
   if(text!=null)n.textContent=text;
   return n;
 }
-function devChartDraw(slot,d,loading){
+/* opts, for a chart drawn somewhere else (the Devices scene's history sheet, 01h):
+   {range, onRange(id), extra: [buttons]}. Without it the chart is Devices → Hardware's. */
+function devChartDraw(slot,d,loading,opts){
   slot.textContent='';
+  const rng=opts?opts.range:DEVCHART.range;
   const head=devEl('div',{class:'dev-chart-head'});
   const seg=devEl('div',{class:'seg dev-chart-range',role:'tablist','aria-label':'Range'});
   DEVCHART_RANGES.forEach(([id,label])=>{
-    const b=devEl('button',{role:'tab','aria-selected':String(DEVCHART.range===id)},label);
-    if(DEVCHART.range===id)b.classList.add('on');
-    b.onclick=()=>{DEVCHART.range=id;devChartFill(slot.closest('.devhub-box,#s-net')||document)};
+    const b=devEl('button',{role:'tab','aria-selected':String(rng===id)},label);
+    if(rng===id)b.classList.add('on');
+    b.onclick=opts?()=>opts.onRange(id):()=>{DEVCHART.range=id;devChartFill(slot.closest('.devhub-box,#s-net')||document)};
     seg.appendChild(b);
   });
   head.appendChild(seg);
+  if(opts)(opts.extra||[]).forEach(b=>head.appendChild(b));
   // a mission that starts when this thing does something (devtrig.py, the Missions editor)
-  if(typeof devWhen==='function'&&typeof netRow==='function'){
+  else if(typeof devWhen==='function'&&typeof netRow==='function'){
     const r=netRow(DEVCHART.key),m=r.here?r.display:((r.links||[])[0]||{}).label;
     if(m&&!/\.text_sensor\./.test(DEVCHART.item)){
       const w=devEl('button',{class:'endbtn dev-chart-when',type:'button'},'Start a mission when…');
@@ -97,7 +102,7 @@ function devChartDraw(slot,d,loading){
   const ticks=devChartBinary(d)?[0,1]:[lo+(hi-lo)*.1,lo+(hi-lo)*.5,lo+(hi-lo)*.9];
   ticks.forEach(v=>{
     svg.appendChild(devEl('line',{x1:L,x2:W-R,y1:y(v),y2:y(v),class:'dc-grid'}));
-    const lab=devChartBinary(d)?(d.item==='power.throttle'?(v?'bad':'fine'):(v?'high':'low')):devChartFmt({...d,unit:''},v);
+    const lab=devChartBinary(d)?(d.item==='power.throttle'?(v?'bad':'fine'):devChartFmt(d,v)):devChartFmt({...d,unit:''},v);
     svg.appendChild(devEl('text',{x:L-6,y:y(v)+4,class:'dc-y'},lab));
   });
   [x0,(x0+d.end)/2,d.end].forEach((t,i)=>svg.appendChild(devEl('text',{x:x(t),y:H-6,class:'dc-x',

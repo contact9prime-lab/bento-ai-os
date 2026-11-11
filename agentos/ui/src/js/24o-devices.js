@@ -9,6 +9,7 @@ async function renderDevices(body,w){
   pb.innerHTML=`<div class="seg dev-views" role="tablist">
       <button role="tab" data-dv="physical">Physical</button><button role="tab" data-dv="logical">Logical</button></div>
     <div class="dev-physical"><section class="dev-alarms" aria-label="Alarms" hidden><div class="dev-al-box"></div></section>
+    <section class="dev-rules" aria-label="Alarm rules" hidden></section>
     <div class="devhub-box" id="devhub-${esc(w&&w.id||'0')}"><p class="mut">…</p></div>
     <section class="dev-events" aria-label="Events"><h3>Events</h3><div class="dev-ev-box"><p class="mut">…</p></div></section>
     <section class="dev-demo" aria-label="Warehouse demo"><h3>Try it in a simulation</h3><div class="dev-demo-box"><p class="mut">…</p></div></section></div>
@@ -34,10 +35,12 @@ async function devViewSet(v){
 /* Alarms: what is wrong on your devices now (devboard.py), the same rows as the Devices scene.
    Shown once there is something to watch: a machine set up here, or boards of its own. The way to
    the live board is the desktop that shows it, or this desktop made to. */
-var DEVAL={d:null};
+var DEVAL={d:null,rules:false};
 async function devAlarmsLoad(){
   const secs=[...document.querySelectorAll('.dev-alarms')];if(!secs.length)return;
   try{DEVAL.d=await apiJSON('/api/devices/board')}catch(e){secs.forEach(x=>x.hidden=true);return}
+  // a repaint would take the caret out of the rule being written
+  const a=document.activeElement;if(a&&a.closest&&a.closest('.dev-rules')&&/INPUT|SELECT|TEXTAREA/.test(a.tagName))return;
   devAlarmsPaint();
 }
 function devAlarmsPaint(){
@@ -50,6 +53,12 @@ function devAlarmsPaint(){
       <button class="endbtn" data-dva="board">${n?`See them live on Desktop ${n}`:'Show them live on this desktop'}</button></div>`;
     box.querySelectorAll('[data-dvs]').forEach(b=>b.onclick=()=>devSceneAct(b.dataset.dvs,b));
     box.querySelectorAll('[data-dva]').forEach(b=>b.onclick=devBoardShow)});
+  // the alarm rules, the same section as the scene's Rules view (01h devRulesHTML)
+  document.querySelectorAll('.dev-rules').forEach(sec=>{
+    sec.hidden=!ms.length||!DEVAL.rules;if(sec.hidden)return;
+    sec.innerHTML=devRulesHTML(d)+'<div class="dev-acts"><button class="linkbtn" data-dvx="hide">Hide the rules</button></div>';
+    devRulesWire(sec,devAlarmsPaint,devAlarmsLoad);
+    sec.querySelector('[data-dvx]').onclick=()=>{DEVAL.rules=false;DEVSCENE.form=null;devAlarmsPaint()}});
 }
 /* Go to the board: the desktop that shows it, or this desktop with its windows tucked away. */
 function devBoardShow(){
