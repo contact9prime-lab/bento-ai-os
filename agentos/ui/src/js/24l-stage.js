@@ -55,6 +55,7 @@ function stageReduced(){try{return matchMedia('(prefers-reduced-motion: reduce)'
 function stageMine(cid){
   if(!cid)return false;
   if(STAGE.awaiting&&STAGE.awaiting.cid===cid)return true;     // a Go deeper from the Stage itself
+  if(typeof STAGE_CHAT!=='undefined'&&STAGE_CHAT.cid===cid&&STAGE_CHAT.el&&STAGE_CHAT.el.isConnected)return true;   // asked in the Stage's chat
   if(typeof currentConv!=='undefined'&&currentConv===cid&&typeof WM!=='undefined'&&WM.wins.get('chat'))return true;
   if(typeof OFFICE_CHAT!=='undefined'&&OFFICE_CHAT&&OFFICE_CHAT.cid===cid)return true;
   if(typeof OMNI!=='undefined'&&OMNI&&OMNI.cid===cid)return true;
@@ -75,7 +76,10 @@ function stageEvent(ev){
   if(app){stageToApp(app,ev);return}
   if(!stageMine(ev.conversation_id)){if(same)stagePaintIfOpen();return}
   if(!same){
-    const was=STAGE.awaiting&&STAGE.awaiting.cid===ev.conversation_id&&STAGE.cur?{answer_to:STAGE.cur.answer_to,seq:(STAGE.scenes[STAGE.at]||{}).seq||1}:null;
+    let was=STAGE.awaiting&&STAGE.awaiting.cid===ev.conversation_id&&STAGE.cur?{answer_to:STAGE.cur.answer_to,seq:(STAGE.scenes[STAGE.at]||{}).seq||1}:null;
+    // asked in the Stage's chat from inside a part: the new story is that part gone deeper (stage._asked_inside)
+    const la=typeof STAGE_CHAT!=='undefined'&&STAGE_CHAT.cid===ev.conversation_id&&STAGE_CHAT.lastAt;
+    if(!was&&la&&la.path.length&&la.answer_to!==(ev.answer_to||''))was={answer_to:la.answer_to,seq:la.seq,path:la.path,scene:la.scene};
     STAGE.awaiting=null;
     STAGE.cur={cid:ev.conversation_id,answer_to:ev.answer_to||'',question:'',parent:was,deeper:{},versions:[]};
     stageVersions(STAGE.cur);
@@ -219,11 +223,24 @@ function stagePaint(body){
     fs.onclick=()=>{const t=body.closest('.win')||body;try{document.fullscreenElement?document.exitFullscreen():t.requestFullscreen()}catch(e){}};
     top.append(fs);
   }
+  // the story's chat on the right (24w-stagechat.js), to ask more about what is on screen
+  const talk=STAGE.tab==='now'&&STAGE.cur&&STAGE.cur.cid&&typeof stageChatPanel==='function';
+  if(talk){
+    const on=stageChatWanted();
+    const cb=sEl('button','st-icon st-chat-b'+(on?' on':''),'✦');cb.append(sEl('span','stg-long',' Chat'));
+    cb.title=on?'Hide the chat':'Chat about this story';cb.setAttribute('aria-pressed',String(on));
+    cb.onclick=()=>stageChatSet(!on,true);top.append(cb);
+  }
   body.append(top);
+  const w=WM.wins.get('stage');if(w&&typeof stageChatButton==='function')stageChatButton(w);
   const main=sEl('div','st-main'+(STAGE.tab==='now'?' now':''));body.append(main);
   if(STAGE.tab==='library')stageLibrary(main);
   else if(STAGE.tab==='boards')stageBoards(main);
-  else stageNow(main);
+  else{
+    stageNow(main);
+    const p=talk&&stageChatWanted()?stageChatPanel():null;
+    if(p){main.classList.add('with-chat');main.append(p)}
+  }
 }
 
 function stageNow(main){
@@ -246,7 +263,11 @@ function stageNow(main){
   const head=sEl('div','stg-head');
   if(STAGE.cur.parent){
     const up=sEl('button','stg-crumb','↖ Back to the story this came from');
-    up.onclick=()=>stageOpen(STAGE.cur.cid,STAGE.cur.parent.answer_to,(STAGE.cur.parent.seq||1)-1);
+    const pa=STAGE.cur.parent;
+    // back up the tree: the parent blueprint opens at the part this went deeper on (24w-stagechat.js)
+    if((pa.path||[]).length){up.textContent='↖ Back up to the part this came from'}
+    up.onclick=()=>{if(typeof STAGE_CHAT!=='undefined'&&(pa.path||[]).length)STAGE_CHAT.want={scene:pa.scene,path:pa.path,until:Date.now()+5000};
+      stageOpen(STAGE.cur.cid,pa.answer_to,(pa.seq||1)-1)};
     head.append(up);
   }
   if(STAGE.cur.question)head.append(sEl('div','stg-q',STAGE.cur.question));
@@ -328,7 +349,7 @@ function stageSource(src){
 }
 async function stageFetch(cid,answer_to,at){
   const d=await apiJSON('/api/stage/story?conversation='+encodeURIComponent(cid)+'&answer_to='+encodeURIComponent(answer_to||''));
-  STAGE.cur={cid,answer_to:answer_to||'',question:'',parent:d.parent||null,deeper:d.deeper||{},versions:[]};
+  STAGE.cur={cid,answer_to:answer_to||'',question:'',parent:d.parent||null,deeper:d.deeper||{},branches:d.branches||[],versions:[]};
   stageVersions(STAGE.cur);
   STAGE.scenes=d.scenes||[];STAGE.at=Math.max(0,Math.min(at||0,STAGE.scenes.length-1));
   stageQuestion();

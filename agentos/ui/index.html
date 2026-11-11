@@ -6055,6 +6055,29 @@ body.dev-mobile .stg-cap{font-size:15px}
 .film-n{font:600 11px var(--sans);letter-spacing:.06em;text-transform:uppercase;opacity:.6}
 .film-v{font:800 26px/1 var(--sans)}
 .film-t{font-size:14px;line-height:1.45}
+
+/* the story's chat on the right (24w-stagechat.js): the scene keeps the room it needs */
+.st-main.now.with-chat{flex-direction:row}
+.st-main.now.with-chat>.stg{flex:1;min-width:0}
+.st-chat{flex:none;width:clamp(280px,28%,380px);height:auto;border-left:1px solid var(--line);background:var(--bg2)}
+.st-chat .cp-head{padding:8px 10px}
+.st-top .st-chat-b.on{color:var(--acc);border-color:var(--acc)}
+/* a phone: the chat comes up over the scene, and the top bar's ✦ Chat puts it away */
+body.dev-mobile .st-main.now.with-chat>.st-chat{position:absolute;inset:0;width:auto;border-left:0;z-index:5}
+/* the chat as a tree (24w-stagechat.js): where you are, and the threads above and inside */
+.st-tree{display:flex;flex-direction:column;gap:5px;padding:7px 10px;border-bottom:1px solid var(--line);
+  background:color-mix(in srgb,var(--acc) 6%,transparent);font-size:12px}
+.st-tree[hidden]{display:none}
+.st-tree-at,.st-tree-in{display:flex;flex-wrap:wrap;align-items:center;gap:3px 4px}
+.st-tree-k{font:700 10px var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--dim2);margin-right:4px}
+.st-tree-sep{color:var(--dim2)}
+.st-tree-b{background:none;border:1px solid transparent;border-radius:6px;color:var(--dim);font:600 12px var(--sans);
+  padding:3px 6px;cursor:pointer;min-height:26px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.st-tree-b:hover,.st-tree-b:focus-visible{color:var(--txt);border-color:var(--line)}
+.st-tree-b.on{color:var(--txt);border-color:var(--acc);cursor:default}
+.st-tree-in .st-tree-b{border-color:var(--line)}
+.st-tree-up{align-self:flex-start;border-color:var(--acc);color:var(--txt)}
+body.dev-mobile .st-tree-b{min-height:var(--tap,40px)}
 /* Permissions → Flow (20b-permflow.js): the gate's steps as a path a request walks.
    Colours are mixed from the theme's tokens, so it holds up on light themes too. */
 /* two columns that wrap into one when the window is narrow (no container query: that
@@ -7182,6 +7205,17 @@ body.still .bp-v-look .bp-look{position:relative;inset:auto}
   .rp .bp-draw{height:540px}
   .rp .bp-spec{margin-top:10px;overflow:visible}
 }
+
+/* ⤓ Export: two ways to keep it */
+.bp-exp{position:relative}
+.bp-exp>summary{list-style:none;display:inline-flex;align-items:center}
+.bp-exp>summary::-webkit-details-marker{display:none}
+.bp-exp-m{position:absolute;right:0;top:calc(100% + 4px);z-index:6;min-width:230px;padding:6px;border-radius:10px;
+  background:#04162d;box-shadow:inset 0 0 0 1px rgba(125,211,252,.4),0 14px 40px #000c;display:flex;flex-direction:column;gap:2px}
+.bp-exp-a{display:flex;flex-direction:column;gap:1px;padding:8px 10px;border-radius:7px;color:#e0f2fe;text-decoration:none;
+  font:600 13px var(--sans);letter-spacing:0;min-height:var(--tap,36px)}
+.bp-exp-a span{font:400 11.5px var(--sans);color:rgba(186,230,253,.7)}
+.bp-exp-a:hover,.bp-exp-a:focus-visible{background:rgba(125,211,252,.12)}
 </style>
 </head>
 <body>
@@ -14237,7 +14271,7 @@ function agentTurn(o){
   if(o.sink&&o.sink.start)o.sink.start({conversation_id:o.cid||''});
   ws.send(JSON.stringify({type:'chat',text:o.text,conversation_id:o.cid||null,
     images:o.images||[],model:'',surface:'gui',origin:o.origin||'user',title:o.title||'',
-    context:o.context||'',...(o.automation?{automation:o.automation.name,automation_run:o.automation.run||''}:{})}));
+    context:o.context||'',...(o.stageAt?{stage_at:o.stageAt}:{}),...(o.automation?{automation:o.automation.name,automation_run:o.automation.run||''}:{})}));
   return true;
 }
 
@@ -14564,7 +14598,9 @@ async function initCopilot(w,panel){
     try{
       const d=await (await fetch('/api/conversations/'+cid)).json();
       if(shared&&currentConv!==cid)return;      // the person moved on while it loaded
-      const msgs=(d.messages||[]).slice(-12);
+      // a panel that follows a tree (the Stage's chat) shows only the branch it is at
+      let all=d.messages||[];if(panel._filter){try{all=panel._filter(all)}catch(e){}}
+      const msgs=all.slice(-12);
       feedEl.innerHTML=msgs.map(m=>m.role==='user'
         ?`<div class="mf-user">${esc(m.content)}</div>`
         :m.role==='assistant'?(/^\[huddle ·/.test(m.content||'')&&typeof huddleCard==='function'
@@ -14612,6 +14648,7 @@ async function initCopilot(w,panel){
     OFFICE_CHAT.cid=currentConv||null;
     replay(OFFICE_CHAT.cid);
   }else if(pinned){
+    panel._replay=()=>{if(!RUNNING.has(pinned))replay(pinned)};
     replay(pinned);
   }else{
     replay(await copilotThread(w.id,w.app.title));
@@ -14639,8 +14676,10 @@ async function initCopilot(w,panel){
     feedEl.scrollTop=feedEl.scrollHeight;
     const sink=mkSink();
     if(pinned){
+      // a panel beside something (the Stage's chat) says what the person is looking at
+      let ctx='',at=null;try{ctx=(panel._context&&panel._context())||'';at=(panel._at&&panel._at())||null}catch(e){}
       agentTurn({text:text||'What do you see here?',images:imgs,cid:pinned,origin:'user',title:'',
-        context:'',sink});
+        context:ctx,stageAt:at,sink});
       if(typeof chatMirrorUser==='function')chatMirrorUser(pinned,text,imgs);
       return;
     }
@@ -37730,6 +37769,7 @@ function stageReduced(){try{return matchMedia('(prefers-reduced-motion: reduce)'
 function stageMine(cid){
   if(!cid)return false;
   if(STAGE.awaiting&&STAGE.awaiting.cid===cid)return true;     // a Go deeper from the Stage itself
+  if(typeof STAGE_CHAT!=='undefined'&&STAGE_CHAT.cid===cid&&STAGE_CHAT.el&&STAGE_CHAT.el.isConnected)return true;   // asked in the Stage's chat
   if(typeof currentConv!=='undefined'&&currentConv===cid&&typeof WM!=='undefined'&&WM.wins.get('chat'))return true;
   if(typeof OFFICE_CHAT!=='undefined'&&OFFICE_CHAT&&OFFICE_CHAT.cid===cid)return true;
   if(typeof OMNI!=='undefined'&&OMNI&&OMNI.cid===cid)return true;
@@ -37750,7 +37790,10 @@ function stageEvent(ev){
   if(app){stageToApp(app,ev);return}
   if(!stageMine(ev.conversation_id)){if(same)stagePaintIfOpen();return}
   if(!same){
-    const was=STAGE.awaiting&&STAGE.awaiting.cid===ev.conversation_id&&STAGE.cur?{answer_to:STAGE.cur.answer_to,seq:(STAGE.scenes[STAGE.at]||{}).seq||1}:null;
+    let was=STAGE.awaiting&&STAGE.awaiting.cid===ev.conversation_id&&STAGE.cur?{answer_to:STAGE.cur.answer_to,seq:(STAGE.scenes[STAGE.at]||{}).seq||1}:null;
+    // asked in the Stage's chat from inside a part: the new story is that part gone deeper (stage._asked_inside)
+    const la=typeof STAGE_CHAT!=='undefined'&&STAGE_CHAT.cid===ev.conversation_id&&STAGE_CHAT.lastAt;
+    if(!was&&la&&la.path.length&&la.answer_to!==(ev.answer_to||''))was={answer_to:la.answer_to,seq:la.seq,path:la.path,scene:la.scene};
     STAGE.awaiting=null;
     STAGE.cur={cid:ev.conversation_id,answer_to:ev.answer_to||'',question:'',parent:was,deeper:{},versions:[]};
     stageVersions(STAGE.cur);
@@ -37894,11 +37937,24 @@ function stagePaint(body){
     fs.onclick=()=>{const t=body.closest('.win')||body;try{document.fullscreenElement?document.exitFullscreen():t.requestFullscreen()}catch(e){}};
     top.append(fs);
   }
+  // the story's chat on the right (24w-stagechat.js), to ask more about what is on screen
+  const talk=STAGE.tab==='now'&&STAGE.cur&&STAGE.cur.cid&&typeof stageChatPanel==='function';
+  if(talk){
+    const on=stageChatWanted();
+    const cb=sEl('button','st-icon st-chat-b'+(on?' on':''),'✦');cb.append(sEl('span','stg-long',' Chat'));
+    cb.title=on?'Hide the chat':'Chat about this story';cb.setAttribute('aria-pressed',String(on));
+    cb.onclick=()=>stageChatSet(!on,true);top.append(cb);
+  }
   body.append(top);
+  const w=WM.wins.get('stage');if(w&&typeof stageChatButton==='function')stageChatButton(w);
   const main=sEl('div','st-main'+(STAGE.tab==='now'?' now':''));body.append(main);
   if(STAGE.tab==='library')stageLibrary(main);
   else if(STAGE.tab==='boards')stageBoards(main);
-  else stageNow(main);
+  else{
+    stageNow(main);
+    const p=talk&&stageChatWanted()?stageChatPanel():null;
+    if(p){main.classList.add('with-chat');main.append(p)}
+  }
 }
 
 function stageNow(main){
@@ -37921,7 +37977,11 @@ function stageNow(main){
   const head=sEl('div','stg-head');
   if(STAGE.cur.parent){
     const up=sEl('button','stg-crumb','↖ Back to the story this came from');
-    up.onclick=()=>stageOpen(STAGE.cur.cid,STAGE.cur.parent.answer_to,(STAGE.cur.parent.seq||1)-1);
+    const pa=STAGE.cur.parent;
+    // back up the tree: the parent blueprint opens at the part this went deeper on (24w-stagechat.js)
+    if((pa.path||[]).length){up.textContent='↖ Back up to the part this came from'}
+    up.onclick=()=>{if(typeof STAGE_CHAT!=='undefined'&&(pa.path||[]).length)STAGE_CHAT.want={scene:pa.scene,path:pa.path,until:Date.now()+5000};
+      stageOpen(STAGE.cur.cid,pa.answer_to,(pa.seq||1)-1)};
     head.append(up);
   }
   if(STAGE.cur.question)head.append(sEl('div','stg-q',STAGE.cur.question));
@@ -38003,7 +38063,7 @@ function stageSource(src){
 }
 async function stageFetch(cid,answer_to,at){
   const d=await apiJSON('/api/stage/story?conversation='+encodeURIComponent(cid)+'&answer_to='+encodeURIComponent(answer_to||''));
-  STAGE.cur={cid,answer_to:answer_to||'',question:'',parent:d.parent||null,deeper:d.deeper||{},versions:[]};
+  STAGE.cur={cid,answer_to:answer_to||'',question:'',parent:d.parent||null,deeper:d.deeper||{},branches:d.branches||[],versions:[]};
   stageVersions(STAGE.cur);
   STAGE.scenes=d.scenes||[];STAGE.at=Math.max(0,Math.min(at||0,STAGE.scenes.length-1));
   stageQuestion();
@@ -41722,6 +41782,17 @@ function stageBlueprint(art,sc){
     seq:(typeof STAGE!=='undefined'&&STAGE.scenes&&STAGE.scenes[STAGE.at]&&STAGE.scenes[STAGE.at].scene===sc)?STAGE.scenes[STAGE.at].seq:0};
   st.sid=st.seq?STAGE.scenes[STAGE.at].id:'';
   // a phone's album opens it for the person: one view per picture (stage.still_views)
+  // a repaint of the Stage (the chat shown or hidden, the question loading) keeps your place
+  const kept=st.sid&&!sc._view&&BP_KEEP[st.sid];
+  if(kept){let n={parts:sc.parts};const ok=[];
+    for(const id of kept.path){const k=bpKids(n).find(p=>p.id===id);if(!k||!bpKids(k).length)break;ok.push(id);n=k}
+    st.path=ok;st.mode=kept.mode}
+  // back up the tree from a deeper story: open at the part it went deeper on
+  // (kept a few seconds, not used up: the Stage paints again when the story's question loads)
+  if(typeof STAGE_CHAT!=='undefined'&&STAGE_CHAT.want&&STAGE_CHAT.want.scene===st.sid&&Date.now()<(STAGE_CHAT.want.until||0)){
+    let n={parts:sc.parts};const ok=[];
+    for(const id of STAGE_CHAT.want.path){const k=bpKids(n).find(p=>p.id===id);if(!k)break;ok.push(id);n=k}
+    st.path=bpKids(n).length?ok:ok.slice(0,-1)}
   if(sc._view){art.classList.add('bp-v-'+sc._view.mode);st.mode=sc._view.mode;st.path=(sc._view.path||[]).filter(id=>(sc.parts||[]).some(p=>p.id===id))}
   art._bp=st;
   const wrap=sEl('div','bp');
@@ -41781,7 +41852,9 @@ function bpRender(st,how){
   st.needH=0;
   const look=st.el.draw.querySelector('.bp-look');if(look)look.remove();
   svg.style.display='';
-  if(st.mode==='look'){bpLook(st);st.items=[];st.form=form;bpCrumbs(st);bpSpec(st);bpMark(st);return}
+  if(st.mode==='look'){bpLook(st);st.items=[];st.form=form;bpCrumbs(st);bpSpec(st);bpMark(st);
+    if(st.live&&typeof stageChatFollow==='function')stageChatFollow(st);
+    if(st.sid)BP_KEEP[st.sid]={path:st.path.slice(),mode:'look'};return}
   const flows=st.mode==='flows'&&bpFlowEdges(st,kids).length;
   const L=flows?bpFlows(world,node,kids,W,H,st):(form==='tower'?bpTower:form==='flow'?bpFlow:bpExploded)(world,node,kids,W,H,st);
   if(st.needH>H+2&&bpNarrow(st)&&!st.grown){st.grown=true;st.wantH=st.needH;const r=bpRender(st,how);st.grown=false;return r}
@@ -41793,7 +41866,11 @@ function bpRender(st,how){
   bpCrumbs(st);
   bpSpec(st);
   bpMark(st);
+  // the Stage's chat follows the tree: each level has its own thread (24w-stagechat.js)
+  if(st.live&&typeof stageChatFollow==='function')stageChatFollow(st);
+  if(st.sid)BP_KEEP[st.sid]={path:st.path.slice(),mode:st.mode||'parts'};
 }
+var BP_KEEP={};   // where you were in each blueprint, for a repaint of the Stage
 
 /* ---------- the drafting sheet ---------- */
 var BP_UID=0;
@@ -42259,6 +42336,15 @@ function bpCrumbs(st){
       const b=sEl('button','bp-mode'+((st.mode||'parts')===m?' on':''),w);b.setAttribute('aria-pressed',String((st.mode||'parts')===m));
       b.onclick=()=>{st.mode=m;st.sel=null;st.peek=null;bpRender(st,'in')};seg.append(b)});
     c.append(seg)}
+  // the blueprint as a document of drawing sheets (bpdoc.py): a PDF, or the page itself
+  if(st.sid&&!window.STAGE_REPORT){const d=document.createElement('details');d.className='bp-exp';
+    const sm=sEl('summary','bp-up','⤓ Export');sm.title='Keep it as a document: a set of drawing sheets';d.append(sm);
+    const m=sEl('div','bp-exp-m');
+    [['pdf','Document (PDF)','Drawing sheets, ready to print or send'],['html','Web page','The same sheets as one page you can open anywhere']].forEach(([f,w,t])=>{
+      const a=document.createElement('a');a.className='bp-exp-a';a.href='/api/stage/scene/'+encodeURIComponent(st.sid)+'/export?format='+f;
+      a.setAttribute('download','');a.title=t;a.append(sEl('b','',w),sEl('span','',t));
+      a.onclick=()=>{d.open=false;if(typeof toast==='function')toast(f==='pdf'?'Printing the blueprint… it downloads in a moment':'Downloading the blueprint')};m.append(a)});
+    d.append(m);c.append(d)}
   if(st.path.length){const up=sEl('button','bp-up','↥ Up');up.title='Back up one level (Esc)';up.onclick=()=>bpGo(st,st.path.slice(0,-1),'back');c.append(up)}
   // the legend: what a dashed or dotted line means
   const lg=sEl('span','bp-legend');
@@ -42383,6 +42469,9 @@ function bpSpec(st){
     const b=sEl('button','bp-open','⤵ Take this apart');b.title='Ask for this part as its own blueprint';
     b.onclick=()=>stageDeeper(st.seq,p.id);acts.append(b)}
   else if(p.evidence)acts.append(sEl('span','bp-bottom','This is a record: the bottom of it.'));
+  // the story's chat beside the Stage: ask about this part in words (24w-stagechat.js)
+  if(st.live&&typeof stageAskAbout==='function'){const a=sEl('button','bp-more-b','✦ Ask about this');
+    a.title='Ask your agent about '+p.name+' in the chat beside the Stage';a.onclick=()=>stageAskAbout(p.name);acts.append(a)}
   el.append(acts);
   bpPanelFoot(st,el,p);
 }
@@ -42531,6 +42620,186 @@ async function xrayLive(cid,msgEl){
     const us=(d.messages||[]).filter(m=>m.role==='user');mid=us.length?us[us.length-1].id:''}catch(e){}
   if(!msgEl.isConnected||msgEl.querySelector(':scope > .xray-btn'))return;
   msgEl.append(xrayButton(mid?{conversation:cid,answer_to:mid}:{conversation:cid},'X-ray of this answer'));
+}
+/* The Stage with its chat beside it. Asked for as "load the stage inside the chat and keep the
+   chat window on the right to go further, like blueprint + chat, because you can ask more and
+   chat on it". The panel is the copilot panel pinned to the story's own conversation
+   (initCopilot with data-cid), so a question asked here is a turn in that chat, its answer is
+   in Chat too, and a scene it shows lands on this Stage as the next version of the story.
+
+   Three things keep it right:
+   - ONE panel element per conversation, moved into each repaint: stagePaint rebuilds the body
+     on every scene, and rebuilding the panel would drop a reply that is streaming into it.
+   - Every turn says what the person is looking at (`_context`): the scene, and in a blueprint
+     the level, the view and the part selected, so "what is it made of?" means that part.
+   - It's the person's to hide (`stage.chat`, per browser). On a phone it opens over the scene.
+
+   The chat is a TREE that follows the blueprint (asked for as "dig deeper into something and come
+   out of it … resume the chat from the top of the tree but the context of everything is known").
+   Each level of a blueprint has its own thread: a question is filed with where it was asked
+   (`stage_at` on the message, server._stage_at), the panel shows the thread of the level on
+   screen, and opening a part or going Up moves the chat with it. A reply belongs to the question
+   before it. The agent's conversation stays ONE: everything said on any branch is in its history,
+   and each turn says where in the tree it is asked and which branches exist. A story the agent
+   shows from inside a part is that part gone deeper (stage._asked_inside), and Back opens the
+   parent blueprint at that part, where its thread resumes. */
+var STAGE_CHAT={el:null,cid:'',open:null,key:'',want:null,counts:{},names:{},lastAt:null};
+
+function stageChatWanted(){
+  if(STAGE_CHAT.open!==null)return STAGE_CHAT.open;
+  let v=null;try{v=localStorage.getItem('stage.chat')}catch(e){}
+  // a phone keeps the scene to itself until asked; a desk has the room
+  STAGE_CHAT.open=v===null?!(typeof document!=='undefined'&&document.body.classList.contains('dev-mobile')):v==='1';
+  return STAGE_CHAT.open;
+}
+function stageChatSet(on,focus){
+  STAGE_CHAT.open=!!on;try{localStorage.setItem('stage.chat',on?'1':'0')}catch(e){}
+  stagePaint();
+  if(on&&focus)setTimeout(()=>{const i=STAGE_CHAT.el&&STAGE_CHAT.el.querySelector('.cp-in');if(i)i.focus()},60);
+}
+function stageChatPanel(){
+  const w=typeof WM!=='undefined'&&WM.wins.get('stage');
+  const cid=(STAGE.cur&&STAGE.cur.cid)||'';
+  if(!w||!cid||typeof initCopilot!=='function')return null;
+  if(!STAGE_CHAT.el||STAGE_CHAT.cid!==cid){
+    const p=sEl('div','task-chat st-chat');
+    p.dataset.cid=cid;p.dataset.title=(STAGE.cur.question||'this story').slice(0,60);
+    p._context=stageChatContext;p._filter=stageChatFilter;
+    // where the last question was asked: a story it brings is a branch under that part
+    p._at=()=>{const a=stageChatAt();const cur=STAGE.scenes[STAGE.at];
+      STAGE_CHAT.lastAt=a?{...a,answer_to:STAGE.cur.answer_to,seq:(cur&&cur.seq)||1}:null;return a};
+    STAGE_CHAT.el=p;STAGE_CHAT.cid=cid;STAGE_CHAT.key=stageChatKey(stageChatAt());
+    initCopilot(w,p);
+    const tree=sEl('div','st-tree');tree.setAttribute('aria-label','Where this chat is in the blueprint');
+    const head=p.querySelector('.cp-head');if(head)head.after(tree);
+  }
+  const t=STAGE_CHAT.el.querySelector('.cp-in');
+  if(t&&!t.value)t.placeholder=stageChatHint();
+  return STAGE_CHAT.el;
+}
+function stageChatHint(){
+  const at=stageChatAt();
+  if(at)return 'Ask about the '+at.names[at.names.length-1]+'…';
+  return 'Ask more about this…';
+}
+/* where the person is in the tree: the blueprint on screen and the level opened */
+function stageChatBp(){const art=document.querySelector('.st-main .bp-art');const st=art&&art._bp;return st&&st.live&&st.sid?st:null}
+function stageChatAt(){
+  const st=stageChatBp();if(!st)return null;
+  const names=[st.sc.subject||st.sc.title||'Blueprint'];let n={parts:st.sc.parts};
+  for(const id of st.path){n=bpKids(n).find(p=>p.id===id);if(!n)break;names.push(n.name)}
+  return {scene:st.sid,path:st.path.slice(),names};
+}
+function stageChatKey(at){return at?at.scene+'#'+at.path.join('/'):''}
+/* the branch on screen, out of the whole conversation; and how much was said on every branch */
+function stageChatFilter(msgs){
+  const at=stageChatAt();
+  STAGE_CHAT.counts={};STAGE_CHAT.names={};
+  if(!at){stageChatTree();return msgs}
+  const key=stageChatKey(at),top=!at.path.length,out=[];let cur='';
+  msgs.forEach(m=>{
+    if(m.role==='user'){const t=(m.meta||{}).stage_at;
+      cur=t&&t.scene?t.scene+'#'+(t.path||[]).join('/'):'';
+      if(t&&t.scene){STAGE_CHAT.counts[cur]=(STAGE_CHAT.counts[cur]||0)+1;STAGE_CHAT.names[cur]=t.names||[]}}
+    // a message asked in Chat itself (no place in the tree) is the top of the first story,
+    // never of a story that went deeper from it
+    if(cur===key||(!cur&&top&&!(STAGE.cur&&STAGE.cur.parent)))out.push(m);
+  });
+  stageChatTree();
+  return out;
+}
+/* the strip over the thread: where you are, the threads above you, the ones inside */
+function stageChatTree(){
+  const p=STAGE_CHAT.el,box=p&&p.querySelector('.st-tree');if(!box)return;
+  box.textContent='';
+  const st=stageChatBp(),at=stageChatAt();
+  if(!st||!at){box.hidden=true;return}
+  box.hidden=false;
+  const crumbs=sEl('div','st-tree-at');crumbs.append(sEl('span','st-tree-k','Talking about'));
+  at.names.forEach((nm,i)=>{
+    if(i)crumbs.append(sEl('span','st-tree-sep','›'));
+    const k=at.scene+'#'+at.path.slice(0,i).join('/'),c=STAGE_CHAT.counts[k]||0;
+    const here=i===at.names.length-1;
+    const b=sEl('button','st-tree-b'+(here?' on':''),nm+(c&&!here?' · '+c:''));
+    b.title=here?'This level\'s thread':'Back up to '+nm+(c?' ('+c+' question'+(c===1?'':'s')+' there)':'');
+    if(!here)b.onclick=()=>bpGo(st,at.path.slice(0,i),'back');
+    crumbs.append(b)});
+  box.append(crumbs);
+  // threads inside this level, one level down or deeper, that this blueprint still has
+  const pre=at.scene+'#'+at.path.join('/'),kids=[];
+  Object.keys(STAGE_CHAT.counts).forEach(k=>{
+    if(k===pre||!k.startsWith(at.scene+'#'))return;
+    const path=k.slice(at.scene.length+1).split('/').filter(Boolean);
+    if(path.length<=at.path.length||at.path.some((id,i)=>path[i]!==id))return;
+    kids.push([path,STAGE_CHAT.names[k]||[],STAGE_CHAT.counts[k]])});
+  if(kids.length){const row=sEl('div','st-tree-in');row.append(sEl('span','st-tree-k','Threads inside'));
+    kids.sort((a,b)=>a[0].length-b[0].length).slice(0,8).forEach(([path,names,c])=>{
+      const nm=names.slice(at.path.length+1).join(' › ')||path[path.length-1];
+      const b=sEl('button','st-tree-b','↳ '+nm+' · '+c);b.title='Go into '+nm+' and pick its thread up';
+      b.onclick=()=>bpGo(st,path,'in');row.append(b)});
+    box.append(row)}
+  // stories that went deeper from this level or a part inside it: the way back down
+  const br=((STAGE.cur&&STAGE.cur.branches)||[]).filter(b=>b.scene===at.scene&&b.path.length>=at.path.length
+    &&at.path.every((id,i)=>b.path[i]===id));
+  if(br.length){const row=sEl('div','st-tree-in');row.append(sEl('span','st-tree-k','Went deeper'));
+    br.slice(0,6).forEach(b=>{const x=sEl('button','st-tree-b','⤵ '+(b.title||'its own blueprint'));
+      x.title='Open the blueprint this went deeper into, and its thread';
+      x.onclick=()=>stageOpen(STAGE.cur.cid,b.answer_to,0);row.append(x)});
+    box.append(row)}
+  // a deeper story: the way back up the tree to the part it came from
+  const pa=STAGE.cur&&STAGE.cur.parent;
+  if(pa&&(pa.path||[]).length){const b=sEl('button','st-tree-b st-tree-up','↑ Back up the tree');
+    b.title='Open the blueprint this came from, at the part it went deeper on';
+    b.onclick=()=>{STAGE_CHAT.want={scene:pa.scene,path:pa.path,until:Date.now()+5000};stageOpen(STAGE.cur.cid,pa.answer_to,(pa.seq||1)-1)};
+    box.append(b)}
+}
+/* the blueprint moved (a part opened, Up, another scene): the chat moves to that branch */
+function stageChatFollow(st){
+  const p=STAGE_CHAT.el;if(!p||!p.isConnected||STAGE_CHAT.cid!==(STAGE.cur&&STAGE.cur.cid))return;
+  const key=stageChatKey(stageChatAt());
+  const t=p.querySelector('.cp-in');if(t)t.placeholder=stageChatHint();
+  if(key===STAGE_CHAT.key){stageChatTree();return}
+  STAGE_CHAT.key=key;
+  if(p._replay)p._replay();
+}
+function stageChatScene(){const c=STAGE.scenes&&STAGE.scenes[STAGE.at];return c&&c.scene}
+/* what the person is looking at, said with every turn from the panel */
+function stageChatContext(){
+  const sc=stageChatScene();if(!sc)return '';
+  const out=['The person is asking from the Stage, looking at scene '+(STAGE.at+1)+' of '+STAGE.scenes.length+': '
+    +(STAGE_KIND[sc.kind]||sc.kind)+(sc.title?' "'+sc.title+'"':'')+'.'];
+  const art=document.querySelector('.bp-art');const st=art&&art._bp;
+  if(sc.kind==='blueprint'&&st&&st.sc===sc){
+    const names=[];let n={parts:sc.parts};
+    st.path.forEach(id=>{n=bpKids(n).find(p=>p.id===id);if(n)names.push(n.name)});
+    out.push('Blueprint of '+(sc.subject||sc.title)+(names.length?', opened at '+names.join(' › '):', at the top level')
+      +', in the '+({parts:'Parts',flows:'How it works',look:'Drawing'}[st.mode||'parts'])+' view.');
+    const p=st.sel?bpFind(sc.parts,st.sel):null;
+    if(p)out.push('The part selected is "'+p.name+'"'+(p.role?' ('+p.role+')':'')+'. "It" or "this" means that part.');
+    // the tree: where this is asked, and the branches already talked about
+    const br=Object.keys(STAGE_CHAT.counts).map(k=>(STAGE_CHAT.names[k]||[]).join(' › ')+' ('+STAGE_CHAT.counts[k]+')').filter(x=>x.length>4);
+    out.push('This chat follows the blueprint as a tree: the person moves into parts and back up, and each level has its own '
+      +'thread. This question is asked at '+(['the top'].concat(names).slice(-1)[0])+'; answer about that level. Everything said on '
+      +'other branches is earlier in this conversation and still counts'+(br.length?' (threads so far: '+br.slice(0,12).join('; ')+')':'')+'.');
+    out.push('To go deeper than this blueprint, show a new scene: a blueprint of one part, a specification as a table, a '
+      +'chart. It appears on their Stage as a branch under this part, and they can come back up to it.');
+  }
+  return out.join(' ');
+}
+/* "Ask about this part": the chat opens with the part named, ready to finish the sentence */
+function stageAskAbout(name){
+  if(!stageChatWanted())stageChatSet(true);
+  const p=stageChatPanel();if(!p)return;
+  const i=p.querySelector('.cp-in');if(!i)return;
+  i.value='About the '+name+': ';i.focus();try{i.setSelectionRange(i.value.length,i.value.length)}catch(e){}
+}
+/* the window's ✦ is this chat on the Stage: one panel, not two threads */
+function stageChatButton(w){
+  const cb=w&&w.el.querySelector('.cp-btn');if(!cb||cb._stage)return;
+  cb._stage=true;cb.title='Chat about this story';
+  // the app copilot's own thread would be a second chat about the same story
+  const cp=w.el.querySelector('.copanel');if(cp&&cp.classList.contains('open')){cp.classList.remove('open');cb.classList.remove('on')}
+  cb.onclick=e=>{e.stopPropagation();stageChatSet(!stageChatWanted(),true)};
 }
 /* ================= file manager app ================= */
 async function renderFiles(body,w){

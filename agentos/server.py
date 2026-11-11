@@ -6029,7 +6029,7 @@ async def api_stage_story(conversation: str, answer_to: str = ""):
     st = next((x for x in stagemod.stories(state["store"], conversation)
                if x["answer_to"] == (answer_to or "")), None)
     return {"scenes": st["scenes"] if st else [], "parent": st.get("parent") if st else None,
-            "deeper": st.get("deeper", {}) if st else {}}
+            "deeper": st.get("deeper", {}) if st else {}, "branches": st.get("branches", []) if st else []}
 
 
 @app.get("/api/stage/xray")
@@ -6088,6 +6088,42 @@ async def api_stage_draw(body: dict):
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=422)
     return {"picture": pic}
+
+
+@app.get("/api/stage/scene/{sid}/export")
+async def api_stage_export(sid: str, format: str = "pdf"):
+    """A blueprint as a document of drawing sheets (bpdoc.py): a PDF, or the page itself."""
+    from fastapi.responses import Response
+    from . import bpdoc
+    store = state["store"]
+    r = store.db.execute("SELECT answer_to FROM stage_scenes WHERE id=?", (sid,)).fetchone()
+    try:
+        page = await asyncio.to_thread(bpdoc.html, store, sid, state["cfg"].get("agent_name") or "",
+                                       stagemod_question(store, r[0] if r else ""))
+    except KeyError:
+        return JSONResponse({"error": "that blueprint is not here"}, status_code=404)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=422)
+    import json as _j
+    subject = (_j.loads(store.db.execute("SELECT scene FROM stage_scenes WHERE id=?", (sid,)).fetchone()[0])
+               .get("subject") or "blueprint")
+    if format == "html":
+        return Response(page, media_type="text/html; charset=utf-8", headers={
+            "Content-Disposition": f'attachment; filename="{bpdoc.filename(subject, "html")}"'})
+    data = await bpdoc.pdf(page, state["cfg"])
+    if not data:
+        return JSONResponse({"error": "this machine has no browser to print it with; export the web page "
+                                      "instead and print it from your browser"}, status_code=503)
+    return Response(data, media_type="application/pdf", headers={
+        "Content-Disposition": f'attachment; filename="{bpdoc.filename(subject, "pdf")}"'})
+
+
+def stagemod_question(store, answer_to: str) -> str:
+    from . import stage as stagemod
+    try:
+        return stagemod.question_of(store, answer_to) if answer_to else ""
+    except Exception:
+        return ""
 
 
 @app.put("/api/stage/settings")
@@ -19765,6 +19801,32 @@ async def _force_cancel(task: asyncio.Task, grace: float = 8.0):
 _QUEUE_MAX = 8   # per conversation — a backlog longer than this is a runaway, not a plan
 
 
+def _stage_at(data: dict) -> dict | None:
+    """Where in a blueprint's tree a message was asked from the Stage's chat: the scene, the
+    path of part ids and their names. Read field by field; it only files the message."""
+    at = data.get("stage_at")
+    if not isinstance(at, dict) or not str(at.get("scene") or "").strip():
+        return None
+    path = [str(x)[:40] for x in (at.get("path") or [])[:6] if isinstance(x, str)]
+    names = [str(x)[:60] for x in (at.get("names") or [])[:7] if isinstance(x, str)]
+    return {"scene": str(at["scene"])[:40], "path": path, "names": names}
+
+
+def _stage_words(data: dict) -> str:
+    """Where a question from the Stage's chat was asked, said in front of it to the brain only
+    (the message kept is the person's words). Measured: said only in the system context, a
+    question inside the Fan about "these blades" was answered about the turbine blades the
+    previous question was about. In front of the question, the place wins."""
+    at = _stage_at(data)
+    if not at or not at.get("names"):
+        return ""
+    where = " › ".join(at["names"])
+    if not at.get("path"):
+        return f"[Asked on the Stage at the top of the {at['names'][0]} blueprint.]\n"
+    return (f"[Asked on the Stage inside {where}. \"This\", \"these\" and \"it\" mean the "
+            f"{at['names'][-1]} and its parts.]\n")
+
+
 def _queue_add(cid: str, data: dict) -> dict:
     """Park a message sent into a busy conversation. Nothing is written to the store
     yet: a deferred item is persisted by the turn it eventually starts, a folded-in
@@ -19776,6 +19838,7 @@ def _queue_add(cid: str, data: dict) -> dict:
             "surface": data.get("surface") or "gui",
             "origin": str(data.get("origin") or "user")[:40],
             "context": str(data.get("context") or "")[:4096],
+            "stage_at": _stage_at(data),
             "uid": data.get("uid", ""),   # the turn that flushes this must run as the same account
             "status": "queued", "reason": "", "at": time.time()}
     state["queues"].setdefault(cid, []).append(item)
@@ -19833,6 +19896,8 @@ def _steer_hook(cid: str):
             # conversation now, so persist it here (the turn it would have
             # started, and would have persisted it, never happens)
             meta = {"steered": True}
+            if item.get("stage_at"):
+                meta["stage_at"] = item["stage_at"]
             if item["images"]:
                 meta["images"] = item["images"]
             with contextlib.suppress(Exception):
@@ -19856,7 +19921,7 @@ async def _queue_flush(cid: str):
     data = {"text": item["text"], "images": item["images"], "model": item["model"],
             "surface": item["surface"], "origin": item["origin"],
             "context": item["context"], "conversation_id": cid,
-            "uid": item.get("uid", "")}
+            "stage_at": item.get("stage_at"), "uid": item.get("uid", "")}
     # claim, then start, with the owner on it: `_queue_broadcast` and every owner check read it
     state["turns"][cid] = {"agent": None, "task": None, "model": "", "uid": item.get("uid", "")}
     state["turns"][cid]["task"] = asyncio.create_task(run_chat(cid, data))
@@ -20024,8 +20089,11 @@ async def _run_chat(cid: str, data: dict):
                           "message": f"earlier messages ({hinfo['compacted']}) summarised — "
                                      f"this conversation outgrew the model's context window"})
         if not retry:
-            store.add_message(cid, "user", text, {"images": images} if images else None)
-            entry = {"role": "user", "content": text}
+            # asked from the Stage's chat: where in the blueprint's tree it was asked (24w-stagechat.js)
+            umeta = {**({"images": images} if images else {}),
+                     **({"stage_at": _stage_at(data)} if _stage_at(data) else {})}
+            store.add_message(cid, "user", text, umeta or None)
+            entry = {"role": "user", "content": _stage_words(data) + text}
             if images:
                 entry["images"] = images
             history.append(entry)
@@ -20218,7 +20286,7 @@ async def _run_chat(cid: str, data: dict):
             env.steerable = model == "claude-code"
             env.person = True     # a person's own chat: the CLI reads their user-level settings
             try:
-                await execmod.run_task(text, env, _relay, run)
+                await execmod.run_task(_stage_words(data) + text, env, _relay, run)
                 turn_done = True
                 await _chat_app_fix(model, env, run, (checkout, chat_app), toolbox, evsend, _relay)
             finally:

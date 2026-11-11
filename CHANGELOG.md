@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.8.5 — 2026-11-11
+
+**The Stage has its chat beside it.** The story's own conversation sits on the right of the Stage,
+so you can ask more while you look. Each question says what you're looking at, and a part's panel
+has **Ask about this**. A scene the answer shows lands on the Stage. On a phone, ✦ Chat opens it
+over the scene.
+
+**The chat follows the blueprint like a tree.** Each level has its own thread: open a part and the
+chat moves to that part's thread, go up and you're back in the one above. Ask to dig deeper from
+inside a part and the new blueprint becomes a branch under it; **Back up the tree** returns to that
+part with its thread. It's still one conversation, so at the top the agent knows everything said
+further down. The strip over the chat shows where you are, the threads inside, and where it went
+deeper.
+
+**Export a blueprint as drawing sheets.** **⤓ Export** makes a document in the Stage's blueprint
+ink: a cover with the drawing and key numbers, the parts, how it works, a sheet for each main part
+with its steps, numbers and what's inside it, and a last sheet of unknowns, sources and picture
+credits. A PDF, or the same sheets as a web page; `bento stage export` from a terminal. Telegram and
+WhatsApp get the PDF after a blueprint's album.
+
 ## 0.8.4 — 2026-11-11
 
 **A blueprint shows what the thing looks like.** Beside Parts and How it works there's now a
