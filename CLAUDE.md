@@ -800,6 +800,19 @@ things rather than presenting the chart". Six rules:
   never filled in for them. Draw one is a tap and is marked illustrative. A phone gets the blueprint
   opened as an album (drawing, parts, flows, each part); Telegram and WhatsApp count pictures and
   captions from the same `still_items`, or they come apart.
+- **The Stage's chat is a tree over ONE conversation, and the place goes in front of the question**
+  (`24w-stagechat.js`, `server._stage_at`/`_stage_words`, `stage._asked_inside`/`stage_at_of`/`branches`,
+  `bpdoc.py`; `tests/test_blueprint_tree.py`). Asked for as "blueprint + chat … dig deeper and come
+  back up, the context of everything known". The panel is the pinned copilot panel, one element per
+  conversation moved into each repaint (`stagePaint` rebuilds the body). A question carries `stage_at`
+  (the scene, the path, the names) on the stored message only; the brain gets `_stage_words` in front
+  of the question: measured live, said only in the system context, "these blades" inside the Fan was
+  answered about the turbine blades of the previous turn. The panel filters by branch; a reply belongs
+  to the question before it; messages with no place belong to the first story's top. A story shown
+  from inside a part is filed as that part gone deeper (`stage_links` + the asking message's path), and
+  Back opens the parent at that part (`STAGE_CHAT.want`, kept a few seconds: the Stage paints twice).
+  `BP_KEEP` keeps your place in a blueprint across repaints. A story from the Stage's own chat is the
+  person's (`stageMine`), or the Stage ignored it when Chat showed another conversation.
 - **Labels never overlap and the panel holds the rest.** Labels compress, then drop their second line; the
   title block, "you are here" and the links of a tower live in the spec panel. Sized from `clientWidth`, a
   ResizeObserver dropped when the drawing leaves; on a phone the scene scrolls and a tap brings a sheet that

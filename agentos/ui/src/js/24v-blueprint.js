@@ -64,6 +64,17 @@ function stageBlueprint(art,sc){
     seq:(typeof STAGE!=='undefined'&&STAGE.scenes&&STAGE.scenes[STAGE.at]&&STAGE.scenes[STAGE.at].scene===sc)?STAGE.scenes[STAGE.at].seq:0};
   st.sid=st.seq?STAGE.scenes[STAGE.at].id:'';
   // a phone's album opens it for the person: one view per picture (stage.still_views)
+  // a repaint of the Stage (the chat shown or hidden, the question loading) keeps your place
+  const kept=st.sid&&!sc._view&&BP_KEEP[st.sid];
+  if(kept){let n={parts:sc.parts};const ok=[];
+    for(const id of kept.path){const k=bpKids(n).find(p=>p.id===id);if(!k||!bpKids(k).length)break;ok.push(id);n=k}
+    st.path=ok;st.mode=kept.mode}
+  // back up the tree from a deeper story: open at the part it went deeper on
+  // (kept a few seconds, not used up: the Stage paints again when the story's question loads)
+  if(typeof STAGE_CHAT!=='undefined'&&STAGE_CHAT.want&&STAGE_CHAT.want.scene===st.sid&&Date.now()<(STAGE_CHAT.want.until||0)){
+    let n={parts:sc.parts};const ok=[];
+    for(const id of STAGE_CHAT.want.path){const k=bpKids(n).find(p=>p.id===id);if(!k)break;ok.push(id);n=k}
+    st.path=bpKids(n).length?ok:ok.slice(0,-1)}
   if(sc._view){art.classList.add('bp-v-'+sc._view.mode);st.mode=sc._view.mode;st.path=(sc._view.path||[]).filter(id=>(sc.parts||[]).some(p=>p.id===id))}
   art._bp=st;
   const wrap=sEl('div','bp');
@@ -123,7 +134,9 @@ function bpRender(st,how){
   st.needH=0;
   const look=st.el.draw.querySelector('.bp-look');if(look)look.remove();
   svg.style.display='';
-  if(st.mode==='look'){bpLook(st);st.items=[];st.form=form;bpCrumbs(st);bpSpec(st);bpMark(st);return}
+  if(st.mode==='look'){bpLook(st);st.items=[];st.form=form;bpCrumbs(st);bpSpec(st);bpMark(st);
+    if(st.live&&typeof stageChatFollow==='function')stageChatFollow(st);
+    if(st.sid)BP_KEEP[st.sid]={path:st.path.slice(),mode:'look'};return}
   const flows=st.mode==='flows'&&bpFlowEdges(st,kids).length;
   const L=flows?bpFlows(world,node,kids,W,H,st):(form==='tower'?bpTower:form==='flow'?bpFlow:bpExploded)(world,node,kids,W,H,st);
   if(st.needH>H+2&&bpNarrow(st)&&!st.grown){st.grown=true;st.wantH=st.needH;const r=bpRender(st,how);st.grown=false;return r}
@@ -135,7 +148,11 @@ function bpRender(st,how){
   bpCrumbs(st);
   bpSpec(st);
   bpMark(st);
+  // the Stage's chat follows the tree: each level has its own thread (24w-stagechat.js)
+  if(st.live&&typeof stageChatFollow==='function')stageChatFollow(st);
+  if(st.sid)BP_KEEP[st.sid]={path:st.path.slice(),mode:st.mode||'parts'};
 }
+var BP_KEEP={};   // where you were in each blueprint, for a repaint of the Stage
 
 /* ---------- the drafting sheet ---------- */
 var BP_UID=0;
@@ -601,6 +618,15 @@ function bpCrumbs(st){
       const b=sEl('button','bp-mode'+((st.mode||'parts')===m?' on':''),w);b.setAttribute('aria-pressed',String((st.mode||'parts')===m));
       b.onclick=()=>{st.mode=m;st.sel=null;st.peek=null;bpRender(st,'in')};seg.append(b)});
     c.append(seg)}
+  // the blueprint as a document of drawing sheets (bpdoc.py): a PDF, or the page itself
+  if(st.sid&&!window.STAGE_REPORT){const d=document.createElement('details');d.className='bp-exp';
+    const sm=sEl('summary','bp-up','⤓ Export');sm.title='Keep it as a document: a set of drawing sheets';d.append(sm);
+    const m=sEl('div','bp-exp-m');
+    [['pdf','Document (PDF)','Drawing sheets, ready to print or send'],['html','Web page','The same sheets as one page you can open anywhere']].forEach(([f,w,t])=>{
+      const a=document.createElement('a');a.className='bp-exp-a';a.href='/api/stage/scene/'+encodeURIComponent(st.sid)+'/export?format='+f;
+      a.setAttribute('download','');a.title=t;a.append(sEl('b','',w),sEl('span','',t));
+      a.onclick=()=>{d.open=false;if(typeof toast==='function')toast(f==='pdf'?'Printing the blueprint… it downloads in a moment':'Downloading the blueprint')};m.append(a)});
+    d.append(m);c.append(d)}
   if(st.path.length){const up=sEl('button','bp-up','↥ Up');up.title='Back up one level (Esc)';up.onclick=()=>bpGo(st,st.path.slice(0,-1),'back');c.append(up)}
   // the legend: what a dashed or dotted line means
   const lg=sEl('span','bp-legend');
@@ -725,6 +751,9 @@ function bpSpec(st){
     const b=sEl('button','bp-open','⤵ Take this apart');b.title='Ask for this part as its own blueprint';
     b.onclick=()=>stageDeeper(st.seq,p.id);acts.append(b)}
   else if(p.evidence)acts.append(sEl('span','bp-bottom','This is a record: the bottom of it.'));
+  // the story's chat beside the Stage: ask about this part in words (24w-stagechat.js)
+  if(st.live&&typeof stageAskAbout==='function'){const a=sEl('button','bp-more-b','✦ Ask about this');
+    a.title='Ask your agent about '+p.name+' in the chat beside the Stage';a.onclick=()=>stageAskAbout(p.name);acts.append(a)}
   el.append(acts);
   bpPanelFoot(st,el,p);
 }

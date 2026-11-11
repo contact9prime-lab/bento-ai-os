@@ -81,7 +81,7 @@ function agentTurn(o){
   if(o.sink&&o.sink.start)o.sink.start({conversation_id:o.cid||''});
   ws.send(JSON.stringify({type:'chat',text:o.text,conversation_id:o.cid||null,
     images:o.images||[],model:'',surface:'gui',origin:o.origin||'user',title:o.title||'',
-    context:o.context||'',...(o.automation?{automation:o.automation.name,automation_run:o.automation.run||''}:{})}));
+    context:o.context||'',...(o.stageAt?{stage_at:o.stageAt}:{}),...(o.automation?{automation:o.automation.name,automation_run:o.automation.run||''}:{})}));
   return true;
 }
 
@@ -408,7 +408,9 @@ async function initCopilot(w,panel){
     try{
       const d=await (await fetch('/api/conversations/'+cid)).json();
       if(shared&&currentConv!==cid)return;      // the person moved on while it loaded
-      const msgs=(d.messages||[]).slice(-12);
+      // a panel that follows a tree (the Stage's chat) shows only the branch it is at
+      let all=d.messages||[];if(panel._filter){try{all=panel._filter(all)}catch(e){}}
+      const msgs=all.slice(-12);
       feedEl.innerHTML=msgs.map(m=>m.role==='user'
         ?`<div class="mf-user">${esc(m.content)}</div>`
         :m.role==='assistant'?(/^\[huddle ·/.test(m.content||'')&&typeof huddleCard==='function'
@@ -456,6 +458,7 @@ async function initCopilot(w,panel){
     OFFICE_CHAT.cid=currentConv||null;
     replay(OFFICE_CHAT.cid);
   }else if(pinned){
+    panel._replay=()=>{if(!RUNNING.has(pinned))replay(pinned)};
     replay(pinned);
   }else{
     replay(await copilotThread(w.id,w.app.title));
@@ -483,8 +486,10 @@ async function initCopilot(w,panel){
     feedEl.scrollTop=feedEl.scrollHeight;
     const sink=mkSink();
     if(pinned){
+      // a panel beside something (the Stage's chat) says what the person is looking at
+      let ctx='',at=null;try{ctx=(panel._context&&panel._context())||'';at=(panel._at&&panel._at())||null}catch(e){}
       agentTurn({text:text||'What do you see here?',images:imgs,cid:pinned,origin:'user',title:'',
-        context:'',sink});
+        context:ctx,stageAt:at,sink});
       if(typeof chatMirrorUser==='function')chatMirrorUser(pinned,text,imgs);
       return;
     }

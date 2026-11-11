@@ -370,3 +370,26 @@ body.dev-mobile .stg-cap{font-size:15px}
 .film-n{font:600 11px var(--sans);letter-spacing:.06em;text-transform:uppercase;opacity:.6}
 .film-v{font:800 26px/1 var(--sans)}
 .film-t{font-size:14px;line-height:1.45}
+
+/* the story's chat on the right (24w-stagechat.js): the scene keeps the room it needs */
+.st-main.now.with-chat{flex-direction:row}
+.st-main.now.with-chat>.stg{flex:1;min-width:0}
+.st-chat{flex:none;width:clamp(280px,28%,380px);height:auto;border-left:1px solid var(--line);background:var(--bg2)}
+.st-chat .cp-head{padding:8px 10px}
+.st-top .st-chat-b.on{color:var(--acc);border-color:var(--acc)}
+/* a phone: the chat comes up over the scene, and the top bar's ✦ Chat puts it away */
+body.dev-mobile .st-main.now.with-chat>.st-chat{position:absolute;inset:0;width:auto;border-left:0;z-index:5}
+/* the chat as a tree (24w-stagechat.js): where you are, and the threads above and inside */
+.st-tree{display:flex;flex-direction:column;gap:5px;padding:7px 10px;border-bottom:1px solid var(--line);
+  background:color-mix(in srgb,var(--acc) 6%,transparent);font-size:12px}
+.st-tree[hidden]{display:none}
+.st-tree-at,.st-tree-in{display:flex;flex-wrap:wrap;align-items:center;gap:3px 4px}
+.st-tree-k{font:700 10px var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--dim2);margin-right:4px}
+.st-tree-sep{color:var(--dim2)}
+.st-tree-b{background:none;border:1px solid transparent;border-radius:6px;color:var(--dim);font:600 12px var(--sans);
+  padding:3px 6px;cursor:pointer;min-height:26px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.st-tree-b:hover,.st-tree-b:focus-visible{color:var(--txt);border-color:var(--line)}
+.st-tree-b.on{color:var(--txt);border-color:var(--acc);cursor:default}
+.st-tree-in .st-tree-b{border-color:var(--line)}
+.st-tree-up{align-self:flex-start;border-color:var(--acc);color:var(--txt)}
+body.dev-mobile .st-tree-b{min-height:var(--tap,40px)}
