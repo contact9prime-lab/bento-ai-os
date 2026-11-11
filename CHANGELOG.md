@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.5 — 2026-11-11
+
+No release notes were written for this one; the commits since 0.8.4 are what changed (`bento update` lists them).
+
 ## 0.8.4 — 2026-11-11
 
 **A blueprint shows what the thing looks like.** Beside Parts and How it works there's now a
