@@ -7444,6 +7444,21 @@ def _stage_cli(args) -> int:
         _cfgmod.save_config(cfg)
         print(f"Answer BIG is {what}. A running server reads it on the next turn.")
         return 0
+    if act == "contact":
+        # Wikimedia asks a client to name a contact before it answers picture lookups
+        st = cfg.setdefault("stage", {})
+        if what is None or what == "":
+            c = st.get("contact") or ""
+            print(f"Blueprint drawings are looked up with contact {c}." if c else
+                  "No contact set, so Wikimedia may refuse blueprint drawing lookups. "
+                  "Set one with: bento stage contact <your web address or email>  ('off' clears it)")
+            return 0
+        from . import bppicture, config as _cfgmod
+        st["contact"] = "" if what == "off" else bppicture.user_agent(what)[len(bppicture.UA) + 2:-1]
+        _cfgmod.save_config(cfg)
+        print(f"Contact {'cleared' if what == 'off' else 'set to ' + st['contact']}. "
+              f"A running server reads it on the next blueprint.")
+        return 0
     if act == "list":
         rows = stagemod.library(store)
         if not rows:
@@ -9752,7 +9767,7 @@ def main():
     p_brief.add_argument("--ai", choices=["on", "off"], help="schedule: an AI summary on top")
     p_st = verb("stage", help="answers shown, not only written: the Stage's stories, boards and Answer BIG")
     p_st.add_argument("action", nargs="?", default="show",
-                      choices=["show", "list", "boards", "big", "keep", "drop", "xray"])
+                      choices=["show", "list", "boards", "big", "keep", "drop", "xray", "contact"])
     p_st.add_argument("what", nargs="?", default="",
                       help="show: a chat id (the last chat with a story by default) · big: on|off · "
                            "keep: the chat id · drop: a board id · xray: a chat id or a run id")

@@ -41,6 +41,10 @@ def _outline():
     return sc
 
 
+async def _nofind(words):
+    return None
+
+
 def _row(tmp_path):
     store = Store(tmp_path / "a.db")
     cid = store.create_conversation("t")
@@ -86,7 +90,7 @@ def test_each_part_is_filled_on_its_own_and_merged_by_the_closed_set(tmp_path):
 
     async def send(ev):
         sent.append(ev)
-    sc = asyncio.run(bpfill.fill(store, {}, row, send, asker=asker))
+    sc = asyncio.run(bpfill.fill(store, {}, row, send, asker=asker, finder=_nofind))
     assert sorted(asked) == ["Compressor", "Fan"]
     fan = sc["parts"][0]
     # it keeps what placed it, and takes what it says about itself
@@ -102,7 +106,7 @@ def test_each_part_is_filled_on_its_own_and_merged_by_the_closed_set(tmp_path):
     assert not any(ln["to"] == "fan" and ln["from"].startswith("fan-part") for ln in sc["links"])
     assert "filling" not in sc and sorted(sc["fill"]["done"]) == ["compressor", "fan"]
     assert sc["fill"]["looked_up"] == 6 and sc["fill"]["by"] == "claude-code"
-    assert len(sent) == 2 and sent[-1]["type"] == "stage_fill" and sent[-1]["id"] == row["id"]
+    assert len(sent) == 3 and sent[-1]["type"] == "stage_fill" and "looking" not in sc and sent[-1]["id"] == row["id"]
     assert "filling" not in sent[-1]["scene"]
     # what the page reloads is what was merged
     assert json.loads(store.db.execute("SELECT scene FROM stage_scenes").fetchone()[0]) == sc
@@ -116,7 +120,7 @@ def test_a_failure_leaves_the_part_and_says_why(tmp_path):
         if "Fill in this part: Fan" in prompt:
             raise RuntimeError("claude-code could not answer: rate limited")
         return "no json here", "claude-code", 0
-    sc = asyncio.run(bpfill.fill(store, {}, row, None, asker=asker))
+    sc = asyncio.run(bpfill.fill(store, {}, row, None, asker=asker, finder=_nofind))
     assert sc["parts"][0]["role"] == "moves most of the air" and sc["parts"][0]["parts"] == []
     why = {f["id"]: f["why"] for f in sc["fill"]["failed"]}
     assert "rate limited" in why["fan"] and "no JSON" in why["compressor"]
@@ -130,7 +134,7 @@ def test_the_node_cap_is_shared(tmp_path):
     async def asker(cfg, prompt):
         name = "Fan" if "Fill in this part: Fan" in prompt else "Compressor"
         return json.dumps(_answer(name, n=12)), "x", 0
-    sc = asyncio.run(bpfill.fill(store, {}, row, None, asker=asker))
+    sc = asyncio.run(bpfill.fill(store, {}, row, None, asker=asker, finder=_nofind))
     assert sum(1 for _ in stage.bp_walk(sc["parts"])) <= stage.BP_NODES
 
 

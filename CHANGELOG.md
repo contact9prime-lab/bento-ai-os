@@ -2,6 +2,23 @@
 
 ## 0.8.4 — 2026-11-11
 
+**A blueprint shows what the thing looks like.** Beside Parts and How it works there's now a
+**Drawing** view: a real cutaway or diagram of the subject, found on Wikimedia Commons under a free
+licence and drawn in blueprint ink, with its credit, licence and page under it. The parts of the
+level are numbered beside it. Each main part gets its own drawing too, shown in its panel. When
+nothing free is found, **Draw one** makes a picture with this machine's image engine, marked
+illustrative. The drawing is downloaded once and kept with your assets.
+
+**Each part says more.** Parts now carry how they work as steps, in order, and a comparison with
+something everyday ("as wide as a small car is long"), next to their numbers, materials and limits.
+
+**Blueprints reach Telegram and WhatsApp as a walk-through.** A chat can't be tapped into, so a
+blueprint arrives as an album: the drawing, the parts, how it works, then each main part opened,
+with its steps, numbers and what's inside it in the caption under each picture.
+
+Wikimedia asks a client to name a contact before it answers lookups. Set one with
+`bento stage contact <your web address or email>`; without it lookups may be refused, and the
+Drawing view offers Draw one instead.
 **Alarm rules have a page of their own.** The Devices scene has Board and Alarm rules at the top,
 and Devices has the same section under its alarms. Each rule is a card, grouped by machine. It
 says in words what it watches, what that thing reads now, whether it's raised, and how often it

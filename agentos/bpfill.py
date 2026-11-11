@@ -34,6 +34,7 @@ from . import stage as stagemod
 
 PARALLEL = 4             # brains asked at once; each CLI is a process of a few hundred MB
 PART_S = 300             # one part's answer
+LOOK_S = 45              # one picture: found, then kept here
 PHONE_WAIT_S = 240       # how long a phone's pictures wait for a blueprint to fill in
 WEB_TOOLS = ("WebSearch", "WebFetch")
 LINKS_PER_PART = 14
@@ -46,7 +47,9 @@ SYSTEM = ("You fill in ONE part of a blueprint that is on a person's screen. Ans
 
 SHAPE = ('{"name": "<the same name>", "role": "what it is for, one sentence", '
          '"how": "how it works, two or three sentences", "made_of": "materials or what it consists of", '
-         '"limits": "its limits, or how it fails", "facts": [{"label": "...", "value": "...", "unit": "..."}], '
+         '"limits": "its limits, or how it fails", "steps": ["what happens first", "then"], '
+         '"like": "its size or job compared with something everyday", '
+         '"look_for": "search words for a cutaway or diagram of it", "facts": [{"label": "...", "value": "...", "unit": "..."}], '
          '"certainty": "known|estimated|unclear", "source": "where the numbers come from", '
          '"unknowns": ["what nobody outside can know"], "form": "exploded|flow|tower", '
          '"parts": [ the same fields for each part inside it, and "parts" again for the ones worth opening ], '
@@ -81,8 +84,11 @@ def prompt_for(scene: dict, part: dict, budget: int, web: bool) -> str:
             f"opening four to eight parts of their own: a third level. At most {budget} parts in all "
             f"inside it. Every part says what it is for, how it works, what it is made of, its "
             f"limits, and three to six facts: real numbers with units (sizes, ratings, quantities, "
-            f"temperatures, speeds, costs, dates). Name where the numbers come from in source, and "
-            f"mark a number you worked out or remember loosely as certainty estimated. Never "
+            f"temperatures, speeds, costs, dates). This part and the ones worth opening also say "
+            f"how it works as steps, in order (three to six short ones), and like: one comparison "
+            f"with something everyday that makes its size or job easy to picture. Give look_for for "
+            f"this part: words to find a diagram of it on Wikimedia Commons. Name where the "
+            f"numbers come from in source, and mark a number you worked out or remember loosely as certainty estimated. Never "
             f"invent a figure to fill a field: leave it out. Add links between the parts inside it "
             f"that say what flows from one to the other, with kind one of "
             f"{', '.join(stagemod.BP_FLOWS)}. Keep how and role short. "
@@ -152,7 +158,8 @@ def merge(scene: dict, pid: str, obj: dict, budget: int) -> list[str]:
     if not kids:
         raise ValueError("the answer had no parts inside it")
     if me:
-        for k in ("role", "how", "made_of", "limits", "detail", "facts", "source", "unknowns"):
+        for k in ("role", "how", "made_of", "limits", "detail", "facts", "source", "unknowns",
+                  "steps", "like", "look_for"):
             if me[0].get(k):
                 top[k] = me[0][k]
         if obj.get("certainty") in stagemod.BP_CERTAINTY:
@@ -199,11 +206,15 @@ def _sem() -> asyncio.Semaphore:
     return _SEM[loop]
 
 
-def begin(store, row: dict) -> list[str]:
+def begin(store, row: dict, brain: bool = True) -> list[str]:
     """Mark what will be filled, on the stored scene and on `row`, before the page sees it.
-    Returns the part ids; [] when there is nothing to fill."""
+    Returns the part ids; [] when there is nothing to fill. The whole's drawing is looked for
+    either way (`looking` bounds the page's "looking for a drawing" line)."""
     scene = row["scene"]
-    ids = [p["id"] for p in wants(scene)]
+    ids = [p["id"] for p in wants(scene)] if brain else []
+    if scene.get("kind") == "blueprint" and not scene.get("picture"):
+        scene["looking"] = round(time.time() + LOOK_S * (2 + len(ids)))
+        _save(store, row["id"], scene)
     if not ids:
         return []
     scene["filling"] = {"ids": ids, "until": round(time.time() + PART_S * (1 + len(ids) // PARALLEL) + 30)}
@@ -212,17 +223,59 @@ def begin(store, row: dict) -> list[str]:
     return ids
 
 
-async def fill(store, cfg: dict, row: dict, send=None, asker=None) -> dict:
-    """Fill in every part `begin` marked, each on its own, merging as each one lands.
-    `send(event)` tells the screens; `asker(cfg, prompt)` stands in for the brain in tests."""
+async def fill(store, cfg: dict, row: dict, send=None, asker=None, finder=None) -> dict:
+    """Fill in every part `begin` marked, each on its own, merging as each one lands, and find
+    a free drawing of the whole and of each part filled. `send(event)` tells the screens;
+    `asker(cfg, prompt)` and `finder(words)` stand in for the brain and Commons in tests."""
+    from . import bppicture
     sid = row["id"]
     scene = _load(store, sid) or row["scene"]
     ids = list((scene.get("filling") or {}).get("ids") or [])
-    if not ids:
-        return scene
-    budget = _budgets(scene, ids)
+    budget = _budgets(scene, ids) if ids else 0
     lock = _LOCKS.setdefault(sid, asyncio.Lock())
     asker = asker or ask
+    if finder is None:
+        contact = str((cfg.get("stage") or {}).get("contact") or "") if isinstance(cfg, dict) else ""
+
+        async def finder(words):
+            pic = await bppicture.find(words, contact)
+            return await bppicture.keep(store, pic, contact) if pic else None
+
+    async def tell(cur):
+        if send:
+            try:
+                await send({"type": "stage_fill", **{k: row[k] for k in
+                            ("id", "conversation_id", "answer_to", "seq")}, "scene": cur})
+            except Exception:
+                pass
+
+    async def picture(pid: str = ""):
+        """A drawing for the whole ('') or one top-level part, kept only if none is there."""
+        cur = _load(store, sid)
+        if cur is None:
+            return
+        part = next((p for p in cur.get("parts") or [] if p["id"] == pid), None) if pid else None
+        if pid and part is None:
+            return
+        try:
+            pic = await asyncio.wait_for(finder(bppicture.words_for(cur, part)), LOOK_S)
+        except Exception:
+            pic = None
+        async with lock:
+            cur = _load(store, sid)
+            if cur is None:
+                return
+            target = cur if not pid else next(
+                (p for p in cur.get("parts") or [] if p["id"] == pid), None)
+            changed = False
+            if pic and target is not None and not target.get("picture"):
+                target["picture"] = pic
+                changed = True
+            if not pid and cur.pop("looking", None) is not None:
+                changed = True
+            if changed:
+                _save(store, sid, cur)
+                await tell(cur)
 
     async def one(pid: str):
         async with _sem():
@@ -257,23 +310,21 @@ async def fill(store, cfg: dict, row: dict, send=None, asker=None) -> dict:
             if not fl["ids"]:
                 cur.pop("filling", None)
             _save(store, sid, cur)
-            if send:
-                try:
-                    await send({"type": "stage_fill", **{k: row[k] for k in
-                                ("id", "conversation_id", "answer_to", "seq")}, "scene": cur})
-                except Exception:
-                    pass
+            await tell(cur)
+        if got and not why:
+            await picture(pid)
 
-    await asyncio.gather(*(one(pid) for pid in ids))
+    await asyncio.gather(picture(""), *(one(pid) for pid in ids))
     _LOCKS.pop(sid, None)
     return _load(store, sid) or scene
 
 
-def start(store, cfg: dict, row: dict, send=None) -> list[str]:
+def start(store, cfg: dict, row: dict, send=None, brain: bool = True) -> list[str]:
     """Begin filling in the background and return the part ids being filled. Called before
-    the scene is sent, so the row the page gets already says which parts are filling."""
-    ids = begin(store, row)
-    if not ids:
+    the scene is sent, so the row the page gets already says which parts are filling. With no
+    brain only the drawing is looked for."""
+    ids = begin(store, row, brain)
+    if not ids and "looking" not in row["scene"]:
         return []
     task = asyncio.create_task(fill(store, cfg, row, send))
     _TASKS[row["id"]] = task
@@ -286,3 +337,45 @@ async def settle(scene_ids: list[str], timeout: float) -> None:
     tasks = [_TASKS[s] for s in scene_ids if s in _TASKS]
     if tasks:
         await asyncio.wait(tasks, timeout=timeout)
+
+
+async def draw(store, toolbox, sid: str, pid: str = "", send=None) -> dict:
+    """Draw the whole ('') or one top-level part, on the person's tap, with this machine's image
+    engine, and keep it as the picture, marked illustrative. Raises ValueError with a sentence."""
+    from . import assets as assetmod, bppicture
+    cur = _load(store, sid)
+    if cur is None or cur.get("kind") != "blueprint":
+        raise ValueError("that blueprint is not here")
+    part = next((p for p in cur.get("parts") or [] if p["id"] == pid), None) if pid else None
+    if pid and part is None:
+        raise ValueError("that part is not at the top of this blueprint")
+    prompt = bppicture.draw_prompt(cur, part)
+    data, label = await toolbox._generate_image(prompt, 1280, 800)
+    if not data:
+        raise ValueError(f"nothing could draw it: {label}")
+    row = await assetmod.put_bytes(store, data, name="blueprint.png", mime="image/png",
+                                   title=(part or cur).get("name") or cur.get("subject") or "blueprint",
+                                   prompt=prompt, source=f"blueprint drawing ({label})")
+    if not row:
+        raise ValueError("it was drawn but could not be kept")
+    pic = {"asset": row["id"], "url": f"/api/assets/{row['id']}/file", "page": "",
+           "title": "", "credit": label, "licence": "", "made": "drawn"}
+    async with _LOCKS.setdefault(sid, asyncio.Lock()):
+        cur = _load(store, sid)
+        if cur is None:
+            raise ValueError("that blueprint is not here")
+        target = cur if not pid else next((p for p in cur.get("parts") or [] if p["id"] == pid), None)
+        if target is None:
+            raise ValueError("that part is no longer in the blueprint")
+        target["picture"] = pic
+        cur.pop("looking", None) if not pid else None
+        _save(store, sid, cur)
+    if send:
+        r = store.db.execute("SELECT conversation_id, answer_to, seq FROM stage_scenes WHERE id=?",
+                             (sid,)).fetchone()
+        try:
+            await send({"type": "stage_fill", "id": sid, "conversation_id": r[0] if r else "",
+                        "answer_to": r[1] if r else "", "seq": r[2] if r else 0, "scene": cur})
+        except Exception:
+            pass
+    return pic

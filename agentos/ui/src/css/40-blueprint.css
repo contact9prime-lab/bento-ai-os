@@ -223,3 +223,53 @@ body.dev-mobile .xray-btn{opacity:.85;min-height:var(--tap,40px)}
 .rp .stg-scene.k-blueprint .stg-art{height:min(78vh,760px)}
 body.still .rp .stg-scene.k-blueprint .stg-art{height:720px}
 body.still .bp-crumbs .bp-legend{display:flex}
+/* a phone's picture stacks: the drawing the width of the picture, its words under it. The
+   drawing view is the picture alone, its credit under it; the caption carries the rest. */
+body.still .rp .stg-scene.k-blueprint .stg-art{height:auto}
+body.still .bp,body.still .bp-body{display:block}
+body.still .bp-draw{height:600px}
+body.still .bp-spec{margin-top:10px;overflow:visible}
+body.still .bp-loc,body.still .bp-hint{display:none}
+body.still .bp-v-look .bp-spec{display:none}
+body.still .bp-v-look .bp-draw{height:auto!important;min-height:0}
+body.still .bp-v-look .bp-look{position:relative;inset:auto}
+
+/* The drawing (bppicture.py): a picture of the real thing in blueprint ink. A white-ground line
+   drawing is inverted to white lines, tinted cyan and screened onto the navy sheet, so its paper
+   becomes the sheet. A drawn one is already ink on navy and keeps its colours, and so does
+   Original colours. The credit is always under it. */
+.bp-look{position:absolute;inset:0;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto auto;
+  gap:10px;padding:14px;overflow:auto}
+.bp-fig{margin:0;min-height:0;display:flex;flex-direction:column;justify-content:center;gap:6px}
+.bp-fig img{flex:1;min-height:0;width:100%;object-fit:contain;mix-blend-mode:screen;
+  filter:grayscale(1) invert(1) sepia(1) hue-rotate(160deg) saturate(2.4) brightness(1.08) contrast(1.15)}
+.bp-fig.drawn img,.bp-fig.orig img{mix-blend-mode:normal;filter:none}
+.bp-cred{font:500 11px/1.4 var(--sans);color:rgba(186,230,253,.66)}
+.bp-cred a{color:#bae6fd}
+.bp-look-parts{margin:0;padding:0;list-style:none;counter-reset:bpn;display:flex;flex-wrap:wrap;gap:2px 16px;
+  color:rgba(125,211,252,.7);font:700 12px var(--sans)}
+.bp-look-parts li{counter-increment:bpn;display:flex;align-items:baseline;gap:5px}
+.bp-look-parts li::before{content:counter(bpn)}
+.bp-look-acts{grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.bp-look-acts .bp-mode{border:1px solid var(--bp-line);border-radius:8px}
+.bp-look-none{grid-column:1/-1;align-self:center;justify-self:center;color:rgba(186,230,253,.8);font:600 14px var(--sans);text-align:center}
+.bp-look-none.bp-fail{grid-row:1}
+.bp-look>.bp-open{grid-column:1/-1;justify-self:center;align-self:start}
+.bp-thumb{display:block;position:relative;width:100%;margin:8px 0 4px;padding:0;border:1px solid var(--bp-line);border-radius:8px;
+  background:var(--bp-paper);overflow:hidden;cursor:pointer;aspect-ratio:16/9}
+.bp-thumb img{width:100%;height:100%;object-fit:contain;mix-blend-mode:screen;
+  filter:grayscale(1) invert(1) sepia(1) hue-rotate(160deg) saturate(2.4) brightness(1.08)}
+.bp-thumb.drawn img{mix-blend-mode:normal;filter:none}
+.bp-thumb-t{position:absolute;right:6px;bottom:6px;font:700 11px var(--sans);color:#e0f2fe;background:rgba(2,12,27,.75);
+  padding:3px 7px;border-radius:5px}
+.bp-steps{margin:4px 0 6px;padding-left:20px;color:rgba(224,242,254,.86);font:13px/1.45 var(--sans)}
+.bp-steps li{margin:2px 0}
+.bp-like{margin:4px 0;color:#bae6fd;font:italic 13px/1.45 var(--sans)}
+
+/* the Telegram page on a phone has no Stage container to ask, so it stacks by the screen */
+@media (max-width:700px){
+  .rp .stg-scene.k-blueprint .stg-art{height:auto}
+  .rp .bp,.rp .bp-body{display:block}
+  .rp .bp-draw{height:540px}
+  .rp .bp-spec{margin-top:10px;overflow:visible}
+}

@@ -63,7 +63,7 @@ FIELDS = {
     "image": ("url", "asset", "alt", "credit"),
     "video": ("url", "start"),
     "film": ("shots", "look"),
-    "blueprint": ("subject", "form", "unit", "parts", "links", "unknowns", "facts"),
+    "blueprint": ("subject", "form", "unit", "parts", "links", "unknowns", "facts", "look_for"),
 }
 
 # A blueprint takes a thing apart instead of presenting it: its parts, how they connect,
@@ -87,7 +87,11 @@ BP_HEADLINE = 8          # the whole's own key numbers, the spec table
 # what a part carries besides its parts: what it does (role), HOW it works, what it is made
 # of, its limits or how it fails. A blueprint that only names parts is a list with lines.
 BP_PART = ("name", "id", "role", "detail", "how", "made_of", "limits", "facts", "from", "to",
-           "width", "certainty", "status", "source", "evidence", "form", "parts", "unknowns")
+           "width", "certainty", "status", "source", "evidence", "form", "parts", "unknowns",
+           "steps", "like", "look_for")
+BP_STEPS = 6             # how it works, in order: what happens first, then next
+# A part's or the whole's picture (bppicture.py) is set by the server only: found on Commons
+# from `look_for` (search words, never an address) or drawn on the person's tap.
 # what flows along a link. Each is drawn with its own line and a word, never colour alone.
 BP_FLOWS = ("load", "power", "fluid", "heat", "air", "data", "signal", "control", "material",
             "money", "people")
@@ -389,7 +393,7 @@ class _KIND:
                   form=form or _bp_form_of(parts), unit=_s(spec.get("unit"), 12), parts=parts,
                   links=links, facts=_bp_facts(spec.get("facts"), BP_HEADLINE),
                   unknowns=[_s(u, 160) for u in _list(spec.get("unknowns"))[:BP_UNKNOWNS]
-                            if str(u or "").strip()])
+                            if str(u or "").strip()], look_for=_s(spec.get("look_for"), 90))
         if not sc["title"]:
             sc["title"] = sc["subject"]
 
@@ -499,6 +503,9 @@ def _bp_parts(raw, depth: int, where: str, seen: set, count: list, dropped: list
                 "status": status, "source": _s(p.get("source"), 200),
                 "evidence": _s(p.get("evidence"), 240),
                 "unknowns": [_s(u, 160) for u in _list(p.get("unknowns"))[:4] if str(u or "").strip()],
+                "steps": [_s(x, 160) for x in _list(p.get("steps"))[:BP_STEPS]
+                          if isinstance(x, (str, int, float)) and str(x).strip()],
+                "like": _s(p.get("like"), 160), "look_for": _s(p.get("look_for"), 90),
                 "from": lo, "to": hi,
                 # 0 to 1 is a share of the widest; over 1 is the real width in the scene's unit
                 "width": (round(max(0.02, w), 3) if w <= 1 else round(min(w, 1e7), 3))
@@ -640,6 +647,8 @@ def text(sc: dict) -> str:
         out.append(f"  ⌖ {sc['form']} · {sum(1 for _ in bp_walk(sc['parts']))} parts")
         if sc.get("facts"):
             out.append("  " + " · ".join(f"{f['label']} {bp_value(f)}".strip() for f in sc["facts"]))
+        if sc.get("picture"):
+            out.append("  " + bp_picture_line(sc["picture"]))
         out += _bp_lines(sc["parts"], "  ", u)
         for x in sc.get("unknowns") or []:
             out.append(f"  ? {x}")
@@ -668,6 +677,14 @@ def bp_value(f: dict) -> str:
     return f"{v} {u}" if u[:1].isalpha() else v + u
 
 
+def bp_picture_line(pic: dict) -> str:
+    """A picture in words, always with where it came from."""
+    if pic.get("made") == "drawn":
+        return f"▣ drawing: illustrative, drawn by {pic.get('credit') or 'an image model'}"
+    return (f"▣ picture: {pic.get('title') or ''} · {pic.get('credit') or ''} · "
+            f"{pic.get('licence') or ''} · {pic.get('page') or ''}")
+
+
 def _bp_lines(parts: list, pad: str, unit: str) -> list[str]:
     out = []
     for i, p in enumerate(parts):
@@ -683,6 +700,12 @@ def _bp_lines(parts: list, pad: str, unit: str) -> list[str]:
         more = pad + ("   " if last else "│  ")
         if p.get("how"):
             out.append(f"{more}  how: {p['how'][:160]}")
+        for n, st in enumerate(p.get("steps") or [], 1):
+            out.append(f"{more}  {n}. {st}")
+        if p.get("like"):
+            out.append(f"{more}  like: {p['like']}")
+        if p.get("picture"):
+            out.append(f"{more}  {bp_picture_line(p['picture'])}")
         if p.get("evidence"):
             out.append(f"{more}  ↳ {p['evidence']}")
         out += _bp_lines(p.get("parts") or [], pad + ("   " if last else "│  "), unit)
@@ -1007,7 +1030,9 @@ BP_LINE = ("Asked what is inside something, how a building, a machine, a body, a
            "three levels deep, so show it once and do not show it again while it fills. Each part may "
            "say what it is made of (made_of), its limits or how it fails (limits), and how sure anyone "
            "is (certainty known, estimated or unclear). A child part may take another form (a tower's "
-           "foundation drawn exploded).")
+           "foundation drawn exploded). Give look_for: the words to search for a cutaway or diagram of "
+           "the whole (\"CFM56 turbofan cutaway\"); the Stage finds a free drawing with them. Never "
+           "give a picture address in a blueprint.")
 BIG_LINE = ("Answer BIG: the person watches your answers on the Stage, so anything worth seeing is "
             "SHOWN with show_scene before you write the text: three to six scenes, in story order. "
             "Tell a story, not a slide: open on what matters most (the headline numbers, or a "
@@ -1119,6 +1144,111 @@ def still_caption(sc: dict, i: int, n: int) -> str:
     return "\n".join(x for x in out if x)[:1024]
 
 
+BP_STILL_PARTS = 6       # parts opened one picture each in a phone's album
+STILL_MAX = 20
+
+
+def _bp_top_of(parts: list) -> dict:
+    """Every part's id -> the id of the top-level part it is in."""
+    out = {}
+    for t in parts or []:
+        out[t["id"]] = t["id"]
+        for k, _ in bp_walk(t.get("parts") or []):
+            out[k["id"]] = t["id"]
+    return out
+
+
+def bp_top_links(sc: dict) -> list:
+    """The links between top-level parts, a link deeper down counting for the parts holding it."""
+    top, seen, out = _bp_top_of(sc.get("parts") or []), set(), []
+    for ln in sc.get("links") or []:
+        a, b = top.get(ln["from"]), top.get(ln["to"])
+        if a and b and a != b and (a, b) not in seen:
+            seen.add((a, b))
+            out.append({**ln, "from": a, "to": b})
+    return out
+
+
+def still_views(sc: dict) -> list:
+    """What a phone is shown of one scene, one picture each. A blueprint cannot be tapped in a
+    chat, so it is opened for the person: its drawing, its parts, how it works, then each
+    top-level part that has parts of its own."""
+    if sc.get("kind") != "blueprint":
+        return [None]
+    v = []
+    if sc.get("picture"):
+        v.append({"mode": "look", "path": []})
+    v.append({"mode": "parts", "path": []})
+    if bp_top_links(sc):
+        v.append({"mode": "flows", "path": []})
+    v += [{"mode": "parts", "path": [p["id"]]} for p in sc.get("parts") or [] if p.get("parts")][:BP_STILL_PARTS]
+    return v
+
+
+def still_items(scenes: list) -> list:
+    """(scene, view) for each picture of a story, in order, at most STILL_MAX."""
+    return [(sc, v) for sc in scenes for v in still_views(sc)][:STILL_MAX]
+
+
+def _inline_picture(store, sc: dict) -> dict:
+    """A drawn picture is an asset: the photographed page has no server to ask for it."""
+    if sc.get("kind") != "blueprint":
+        return sc
+    import base64
+
+    def inl(pic):
+        if not pic or not pic.get("asset"):
+            return pic
+        try:
+            from . import assets as assetmod
+            row = store.asset_get(pic["asset"])
+            path = assetmod.path_of(row) if row else None
+            data = open(path, "rb").read() if path else b""
+        except Exception:
+            data, row = b"", None
+        if not data or len(data) > REPORT_IMG_CAP:
+            return pic
+        return {**pic, "url": f"data:{row.get('mime') or 'image/png'};base64," + base64.b64encode(data).decode()}
+    sc = dict(sc, picture=inl(sc.get("picture")))
+    sc["parts"] = [dict(p, picture=inl(p.get("picture"))) if p.get("picture") else p for p in sc.get("parts") or []]
+    return sc
+
+
+def still_caption_for(sc: dict, view, i: int, n: int) -> str:
+    """The words under one picture of a story. A blueprint's views each say what they show."""
+    if not view or sc.get("kind") != "blueprint" or (view["mode"] == "parts" and not view["path"]):
+        return still_caption(sc, i, n)
+    head = f"{i + 1}/{n} · " if n > 1 else ""
+    subject = sc.get("subject") or sc.get("title") or "Blueprint"
+    out = []
+    if view["mode"] == "look":
+        pic = sc.get("picture") or {}
+        out.append(f"{head}{subject}: the drawing")
+        out.append(bp_picture_line(pic).removeprefix("▣ "))
+    elif view["mode"] == "flows":
+        name = {p["id"]: p["name"] for p, _ in bp_walk(sc.get("parts") or [])}
+        out.append(f"{head}{subject}: how it works")
+        out += [f"{name.get(ln['from'], ln['from'])} {ln.get('verb') or '→'} {name.get(ln['to'], ln['to'])}"
+                + (f" ({ln['kind']})" if ln.get("kind") else "") for ln in bp_top_links(sc)][:10]
+    else:
+        p = next((x for x in sc.get("parts") or [] if x["id"] == view["path"][0]), None) or {}
+        out.append(f"{head}{subject} › {p.get('name') or ''}")
+        for k in ("role", "how"):
+            if p.get(k):
+                out.append(p[k])
+        out += [f"{k}. {st}" for k, st in enumerate(p.get("steps") or [], 1)]
+        if p.get("like"):
+            out.append(f"≈ {p['like']}")
+        facts = "; ".join(f"{f['label']} {bp_value(f)}".strip() for f in p.get("facts") or [])
+        if facts:
+            out.append(facts)
+        if p.get("parts"):
+            out.append("Inside: " + ", ".join(k["name"] for k in p["parts"]))
+        if p.get("source"):
+            out.append(f"Source: {p['source']}")
+    return "\n".join(x for x in out if x)[:1024]
+
+
 STILL_KIND = {"chart": "Chart", "map": "Map", "numbers": "Numbers", "timeline": "Timeline",
               "steps": "How it works", "table": "Table", "image": "Picture", "video": "Video",
               "film": "Film", "blueprint": "Blueprint"}
@@ -1183,6 +1313,10 @@ def report_html(store, conversation_id: str, answer_to: str, answer: str = "",
     import html as _html
     from . import tgformat
     scenes = [_inline_asset(store, dict(s["scene"])) for s in story(store, conversation_id, answer_to)]
+    if still:
+        # a blueprint is a walk on a phone: its drawing, its parts, how it works, each part opened
+        scenes = [dict(sc, _view=v) if v else sc for sc, v in still_items(scenes)]
+    scenes = [_inline_picture(store, sc) for sc in scenes]
     row = store.db.execute("SELECT content FROM messages WHERE id=?", (answer_to,)).fetchone()
     question = _question(row[0] if row else "")
     js = "\n".join((_UI / f"src/js/{f}").read_text(encoding="utf-8") for f in PAINTER_JS)

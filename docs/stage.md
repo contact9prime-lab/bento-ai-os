@@ -102,6 +102,42 @@ core, and a **flow** for a process. The line says how sure it is: solid is known
 estimate, dotted is unclear, and the legend says so. **Still unclear** lists what nobody outside can
 know. Numbers carry their source, as on every scene.
 
+### Drawing
+
+**Drawing** shows what the thing looks like: a cutaway or diagram of it from Wikimedia Commons,
+under a free licence (public domain, CC0, CC BY or CC BY-SA), drawn in blueprint ink. Its title,
+author, licence and page are always under it, and **Original colours** shows it as published. The
+parts of the level are numbered under the picture; Bento can't reliably point at a spot in a picture,
+so it lists them rather than drawing arrows. Each main part gets a drawing of its own as it's
+filled in, shown in its panel. The agent only gives search words (`look_for`); a picture's address
+never comes from a model. The picture is downloaded once and kept in your assets, so a phone and an
+offline machine show the same one.
+
+When no free drawing is found, **Draw one** makes one with this machine's image engine (your image
+provider, or the free fallback). It's marked illustrative, because a generated cutaway can look
+right and be wrong.
+
+Wikimedia asks a client to name a contact before it answers. Set yours with
+`bento stage contact <your web address or email>` (`off` clears it). Nothing about you is sent
+until you do, and without it Wikimedia may refuse the lookup.
+
+![The turbofan's Drawing view: a Commons cutaway in blueprint ink with its credit, and the parts numbered under it](screenshots/stage-blueprint-drawing.png)
+
+![The same Drawing view on a 390px phone, the picture on top and the key numbers below it](screenshots/stage-blueprint-drawing-phone.png)
+
+Parts also say how they work as **steps**, in order, and **like**: a comparison with something
+everyday that makes the size or the job easy to picture.
+
+### In Telegram and WhatsApp
+
+A chat can't be tapped into, so a blueprint arrives opened for you, one picture each: the drawing,
+the parts, how it works, then each main part opened (up to six). The caption under each picture
+carries what it shows: a part's role, its steps, its comparison, its numbers and what's inside it.
+
+![The first picture of a Telegram album: the drawing, its credit and the parts numbered](screenshots/stage-blueprint-phone-drawing.png)
+
+![A main part in a Telegram album: its parts drawn on top, its steps, comparison and numbers under them](screenshots/stage-blueprint-phone-part.png)
+
 On a phone the drawing takes the screen. A tap brings up a small sheet with the part and an Open
 button, and the details are just below.
 

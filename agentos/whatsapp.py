@@ -354,7 +354,7 @@ class WhatsAppBridge(usersmod.Scoped):
             n = len(scenes)
             if not n:
                 return
-            # a blueprint fills itself in after the reply (bpfill.py): a phone gets one picture,
+            # a blueprint fills itself in after the reply (bpfill.py): a phone gets its pictures,
             # so wait a while for the parts to land rather than photograph the outline
             from . import bpfill
             rows = stagemod.story(self.store, cid, ans)
@@ -362,10 +362,11 @@ class WhatsAppBridge(usersmod.Scoped):
             scenes = [r["scene"] for r in stagemod.story(self.store, cid, ans)]
             pngs = await stagestill.render(stagemod.report_html(
                 self.store, cid, ans, agent=self.cfg.get("agent_name") or "", still=True), self.cfg)
-            if len(pngs) == n:
+            items = stagemod.still_items(scenes)
+            if len(pngs) == len(items):
                 ok = True
-                for i, (png, sc) in enumerate(zip(pngs, scenes)):
-                    res = await self.send_photo(png, stagemod.still_caption(sc, i, n), wa_id)
+                for i, (png, (sc, v)) in enumerate(zip(pngs, items)):
+                    res = await self.send_photo(png, stagemod.still_caption_for(sc, v, i, len(items)), wa_id)
                     ok = ok and not str(res).startswith("[error]")
                 if ok:
                     return
