@@ -13,6 +13,10 @@ project still never swaps the desk's company, and Everywhere leaves the open one
 the demo sat at step 3. It now checks first, adds them (macOS asks for your password) or says
 the exact `sudo ifconfig lo0 alias …` commands on the card, and starts nothing until they're there.
 
+**The demo's logs trail under its steps.** While it sets up, and when it stops, the Devices card
+shows the last lines of the demo's own log and each machine's server log, newest last. The demo
+now writes each step and each wait there too, so a stuck start says what it is waiting for.
+
 ## 0.8.2 — 2026-11-10
 
 **The warehouse demo starts again on a fresh machine.** A first start stopped at step 3 with

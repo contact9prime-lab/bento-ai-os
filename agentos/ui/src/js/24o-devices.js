@@ -169,16 +169,31 @@ function devDemoPaint(){
     <button class="endbtn" data-demo="stop"${DEVDEMO.busy?' disabled':''}>Stop</button></div>`;
   else if(p==='starting')body=`<p>Setting up, step ${(st.done||0)+1} of ${st.of||6}: ${esc(st.step||'')}…</p>
     <div class="dev-demo-bar"><i style="width:${Math.round(100*(st.done||0)/(st.of||6))}%"></i></div>
-    <div class="dev-acts"><button class="endbtn" data-demo="stop">Stop</button></div>`;
-  else body=`${p==='failed'&&st.error?`<p class="bad">${esc(st.error)}</p>`:''}
+    <div class="dev-acts"><button class="endbtn" data-demo="stop">Stop</button></div>${devDemoLogBox(st)}`;
+  else body=`${p==='failed'&&st.error?`<p class="bad">${esc(st.error)}</p>${devDemoLogBox(st)}`:''}
     <label class="dev-demo-opt"><input type="checkbox" id="dev-demo-scripted"${DEVDEMO.scripted?' checked':''}> Use the scripted brain ${pInfo('Free and offline. It understands a warehouse floor: a walk through, a room by name, and switching the fans, lights, charger or a compressor.')}</label>
     <div class="dev-acts"><button class="wiz-next" data-demo="start"${DEVDEMO.busy?' disabled':''}>${st.set_up?'Start the demo':'Set up the demo'}</button>
     ${st.set_up?`<button class="endbtn" data-demo="fresh"${DEVDEMO.busy?' disabled':''}>Start over</button>`:''}</div>
     ${st.set_up?'':'<p class="mut">The first start takes about half a minute.</p>'}`;
+  // a repaint must not throw somebody back to the bottom of a log they scrolled up to read
+  const held=new Map();document.querySelectorAll('.dev-demo-box .dev-demo-log').forEach(l=>{
+    const box=l.closest('.dev-demo-box');held.set(box,l.scrollHeight-l.scrollTop-l.clientHeight<24?-1:l.scrollTop)});
   document.querySelectorAll('.dev-demo-box').forEach(box=>{box.innerHTML=intro+body;
+    const lg=box.querySelector('.dev-demo-log');if(lg){devDemoLogFill(lg,st.log||[]);
+      const h=held.has(box)?held.get(box):-1;lg.scrollTop=h<0?lg.scrollHeight:h}
     const cb=box.querySelector('#dev-demo-scripted');if(cb)cb.onchange=()=>DEVDEMO.scripted=cb.checked;
     box.querySelectorAll('[data-demo]').forEach(b=>b.onclick=()=>devDemoAct(b.dataset.demo))});
   const pw=document.getElementById('dev-demo-pw');if(pw&&keepPw)pw.value=keepPw;
+}
+/* The demo's own log and its machines' server logs, trailing under the steps. Text nodes: a log
+   line is whatever a server printed. */
+function devDemoLogBox(st){
+  return (st.log||[]).length?'<pre class="dev-demo-log" tabindex="0" aria-label="The demo’s logs, newest last"></pre>':'';
+}
+function devDemoLogFill(el,lines){
+  el.textContent='';
+  lines.forEach(x=>{const row=document.createElement('div'),w=document.createElement('b');
+    w.textContent=x.who;row.appendChild(w);row.appendChild(document.createTextNode(' '+x.line));el.appendChild(row)});
 }
 async function devDemoAct(act){
   const st=DEVDEMO.st||{};

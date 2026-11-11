@@ -201,3 +201,28 @@ def test_on_a_mac_the_zones_loopback_addresses_are_asked_for_never_waited_on(tmp
     # once they are there it goes on as before
     monkeypatch.setattr(wh, "_bindable", lambda a: True)
     assert wh.loopback_missing() == []
+
+
+def test_the_logs_trail_under_the_steps(tmp_path, monkeypatch):
+    """Asked for as "show the logs below trailing": the demo's log and each machine's server log,
+    the most recently written last, cleaned of terminal codes, and never more than LOG_LINES."""
+    import os
+    import time
+    monkeypatch.setenv("AGENTOS_DEMO_DIR", str(tmp_path))
+    (tmp_path / "demo.log").write_text("10:00:00 step 3 of 7: Setting up the three zone Pis from the hub\n")
+    for i, m in enumerate(wh.MACHINES):
+        (tmp_path / m).mkdir()
+        (tmp_path / m / "server.log").write_text("".join(f"\x1b[32m{m} line {n}\x1b[0m\n" for n in range(40)))
+        os.utime(tmp_path / m / "server.log", (time.time() - 100 + i, time.time() - 100 + i))
+    os.utime(tmp_path / "demo.log", (time.time(), time.time()))
+    got = wh.log_tail()
+    assert len(got) == wh.LOG_LINES
+    assert got[-1] == {"who": "demo", "line": "10:00:00 step 3 of 7: Setting up the three zone Pis from the hub"}
+    assert got[-2] == {"who": wh.ZONES[-1], "line": f"{wh.ZONES[-1]} line 39"}, "no terminal codes"
+    assert all("\x1b" not in x["line"] for x in got)
+
+
+def test_the_card_draws_the_log_as_text():
+    js = (Path(__file__).resolve().parent.parent / "agentos/ui/src/js/24o-devices.js").read_text()
+    fill = js.split("function devDemoLogFill", 1)[1].split("\n}", 1)[0]
+    assert "textContent" in fill and "innerHTML" not in fill

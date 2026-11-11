@@ -16353,8 +16353,13 @@ async def api_demo_warehouse(request: Request):
     """The warehouse demo (demos/warehouse.py): off, starting, ready or failed, and where it is.
     Its pages are on this machine's loopback, so a browser elsewhere is told it can't open them."""
     from .demos import warehouse as wh
-    return {**wh.status(), **_demo_doors(), "here": remotemod.is_loopback(_client_addr(request)),
-            "account": _demo_account()}
+    here = remotemod.is_loopback(_client_addr(request))
+    st = wh.status()
+    # the logs trail under the steps while it starts, and say why when it stopped; only at the machine,
+    # where the demo runs, and only for whoever may start it
+    show = here and st["phase"] in ("starting", "failed") and not _demo_account().get("need")
+    return {**st, **_demo_doors(), "here": here, "account": _demo_account(),
+            "log": await asyncio.to_thread(wh.log_tail) if show else []}
 
 
 def _demo_doors() -> dict:

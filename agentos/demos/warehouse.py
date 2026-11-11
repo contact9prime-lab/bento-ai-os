@@ -41,6 +41,7 @@ import copy
 import hmac
 import json
 import os
+import re
 import secrets
 import shutil
 import signal
@@ -518,7 +519,40 @@ def _http(m: str, method: str, path: str, body=None, timeout: float = 60):
         return 0, {}
 
 
+def _note(line: str) -> None:
+    """A line in demo.log, which the card shows as it starts."""
+    print(time.strftime("%H:%M:%S ") + line, flush=True)
+
+
+LOG_LINES = 30
+_LOG_JUNK = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|[\x00-\x08\x0b-\x1f\x7f]")
+
+
+def _tail(path: Path, n: int) -> list[str]:
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - 16384))
+            raw = f.read().decode("utf-8", "replace")
+    except OSError:
+        return []
+    lines = [_LOG_JUNK.sub("", x).rstrip()[:240] for x in raw.splitlines()[1 if len(raw) >= 16384 else 0:]]
+    return [x for x in lines if x.strip()][-n:]
+
+
+def log_tail(n: int = LOG_LINES) -> list[dict]:
+    """The last lines of the demo's own log and each machine's server log, the most recently
+    written last, so the card can trail them while it starts and say why when it stopped."""
+    srcs = [("demo", where() / "demo.log")] + [(m, _home(m) / "server.log") for m in MACHINES]
+    srcs = [(who, p, p.stat().st_mtime) for who, p in srcs if p.exists()]
+    out = []
+    for who, p, _t in sorted(srcs, key=lambda x: x[2]):
+        out += [{"who": who, "line": x} for x in _tail(p, n)]
+    return out[-n:]
+
+
 def _wait(what: str, fn, limit: float = 120, every: float = 1.0):
+    _note(f"waiting {what}")
     t0 = time.time()
     while time.time() - t0 < limit:
         got = fn()
@@ -536,6 +570,7 @@ class _Supervisor:
 
     def step(self, i: int) -> None:
         _write_status(phase="starting", step=STEPS[i], done=i)
+        _note(f"step {i + 1} of {len(STEPS)}: {STEPS[i]}")
 
     def serve_bento(self, m: str, extra: dict | None = None) -> None:
         log = open(_home(m) / "server.log", "a")

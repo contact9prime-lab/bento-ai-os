@@ -185,6 +185,10 @@ body.kiosk.kiosk-side #kiosk-hud .kh-upd{flex:none}
 .dev-demo-acct{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
 .dev-demo-acct>*{flex:1 1 180px;min-height:var(--tap,40px)}
 .dev-demo-bar{height:6px;border-radius:3px;background:color-mix(in srgb,var(--txt) 12%,transparent);overflow:hidden;margin:8px 0}
+.dev-demo-log{max-height:180px;overflow:auto;margin:8px 0 0;padding:8px 10px;border-radius:8px;
+  background:color-mix(in srgb,var(--txt) 6%,transparent);font:11px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;
+  white-space:pre-wrap;word-break:break-word;color:color-mix(in srgb,var(--txt) 80%,transparent)}
+.dev-demo-log b{font-weight:600;color:var(--acc);margin-right:2px}
 .dev-demo-bar i{display:block;height:100%;background:var(--acc-grad,var(--acc))}
 .dev-ev{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
 .dev-ev li{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:8px;align-items:baseline;padding:7px 0;
