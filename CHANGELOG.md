@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.8.3 — 2026-11-11
+
+**Picking a company in the menu bar opens it in the Office.** The chip at the top moves the
+desk to a space, and each company has a space of its own, but choosing one only moved the space:
+the Office kept showing the company that was open before. Choosing a company's space on the
+desktop now opens that company, and the Office and its Company panel follow. A phone moving
+project still never swaps the desk's company, and Everywhere leaves the open one alone.
+
+**The warehouse demo starts on a Mac.** Each zone needs its own loopback address (127.0.0.2 to
+.4), which Linux has and macOS doesn't, so on a Mac the zones couldn't announce themselves and
+the demo sat at step 3. It now checks first, adds them (macOS asks for your password) or says
+the exact `sudo ifconfig lo0 alias …` commands on the card, and starts nothing until they're there.
+
 ## 0.8.2 — 2026-11-10
 
 **The warehouse demo starts again on a fresh machine.** A first start stopped at step 3 with

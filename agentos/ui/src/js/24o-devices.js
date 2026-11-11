@@ -140,6 +140,9 @@ var DEVDEMO={st:null,busy:false,scripted:false};
 async function devDemoLoad(){
   if(!document.querySelector('.dev-demo-box'))return;
   try{DEVDEMO.st=await apiJSON('/api/demo/warehouse')}catch(e){DEVDEMO.st={phase:'off',error:String(e.message||e)}}
+  // a start refused before anything ran (macOS's loopback aliases) stays on the card with its
+  // command: a toast is gone before the command can be copied
+  if(DEVDEMO.refused&&DEVDEMO.st&&DEVDEMO.st.phase==='off')DEVDEMO.st=Object.assign({},DEVDEMO.st,{phase:'failed',error:DEVDEMO.refused});
   // a repaint would take the caret out of a box somebody is typing in
   const a=document.activeElement;if(a&&a.tagName==='INPUT'&&a.closest('.dev-demo-box'))return;
   devDemoPaint();
@@ -194,8 +197,9 @@ async function devDemoAct(act){
   DEVDEMO.busy=true;devDemoPaint();
   try{const r=await fetch('/api/demo/warehouse',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify(act==='stop'?{action:'stop'}:{action:'start',scripted:DEVDEMO.scripted,fresh:act==='fresh'})});
-    const d=await r.json();
-    if(!r.ok)toast(d.error||'The demo didn’t start',{kind:'err'});else if(d.note)toast(d.note)}
+    const d=await r.json();DEVDEMO.refused='';
+    if(!r.ok){toast(d.error||'The demo didn’t start',{kind:'err'});if(d.phase==='failed'&&d.error)DEVDEMO.refused=d.error}
+    else if(d.note)toast(d.note)}
   catch(e){toast(String(e.message||e),{kind:'err'})}
   DEVDEMO.busy=false;devDemoLoad();
 }

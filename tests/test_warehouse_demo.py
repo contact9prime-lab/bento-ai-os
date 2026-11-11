@@ -182,3 +182,22 @@ def test_the_demo_reads_the_zero_line_the_hub_writes():
     assert zero.line_parts(line) == ("bento-enroll-1.abc", "127.0.0.1")
     src = (Path(__file__).resolve().parents[1] / "agentos" / "demos" / "warehouse.py").read_text()
     assert "--enroll=" not in src and "line_parts" in src
+
+
+def test_on_a_mac_the_zones_loopback_addresses_are_asked_for_never_waited_on(tmp_path, monkeypatch):
+    """macOS answers only on 127.0.0.1: a zone could not announce from its own address and the
+    demo sat at "Setting up the three zone Pis" until it timed out."""
+    monkeypatch.setenv("AGENTOS_DEMO_DIR", str(tmp_path))
+    assert [wh.zone_addr(z) for z in wh.ZONES] == ["127.0.0.2", "127.0.0.3", "127.0.0.4"]
+    assert wh._env(wh.ZONES[1])["AGENTOS_LINK_FROM"] == "127.0.0.3"
+    monkeypatch.setattr(wh, "_bindable", lambda a: a == "127.0.0.1")
+    asked = []
+    monkeypatch.setattr(wh, "_add_loopback", lambda missing, ask: asked.append((missing, ask)))
+    st = wh.start({}, scripted=True, ask=True)
+    assert asked == [(["127.0.0.2", "127.0.0.3", "127.0.0.4"], True)], "it tries to add them first"
+    assert st["phase"] == "failed" and "sudo ifconfig lo0 alias 127.0.0.2 up" in st["error"]
+    assert st["loopback"] == wh.loopback_commands(["127.0.0.2", "127.0.0.3", "127.0.0.4"])
+    assert not (tmp_path / "brain.json").exists(), "nothing started"
+    # once they are there it goes on as before
+    monkeypatch.setattr(wh, "_bindable", lambda a: True)
+    assert wh.loopback_missing() == []

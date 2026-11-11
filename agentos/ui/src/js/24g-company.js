@@ -31,10 +31,19 @@ function companyWindow(){return OFFICE.w&&!OFFICE.w.scene?OFFICE.w:null}
 
 async function companyLoad(){
   if(!companyWindow())return;
+  const was=coOpenId(COMPANY.data);
   try{COMPANY.data=await apiJSON('/api/company')}
   catch(e){COMPANY.data=null;COMPANY.err=e.message||String(e)}
+  // Another company opened somewhere else (the menu-bar chip, another window): a draft
+  // or a half-ticked sheet belonged to the company that was open, so it goes.
+  const now=coOpenId(COMPANY.data);
+  if(was!==null&&now!==null&&was!==now)companyReset();
   companyCards();
   if(COMPANY.open)companyPaint();
+}
+function coOpenId(d){
+  if(!d)return null;
+  const c=(d.companies||[]).find(x=>x.active);return c?c.id:'';
 }
 /* Work started or ended, or an approval came or went: read the counts again, once. */
 function companySoon(){
