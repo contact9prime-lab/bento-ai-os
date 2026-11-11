@@ -277,7 +277,7 @@ class TelegramBridge(usersmod.Scoped):
             if not scenes:
                 return
             agent = self.cfg.get("agent_name") or ""
-            # a blueprint fills itself in after the reply (bpfill.py): a phone gets one picture,
+            # a blueprint fills itself in after the reply (bpfill.py): a phone gets its pictures,
             # so wait a while for the parts to land rather than photograph the outline
             from . import bpfill
             rows = stagemod.story(self.store, cid, ans)
@@ -285,8 +285,10 @@ class TelegramBridge(usersmod.Scoped):
             scenes = [r["scene"] for r in stagemod.story(self.store, cid, ans)]
             pngs = await stagestill.render(
                 stagemod.report_html(self.store, cid, ans, agent=agent, still=True), self.cfg)
-            if len(pngs) == len(scenes):
-                caps = [stagemod.still_caption(sc, i, len(scenes)) for i, sc in enumerate(scenes)]
+            # a blueprint is several pictures (its drawing, parts, how it works, each part opened)
+            items = stagemod.still_items(scenes)
+            if len(pngs) == len(items):
+                caps = [stagemod.still_caption_for(sc, v, i, len(items)) for i, (sc, v) in enumerate(items)]
                 q = stagemod.question_of(self.store, ans)
                 if q:
                     caps[0] = (f"▶ {q}\n\n" + caps[0])[:1024]   # what the story answers, on top

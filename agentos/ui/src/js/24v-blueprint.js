@@ -62,6 +62,9 @@ function stageBlueprint(art,sc){
   const st={sc,path:[],sel:null,peek:null,tour:null,art,
     live:!window.STAGE_REPORT&&typeof STAGE!=='undefined'&&STAGE.cur&&!STAGE.cur.xray,
     seq:(typeof STAGE!=='undefined'&&STAGE.scenes&&STAGE.scenes[STAGE.at]&&STAGE.scenes[STAGE.at].scene===sc)?STAGE.scenes[STAGE.at].seq:0};
+  st.sid=st.seq?STAGE.scenes[STAGE.at].id:'';
+  // a phone's album opens it for the person: one view per picture (stage.still_views)
+  if(sc._view){art.classList.add('bp-v-'+sc._view.mode);st.mode=sc._view.mode;st.path=(sc._view.path||[]).filter(id=>(sc.parts||[]).some(p=>p.id===id))}
   art._bp=st;
   const wrap=sEl('div','bp');
   const crumbs=sEl('div','bp-crumbs');
@@ -118,6 +121,9 @@ function bpRender(st,how){
   const world=sSvg('g',{class:'bp-world'});svg.append(world);
   const form=node.form||(node.root?st.sc.form:'')||'exploded';
   st.needH=0;
+  const look=st.el.draw.querySelector('.bp-look');if(look)look.remove();
+  svg.style.display='';
+  if(st.mode==='look'){bpLook(st);st.items=[];st.form=form;bpCrumbs(st);bpSpec(st);bpMark(st);return}
   const flows=st.mode==='flows'&&bpFlowEdges(st,kids).length;
   const L=flows?bpFlows(world,node,kids,W,H,st):(form==='tower'?bpTower:form==='flow'?bpFlow:bpExploded)(world,node,kids,W,H,st);
   if(st.needH>H+2&&bpNarrow(st)&&!st.grown){st.grown=true;st.wantH=st.needH;const r=bpRender(st,how);st.grown=false;return r}
@@ -589,8 +595,9 @@ function bpCrumbs(st){
   c.append(sEl('span','bp-sp'));
   // two ways to read a level: what it is made of, and what flows between its parts
   const ne=bpFlowEdges(st,bpKids(bpNode(st))).length;
-  if(ne){const seg=sEl('span','bp-modes');seg.setAttribute('role','group');
-    [['parts','Parts'],['flows','How it works · '+ne]].forEach(([m,w])=>{
+  const pic=bpPicOf(st),canLook=!!pic||bpLooking(st)||(st.live&&!!st.sid);
+  if(ne||canLook){const seg=sEl('span','bp-modes');seg.setAttribute('role','group');
+    [['parts','Parts']].concat(ne?[['flows','How it works · '+ne]]:[]).concat(canLook?[['look',pic?'Drawing':'◌ Drawing']]:[]).forEach(([m,w])=>{
       const b=sEl('button','bp-mode'+((st.mode||'parts')===m?' on':''),w);b.setAttribute('aria-pressed',String((st.mode||'parts')===m));
       b.onclick=()=>{st.mode=m;st.sel=null;st.peek=null;bpRender(st,'in')};seg.append(b)});
     c.append(seg)}
@@ -617,6 +624,54 @@ function bpLocator(st){
   box.append(sEl('div','bp-loc-t','You are here: '+st.path.length+' level'+(st.path.length===1?'':'s')+' in'));
   return box;
 }
+/* ---------- the drawing: a picture of the real thing, in blueprint ink (bppicture.py) ---------- */
+function bpPicOf(st){   // the level's own picture, else the nearest one above it
+  let n={parts:st.sc.parts},pic=st.sc.picture||null;
+  for(const id of st.path){n=bpKids(n).find(p=>p.id===id);if(!n)break;if(n.picture)pic=n.picture}
+  return pic}
+function bpLooking(st){return !!st.sc.looking&&Date.now()/1000<st.sc.looking}
+function bpCredit(pic){
+  const cap=sEl('figcaption','bp-cred');
+  if(pic.made==='drawn'){cap.textContent='Illustrative drawing by '+(pic.credit||'an image model')+'. It may not match the real thing.';return cap}
+  cap.append(document.createTextNode([pic.title,pic.credit,pic.licence].filter(Boolean).join(' · ')+' · '));
+  if(pic.page&&!window.STAGE_STILL){const a=document.createElement('a');a.href=pic.page;a.target='_blank';a.rel='noopener noreferrer';a.textContent='Wikimedia Commons';cap.append(a)}
+  else cap.append(document.createTextNode('Wikimedia Commons'));
+  return cap}
+function bpImg(pic,name){const img=document.createElement('img');img.src=pic.url||'';img.alt='Drawing of '+(name||'it');
+  img.decoding='async';img.referrerPolicy='no-referrer';return img}
+function bpThumb(pic,name){const b=sEl('button','bp-thumb'+(pic.made==='drawn'?' drawn':''));b.title='See the drawing';
+  b.append(bpImg(pic,name),sEl('span','bp-thumb-t','▣ Drawing ›'));return b}
+function bpLook(st){
+  const {draw,svg}=st.el;svg.style.display='none';
+  const box=sEl('div','bp-look');draw.append(box);
+  const node=bpNode(st),pic=bpPicOf(st),kids=bpKids(node);
+  if(!pic){
+    box.append(sEl('div','bp-look-none',bpLooking(st)?'◌ Looking for a free drawing of it…':'No free drawing of this was found.'));
+    if(!bpLooking(st)&&st.live&&st.sid)box.append(bpDrawBtn(st,'✎ Draw one'));
+    return}
+  const fig=sEl('figure','bp-fig'+(pic.made==='drawn'?' drawn':'')+(st.orig?' orig':''));
+  const img=bpImg(pic,node.name||st.sc.subject);
+  img.onerror=()=>{fig.replaceWith(sEl('div','bp-look-none bp-fail','The drawing could not be loaded.'))};
+  fig.append(img,bpCredit(pic));box.append(fig);
+  // the parts of this level beside it, numbered: the picture cannot be pointed at reliably
+  if(kids.length){const ol=sEl('ol','bp-look-parts');
+    kids.forEach(k=>{const li=sEl('li','');const b=sEl('button','bp-in-b',k.name);
+      b.onclick=()=>{st.sel=k.id;bpSpec(st)};li.append(b);ol.append(li)});box.append(ol)}
+  if(!window.STAGE_REPORT){const acts=sEl('div','bp-look-acts');
+    if(pic.made!=='drawn'){const o=sEl('button','bp-mode',st.orig?'Blueprint ink':'Original colours');
+      o.onclick=()=>{st.orig=!st.orig;bpRender(st,'')};acts.append(o)}
+    if(st.live&&st.sid)acts.append(bpDrawBtn(st,pic.made==='drawn'?'✎ Draw again':'✎ Draw one instead'));
+    box.append(acts)}
+}
+/* a drawing made on the person's tap with this machine's image engine; the scene comes back on stage_fill */
+function bpDrawBtn(st,w){
+  const b=sEl('button','bp-open',w);b.title='Draw it with this machine\'s image engine. It is illustrative.';
+  b.onclick=async()=>{b.disabled=true;b.textContent='✎ Drawing…';
+    try{const r=await fetch('/api/stage/draw',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({id:st.sid,part:st.path.length?st.path[0]:''})});
+      const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('HTTP '+r.status))}
+    catch(e){b.disabled=false;b.textContent=w;if(typeof toast==='function')toast('Could not draw it: '+e.message)}};
+  return b}
 /* ---------- the spec panel: what the part under your finger is ---------- */
 function bpSpec(st){
   const el=st.el.spec;el.textContent='';
@@ -645,6 +700,8 @@ function bpSpec(st){
   if(p.status&&BP_STATUS[p.status]){const [ic,w,col]=BP_STATUS[p.status];
     const s=sEl('span','bp-status',ic+' '+w);s.style.color=col;s.style.borderColor=col;el.append(s)}
   if(p.role)el.append(sEl('p','bp-role',p.role));
+  if(p.picture&&bpKids(p).length){const t=bpThumb(p.picture,p.name);
+    t.onclick=()=>{st.mode='look';bpOpen(st,p)};el.append(t)}
   if(bpIsFilling(st,p))el.append(sEl('p','bp-note bp-fillt','◌ Filling this part in. It updates here when it lands.'));
   else{const f=bpFailed(st,p);
     if(f)el.append(sEl('p','bp-note','Couldn\'t fill this part in: '+f.why));
@@ -684,6 +741,9 @@ function bpPanelFoot(st,el,p){
 /* how it works, what it is made of, its limits: the three things a name never says */
 function bpAbout(el,p){
   if(p.how){el.append(sEl('div','bp-k2 bp-k2b','How it works'));el.append(sEl('p','bp-detail',p.how))}
+  if((p.steps||[]).length){if(!p.how)el.append(sEl('div','bp-k2 bp-k2b','How it works'));
+    const ol=sEl('ol','bp-steps');p.steps.forEach(x=>ol.append(sEl('li','',x)));el.append(ol)}
+  if(p.like)el.append(sEl('p','bp-like','≈ '+p.like));
   if(p.detail)el.append(sEl('p','bp-detail',p.detail));
   if(p.made_of){el.append(sEl('div','bp-k2 bp-k2b','Made of'));el.append(sEl('p','bp-detail',p.made_of))}
   if(p.limits){el.append(sEl('div','bp-k2','Limits'));el.append(sEl('p','bp-detail',p.limits))}

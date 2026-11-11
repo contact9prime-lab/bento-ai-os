@@ -6069,6 +6069,27 @@ async def api_stage_deeper(body: dict):
     return {"text": text, "conversation_id": cid}
 
 
+@app.post("/api/stage/draw")
+async def api_stage_draw(body: dict):
+    """Draw a blueprint (or one of its top-level parts) with this machine's image engine, on the
+    person's tap, and keep it as the scene's picture, marked illustrative (bpfill.draw)."""
+    from . import bpfill
+    b = body or {}
+    uid = usersmod.current()
+
+    async def send(ev):
+        tb = state["toolbox"]
+        fn = getattr(tb, "broadcast_user", None)
+        if fn:
+            await fn(ev, uid)
+    try:
+        pic = await bpfill.draw(state["store"], state["toolbox"], str(b.get("id") or ""),
+                                str(b.get("part") or ""), send)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=422)
+    return {"picture": pic}
+
+
 @app.put("/api/stage/settings")
 async def api_stage_settings(body: dict):
     """Answer BIG, and which app draws the scenes ('' is the Stage)."""
@@ -6082,6 +6103,10 @@ async def api_stage_settings(body: dict):
         if aid and not state["store"].get_app(aid):
             return JSONResponse({"error": "there is no app with that id"}, status_code=404)
         st["app"] = aid
+    if "contact" in b:
+        from . import bppicture
+        c = str(b.get("contact") or "")
+        st["contact"] = bppicture.user_agent(c)[len(bppicture.UA) + 2:-1] if c else ""
     cfg["stage"] = st
     cfgmod.save_config(cfg)
     view = _stage_view(cfg)

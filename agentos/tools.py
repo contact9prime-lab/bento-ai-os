@@ -1879,12 +1879,12 @@ class Toolbox(usersmod.Scoped):
         filling = []
         if scene["kind"] == "blueprint":
             # the outline is on screen at once; each part is filled in on its own (bpfill.py)
+            # and a free drawing of it is looked for whether or not a brain can fill it
             from . import bpfill, executors as _ex
-            if _ex.has_brain(self.cfg):
-                try:
-                    filling = bpfill.start(self.store, self.cfg, row, tell)
-                except Exception:
-                    filling = []
+            try:
+                filling = bpfill.start(self.store, self.cfg, row, tell, brain=_ex.has_brain(self.cfg))
+            except Exception:
+                filling = []
         try:
             asyncio.create_task(tell({"type": "stage", **row}))
         except Exception:

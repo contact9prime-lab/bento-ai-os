@@ -791,6 +791,15 @@ things rather than presenting the chart". Six rules:
   `fill.failed`; `filling.until` bounds the mark. A phone's pictures wait `PHONE_WAIT_S` for it. The
   first screen shows two levels (each card's numbers and what is inside it), and **How it works** draws
   the links of a level, a link deeper down counting for the parts that hold it, each kind its own line.
+- **A blueprint shows what the thing looks like, and a picture's address never comes from a model**
+  (`agentos/bppicture.py`, `bpfill.draw`, `/api/stage/draw`, `stage.still_views`/`still_caption_for`;
+  `tests/test_blueprint_look.py`). Asked for with a line-art turbofan: "is it still going to show the
+  drawings". The model gives `look_for` words; the server searches Commons, takes only a free licence
+  from Wikimedia's hosts, keeps the credit, and downloads it once as an asset (`keep`). Wikimedia
+  answered this client 403/429 without a contact in its User-Agent: `stage.contact` is the person's,
+  never filled in for them. Draw one is a tap and is marked illustrative. A phone gets the blueprint
+  opened as an album (drawing, parts, flows, each part); Telegram and WhatsApp count pictures and
+  captions from the same `still_items`, or they come apart.
 - **Labels never overlap and the panel holds the rest.** Labels compress, then drop their second line; the
   title block, "you are here" and the links of a tower live in the spec panel. Sized from `clientWidth`, a
   ResizeObserver dropped when the drawing leaves; on a phone the scene scrolls and a tap brings a sheet that
