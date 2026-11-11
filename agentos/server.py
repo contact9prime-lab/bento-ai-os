@@ -11953,9 +11953,22 @@ async def api_activate_space(body: dict):
     if sid and not state["store"].get_space(sid):
         return JSONResponse({"error": "no such space"}, status_code=404)
     surface = str(body.get("surface") or "gui")
+    # A company's space opens that company on the desk: the menu-bar chip is where
+    # people switch, and moving only the space left the Office on the old company.
+    # Only the desktop does this; a phone moving project must not swap the desk's company.
+    from . import company as companymod
+    co = companymod.of_space(state["cfg"], sid) if surface == "gui" else None
+    if co and not co["active"]:
+        try:
+            companymod.switch(state["cfg"], state["store"], co["id"], surface=surface)
+            companymod.record(state["store"], f"opened company: {co['name']}")
+        except ValueError:
+            co = None
     spacemod.set_active(state["cfg"], surface, sid)
     cfgmod.save_config(state["cfg"])
     await state["broadcast"]({"type": "spaces_update", "surface": surface, "space_id": sid})
+    if co and not co["active"]:
+        await _company_changed()
     return {"ok": True, "surface": surface, "space_id": sid,
             "name": spacemod.label(state["store"], sid)}
 
@@ -16340,8 +16353,13 @@ async def api_demo_warehouse(request: Request):
     """The warehouse demo (demos/warehouse.py): off, starting, ready or failed, and where it is.
     Its pages are on this machine's loopback, so a browser elsewhere is told it can't open them."""
     from .demos import warehouse as wh
-    return {**wh.status(), **_demo_doors(), "here": remotemod.is_loopback(_client_addr(request)),
-            "account": _demo_account()}
+    here = remotemod.is_loopback(_client_addr(request))
+    st = wh.status()
+    # the logs trail under the steps while it starts, and say why when it stopped; only at the machine,
+    # where the demo runs, and only for whoever may start it
+    show = here and st["phase"] in ("starting", "failed") and not _demo_account().get("need")
+    return {**st, **_demo_doors(), "here": here, "account": _demo_account(),
+            "log": await asyncio.to_thread(wh.log_tail) if show else []}
 
 
 def _demo_doors() -> dict:
@@ -16417,7 +16435,9 @@ async def api_demo_warehouse_act(request: Request, body: dict):
         return st
     if act != "start":
         return JSONResponse({"error": "action is start or stop"}, status_code=400)
-    st = await asyncio.to_thread(wh.start, state["cfg"], bool(body.get("scripted")), bool(body.get("fresh")))
+    # ask=True: the route is loopback, so a person at this machine pressed Start and macOS may
+    # ask them for the zones' loopback aliases in its own password dialog
+    st = await asyncio.to_thread(wh.start, state["cfg"], bool(body.get("scripted")), bool(body.get("fresh")), True)
     if st.get("error"):
         return JSONResponse(st, status_code=409)
     _ledger("demo.start", "demo:warehouse", f"started the warehouse demo on {st.get('brain') or 'a brain'}")

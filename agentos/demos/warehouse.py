@@ -41,6 +41,7 @@ import copy
 import hmac
 import json
 import os
+import re
 import secrets
 import shutil
 import signal
@@ -318,13 +319,76 @@ def _port_taken(port: int) -> bool:
     return False
 
 
-def start(cfg: dict, scripted: bool = False, fresh: bool = False) -> dict:
+def zone_addr(z: str) -> str:
+    """Each zone's own loopback address, as each Pi on a network has its own: the hub keeps one
+    row per address, so three zones on 127.0.0.1 would be one machine."""
+    return f"127.0.0.{ZONES.index(z) + 2}"
+
+
+def _bindable(addr: str) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        try:
+            s.bind((addr, 0))
+        except OSError:
+            return False
+    return True
+
+
+def loopback_missing() -> list[str]:
+    """The zones' addresses this computer can't use. Linux answers on all of 127/8; macOS
+    answers only on 127.0.0.1 until an alias is added, and every zone then waited forever
+    at "Setting up the three zone Pis" (its announcement could not leave)."""
+    return [a for a in (zone_addr(z) for z in ZONES) if not _bindable(a)]
+
+
+def loopback_commands(missing: list[str]) -> list[str]:
+    return [f"sudo ifconfig lo0 alias {a} up" for a in missing]
+
+
+def _add_loopback(missing: list[str], ask: bool) -> None:
+    """Add the aliases: passwordless sudo, then the terminal's sudo (the CLI), then macOS's own
+    password dialog when a person pressed Start on this machine. Each says why first. The aliases
+    last until the next restart."""
+    if sys.platform != "darwin" or not missing:
+        return
+    argv = [["ifconfig", "lo0", "alias", a, "up"] for a in missing]
+    with contextlib.suppress(Exception):
+        if subprocess.run(["sudo", "-n", "true"], capture_output=True, timeout=10).returncode == 0:
+            for a in argv:
+                subprocess.run(["sudo", "-n", *a], capture_output=True, timeout=30)
+            return
+    if sys.stdin.isatty() and shutil.which("sudo"):
+        print("  The demo's three zones need their own loopback addresses (until the next restart):")
+        for a in argv:
+            with contextlib.suppress(Exception):
+                subprocess.run(["sudo", *a], timeout=180)
+        return
+    if ask and shutil.which("osascript"):
+        script = " && ".join("/sbin/ifconfig lo0 alias " + a + " up" for a in missing)
+        prompt = ("Bento's warehouse demo needs three loopback addresses for its zones "
+                  "(" + ", ".join(missing) + "), until the next restart.")
+        with contextlib.suppress(Exception):
+            subprocess.run(["osascript", "-e", f'do shell script "{script}" with prompt "{prompt}" '
+                                                "with administrator privileges"],
+                           capture_output=True, timeout=180)
+
+
+def start(cfg: dict, scripted: bool = False, fresh: bool = False, ask: bool = False) -> dict:
     """Start the demo in the background and return at once; status() says how it is going."""
     if os.name != "posix":
         return {**status(), "error": "The warehouse demo runs on Linux and macOS."}
     st = status()
     if st["phase"] in ("starting", "ready"):
         return st
+    missing = loopback_missing()
+    if missing:
+        _add_loopback(missing, ask)
+        missing = loopback_missing()
+    if missing:
+        return {**st, "phase": "failed", "loopback": loopback_commands(missing),
+                "error": "The three zones need their own loopback addresses, and this computer only has "
+                         "127.0.0.1. Run " + "; ".join(loopback_commands(missing)) + " and start it again. "
+                         "They last until the next restart."}
     taken = [p for p in ports() if _port_taken(p)]
     if taken:
         return {**st, "phase": "failed", "error": f"Port {taken[0]} is in use by something else, so the demo "
@@ -407,7 +471,7 @@ def _env(m: str, extra: dict | None = None) -> dict:
     if m in ZONES:
         # each zone its own address, as Pis on a network have, and its own nodes' mDNS
         env.update({"AGENTOS_MDNS_TARGET": f"127.0.0.1:{sim_port(m) + 8}",
-                    "AGENTOS_LINK_FROM": f"127.0.0.{ZONES.index(m) + 2}"})
+                    "AGENTOS_LINK_FROM": zone_addr(m)})
     return {**env, **(extra or {})}
 
 
@@ -455,7 +519,40 @@ def _http(m: str, method: str, path: str, body=None, timeout: float = 60):
         return 0, {}
 
 
+def _note(line: str) -> None:
+    """A line in demo.log, which the card shows as it starts."""
+    print(time.strftime("%H:%M:%S ") + line, flush=True)
+
+
+LOG_LINES = 30
+_LOG_JUNK = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|[\x00-\x08\x0b-\x1f\x7f]")
+
+
+def _tail(path: Path, n: int) -> list[str]:
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - 16384))
+            raw = f.read().decode("utf-8", "replace")
+    except OSError:
+        return []
+    lines = [_LOG_JUNK.sub("", x).rstrip()[:240] for x in raw.splitlines()[1 if len(raw) >= 16384 else 0:]]
+    return [x for x in lines if x.strip()][-n:]
+
+
+def log_tail(n: int = LOG_LINES) -> list[dict]:
+    """The last lines of the demo's own log and each machine's server log, the most recently
+    written last, so the card can trail them while it starts and say why when it stopped."""
+    srcs = [("demo", where() / "demo.log")] + [(m, _home(m) / "server.log") for m in MACHINES]
+    srcs = [(who, p, p.stat().st_mtime) for who, p in srcs if p.exists()]
+    out = []
+    for who, p, _t in sorted(srcs, key=lambda x: x[2]):
+        out += [{"who": who, "line": x} for x in _tail(p, n)]
+    return out[-n:]
+
+
 def _wait(what: str, fn, limit: float = 120, every: float = 1.0):
+    _note(f"waiting {what}")
     t0 = time.time()
     while time.time() - t0 < limit:
         got = fn()
@@ -473,6 +570,7 @@ class _Supervisor:
 
     def step(self, i: int) -> None:
         _write_status(phase="starting", step=STEPS[i], done=i)
+        _note(f"step {i + 1} of {len(STEPS)}: {STEPS[i]}")
 
     def serve_bento(self, m: str, extra: dict | None = None) -> None:
         log = open(_home(m) / "server.log", "a")

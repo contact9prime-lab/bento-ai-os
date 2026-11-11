@@ -323,6 +323,22 @@ def test_the_routes(tmp_path):
             assert cl.put("/api/companies/active", json={"id": "nope"}).status_code == 404
             assert cl.get("/api/companies").json()["companies"][0]["about"] == "makes parts", \
                 "setting it up from ticked departments keeps the line it was started with"
+            # the menu-bar chip moves the desk's space: a company's space opens that company,
+            # or the Office stayed on the company that was open before
+            first = r["company"]
+            two = cl.post("/api/companies", json={"name": "Forge Test Two"}).json()["company"]
+            assert cl.get("/api/company").json()["company"]["name"] == "Forge Test Two"
+            cl.post("/api/spaces/activate", json={"space_id": first["space_id"], "surface": "telegram"})
+            assert cl.get("/api/company").json()["company"]["name"] == "Forge Test Two", \
+                "a phone moving project never swaps the desk's company"
+            assert cl.post("/api/spaces/activate", json={"space_id": first["space_id"],
+                                                          "surface": "gui"}).json()["ok"]
+            assert cl.get("/api/company").json()["company"]["name"] == "Forge Test Co"
+            
+            cl.post("/api/spaces/activate", json={"space_id": "", "surface": "gui"})
+            assert cl.get("/api/company").json()["company"]["name"] == "Forge Test Co", \
+                "Everywhere is not a company: the open one stays"
+            assert two["space_id"]
         finally:
             # leave the shared test home as it was for the files that run after this one
             for k, v in keep.items():

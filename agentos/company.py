@@ -2403,6 +2403,12 @@ def switch(cfg: dict, store, cid: str, surface: str = "gui") -> dict:
     return _summary(cfg["company"], cfg["office"], True)
 
 
+def of_space(cfg: dict, sid: str) -> dict | None:
+    """The company whose space this is, or None (Everywhere, or a space of your own)."""
+    sid = str(sid or "")
+    return next((c for c in companies(cfg) if sid and c["space_id"] == sid), None)
+
+
 def find(cfg: dict, ref: str) -> dict | None:
     """A company by id or by name (the CLI takes either)."""
     want = str(ref or "").strip().lower()
