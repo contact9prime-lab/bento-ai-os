@@ -373,6 +373,8 @@ class WhatsAppBridge(usersmod.Scoped):
             # so wait a while for the parts to land rather than photograph the outline
             from . import bpfill
             rows = stagemod.story(self.store, cid, ans)
+            if bpfill.filling([r["id"] for r in rows]):
+                await self.send(bpfill.HOLD_LINE, wa_id)     # or the phone hears nothing for minutes
             await bpfill.settle([r["id"] for r in rows], bpfill.PHONE_WAIT_S)
             scenes = [r["scene"] for r in stagemod.story(self.store, cid, ans)]
             pngs = await stagestill.render(stagemod.report_html(

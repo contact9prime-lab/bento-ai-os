@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.7 — 2026-11-12
+
+**A phone hears at once that its blueprint is being drawn.** Asked for a blueprint on Telegram,
+the desktop showed it straight away while the phone showed nothing for about three minutes, not
+even the reply, because the pictures wait for each part to be looked up. Now Telegram and
+WhatsApp say "Drawing your blueprint now" right away, and Telegram shows "sending a photo" until
+the pictures go.
+
 ## 0.8.6 — 2026-11-12
 
 **The Stage has its chat beside it.** The story's own conversation sits on the right of the Stage,

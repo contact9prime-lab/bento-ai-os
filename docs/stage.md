@@ -174,6 +174,10 @@ A chat can't be tapped into, so a blueprint arrives opened for you, one picture 
 the parts, how it works, then each main part opened (up to six). The caption under each picture
 carries what it shows: a part's role, its steps, its comparison, its numbers and what's inside it.
 
+The pictures wait for the blueprint to be filled in, which can take a few minutes while each part
+is looked up. The phone hears straight away: "Drawing your blueprint now", and Telegram shows
+"sending a photo" until they go.
+
 ![The first picture of a Telegram album: the drawing, its credit and the parts numbered](screenshots/stage-blueprint-phone-drawing.png)
 
 ![A main part in a Telegram album: its parts drawn on top, its steps, comparison and numbers under them](screenshots/stage-blueprint-phone-part.png)

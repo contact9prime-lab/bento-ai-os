@@ -296,7 +296,7 @@ class TelegramBridge(usersmod.Scoped):
             # so wait a while for the parts to land rather than photograph the outline
             from . import bpfill
             rows = stagemod.story(self.store, cid, ans)
-            await bpfill.settle([r["id"] for r in rows], bpfill.PHONE_WAIT_S)
+            await self._settle_with_word(rows, chat_id)
             scenes = [r["scene"] for r in stagemod.story(self.store, cid, ans)]
             pngs = await stagestill.render(
                 stagemod.report_html(self.store, cid, ans, agent=agent, still=True), self.cfg)
@@ -329,6 +329,22 @@ class TelegramBridge(usersmod.Scoped):
                     self.store.log("telegram", f"could not send the story: {res}")
         except Exception as e:
             self.store.log("telegram", f"could not send the story: {e}")
+
+    async def _settle_with_word(self, rows: list, chat_id: int) -> None:
+        """Wait for a blueprint to fill in, saying so on the phone. Reported as "it shows the
+        stage on the desktop but not on Telegram": the desktop drew the outline at once, while
+        the phone heard nothing, not even the reply, for the three minutes the parts took to
+        look up. So one line goes at once, and the chat shows "sending a photo" while it waits."""
+        from . import bpfill
+        ids = [r["id"] for r in rows]
+        if not bpfill.filling(ids):
+            return
+        await self.send(bpfill.HOLD_LINE_FIRST, chat_id)
+        wait = asyncio.ensure_future(bpfill.settle(ids, bpfill.PHONE_WAIT_S))
+        while not wait.done():
+            with contextlib.suppress(Exception):
+                await self._api("sendChatAction", chat_id=chat_id, action="upload_photo")
+            await asyncio.wait([wait], timeout=4.5)   # Telegram's indicator lasts five seconds
 
     async def send_narration(self, scenes: list, chat_id: int) -> str:
         """The story told aloud, as one audio message after the pictures: each scene's line,
