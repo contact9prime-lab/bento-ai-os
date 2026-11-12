@@ -563,6 +563,8 @@ def forget_for_tests() -> None:
     global _hold, _armed, _cache, WATCHER, _home_stamps
     _hold, _armed, _cache, WATCHER, _home_stamps = None, False, (0.0, None), None, None
     _on_hold.clear()
+    _seen_heads.clear()
+    _broken_said.clear()
 
 
 # --------------------------------------------------------------------------------- the watcher
@@ -1025,6 +1027,12 @@ def hand_back(script: str) -> str:
 # ----------------------------------------------------------------------------------- the ledgers
 
 _seen_heads: dict[str, tuple[int, str]] = {}
+# The break each ledger was last flagged for. A break stays broken, and the check runs every few
+# minutes, so flagging it each time sent the same Telegram alert every 20 minutes all night. One
+# break is one alert: it is flagged again only when it changes (another row, another reason), or
+# after it verified clean and broke again. The card and `bento integrity status` still show it on
+# every check. A restart forgets this and says it once more.
+_broken_said: dict[str, tuple[str, int]] = {}
 
 
 def _databases() -> list[Path]:
@@ -1061,11 +1069,16 @@ def verify_ledgers(full: bool = False) -> list[dict]:
         if v.get("ok"):
             if v.get("head_seq") or key not in _seen_heads:
                 _seen_heads[key] = (int(v.get("head_seq") or 0), str(v.get("head_hash") or ""))
+            if not v.get("skipped"):
+                _broken_said.pop(key, None)
         else:
             _seen_heads.pop(key, None)
             who = db_path.parent.name if db_path.parent != _home() else "machine"
-            secevents.flag("ledger.broken", f"{who}: {v.get('reason')} at row {v.get('at_seq')}",
-                           source=who)
+            brk = (str(v.get("reason") or ""), int(v.get("at_seq") or 0))
+            if _broken_said.get(key) != brk:
+                _broken_said[key] = brk
+                secevents.flag("ledger.broken", f"{who}: {v.get('reason')} at row {v.get('at_seq')}",
+                               source=who)
         out.append(v)
     return out
 

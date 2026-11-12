@@ -910,6 +910,29 @@ def test_a_head_that_moved_backwards_is_a_break_on_the_timer(box):
     assert not v["ok"] and _flags("ledger.broken")
 
 
+def test_one_break_is_one_alert_however_often_the_timer_looks(box, monkeypatch):
+    """Reported as the same Telegram alert every 20 minutes all night: the check runs on a timer,
+    the break stays broken, and the alert's cooldown (15 min) was shorter than the timer. One break
+    alerts once; a different break alerts again, and so does one after the ledger verified clean."""
+    _, home = box
+    s = Store(home / "agentos.db")
+    _rows(s, 4)
+    assert integrity.verify_ledgers(full=True)[0]["ok"]
+    s.db.execute("UPDATE audit SET effect='deny' WHERE seq=2")
+    s.db.commit()
+    for k in range(5):
+        monkeypatch.setattr(secevents.time, "time", lambda k=k: 1e9 + k * 1200)   # 20 minutes apart
+        v = integrity.verify_ledgers(full=bool(k % 2))[0]
+        assert not v["ok"] or k == 0
+    alerts = [e for e in _flags("ledger.broken") if e.get("alert")]
+    assert len(alerts) == 1, "the same break, told once"
+    s.db.execute("UPDATE audit SET effect='deny' WHERE seq=1")
+    s.db.commit()
+    monkeypatch.setattr(secevents.time, "time", lambda: 1e9 + 99999)
+    integrity.verify_ledgers(full=True)
+    assert len([e for e in _flags("ledger.broken") if e.get("alert")]) == 2, "a new break is new news"
+
+
 def test_a_factory_reset_starts_a_new_chain(led):
     led.factory_reset()
     assert led.audit_verify()["ok"]
