@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.8.9 — 2026-11-12
+
+**App Studio is an IDE.** Open an app's file and write it yourself, as well as describing changes
+to your agent. Your apps and an outline of the open file are on the left, the code is in the
+middle with tabs for each open app, the running app is on the right, and a panel under the editor
+holds the Builder, Problems, Console, Versions, Permissions and Schedules. A status bar says which
+version is live, whether you have unsaved edits and where the cursor is.
+
+- **The editor** highlights HTML with its CSS and JavaScript, numbers the lines, and has find
+  (Ctrl+F), go to line (Ctrl+G), comment (Ctrl+/), indent with Tab, and keeps your indentation on
+  Enter. Edits stay in their tab while you switch apps.
+- **Save** (Ctrl+S) makes the next version and puts it live. **▶ Run** (Ctrl+Enter) runs the
+  editor's code in the preview without saving it.
+- **Problems** is the checker a build goes through, run on the text as you type. Each finding
+  says its line, the line is marked, and **Fix it** asks the builder to fix that one thing.
+  **Console** collects the errors the app throws while it runs.
+- **When the app changes while you edit** (a build, a chat, another window), your save is refused
+  instead of written over it, and you choose: load the new version, compare, or keep yours.
+- **Versions → Compare** shows what changed between any version and the editor.
+- **Select lines** and your next request to the builder can be about them. A build with unsaved
+  edits offers to save them first.
+- **Start from a blank file** gives you a working app to change.
+- **`bento studio`** is the same from a terminal: `list`, `edit` (in your `$EDITOR`), `pull`,
+  `push`, `check` and `new`. A push is refused the same way when the app moved on.
+- A save that makes the app ask for something new puts its permissions up for review again.
+- On a phone the Studio is one pane at a time: Apps, Code, Preview and Builder.
+
 ## 0.8.8 — 2026-11-12
 
 No release notes were written for this one; the commits since 0.8.7 are what changed (`bento update` lists them).

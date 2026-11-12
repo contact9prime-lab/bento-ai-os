@@ -96,7 +96,6 @@ body.dev-tablet #barwidgets{display:none!important}     /* the bar needs the who
 body.dev-tablet #ccpop,body.dev-tablet #notifpanel{width:min(380px,calc(100vw - 20px))}
 /* a 208px rail inside a 700px window is half the app — collapse to icons */
 body.dev-tablet .cside{width:150px;min-width:150px}
-body.dev-tablet .stside{flex-basis:170px;width:170px;max-width:170px}
 
 /* ================================================================
    MOBILE — one thing at a time. Windows become full-bleed sheets, the
@@ -143,7 +142,7 @@ body.dev-mobile .copanel{display:none!important}   /* the copilot rail needs a s
 body.dev-mobile .win .cp-btn{display:none}
 
 /* ---- in-app rails collapse: a phone shows one pane ---- */
-body.dev-mobile .cside,body.dev-mobile .stside{display:none!important}
+body.dev-mobile .cside{display:none!important}   /* App Studio's explorer is a pane of its own there (41-studio-ide.css) */
 /* Settings' rail is 188px of a 390px screen, and it was the one rail nobody
    collapsed — so the pane beside it was 202px wide and its rows ran off the
    edge of the phone. Measured: the brain and model pickers, the model refresh,

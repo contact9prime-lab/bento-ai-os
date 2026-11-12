@@ -67,7 +67,7 @@ const APPS={
   skills:{id:'skills',title:'Skills',icon:'',w:700,h:600,desc:'Reusable procedures — install from git or URL',render:renderSkills},
   permissions:{id:'permissions',title:'Permissions',icon:'',w:940,h:680,desc:'What your agents may do and what they did: grants, rules, quarantine and the ledger',render:renderPermissions},
   store:{id:'store',title:'Store',icon:'',w:760,h:620,desc:'Install apps, extensions & skills — or build with AI',render:renderStore},
-  studio:{id:'studio',title:'App Studio',icon:'',w:1080,h:680,desc:'Build & edit apps — ask the agent to make them',render:renderStudio},
+  studio:{id:'studio',title:'App Studio',icon:'',w:1280,h:780,desc:'Build & edit apps: write the code, or ask the agent to',render:renderStudio},
   themes:{id:'themes',title:'Themes',icon:'',w:720,h:600,desc:'Switch, build & AI-design desktop themes',render:renderThemes},
   personalize:{id:'personalize',title:'Personalize',icon:'',w:620,h:560,desc:'AI wallpapers & gallery',render:renderPersonalize},
   snapshots:{id:'snapshots',title:'Snapshots',icon:'',w:560,h:500,desc:'Restore points — roll the OS back in time',render:renderSnapshots},
