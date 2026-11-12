@@ -1,0 +1,32 @@
+{
+  "question": "Where are the hottest places on Earth?",
+  "answer": "The three highest temperatures the WMO accepts were all recorded in deserts below or near sea level.\n\nDeath Valley holds the record at 56.7 °C, set in 1913. The two most recent records, in Kuwait and Pakistan, are both from the last ten years.",
+  "scenes": [
+    {"kind": "numbers", "title": "The three hottest readings on record",
+     "caption": "Death Valley has held the record for over a century",
+     "source": "WMO World Weather and Climate Extremes Archive",
+     "items": [
+       {"label": "Death Valley, USA", "value": "56.7", "unit": "°C", "note": "10 July 1913"},
+       {"label": "Mitribah, Kuwait", "value": "53.9", "unit": "°C", "note": "21 July 2016"},
+       {"label": "Turbat, Pakistan", "value": "53.7", "unit": "°C", "note": "28 May 2017"}]},
+    {"kind": "map", "title": "Where they were recorded", "view": "world", "unit": "°C",
+     "caption": "All three sit in deserts between 25 and 37 degrees north",
+     "source": "WMO World Weather and Climate Extremes Archive",
+     "points": [
+       {"lat": 36.46, "lon": -116.87, "label": "Death Valley", "value": 56.7, "note": "Below sea level, walled in by mountains"},
+       {"lat": 29.85, "lon": 47.66, "label": "Mitribah", "value": 53.9, "note": "The highest reading in Asia"},
+       {"lat": 26.0, "lon": 63.05, "label": "Turbat", "value": 53.7, "note": "Two days of 50 °C heat in May"}]},
+    {"kind": "timeline", "title": "When the records fell",
+     "caption": "Two of the three are from the last decade",
+     "events": [
+       {"when": "1913", "label": "Death Valley, 56.7 °C"},
+       {"when": "2016", "label": "Mitribah, 53.9 °C"},
+       {"when": "2017", "label": "Turbat, 53.7 °C"}]},
+    {"kind": "steps", "ordered": false, "title": "What it means if you travel there",
+     "caption": "Summer heat there is a medical risk, not only discomfort",
+     "items": [
+       {"title": "Go in winter", "text": "Death Valley averages around 20 °C in December."},
+       {"title": "Carry water", "text": "About four litres a person a day in summer."},
+       {"title": "Stay near the car", "text": "Most rescues there are people who walked away from it."}]}
+  ]
+}

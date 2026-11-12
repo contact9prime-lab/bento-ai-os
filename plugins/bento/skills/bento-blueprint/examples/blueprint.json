@@ -1,0 +1,44 @@
+{
+  "question": "Give me a blueprint of the Eiffel Tower",
+  "scenes": [
+    {"kind": "blueprint", "title": "The Eiffel Tower, taken apart", "subject": "Eiffel Tower",
+     "form": "tower", "unit": "m", "source": "toureiffel.paris (official site)",
+     "caption": "Four lattice legs that lean in until they meet at the second floor",
+     "facts": [{"label": "Height", "value": "330", "unit": "m"},
+               {"label": "Iron structure", "value": "7,300", "unit": "t"},
+               {"label": "Iron parts", "value": "18,038", "unit": ""},
+               {"label": "Built", "value": "1887-1889", "unit": ""}],
+     "parts": [
+       {"id": "base", "name": "Legs and foundations", "from": 0, "to": 57, "width": 125,
+        "role": "Carries the whole tower down to the ground",
+        "how": "Each of the four legs stands on its own masonry piers set into the ground.",
+        "made_of": "Puddled iron lattice on stone and concrete piers",
+        "facts": [{"label": "Base square", "value": "125", "unit": "m"}],
+        "parts": [
+          {"name": "Masonry piers", "role": "Spread each leg's load into the soil",
+           "facts": [{"label": "Legs", "value": "4", "unit": ""}], "certainty": "known"},
+          {"name": "Leg lattice", "role": "Carries load and wind in a stiff, light frame",
+           "how": "Riveted iron bars form trusses, so most of the leg is open air.",
+           "facts": [{"label": "Rivets", "value": "2.5 million", "unit": ""}]}]},
+       {"id": "first", "name": "First floor", "from": 57, "to": 58, "width": 70,
+        "certainty": "estimated", "role": "Ties the four legs together",
+        "facts": [{"label": "Height", "value": "57", "unit": "m"}]},
+       {"id": "middle", "name": "Middle section", "from": 58, "to": 115, "width": 40,
+        "certainty": "estimated", "role": "The legs lean in and merge",
+        "how": "The curve of the legs follows the wind load, so the tower needs no cross bracing."},
+       {"id": "second", "name": "Second floor", "from": 115, "to": 116, "width": 40,
+        "certainty": "estimated", "role": "Where the legs become one column",
+        "facts": [{"label": "Height", "value": "115", "unit": "m"}]},
+       {"id": "column", "name": "Upper column", "from": 116, "to": 276, "width": 18,
+        "certainty": "estimated", "role": "A single lattice shaft to the top floor",
+        "facts": [{"label": "Top floor", "value": "276", "unit": "m"}]},
+       {"id": "antenna", "name": "Antennas", "from": 276, "to": 330, "width": 2,
+        "certainty": "estimated", "role": "Broadcast masts that take it to 330 m"}],
+     "links": [
+       {"from": "antenna", "to": "column", "verb": "rests on", "kind": "load"},
+       {"from": "column", "to": "second", "verb": "carries load to", "kind": "load"},
+       {"from": "second", "to": "middle", "verb": "carries load to", "kind": "load"},
+       {"from": "middle", "to": "base", "verb": "carries load to", "kind": "load"}],
+     "unknowns": ["The exact width at each floor varies by source; the widths here are estimates"]}
+  ]
+}

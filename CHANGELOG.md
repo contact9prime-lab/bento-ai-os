@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.0 — 2026-11-12
+
+**The Stage, Blueprint, Brief and Mission as skills you can download.** Four Agent Skills now
+live in `plugins/bento`, so Claude Code, Claude.ai, Codex or any agent that reads `SKILL.md` can
+answer with a visual story, take a thing apart into a blueprint you drill into, deliver work as a
+Brief, and design a standing mission with its consent sheet. The pages are drawn by the Stage's
+own painter and every scene is checked by the Stage's own rules. In Claude Code:
+`/plugin marketplace add contact9prime-lab/bento-ai-os`, then `/plugin install bento@bento-box-ai`.
+From Bento: `bento skills install`, or `bento skills zip` for one zip per skill.
+**A mission designed anywhere comes into Bento.** `bento flow add --file mission.json` brings in
+what the bento-mission skill writes, switched off, the same way a Missions draft arrives.
+
 ## 0.8.8 — 2026-11-12
 
 No release notes were written for this one; the commits since 0.8.7 are what changed (`bento update` lists them).

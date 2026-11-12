@@ -1,0 +1,7 @@
+[
+  {"kind": "decide", "title": "Accept the venue at $4,200 for the offsite?", "body": "The hotel held the date until Friday. Last year's venue was $3,900.",
+   "who": "Events team", "due": "Friday", "mission": "offsite", "options": ["Accept", "Counter at $3,800", "Look elsewhere"]},
+  {"kind": "needs_you", "title": "Sign the Acme renewal", "body": "The contract is in your inbox; legal approved it yesterday.", "who": "Acme", "due": "today", "mission": "inbox-triage"},
+  {"kind": "fyi", "title": "Competitor X cut prices by 10%", "body": "Their pricing page changed overnight.", "mission": "page-watch"},
+  {"kind": "done", "title": "Filed 3 invoices from Downloads", "body": "Acme, Globex and Initech, totalling $12,400.", "mission": "invoice-filer"}
+]

@@ -1354,7 +1354,6 @@ def report_html(store, conversation_id: str, answer_to: str, answer: str = "",
 
     `still` is the same page laid out for photographs (stagestill.py): each scene a card of
     its own with the question over it, drawn at once, and `STAGE_STILL_DONE` set when it is."""
-    import html as _html
     from . import tgformat
     scenes = [_inline_asset(store, dict(s["scene"])) for s in story(store, conversation_id, answer_to)]
     if still:
@@ -1363,10 +1362,27 @@ def report_html(store, conversation_id: str, answer_to: str, answer: str = "",
     scenes = [_inline_picture(store, sc) for sc in scenes]
     row = store.db.execute("SELECT content FROM messages WHERE id=?", (answer_to,)).fetchone()
     question = _question(row[0] if row else "")
+    answer_html = tgformat.to_html(answer) if answer.strip() and not still else ""
+    return page_html(scenes, question, answer_html, agent, still)
+
+
+def painter() -> tuple[str, str, str]:
+    """(js, css, world map json): the Stage's own painter, read from the UI sources."""
     js = "\n".join((_UI / f"src/js/{f}").read_text(encoding="utf-8") for f in PAINTER_JS)
     css = "\n".join((_UI / f"src/css/{f}").read_text(encoding="utf-8") for f in PAINTER_CSS)
-    world = (_UI / "assets/world-110m.json").read_text(encoding="utf-8") \
-        if any(s["kind"] == "map" for s in scenes) else "null"
+    return js, css, (_UI / "assets/world-110m.json").read_text(encoding="utf-8")
+
+
+def page_html(scenes: list, question: str, answer_html: str = "", agent: str = "",
+              still: bool = False, paint: tuple | None = None, footer: str = "") -> str:
+    """The page itself, with no store: cleaned scenes in, one self-contained HTML file out.
+    report_html calls it for a chat's story, and the downloadable skills (skillpack.py) call
+    it from their own render script with `paint` read from the files they carry, so a story
+    drawn outside Bento is drawn by the same painter."""
+    import html as _html
+    js, css, world = paint or painter()
+    if not any(s.get("kind") == "map" for s in scenes) or not world:
+        world = "null"
     data = json.dumps({"scenes": scenes}).replace("</", "<\\/")
     world = world.replace("</", "<\\/")
     when = time.strftime("%d %b %Y, %H:%M")
@@ -1382,8 +1398,8 @@ def report_html(store, conversation_id: str, answer_to: str, answer: str = "",
 <div class="rp-h">{_html.escape(agent or 'Your agent')} · {when} · {len(scenes)} scene{'s' if len(scenes) != 1 else ''}</div>
 <div class="rp-q">{_html.escape(question)}</div>
 <div id="scenes"></div>
-{f'<div class="rp-a">{tgformat.to_html(answer)}</div>' if answer.strip() and not still else ''}
-<div class="rp-f">Made by Bento Box AI. Numbers carry their source; scenes marked illustrative are examples, not data.</div>
+{f'<div class="rp-a">{answer_html}</div>' if answer_html else ''}
+<div class="rp-f">{_html.escape(footer or 'Made by Bento Box AI. Numbers carry their source; scenes marked illustrative are examples, not data.')}</div>
 </div>
 <script>window.STAGE_REPORT=true;window.STAGE_STILL={'true' if still else 'false'};
 {js}
