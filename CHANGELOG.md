@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.8 — 2026-11-12
+
+No release notes were written for this one; the commits since 0.8.7 are what changed (`bento update` lists them).
+
 ## 0.8.7 — 2026-11-12
 
 **A phone hears at once that its blueprint is being drawn.** Asked for a blueprint on Telegram,
