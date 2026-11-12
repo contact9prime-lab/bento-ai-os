@@ -740,6 +740,10 @@ def add(store, conversation_id: str, scene: dict) -> dict:
     if n == 0:
         # the first scene of a new story: was it asked for by "Go deeper" on a scene?
         ask = _DEEPER.pop((_who(), conversation_id), None)
+        if not ask:
+            # asked from the Stage's chat inside a part of a blueprint: the story that answers
+            # is that part gone deeper, a branch of the tree, and Back returns to that part
+            ask = _asked_inside(store, conversation_id, answer_to)
         if ask and time.time() - ask[2] < DEEPER_S and ask[0] != answer_to:
             store.db.execute("INSERT OR REPLACE INTO stage_links (conversation_id, answer_to, "
                              "parent_answer_to, parent_seq, created_at) VALUES (?,?,?,?,?)",
@@ -811,11 +815,42 @@ def _bp_path(parts: list, pid: str) -> list:
     return []
 
 
+def stage_at_of(store, message_id: str) -> dict | None:
+    """Where in a blueprint's tree a message was asked (the Stage's chat files it), or None."""
+    if not message_id:
+        return None
+    r = store.db.execute("SELECT meta FROM messages WHERE id=?", (message_id,)).fetchone()
+    try:
+        at = (json.loads(r[0]) if r and r[0] else {}).get("stage_at")
+    except (ValueError, TypeError):
+        return None
+    return at if isinstance(at, dict) and at.get("scene") else None
+
+
+def _asked_inside(store, conversation_id: str, answer_to: str):
+    """(parent answer_to, parent seq, now) when this question was asked inside a part of a
+    blueprint in this chat; None at a blueprint's top level, which is a new version instead."""
+    at = stage_at_of(store, answer_to)
+    if not at or not at.get("path"):
+        return None
+    r = store.db.execute("SELECT answer_to, seq FROM stage_scenes WHERE id=? AND conversation_id=?",
+                         (at["scene"], conversation_id)).fetchone()
+    return (r[0], r[1], time.time()) if r else None
+
+
 def links(store, conversation_id: str) -> dict:
+    """Each deeper story -> its parent, and the part it went into (`path`) when it was asked
+    from inside a blueprint, so Back opens the blueprint at that part."""
     _ensure(store)
     rows = store.db.execute("SELECT answer_to, parent_answer_to, parent_seq FROM stage_links "
                             "WHERE conversation_id=?", (conversation_id,)).fetchall()
-    return {a: {"answer_to": p, "seq": q} for a, p, q in rows}
+    out = {}
+    for a, p, q in rows:
+        out[a] = {"answer_to": p, "seq": q}
+        at = stage_at_of(store, a) or {}
+        if at.get("path"):
+            out[a].update(path=at["path"], scene=at.get("scene") or "")
+    return out
 
 
 def stories(store, conversation_id: str) -> list[dict]:
@@ -839,6 +874,12 @@ def stories(store, conversation_id: str) -> list[dict]:
     for a, p in ln.items():
         if p["answer_to"] in out:
             out[p["answer_to"]]["deeper"].setdefault(str(p["seq"]), []).append(a)
+            # a branch of the tree: a story asked from inside one of its blueprint's parts
+            if p.get("path") and a in out and out[a]["scenes"]:
+                first = out[a]["scenes"][0]["scene"]
+                out[p["answer_to"]].setdefault("branches", []).append(
+                    {"answer_to": a, "scene": p["scene"], "path": p["path"],
+                     "title": first.get("subject") or first.get("title") or ""})
     return list(out.values())
 
 
@@ -1068,10 +1109,13 @@ ASKED_LINE = ("show_scene puts a chart, a map, key numbers, a timeline, steps, a
               "whole story again with the change; the old version is kept.")
 
 
-PHONE_LINE = ("This person is on their phone ({surface}). They do not see the Stage live: every scene "
-              "you show is sent to them as one page right after your reply, which plays the whole "
-              "story on the phone. So show it exactly as you would at the desk; it is how they see "
-              "charts, maps, pictures and videos there.")
+PHONE_LINE = ("This person is on their phone ({surface}). They do not see the Stage live: right after "
+              "your reply, every scene you show is sent to them as pictures with a caption each, so "
+              "show it exactly as you would at the desk; it is how they see charts, maps, pictures "
+              "and videos there. A blueprint works on a phone too: it arrives as a walk-through (the "
+              "drawing, the parts, how it works, each main part opened) and as a PDF of drawing "
+              "sheets. So asked for a blueprint there, show a blueprint scene, never a list of steps "
+              "called a blueprint.")
 
 
 def note(cfg: dict, tool: str = "show_scene", surface: str = "") -> str:

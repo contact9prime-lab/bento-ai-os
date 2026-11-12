@@ -273,3 +273,14 @@ body.still .bp-v-look .bp-look{position:relative;inset:auto}
   .rp .bp-draw{height:540px}
   .rp .bp-spec{margin-top:10px;overflow:visible}
 }
+
+/* ⤓ Export: two ways to keep it */
+.bp-exp{position:relative}
+.bp-exp>summary{list-style:none;display:inline-flex;align-items:center}
+.bp-exp>summary::-webkit-details-marker{display:none}
+.bp-exp-m{position:absolute;right:0;top:calc(100% + 4px);z-index:6;min-width:230px;padding:6px;border-radius:10px;
+  background:#04162d;box-shadow:inset 0 0 0 1px rgba(125,211,252,.4),0 14px 40px #000c;display:flex;flex-direction:column;gap:2px}
+.bp-exp-a{display:flex;flex-direction:column;gap:1px;padding:8px 10px;border-radius:7px;color:#e0f2fe;text-decoration:none;
+  font:600 13px var(--sans);letter-spacing:0;min-height:var(--tap,36px)}
+.bp-exp-a span{font:400 11.5px var(--sans);color:rgba(186,230,253,.7)}
+.bp-exp-a:hover,.bp-exp-a:focus-visible{background:rgba(125,211,252,.12)}

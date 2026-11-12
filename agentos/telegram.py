@@ -261,6 +261,21 @@ class TelegramBridge(usersmod.Scoped):
         except Exception as e:
             self.store.log("telegram", f"could not send the reply's files: {e}")
 
+    async def send_blueprint_docs(self, rows: list, ans: str, chat_id) -> None:
+        """A blueprint also goes as its document of drawing sheets (bpdoc.py), to keep or print.
+        Never fatal, and nothing when this machine has no browser to print it with."""
+        from . import bpdoc, executors as _ex, stage as stagemod
+        for r in rows:
+            if (r.get("scene") or {}).get("kind") != "blueprint":
+                continue
+            try:
+                p = await bpdoc.to_file(self.store, self.cfg, r["id"], _ex.default_workspace(self.cfg),
+                                        self.cfg.get("agent_name") or "", stagemod.question_of(self.store, ans))
+                if p:
+                    await self.send_document(str(p), "⤓ The blueprint as drawing sheets, to keep or print.", chat_id)
+            except Exception as e:
+                self.store.log("telegram", f"could not send the blueprint document: {e}")
+
     async def send_stage(self, cid: str, reply: str, chat_id: int) -> None:
         """The answer's story, when it showed one (stage.py), as pictures in the chat.
 
@@ -301,6 +316,7 @@ class TelegramBridge(usersmod.Scoped):
                                                  f"https://www.youtube.com/watch?v={sc['video']}"
                                                  + (f"&t={int(sc['start'])}" if sc.get("start") else ""))
                     await self.send_narration(scenes, chat_id)
+                    await self.send_blueprint_docs(rows, ans, chat_id)
                     return
                 self.store.log("telegram", f"could not send the story as pictures: {res}")
             p = stagemod.write_report(self.store, _ex.default_workspace(self.cfg), cid, ans,

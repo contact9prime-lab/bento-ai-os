@@ -15,10 +15,20 @@ configuration. Which is the point: this cannot be left to each test author
 remembering, so it is enforced here for every test, automatically.
 """
 
+import os
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
+
+# The suite's own home, decided before anything imports `agentos`. `config` reads AGENTOS_HOME
+# once, at import, and the in-process server opens `DB_PATH` then: without this the suite's server
+# wrote into the developer's real ~/.agentos/agentos.db. Found when a run left five test rows in
+# that machine's ledger (signed with a test home's key), and its chain stopped verifying. A run that
+# names a home on purpose keeps it.
+if not os.environ.get("AGENTOS_HOME") or os.environ.get("AGENTOS_HOME") == str(Path.home() / ".agentos"):
+    os.environ["AGENTOS_HOME"] = tempfile.mkdtemp(prefix="bento-suite-home-")
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -58,3 +68,4 @@ def _never_touch_the_real_config(tmp_path, monkeypatch):
     from agentos import tunnel
     monkeypatch.setattr(tunnel, "_which", lambda name: "")
     yield
+

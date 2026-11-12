@@ -22,7 +22,7 @@ def test_a_phone_turn_is_told_where_its_scenes_go():
     from agentos import stage
     assert "phone" not in stage.note({})
     tg = stage.note({}, surface="telegram")
-    assert "Telegram" in tg and "sent to them as one page right after your reply" in tg
+    assert "Telegram" in tg and "sent to them as pictures" in tg and "show a blueprint scene" in tg
     assert "WhatsApp" in stage.note({}, surface="whatsapp")
     door = (ROOT / "agentos/executors.py").read_text()
     assert 'tool="mcp__bento__show_scene", surface=surface' in door

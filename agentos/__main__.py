@@ -7444,6 +7444,35 @@ def _stage_cli(args) -> int:
         _cfgmod.save_config(cfg)
         print(f"Answer BIG is {what}. A running server reads it on the next turn.")
         return 0
+    if act == "export":
+        # a blueprint as drawing sheets (bpdoc.py): the newest one, or the scene id given
+        import asyncio as _aio
+        from . import bpdoc, executors as _ex
+        if what:
+            r = store.db.execute("SELECT id, answer_to, scene FROM stage_scenes WHERE id=?", (what,)).fetchone()
+        else:
+            r = store.db.execute("SELECT id, answer_to, scene FROM stage_scenes WHERE scene LIKE '%\"kind\": \"blueprint\"%' "
+                                 "ORDER BY rowid DESC LIMIT 1").fetchone()
+        if not r:
+            print("No blueprint here yet. Ask for one, for example: give me a blueprint of a jet engine.")
+            return 1
+        try:
+            page = bpdoc.html(store, r[0], cfg.get("agent_name") or "", stagemod.question_of(store, r[1] or ""))
+        except ValueError as e:
+            print(str(e))
+            return 1
+        subject = json.loads(r[2]).get("subject") or "blueprint"
+        out = Path(_ex.default_workspace(cfg)) / "stage"
+        out.mkdir(parents=True, exist_ok=True)
+        data = _aio.run(bpdoc.pdf(page, cfg))
+        p = out / bpdoc.filename(subject, "pdf" if data else "html")
+        if data:
+            p.write_bytes(data)
+        else:
+            p.write_text(page, encoding="utf-8")
+            print("No browser here to print a PDF with, so this is the web page; print it from a browser.")
+        print(f"The {subject} blueprint, as drawing sheets: {p}")
+        return 0
     if act == "contact":
         # Wikimedia asks a client to name a contact before it answers picture lookups
         st = cfg.setdefault("stage", {})
@@ -9767,7 +9796,7 @@ def main():
     p_brief.add_argument("--ai", choices=["on", "off"], help="schedule: an AI summary on top")
     p_st = verb("stage", help="answers shown, not only written: the Stage's stories, boards and Answer BIG")
     p_st.add_argument("action", nargs="?", default="show",
-                      choices=["show", "list", "boards", "big", "keep", "drop", "xray", "contact"])
+                      choices=["show", "list", "boards", "big", "keep", "drop", "xray", "contact", "export"])
     p_st.add_argument("what", nargs="?", default="",
                       help="show: a chat id (the last chat with a story by default) · big: on|off · "
                            "keep: the chat id · drop: a board id · xray: a chat id or a run id")

@@ -1895,6 +1895,11 @@ class Toolbox(usersmod.Scoped):
                     f"carry on with your answer)")
         if dropped:
             out += f" (not drawn: {', '.join(dropped)})"
+        if scene["kind"] != "blueprint" and "blueprint" in (scene.get("title") or "").lower():
+            # found on Telegram: asked for a blueprint, Claude Code showed a list titled "Blueprint: …"
+            out += (" (this is drawn as a " + scene["kind"] + ", not a blueprint. If the person asked for a "
+                    "blueprint, show one with kind blueprint, its parts nested so they can open each; "
+                    "a phone gets it as a walk-through and a PDF)")
         return out
 
     async def request_capability(self, ability: str, who: str = "", why: str = "",

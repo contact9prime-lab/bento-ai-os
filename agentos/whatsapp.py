@@ -343,6 +343,21 @@ class WhatsAppBridge(usersmod.Scoped):
         self.store.log("whatsapp", f"→ sent a file: {p.name}")
         return "sent via WhatsApp"
 
+    async def send_blueprint_docs(self, rows: list, ans: str, wa_id) -> None:
+        """A blueprint also goes as its document of drawing sheets (bpdoc.py), to keep or print.
+        Never fatal, and nothing when this machine has no browser to print it with."""
+        from . import bpdoc, executors as _ex, stage as stagemod
+        for r in rows:
+            if (r.get("scene") or {}).get("kind") != "blueprint":
+                continue
+            try:
+                p = await bpdoc.to_file(self.store, self.cfg, r["id"], _ex.default_workspace(self.cfg),
+                                        self.cfg.get("agent_name") or "", stagemod.question_of(self.store, ans))
+                if p:
+                    await self.send_document(str(p), "⤓ The blueprint as drawing sheets, to keep or print.", wa_id)
+            except Exception as e:
+                self.store.log("whatsapp", f"could not send the blueprint document: {e}")
+
     async def send_stage(self, cid: str, reply: str, wa_id: str) -> None:
         """The answer's story after the reply, as Telegram sends it: a picture per scene
         (stagestill.py), or the page when this machine has no browser to draw them.
@@ -365,10 +380,15 @@ class WhatsAppBridge(usersmod.Scoped):
             items = stagemod.still_items(scenes)
             if len(pngs) == len(items):
                 ok = True
-                for i, (png, (sc, v)) in enumerate(zip(pngs, items)):
-                    res = await self.send_photo(png, stagemod.still_caption_for(sc, v, i, len(items)), wa_id)
+                caps = [stagemod.still_caption_for(sc, v, i, len(items)) for i, (sc, v) in enumerate(items)]
+                q = stagemod.question_of(self.store, ans)
+                if q and caps:
+                    caps[0] = f"▶ {q}\n\n" + caps[0]      # what the story answers, on top, as on Telegram
+                for png, cap in zip(pngs, caps):
+                    res = await self.send_photo(png, cap, wa_id)
                     ok = ok and not str(res).startswith("[error]")
                 if ok:
+                    await self.send_blueprint_docs(rows, ans, wa_id)
                     return
             p = stagemod.write_report(self.store, _ex.default_workspace(self.cfg), cid, ans,
                                       answer=reply, agent=self.cfg.get("agent_name") or "")

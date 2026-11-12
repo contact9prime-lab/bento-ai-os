@@ -128,6 +128,46 @@ until you do, and without it Wikimedia may refuse the lookup.
 Parts also say how they work as **steps**, in order, and **like**: a comparison with something
 everyday that makes the size or the job easy to picture.
 
+### Chat beside it, as a tree
+
+The story's conversation sits on the right of the Stage (✦ Chat hides it, and on a phone opens it
+over the scene). Ask about what you're looking at: each question tells your agent the scene, the
+level and the part you've selected, and **Ask about this** in a part's panel starts the sentence
+for you.
+
+The chat follows the blueprint like a tree. Each level has its own thread. Open the Fan and the
+chat shows what was said about the Fan; go up and you're back in the engine's thread. The strip
+over the chat says where you are, lists the threads inside this level, and offers **Went deeper**
+for blueprints that grew out of it. Ask to dig deeper from inside a part ("show how a blade is held
+in the disc as its own blueprint") and the new blueprint is a branch under that part. **Back up the
+tree** opens the part it came from, with its thread. It's one conversation underneath, so back at
+the top your agent still knows everything said further down.
+
+![The Stage with its chat on the right: back at the top, the answer draws on the fan blades and their roots discussed further down](screenshots/stage-chat-tree.png)
+
+![On a 390px phone: the Fan's thread over the scene, the engine one level up, and the blueprint it went deeper into](screenshots/stage-chat-tree-phone.png)
+
+### Export
+
+**⤓ Export** keeps a blueprint as a set of drawing sheets, landscape, in the Stage's ink, each with
+a title block (its sheet number, a document number, the date and who prepared it):
+
+- a cover with the drawing, the key numbers and the list of sheets;
+- the parts, drawn, with a numbered legend;
+- how it works, with the flows grouped by kind;
+- a sheet for each main part: its drawing, how it works in steps, its comparison, materials,
+  limits, numbers and what's inside it;
+- what's still unclear, every source, and the picture credits.
+
+Choose **Document (PDF)** or **Web page**. The PDF needs a Chromium-family browser on the machine;
+without one, take the web page and print it from any browser. From a terminal,
+`bento stage export` saves the newest blueprint (or `bento stage export <scene id>`). Telegram and
+WhatsApp send the PDF after a blueprint's album.
+
+![The cover sheet: the turbofan drawing in blueprint ink, the key numbers and the list of sheets](screenshots/stage-blueprint-document.png)
+
+![A main part's sheet: its drawing and parts, steps, comparison, numbers and what's inside](screenshots/stage-blueprint-document-part.png)
+
 ### In Telegram and WhatsApp
 
 A chat can't be tapped into, so a blueprint arrives opened for you, one picture each: the drawing,
@@ -137,6 +177,11 @@ carries what it shows: a part's role, its steps, its comparison, its numbers and
 ![The first picture of a Telegram album: the drawing, its credit and the parts numbered](screenshots/stage-blueprint-phone-drawing.png)
 
 ![A main part in a Telegram album: its parts drawn on top, its steps, comparison and numbers under them](screenshots/stage-blueprint-phone-part.png)
+
+WhatsApp gets the same pictures one at a time, the question on the first, then the PDF. WhatsApp has to be
+linked on the machine that answers (Settings → Channels → WhatsApp): an unlinked machine sends nothing.
+
+![The first picture of a blueprint as WhatsApp gets it: the question, then the parts](screenshots/stage-blueprint-whatsapp.png)
 
 On a phone the drawing takes the screen. A tap brings up a small sheet with the part and an Open
 button, and the details are just below.
