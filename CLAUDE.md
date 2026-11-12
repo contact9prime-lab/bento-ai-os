@@ -818,6 +818,8 @@ things rather than presenting the chart". Six rules:
   session. A probe with real Claude Code did not reproduce it with either phone line, so the tool's answer is
   what catches it: a non-blueprint scene whose title says blueprint is told to be one. WhatsApp's story has a
   behaviour test now (it had only a grep), and its first picture carries the question as Telegram's does.
+  While a blueprint fills, a phone is told at once (`bpfill.filling`, `HOLD_LINE`): the desktop drew it straight away
+  and Telegram sat silent for three minutes, reported as "the stage shows on the desktop but not on Telegram".
 - **Labels never overlap and the panel holds the rest.** Labels compress, then drop their second line; the
   title block, "you are here" and the links of a tower live in the spec panel. Sized from `clientWidth`, a
   ResizeObserver dropped when the drawing leaves; on a phone the scene scrolls and a tap brings a sheet that

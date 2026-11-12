@@ -332,6 +332,17 @@ def start(store, cfg: dict, row: dict, send=None, brain: bool = True) -> list[st
     return ids
 
 
+def filling(scene_ids: list[str]) -> int:
+    """How many of these scenes are still being filled in (a phone says so before it waits)."""
+    return sum(1 for s in scene_ids if s in _TASKS and not _TASKS[s].done())
+
+
+HOLD_LINE = ("✎ Drawing your blueprint now. I'm looking up each part, so the pictures "
+             "follow in a minute or two.")
+HOLD_LINE_FIRST = ("✎ Drawing your blueprint now. I'm looking up each part, so the pictures "
+                   "and my answer follow in a minute or two.")   # Telegram sends the story first
+
+
 async def settle(scene_ids: list[str], timeout: float) -> None:
     """Wait up to `timeout` for these scenes to finish filling (a phone send waits on it)."""
     tasks = [_TASKS[s] for s in scene_ids if s in _TASKS]

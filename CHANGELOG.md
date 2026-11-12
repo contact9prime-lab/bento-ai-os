@@ -2,6 +2,11 @@
 
 ## 0.8.7 — 2026-11-12
 
+**A phone hears at once that its blueprint is being drawn.** Asked for a blueprint on Telegram,
+the desktop showed it straight away while the phone showed nothing for about three minutes, not
+even the reply, because the pictures wait for each part to be looked up. Now Telegram and
+WhatsApp say "Drawing your blueprint now" right away, and Telegram shows "sending a photo" until
+the pictures go.
 **A broken ledger alerts once, not every 20 minutes.** The ledger is checked on a timer, and a break
 stays broken, so each check raised the same alert again (the alert's quiet period was 15 minutes,
 the timer 20). Telegram got "The ledger's chain does not verify" all night. One break is now one
