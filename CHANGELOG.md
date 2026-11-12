@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.7 — 2026-11-12
+
+**A broken ledger alerts once, not every 20 minutes.** The ledger is checked on a timer, and a break
+stays broken, so each check raised the same alert again (the alert's quiet period was 15 minutes,
+the timer 20). Telegram got "The ledger's chain does not verify" all night. One break is now one
+alert. A different break alerts again, and so does one after the ledger verified clean. Settings →
+Permissions and `bento integrity status` still show it on every check.
+
 ## 0.8.6 — 2026-11-12
 
 **The Stage has its chat beside it.** The story's own conversation sits on the right of the Stage,
