@@ -126,7 +126,7 @@ MODEL_SHAPES = MODEL_PRIMS + MODEL_PROPS
 MODEL_STYLES = ("paper", "blueprint", "hologram")
 MODEL_WEATHER = ("none", "petals", "leaves", "snow", "rain", "fireflies", "sparks")
 MODEL_GROUND = ("none", "grass", "water", "sand", "snow", "stone")
-MODEL_MOVES = ("spin", "sway", "bob", "drift", "orbit", "flow")
+MODEL_MOVES = ("spin", "sway", "bob", "drift", "orbit", "flow", "walk")
 # a colour is one of these words or #rrggbb; on paper it is a wash under the ink
 MODEL_COLORS = ("pink", "red", "orange", "gold", "yellow", "green", "leaf", "teal", "blue", "sky",
                 "navy", "purple", "brown", "wood", "stone", "grey", "white", "black", "sand", "glass")
@@ -496,7 +496,7 @@ def _solids(raw, where: str, dropped: list, parts: set | None) -> list:
     if len(items) > MODEL_SOLIDS:
         dropped.append(f"{where}: {len(items) - MODEL_SOLIDS} past {MODEL_SOLIDS}")
     known = ("shape", "at", "size", "color", "colour", "label", "count", "spread", "turn", "tilt",
-             "move", "tiers", "part")
+             "move", "tiers", "part", "note")
     for i, so in enumerate(items[:MODEL_SOLIDS]):
         at = f"{where}[{i}]"
         if not isinstance(so, dict):
@@ -519,6 +519,8 @@ def _solids(raw, where: str, dropped: list, parts: set | None) -> list:
                 dropped.append(f"{at}.color {col!r}")
         if str(so.get("label") or "").strip():
             node["label"] = _s(so.get("label"), 40)
+            if str(so.get("note") or "").strip():      # what the tour says at this stop
+                node["note"] = _s(so.get("note"), 160)
         n = _num(so.get("count"))
         n = int(min(MODEL_COPIES, max(1, n))) if n is not None else 1
         n = max(1, min(n, MODEL_PIECES - pieces))
@@ -1263,7 +1265,9 @@ MODEL_LINE = ("Asked to build, imagine, design or show a place, a scene or an ob
               + ", ".join(MODEL_WEATHER[1:]) + "; ground one of " + ", ".join(MODEL_GROUND[1:]) + ". Compose it "
               "like a set designer: a ground to stand on, one main thing in the middle and named, "
               "supporting things round it, something that moves, 15 to 50 solids, sizes in metres. "
-              "Label only what matters.")
+              "Label only what matters, five to eight things, and give each a note: one sentence the "
+              "tour says when the eye stops there (what it is, why it matters). People, boats and cars "
+              "move on their own.")
 BIG_LINE = ("Answer BIG: the person watches your answers on the Stage, so anything worth seeing is "
             "SHOWN with show_scene before you write the text: three to six scenes, in story order. "
             "Tell a story, not a slide: open on what matters most (the headline numbers, or a "

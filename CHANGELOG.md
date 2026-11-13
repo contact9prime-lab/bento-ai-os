@@ -13,6 +13,14 @@ a blueprint sheet, or a hologram over a projector.
 For anything else the agent gives the shape of each part, and a tap on a part opens it in the
 panel. A phone gets the same model as an ink drawing, first in the album.
 
+**It reads as a drawing.** Roofs are tiled, walls coursed and bridges planked in ink. Everything
+casts a hatched shadow on the sheet. The tallest named thing gets a dimension line with its height,
+and a scale rule follows the camera. People walk, boats sail and cars drive on their own.
+
+**Tour** takes you round a model: the camera goes to each named thing and says what it is, in the
+agent's own sentence. Tap any name to go there yourself. With the Stage's music on you hear the
+pen while the plan is inked.
+
 Nothing the agent writes runs: it picks shapes, places and colours, and the page draws them. A
 small machine's own screen, reduced motion and a browser with no WebGL get the still ink drawing.
 

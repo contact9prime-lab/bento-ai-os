@@ -832,7 +832,7 @@ things rather than presenting the chart". Six rules:
   clouds and what flies are a backdrop) and faces it as it was composed (z towards the viewer): measured with
   real Claude Code, whose river "across the front" ran away from the eye at the first camera angle. Small things
   take a finer pen, or a grove is a blot. A repaint of the Stage keeps the look you picked and never restarts a
-  finished build (`MDL_KEEP`). It rests `MDL_LIFE_S` after the last touch. A tower blueprint is stacked by the
+ A tower blueprint is stacked by the
   page (`bpModelOf`); other blueprints carry `model` solids naming their parts.
 - **Labels never overlap and the panel holds the rest.** Labels compress, then drop their second line; the
   title block, "you are here" and the links of a tower live in the spec panel. Sized from `clientWidth`, a

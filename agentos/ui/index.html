@@ -7532,6 +7532,18 @@ div.mdl-tags .mdl-tag::after{content:'';position:absolute;left:50%;top:100%;widt
   font:600 11.5px ui-monospace,monospace;letter-spacing:.04em;color:var(--mdl-ink);background:var(--mdl-chip);border:1px solid var(--mdl-line);opacity:0}
 .mdl-hint.on{animation:mdl-hint 4.5s ease 1 both}
 @keyframes mdl-hint{0%{opacity:0}12%,70%{opacity:.95}100%{opacity:0}}
+.mdl-cap{position:absolute;left:50%;top:12px;transform:translateX(-50%);max-width:min(560px,86%);padding:9px 14px;border-radius:8px;z-index:2;
+  display:flex;flex-direction:column;gap:3px;color:var(--mdl-ink);background:var(--mdl-chip);border:1px solid var(--mdl-line);
+  font:500 13.5px/1.4 var(--sans,system-ui);text-align:center;pointer-events:none}
+.mdl-cap[hidden]{display:none}
+.mdl-cap b{font:700 12px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.06em;text-transform:uppercase}
+.mdl-scale{position:absolute;right:12px;top:12px;display:flex;flex-direction:column;align-items:flex-end;gap:3px;pointer-events:none;opacity:0;transition:opacity .6s ease;
+  font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.04em;color:var(--mdl-ink)}
+.mdl-built .mdl-scale{opacity:.9}
+.mdl-scale i{display:block;height:6px;border:1.5px solid var(--mdl-ink);border-top:0;min-width:10px}
+/* the sheet darkens a little towards its edges, as paper under a lamp */
+.mdl[data-style=paper]::after{content:'';position:absolute;inset:0;pointer-events:none;border-radius:inherit;
+  background:radial-gradient(ellipse at 50% 45%,transparent 55%,rgba(70,42,12,.28) 100%)}
 /* inside a blueprint the model takes the drawing's room */
 .bp-look.bp-model{display:block;padding:0;border-radius:10px}
 .bp-look.bp-model.mdl{position:absolute;inset:0}
@@ -43415,7 +43427,7 @@ var MDL_WEATHER={petals:{c:'#f7b4ca',n:260,sp:.55,dr:1.3,sz:7},leaves:{c:'#d8842
   snow:{c:'#ffffff',n:340,sp:.5,dr:.6,sz:5},rain:{c:'#c3dcf1',n:420,sp:7,dr:.04,sz:3},
   fireflies:{c:'#ffe68c',n:90,sp:0,dr:1,sz:7,glow:1},sparks:{c:'#ffb24c',n:170,sp:-1.7,dr:.5,sz:5,glow:1}};
 var MDL_NATURAL={tree:1,blossom:1,pine:1,palm:1,bamboo:1,bush:1,rock:1,cloud:1,bird:1,person:2,boat:2,car:2};
-var MDL_MOVE={cloud:'drift',bird:'orbit',plane:'orbit',water:'flow',boat:'bob'};
+var MDL_MOVE={cloud:'drift',bird:'orbit',plane:'orbit',water:'flow',boat:'walk',person:'walk',car:'walk'};
 var MDL_LIFE_S=40;       // how long the place lives after the last touch, before it rests
 var MDL_FIT=20;          // the model is scaled so its longest side is this many units
 
@@ -43442,7 +43454,7 @@ function mdlPieces(so){
   case 'pyramid':p('cone',0,0,0,w,h,d,c,{n:4,tp:0});break;
   case 'sphere':p('sph',0,0,0,w,h,d,c,{n:14,m:8});break;
   case 'dome':p('dome',0,0,0,w,h,d,c,{n:14,m:5});break;
-  case 'roof':p('roof',0,0,0,w,h,d);break;
+  case 'roof':p('roof',0,0,0,w,h,d,c,{tiles:Math.max(3,Math.min(12,Math.round(w/Math.max(h,.01)*1.6)))});break;
   case 'ring':p('ring',0,0,0,w,h,d);break;
   case 'arch':p('arch',0,0,0,w,h,d,c,{th:.16});break;
   case 'tree':p('cone',0,0,0,w*.13,h*.5,w*.13,'wood',{n:6,tp:.75});
@@ -43469,23 +43481,23 @@ function mdlPieces(so){
     p('sph',w*.3,0,d*.06,w*.44,h*.7,d*.7,c||'white',{n:8,m:4});break;
   case 'water':p('box',0,0,0,w,Math.max(w,d)*.003,d,c||'blue',{flow:1,plate:1});break;
   case 'path':p('box',0,0,0,w,Math.max(w,d)*.004,d,c||'sand',{plate:1});break;
-  case 'house':p('box',0,0,0,w,h*.6,d,c||'white');p('roof',0,h*.6,0,w*1.12,h*.4,d*1.16,'brown');
+  case 'house':p('box',0,0,0,w,h*.6,d,c||'white',{windows:2});p('roof',0,h*.6,0,w*1.12,h*.4,d*1.16,'brown',{tiles:7});
     p('box',0,0,d*.5,w*.18,h*.36,w*.02,'wood');break;
   case 'building':p('box',0,0,0,w,h,d,c,{win:T||Math.max(2,Math.min(30,Math.round(h/(Math.min(w,d)*.42))))});break;
   case 'pagoda':{const t=T||3;p('box',0,0,0,w,h*.04,d,'stone');let y=h*.04;const th=h*.78/t;
     for(let i=0;i<t;i++){const s=1-.12*i;p('box',0,y,0,w*.5*s,th*.56,d*.5*s,c||'red');
-      p('cone',0,y+th*.56,0,w*.98*s,th*.44,d*.98*s,'black',{n:4,tp:.42});y+=th}
+      p('cone',0,y+th*.56,0,w*.98*s,th*.44,d*.98*s,'black',{n:4,tp:.42,tiles:5});y+=th}
     p('cone',0,y,0,w*.06,h*.15,w*.06,'gold',{n:6,tp:.3});p('sph',0,y+h*.14,0,w*.1,w*.1,w*.1,'gold',{n:6,m:4});break}
   case 'torii':{const dd=Math.min(d,w*.12);
     p('cone',-w*.36,0,0,w*.085,h*.9,w*.085,c||'red',{n:8,tp:.85});p('cone',w*.36,0,0,w*.085,h*.9,w*.085,c||'red',{n:8,tp:.85});
     p('box',0,h*.64,0,w*.86,h*.07,dd*.6,c||'red');p('box',0,h*.85,0,w*1.08,h*.075,dd,c||'red');
     p('box',0,h*.925,0,w*1.18,h*.05,dd*1.25,'black');break}
-  case 'bridge':p('arch',0,0,0,w,h,d,c||'red',{th:.26});
+  case 'bridge':p('arch',0,0,0,w,h,d,c||'red',{th:.26,planks:1});
     p('arch',0,h*.14,d*.47,w,h,d*.05,c||'red',{th:.07});p('arch',0,h*.14,-d*.47,w,h,d*.05,c||'red',{th:.07});break;
   case 'lantern':p('cone',0,0,0,w*.7,h*.1,d*.7,'stone',{n:6,tp:.8});p('cone',0,h*.1,0,w*.22,h*.42,d*.22,'stone',{n:6,tp:.9});
     p('box',0,h*.52,0,w*.5,h*.2,d*.5,c||'gold');p('cone',0,h*.72,0,w,h*.2,d,'stone',{n:4,tp:.1});
     p('sph',0,h*.9,0,w*.16,h*.1,d*.16,'stone',{n:6,m:3});break;
-  case 'wall':p('box',0,0,0,w,h*.85,d,c||'white');p('roof',0,h*.85,0,w,h*.15,d*1.6,'black');break;
+  case 'wall':p('box',0,0,0,w,h*.85,d,c||'white',{courses:2});p('roof',0,h*.85,0,w,h*.15,d*1.6,'black',{tiles:Math.max(4,Math.min(16,Math.round(w/Math.max(h,.01)*1.5)))});break;
   case 'column':p('box',0,0,0,w,h*.06,d,c);p('cone',0,h*.06,0,w*.72,h*.86,d*.72,c,{n:14,tp:.86});p('box',0,h*.92,0,w,h*.08,d,c);break;
   case 'stairs':{const n=T||6;for(let i=0;i<n;i++)p('box',0,0,d/2-d*(i+.5)/n,w,h*(i+1)/n,d/n,c||'stone')}break;
   case 'person':p('box',-w*.17,0,0,w*.26,h*.46,d*.6,'navy');p('box',w*.17,0,0,w*.26,h*.46,d*.6,'navy');
@@ -43559,6 +43571,19 @@ function mdlMesh(pc){
     for(let i=0;i<s;i++)for(let j=0;j<4;j++){const j2=(j+1)%4;f.push({i:[i*4+j,(i+1)*4+j,(i+1)*4+j2,i*4+j2]})}
     f.push({i:[0,1,2,3]},{i:[s*4+3,s*4+2,s*4+1,s*4]});
   }
+  // detail ruled on a face: tiles down a roof, courses along a wall, a window's frame, a deck's planks
+  const lerp=(a,b,u)=>[a[0]+(b[0]-a[0])*u,a[1]+(b[1]-a[1])*u,a[2]+(b[2]-a[2])*u];
+  const addLine=(fi,a,b)=>{const s0=v.length;v.push(a.slice(),b.slice());(f[fi].lines=f[fi].lines||[]).push([s0,s0+1])};
+  const rule=(fi,n,across)=>{const q=f[fi].i;if(q.length!==4)return;const A=v[q[0]],Bq=v[q[1]],C=v[q[2]],D=v[q[3]];
+    for(let j=1;j<=n;j++){const u=j/(n+1);if(across)addLine(fi,lerp(A,Bq,u),lerp(D,C,u));else addLine(fi,lerp(A,D,u),lerp(Bq,C,u))}};
+  const frameOn=(fi,u0,v0,u1,v1)=>{const q=f[fi].i,A=v[q[0]],Bq=v[q[1]],C=v[q[2]],D=v[q[3]];
+    const at=(u,t)=>lerp(lerp(A,Bq,u),lerp(D,C,u),t),c=[at(u0,v0),at(u1,v0),at(u1,v1),at(u0,v1)];
+    for(let j=0;j<4;j++)addLine(fi,c[j],c[(j+1)%4])};
+  if(pc.tiles&&k==='roof'){rule(0,pc.tiles,true);rule(1,pc.tiles,true);rule(0,1,false);rule(1,1,false)}
+  if(pc.tiles&&k==='cone'&&(pc.tp||0)>=.02){const n=pc.n||16;for(let i=0;i<n;i++)rule(i,pc.tiles,false)}
+  if(pc.courses&&k==='box')[2,3,4,5].forEach(fi=>rule(fi,pc.courses,false));
+  if(pc.windows&&k==='box')[2,3].forEach(fi=>{for(let j=0;j<pc.windows;j++){const u=(j+.5)/pc.windows,hw=.26/pc.windows;frameOn(fi,u-hw,.44,u+hw,.8)}});
+  if(pc.planks&&k==='arch')for(let i=1;i<14;i++)addLine(i*4,v[i*4],v[i*4+1]);
   if(pc.rough){const R=mdlRnd(11+v.length*7+Math.round(w*13));v.forEach(p=>{if(p[1]>h*.02||k==='sph'){
     const j=1+(R()-.5)*2*pc.rough;p[0]*=j;p[2]*=1+(R()-.5)*2*pc.rough;if(p[1]<h*.98)p[1]*=1+(R()-.5)*pc.rough}})}
   // outward: a closed mesh wound outward has a positive volume
@@ -43632,6 +43657,8 @@ function mdlBuild(model){
       const round=pc.k==='sph'||pc.k==='dome'||pc.k==='ring'||(pc.k==='cone'&&(pc.n||16)>=10);
       mdlFinish(m,pc.rough?2:round||pc.leaf?1:0);
       m.c=mdlRGB(pc.c);m.leaf=!!pc.leaf;m.flow=!!pc.flow;m.plate=!!pc.plate;
+      // which way this copy walks, sails or drives: a person the way it faces, a boat or a car along its length
+      m.go=so.shape==='person'?[SY,CY,(ci*.37)%1]:[CY,-SY,(ci*.37)%1];
       m.straight=!round&&!pc.leaf&&!pc.rough&&pc.k!=='arch';
       meshes.push(m)})});
     let lo=[1e9,1e9,1e9],hi=[-1e9,-1e9,-1e9];
@@ -43702,7 +43729,7 @@ function mdlStill(host,model,style,opts){
   const ca=Math.cos(az),sa=Math.sin(az),ce=Math.cos(el),se=Math.sin(el);
   const view=p=>{const x=p[0]*ca-p[2]*sa,z=p[0]*sa+p[2]*ca;return [x,p[1]*ce-z*se,p[1]*se+z*ce]};   // x right, y up, z towards the eye
   const eye=[sa*ce,se,ca*ce];                // towards the eye, in the model's space
-  const sun=[-.45,.8,.4],sl=Math.hypot(sun[0],sun[1],sun[2]);
+  const sun=[-.62,.75,.12],sl=Math.hypot(sun[0],sun[1],sun[2]);
   let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;
   B.solids.forEach(s=>s.meshes.forEach(m=>m.v.forEach(p=>{const q=view(p);if(q[0]<x0)x0=q[0];if(q[0]>x1)x1=q[0];if(q[1]<y0)y0=q[1];if(q[1]>y1)y1=q[1]})));
   const pad=opts.pad==null?46:opts.pad,k=Math.min((Wd-pad*2)/Math.max(x1-x0,.01),(Hd-pad*2)/Math.max(y1-y0,.01));
@@ -43718,6 +43745,19 @@ function mdlStill(host,model,style,opts){
       g0.append(sSvg('line',{x1:p[0],y1:p[1],x2:q[0],y2:q[1],stroke:ink,'stroke-width':.6,opacity:.25}))}}
   else if(gr&&style==='paper')g0.append(sSvg('path',{d:rim(B.R*1.12,72),fill:gr,opacity:.5}),sSvg('path',{d:rim(B.R*.9,72),fill:gr,opacity:.32}));
   else g0.append(sSvg('path',{d:rim(B.R*1.1,72),fill:'none',stroke:ink,'stroke-width':.8,'stroke-dasharray':'10 6',opacity:.35}));
+  // what each piece casts on the sheet: its box flattened along the light, hatched
+  if(!holo){const gs=sSvg('g',{class:'mdl-shade'}),kx=sun[0]/sun[1],kz=sun[2]/sun[1];
+    B.solids.forEach(s=>{if(s.flat)return;s.meshes.forEach(m=>{if(m.plate)return;
+      let lo=[1e9,1e9,1e9],hi=[-1e9,-1e9,-1e9];m.v.forEach(p=>{for(let a=0;a<3;a++){if(p[a]<lo[a])lo[a]=p[a];if(p[a]>hi[a])hi[a]=p[a]}});
+      if(hi[1]-lo[1]<.05)return;
+      const pts=[];[lo[1],hi[1]].forEach(y=>[[lo[0],lo[2]],[hi[0],lo[2]],[hi[0],hi[2]],[lo[0],hi[2]]].forEach(c=>{const q=P([c[0]-kx*y,0,c[1]-kz*y]);pts.push([q[0],q[1]])}));
+      // the hull of those eight points
+      pts.sort((a,b)=>a[0]-b[0]||a[1]-b[1]);const cr=(o,a,b)=>(a[0]-o[0])*(b[1]-o[1])-(a[1]-o[1])*(b[0]-o[0]),lw=[],up=[];
+      pts.forEach(q=>{while(lw.length>1&&cr(lw[lw.length-2],lw[lw.length-1],q)<=0)lw.pop();lw.push(q)});
+      pts.slice().reverse().forEach(q=>{while(up.length>1&&cr(up[up.length-2],up[up.length-1],q)<=0)up.pop();up.push(q)});
+      const hull=lw.slice(0,-1).concat(up.slice(0,-1));
+      gs.append(sSvg('path',{d:hull.map((q,i)=>(i?'L':'M')+q[0].toFixed(1)+' '+q[1].toFixed(1)).join('')+'Z',fill:`url(#${uid}-h2)`,opacity:style==='paper'?.55:.3}))})});
+    svg.append(gs)}
   // faces, far to near
   const faces=[];
   B.solids.forEach(s=>s.meshes.forEach(m=>{
@@ -43772,11 +43812,12 @@ function mdlStill(host,model,style,opts){
 }
 
 /* ---------- the shaders ---------- */
-var MDL_SWAY='vec3 mdlSway(vec3 p,float s,float t,float amp){if(s>0.){float ph=t*1.25+p.x*.33+p.z*.27;p.x+=sin(ph)*s*amp;p.z+=cos(ph*.8)*s*amp*.6;}return p;}';
+var MDL_SWAY='vec3 mdlSway(vec3 p,float s,float t,float amp){if(s>0.){float ph=t*1.25+p.x*.33+p.z*.27;p.x+=sin(ph)*s*amp;p.z+=cos(ph*.8)*s*amp*.6;}return p;}'+
+  'vec3 mdlGo(vec3 p,vec3 g,float t,float k){p.xz+=g.xy*sin(t*.45+g.z*6.2832)*k;return p;}';
 var MDL_NOISE='float mdlH(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}'+
   'float mdlN(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(mdlH(i),mdlH(i+vec2(1.,0.)),f.x),mix(mdlH(i+vec2(0.,1.)),mdlH(i+vec2(1.,1.)),f.x),f.y);}';
-var MDL_VS_FILL='attribute vec3 aColor;attribute float aSway;uniform float uTime,uAmp;varying vec3 vN,vC,vW;'+MDL_SWAY+
-  'void main(){vec3 p=mdlSway(position,aSway,uTime,uAmp);vec4 w=modelMatrix*vec4(p,1.);vW=w.xyz;vN=normalize(mat3(modelMatrix)*normal);vC=aColor;gl_Position=projectionMatrix*viewMatrix*w;}';
+var MDL_VS_FILL='attribute vec3 aColor,aGo;attribute float aSway;uniform float uTime,uAmp,uGo;varying vec3 vN,vC,vW;'+MDL_SWAY+
+  'void main(){vec3 p=mdlGo(mdlSway(position,aSway,uTime,uAmp),aGo,uTime,uGo);vec4 w=modelMatrix*vec4(p,1.);vW=w.xyz;vN=normalize(mat3(modelMatrix)*normal);vC=aColor;gl_Position=projectionMatrix*viewMatrix*w;}';
 var MDL_FS_FILL='uniform vec3 uPaper,uInk,uLight;uniform float uStyle,uWash,uTime,uTop,uHatch,uSel,uFlow,uPx,uDim;varying vec3 vN,vC,vW;'+MDL_NOISE+
   'float pen(float t,float w){float s=abs(fract(t)-.5);return 1.-smoothstep(w,w+.09,s);}'+
   'void main(){vec3 n=normalize(vN);if(!gl_FrontFacing)n=-n;float l=dot(n,normalize(uLight))*.5+.5;vec2 fc=gl_FragCoord.xy/uPx;'+
@@ -43799,19 +43840,27 @@ var MDL_FS_FILL='uniform vec3 uPaper,uInk,uLight;uniform float uStyle,uWash,uTim
     'float a=(.035+.95*fr)*scan+smoothstep(.5,0.,uTop-vW.y)*.5+uSel*.25;a*=uDim;'+
     'gl_FragColor=vec4(c*a,a);'+
   '}}';
-var MDL_VS_HULL='attribute vec3 aHull;attribute float aSway;uniform float uTime,uAmp,uW;uniform vec2 uRes;'+MDL_SWAY+
-  'void main(){vec3 p=mdlSway(position,aSway,uTime,uAmp);vec4 c=projectionMatrix*modelViewMatrix*vec4(p,1.);'+
+var MDL_VS_HULL='attribute vec3 aHull,aGo;attribute float aSway;uniform float uTime,uAmp,uW,uGo;uniform vec2 uRes;'+MDL_SWAY+
+  'void main(){vec3 p=mdlGo(mdlSway(position,aSway,uTime,uAmp),aGo,uTime,uGo);vec4 c=projectionMatrix*modelViewMatrix*vec4(p,1.);'+
   'vec4 c2=projectionMatrix*modelViewMatrix*vec4(p+aHull*.02,1.);vec2 dir=(c2.xy/c2.w-c.xy/c.w)*uRes;float L=length(dir);'+
   'if(L>1e-5)c.xy+=dir/L*uW*2./uRes*c.w;gl_Position=c;}';
 var MDL_FS_HULL='uniform vec3 uInk;void main(){gl_FragColor=vec4(uInk,1.);}';
-var MDL_VS_LINE='attribute vec3 aOther;attribute float aSide,aSeed,aSway;uniform float uTime,uAmp,uLW;uniform vec2 uRes;varying vec3 vW;varying float vS;'+MDL_SWAY+
-  'void main(){vec3 p=mdlSway(position,aSway,uTime,uAmp),q=mdlSway(aOther,aSway,uTime,uAmp);'+
+var MDL_VS_LINE='attribute vec3 aOther,aGo;attribute float aSide,aSeed,aSway;uniform float uTime,uAmp,uLW,uGo;uniform vec2 uRes;varying vec3 vW;varying float vS;'+MDL_SWAY+
+  'void main(){vec3 p=mdlGo(mdlSway(position,aSway,uTime,uAmp),aGo,uTime,uGo),q=mdlGo(mdlSway(aOther,aSway,uTime,uAmp),aGo,uTime,uGo);'+
   'vec4 ma=modelViewMatrix*vec4(p,1.),mb=modelViewMatrix*vec4(q,1.);ma.xyz*=.9988;mb.xyz*=.9988;vec4 a=projectionMatrix*ma,b=projectionMatrix*mb;'+
   'vec2 d=(b.xy/b.w-a.xy/a.w)*uRes;float L=length(d);d=L>1e-5?d/L:vec2(1.,0.);'+
   'a.xy+=vec2(-d.y,d.x)*aSide*uLW*(.72+.56*aSeed)/uRes*a.w;gl_Position=a;vW=(modelMatrix*vec4(p,1.)).xyz;vS=aSeed;}';
 var MDL_FS_LINE='uniform vec3 uInk;uniform float uStyle,uTop,uTime,uDim;varying vec3 vW;varying float vS;'+
   'void main(){if(uStyle>1.5){if(vW.y>uTop)discard;float a=(.7+.3*sin(vW.y*26.-uTime*3.2))*uDim;gl_FragColor=vec4(uInk*a,a);}'+
   'else gl_FragColor=vec4(uInk,uStyle<.5?.86+.14*vS:.95);}';
+/* What it casts on the sheet: every solid flattened along the light onto the ground and hatched,
+   as a draughtsman shades. Drawn once per pixel (the stencil), or two shadows crossing would be darker. */
+var MDL_VS_SHADE='attribute vec3 aGo;attribute float aSway;uniform float uTime,uAmp,uGo;uniform vec3 uLight;'+MDL_SWAY+
+  'void main(){vec3 p=mdlGo(mdlSway(position,aSway,uTime,uAmp),aGo,uTime,uGo);vec4 w=modelMatrix*vec4(p,1.);'+
+  'w.xz-=uLight.xz/uLight.y*max(w.y,0.);w.y=.09;gl_Position=projectionMatrix*viewMatrix*w;}';
+var MDL_FS_SHADE='uniform vec3 uInk;uniform float uStyle,uShade,uPx;'+MDL_NOISE+
+  'void main(){vec2 fc=gl_FragCoord.xy/uPx;float s=abs(fract((fc.x+fc.y)/5.+mdlN(fc*.05)*.4)-.5);float h=1.-smoothstep(.13,.24,s);'+
+  'float a=(uStyle<.5?.17+h*.42:h*.26)*uShade;gl_FragColor=vec4(uInk,a);}';
 /* the sheet under it: paper with fibres and a wash, a ruled blue sheet, or rings of light */
 var MDL_VS_SHEET='varying vec3 vW;void main(){vec4 w=modelMatrix*vec4(position,1.);vW=w.xyz;gl_Position=projectionMatrix*viewMatrix*w;}';
 var MDL_FS_SHEET='uniform vec3 uPaper,uInk,uGround;uniform float uStyle,uR,uHas,uTime,uPx,uShow;varying vec3 vW;'+MDL_NOISE+
@@ -43841,13 +43890,13 @@ async function mdlGL(host,model,style,opts){
   if(!host.isConnected)return null;
   const cv=document.createElement('canvas');cv.className='mdl-cv';
   let R;
-  try{R=new T.WebGLRenderer({canvas:cv,antialias:true,alpha:false,powerPreference:'low-power'})}catch(e){return null}
+  try{R=new T.WebGLRenderer({canvas:cv,antialias:true,alpha:false,stencil:true,powerPreference:'low-power'})}catch(e){return null}
   host.append(cv);
   const px=Math.min(window.devicePixelRatio||1,2);R.setPixelRatio(px);
   const B=mdlBuild(model),rank=mdlOrder(B);
   const S=new T.Scene(),cam=new T.PerspectiveCamera(30,1,.1,600),root=new T.Group();S.add(root);
   const U={uTime:{value:0},uRes:{value:new T.Vector2(1,1)},uPaper:{value:new T.Color()},uInk:{value:new T.Color()},
-    uStyle:{value:0},uTop:{value:1e4},uHatch:{value:.6},uLight:{value:new T.Vector3(-.45,.8,.4)},uPx:{value:px},
+    uStyle:{value:0},uTop:{value:1e4},uHatch:{value:.6},uLight:{value:new T.Vector3(-.62,.75,.12)},uPx:{value:px},
     uLW:{value:1.6*px},uW:{value:1.5*px},uAmp:{value:0},uDim:{value:1}};
   const mats=[];
   const mk=(vs,fs,extra,o)=>{const m=new T.ShaderMaterial(Object.assign({vertexShader:vs,fragmentShader:fs,
@@ -43868,8 +43917,9 @@ async function mdlGL(host,model,style,opts){
   // each solid: its faces, its outline, its lines
   const solids=[],picks=[];
   B.solids.forEach((s,si)=>{
-    const pos=[],nor=[],hull=[],col=[],sway=[];
-    const lp=[],lo=[],lside=[],lseed=[],lsway=[],lidx=[],segs=[];
+    const pos=[],nor=[],hull=[],col=[],sway=[],go=[];
+    const lp=[],lo=[],lside=[],lseed=[],lsway=[],lgo=[],lidx=[],segs=[];
+    const walks=s.move==='walk';
     const cx=s.c[0],cz=s.c[2],rn=mdlRnd(31+si*17);
     s.meshes.forEach(m=>{
       let ylo=1e9,yhi=-1e9;m.v.forEach(p=>{if(p[1]<ylo)ylo=p[1];if(p[1]>yhi)yhi=p[1]});
@@ -43877,37 +43927,42 @@ async function mdlGL(host,model,style,opts){
       const sw=p=>sways?(m.leaf?.35:0)+(m.leaf?.65:1)*(p[1]-ylo)/Math.max(yhi-ylo,.001):0;
       const c=m.c||[-1,-1,-1];
       m.f.forEach(fc=>{const fcol=fc.c?mdlRGB(fc.c):c;for(let t=1;t<fc.i.length-1;t++)[0,t,t+1].forEach(a=>{const p=m.v[fc.i[a]],n=fc.vn[a],hn=m.hn[fc.i[a]];
-        pos.push(p[0]-cx,p[1],p[2]-cz);nor.push(n[0],n[1],n[2]);hull.push(hn[0],hn[1],hn[2]);col.push(fcol[0],fcol[1],fcol[2]);sway.push(sw(p))})});
+        pos.push(p[0]-cx,p[1],p[2]-cz);nor.push(n[0],n[1],n[2]);hull.push(hn[0],hn[1],hn[2]);col.push(fcol[0],fcol[1],fcol[2]);sway.push(sw(p));if(walks)go.push(m.go[0],m.go[1],m.go[2]);else go.push(0,0,0)})});
       const seg=(a,b,over)=>{let ax=a[0],ay=a[1],az=a[2],bx=b[0],by=b[1],bz=b[2];
         if(over){   // a draughtsman's line runs a little past the corner
           const L=Math.hypot(bx-ax,by-ay,bz-az)||1,o1=Math.min(L*.07,.16)*rn(),o2=Math.min(L*.07,.16)*rn();
           const dx=(bx-ax)/L,dy=(by-ay)/L,dz=(bz-az)/L;ax-=dx*o1;ay-=dy*o1;az-=dz*o1;bx+=dx*o2;by+=dy*o2;bz+=dz*o2}
-        segs.push({a:[ax-cx,ay,az-cz],b:[bx-cx,by,bz-cz],s:(sw(a)+sw(b))/2,y:Math.min(ay,by)})};
+        segs.push({a:[ax-cx,ay,az-cz],b:[bx-cx,by,bz-cz],s:(sw(a)+sw(b))/2,y:Math.min(ay,by),g:walks?m.go:[0,0,0]})};
       Object.keys(m.hard).forEach(ek=>{const u=m.edges[ek][0],fc=m.f[u[0]];
         seg(m.v[fc.i[u[1]]],m.v[fc.i[(u[1]+1)%fc.i.length]],m.straight)});
       m.f.forEach(fc=>(fc.lines||[]).forEach(ln=>seg(m.v[ln[0]],m.v[ln[1]],false)));
     });
     segs.sort((a,b)=>a.y-b.y||a.a[0]-b.a[0]);
     segs.forEach(sg=>{const k=lp.length/3,sd=rn();
-      [[sg.a,sg.b,1],[sg.a,sg.b,-1],[sg.b,sg.a,-1],[sg.b,sg.a,1]].forEach(q=>{lp.push(q[0][0],q[0][1],q[0][2]);lo.push(q[1][0],q[1][1],q[1][2]);lside.push(q[2]);lseed.push(sd);lsway.push(sg.s)});
+      [[sg.a,sg.b,1],[sg.a,sg.b,-1],[sg.b,sg.a,-1],[sg.b,sg.a,1]].forEach(q=>{lp.push(q[0][0],q[0][1],q[0][2]);lo.push(q[1][0],q[1][1],q[1][2]);lside.push(q[2]);lseed.push(sd);lsway.push(sg.s);lgo.push(sg.g[0],sg.g[1],sg.g[2])});
       lidx.push(k,k+1,k+2,k+2,k+1,k+3)});
     const g=new T.BufferGeometry();
     g.setAttribute('position',new T.Float32BufferAttribute(pos,3));g.setAttribute('normal',new T.Float32BufferAttribute(nor,3));
     g.setAttribute('aHull',new T.Float32BufferAttribute(hull,3));g.setAttribute('aColor',new T.Float32BufferAttribute(col,3));
-    g.setAttribute('aSway',new T.Float32BufferAttribute(sway,1));
+    g.setAttribute('aSway',new T.Float32BufferAttribute(sway,1));g.setAttribute('aGo',new T.Float32BufferAttribute(go,3));
     const lg=new T.BufferGeometry();
     lg.setAttribute('position',new T.Float32BufferAttribute(lp,3));lg.setAttribute('aOther',new T.Float32BufferAttribute(lo,3));
     lg.setAttribute('aSide',new T.Float32BufferAttribute(lside,1));lg.setAttribute('aSeed',new T.Float32BufferAttribute(lseed,1));
-    lg.setAttribute('aSway',new T.Float32BufferAttribute(lsway,1));lg.setIndex(lidx);
+    lg.setAttribute('aSway',new T.Float32BufferAttribute(lsway,1));lg.setAttribute('aGo',new T.Float32BufferAttribute(lgo,3));lg.setIndex(lidx);
     const pen=Math.max(.5,Math.min(1,Math.pow((s.hi[1]-s.lo[1])/(s.so.count>1?s.so.count>8?5.5:4.4:3.2),.6)));
-    const own={uWash:{value:0},uSel:{value:0},uFlow:{value:s.move==='flow'?1:0},uLW:{value:1},uW:{value:1}};
+    const own={uWash:{value:0},uSel:{value:0},uFlow:{value:s.move==='flow'?1:0},uLW:{value:1},uW:{value:1},uGo:{value:0},uShade:{value:0}};
     const fill=new T.Mesh(g,mk(MDL_VS_FILL,MDL_FS_FILL,own,{polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:1}));
     const out=new T.Mesh(g,mk(MDL_VS_HULL,MDL_FS_HULL,own,{side:T.BackSide}));
     const lines=new T.Mesh(lg,mk(MDL_VS_LINE,MDL_FS_LINE,own,{side:T.DoubleSide,transparent:true}));
     lines.frustumCulled=false;out.frustumCulled=false;
     const grp=new T.Group();grp.position.set(cx,0,cz);grp.add(fill,out,lines);root.add(grp);
+    let shade=null;
+    if(!s.flat){shade=new T.Mesh(g,mk(MDL_VS_SHADE,MDL_FS_SHADE,own,{transparent:true,depthWrite:false,side:T.DoubleSide,
+        stencilWrite:true,stencilRef:1,stencilFunc:T.NotEqualStencilFunc,stencilZPass:T.ReplaceStencilOp}));
+      shade.frustumCulled=false;shade.renderOrder=-1;grp.add(shade)}
     fill.userData.si=si;picks.push(fill);
-    solids.push({s,grp,fill,out,lines,own,pen,nseg:segs.length,base:[cx,0,cz],r:Math.hypot(cx,cz),a0:Math.atan2(cz,cx),
+    const span=walks?(s.so.shape==='person'?Math.max((s.hi[1]-s.lo[1])*1.4,.5):MDL_FIT*.11):0;
+    solids.push({s,grp,fill,out,lines,shade,span,own,pen,nseg:segs.length,base:[cx,0,cz],r:Math.hypot(cx,cz),a0:Math.atan2(cz,cx),
       rank:rank[si],h:Math.max(s.hi[1],.01),tall:s.hi[1]-s.lo[1]});
   });
   // what falls or drifts
@@ -43931,12 +43986,15 @@ async function mdlGL(host,model,style,opts){
   const tags=[];
   const named={};
   solids.forEach(o=>{const text=opts.tag?opts.tag(o.s.so):o.s.so.label;if(!text||tags.length>=14||named[text])return;named[text]=1;
-    const el=sEl(opts.pick?'button':'span','mdl-tag',text);el.style.opacity='0';
-    if(opts.pick){el.type='button';el.onclick=e=>{e.stopPropagation();opts.pick(o.s.so,o.s.i)}}
-    tagHost.append(el);tags.push({el,o,w:text.length*6.8+18})});
+    const el=sEl('button','mdl-tag',text);el.style.opacity='0';el.type='button';
+    el.onclick=e=>{e.stopPropagation();if(opts.pick)opts.pick(o.s.so,o.s.i);else if(opts.tap)opts.tap(o.s.i)};
+    tagHost.append(el);tags.push({el,o,text,w:text.length*6.8+18})});
+  // a rule on the sheet: how long a round number of the model's own unit is, as the eye now stands
+  let scaleEl=null,scaleTx=null;
+  if(opts.unit){scaleEl=sEl('div','mdl-scale');scaleTx=sEl('span','');scaleEl.append(sEl('i',''),scaleTx);host.append(scaleEl)}
   // state
   const st={style:'',t0:performance.now(),t:0,az:-.9,el:1.45,dist:1,azU:0,elU:0,zoom:1,user:false,lastTouch:performance.now(),
-    explode:0,explodeTo:0,sel:-1,hover:-1,fit:0,stopped:false,running:false,last:0,done:false,seek:opts.seek};
+    explode:0,explodeTo:0,sel:-1,hover:-1,fit:0,fk:0,focus:null,fp:null,sw:0,sL:0,stopped:false,running:false,last:0,done:false,seek:opts.seek};
   const look=()=>MDL_LOOK[st.style];
   const apply=s=>{st.style=s;const L=look();
     U.uPaper.value.setRGB(L.paper[0],L.paper[1],L.paper[2]);U.uInk.value.setRGB(L.ink[0],L.ink[1],L.ink[2]);
@@ -43944,7 +44002,7 @@ async function mdlGL(host,model,style,opts){
     S.background=new T.Color(L.bg);host.dataset.style=s;
     const holo=s==='hologram';beam.visible=puck.visible=puckTop.visible=holo;
     sheet.material.transparent=holo;sheet.material.depthWrite=!holo;sheet.material.blending=holo?T.AdditiveBlending:T.NormalBlending;sheet.material.needsUpdate=true;
-    solids.forEach(o=>{o.out.visible=!holo;o.own.uLW.value=L.lw*px*o.pen;o.own.uW.value=L.hull*px*o.pen;
+    solids.forEach(o=>{o.out.visible=!holo;if(o.shade)o.shade.visible=!holo;o.own.uLW.value=L.lw*px*o.pen;o.own.uW.value=L.hull*px*o.pen;
       o.fill.material.transparent=holo;o.fill.material.depthWrite=!holo;o.fill.material.side=holo?T.DoubleSide:T.FrontSide;
       o.fill.material.blending=holo?T.AdditiveBlending:T.NormalBlending;
       o.lines.material.blending=holo?T.AdditiveBlending:T.NormalBlending;o.lines.material.depthWrite=!holo;o.lines.material.depthTest=!holo;
@@ -43975,7 +44033,8 @@ async function mdlGL(host,model,style,opts){
       const r0=RISE0+o.rank*RISEW,up=holo?1:(o.s.flat?ease((t-r0)/.5):back((t-r0)/RISED));
       o.grp.scale.y=Math.max(.0012,up);
       const shown=holo||t>r0;o.fill.visible=shown;o.out.visible=shown&&!holo&&up>.2;
-      o.own.uWash.value=ease((t-r0-RISED*.55)/1.1);
+      o.own.uWash.value=ease((t-r0-RISED*.55)/1.1);o.own.uShade.value=holo?0:ease((t-r0)/RISED);
+      o.own.uGo.value=o.span*ease((t-END)/3);
       // pulled apart: up a tower, outward from the middle of anything else
       const e=st.explode;let x=o.base[0],y=0,z=o.base[2];
       if(e>0){if(tall)y+=o.yr*B.H*.55*e;else{x*=1+.7*e;z*=1+.7*e}}     // along its own layout, so a row of parts stays a row
@@ -44011,8 +44070,13 @@ async function mdlGL(host,model,style,opts){
       const zr=px_*dx+py_*dy+pz_*dz,xr=Math.abs(px_*rx+pz_*rz),yr=Math.abs(px_*ux+py_*uy+pz_*uz);
       fit=Math.max(fit,zr+xr/th,zr+yr/tv)}
     st.fit+=(fit-st.fit)*(st.fit>1?.12:1);
-    const dist=st.fit*st.zoom;
-    cam.position.set(dx*dist,cy+dy*dist,dz*dist);cam.lookAt(0,cy,0);
+    // a tour, or a tapped name, brings the eye to one thing and back
+    const goal=st.focus?1:0;st.fk+=(goal-st.fk)*.07;if(Math.abs(goal-st.fk)>.003)moving=true;else st.fk=goal;
+    if(st.focus)st.fp=st.focus;
+    const fp=st.fp||{x:0,y:cy,z:0,r:B.R},fk=ease(st.fk);
+    const tx=fp.x*fk,ty=cy+(fp.y-cy)*fk,tz=fp.z*fk;
+    const dist=(st.fit+(Math.max(fp.r/tv/.46,2)-st.fit)*fk)*st.zoom*(holo?.88:1);
+    cam.position.set(tx+dx*dist,ty+dy*dist,tz+dz*dist);cam.lookAt(tx,ty,tz);
     cam.near=Math.max(.3,dist*.12);cam.far=dist*5+Math.max(B.R,B.far)*16;cam.updateProjectionMatrix();
     if(cv.width!==Math.round(Math.max(160,host.clientWidth)*px)||cv.height!==Math.round(Math.max(140,host.clientHeight)*px))size();
     R.render(S,cam);
@@ -44025,6 +44089,11 @@ async function mdlGL(host,model,style,opts){
       const show=on&&!hit&&x>20&&x<W-20&&y>14&&y<H-8;if(show)used.push({x,y,w:tg.w});
       tg.el.style.transform=`translate(${x.toFixed(1)}px,${y.toFixed(1)}px) translate(-50%,-100%)`;tg.el.style.opacity=show?'1':'0';
       tg.el.style.pointerEvents=show?'':'none'});
+    if(scaleEl){v.set(tx,ty,tz).project(cam);const x0=(v.x+1)/2*W;v.set(tx+rx,ty,tz+rz).project(cam);
+      const ppu=Math.abs((v.x+1)/2*W-x0),want=90/Math.max(ppu,.01)/B.k,e=Math.pow(10,Math.floor(Math.log10(Math.max(want,1e-6))));
+      const L=[1,2,5,10].map(f=>f*e).reduce((a,b)=>Math.abs(b-want)<Math.abs(a-want)?b:a),wpx=L*B.k*ppu;
+      if(Math.abs(wpx-st.sw)>1||L!==st.sL){st.sw=wpx;st.sL=L;scaleEl.querySelector('i').style.width=wpx.toFixed(0)+'px';
+        scaleTx.textContent=(L>=1?String(Math.round(L)):L.toPrecision(1))+' '+opts.unit}}
     if(!st.done&&t>=END){st.done=true;host.classList.add('mdl-built');if(opts.built)opts.built()}
     const alive=(now-st.lastTouch)/1000<MDL_LIFE_S;
     if(st.seek!=null){host.dataset.frame=String(st.seek);return}
@@ -44065,6 +44134,14 @@ async function mdlGL(host,model,style,opts){
     explode:on=>{st.explodeTo=on?1:0;wake()},
     zoom:f=>{st.zoom=Math.max(.35,Math.min(2.4,st.zoom*f));wake()},
     select:i=>{st.sel=i;wake()},
+    // bring the eye to one named thing (by its place in the solids), or back to the whole
+    focus:i=>{const o=i==null?null:solids.find(q=>q.s.i===i);if(o&&!st.done)st.t0=performance.now()-END*1000;   // a tour of a thing half built shows it built
+
+      const cl=(x,m)=>Math.max(-m,Math.min(m,x));
+      st.focus=o?{x:cl(o.grp.position.x,B.W*.6),y:Math.min((o.s.lo[1]+o.s.hi[1])/2,B.H),z:cl(o.grp.position.z,B.D*.6),
+        // a river or a range of hills is wider than the sheet: the eye comes in to a part of it, never out
+        r:Math.min(Math.max(Math.max(o.s.hi[0]-o.s.lo[0],o.s.hi[1]-o.s.lo[1],o.s.hi[2]-o.s.lo[2])/2,B.R*.1),B.R*.34)}:null;st.sel=o?i:-1;wake()},
+    named:tags.map(tg=>({i:tg.o.s.i,text:tg.text,so:tg.o.s.so})),
     dispose,state:st};
 }
 
@@ -44105,19 +44182,65 @@ function mdlMount(host,model,opts){
   btn('＋','Come closer',()=>M.gl&&M.gl.zoom(.82));btn('－','Step back',()=>M.gl&&M.gl.zoom(1.22));
   bar.append(acts);
   const hint=sEl('div','mdl-hint','Drag to turn it');host.append(hint);
-  mdlGL(host,model,start,{tag:opts.tag,pick:opts.pick,seek:opts.seek!=null?opts.seek:window.MDL_SEEK,skip:!!kept.built,built:()=>{if(!kept.built)hint.classList.add('on');kept.built=true}}).then(gl=>{
+  // the tour: the eye goes to each named thing in turn and says what it is; a tapped name does one stop
+  const cap=sEl('div','mdl-cap');cap.setAttribute('aria-live','polite');cap.hidden=true;host.append(cap);
+  const noteOf=so=>opts.note?opts.note(so):(so.note||'');
+  let tour=0,at=-1;
+  const stop=()=>{if(tour){clearTimeout(tour);tour=0}at=-1;cap.hidden=true;if(tb){tb.classList.remove('on');tb.setAttribute('aria-pressed','false')}if(M.gl)M.gl.focus(null)};
+  const show=k=>{const n=M.gl.named[k];at=k;cap.textContent='';cap.append(sEl('b','',n.text));const nt=noteOf(n.so);if(nt)cap.append(sEl('span','',nt));
+    cap.hidden=false;M.gl.focus(n.i);
+    if(tour&&nt&&typeof VOICE!=='undefined'&&VOICE.tts&&typeof speakAs==='function'&&typeof agentName==='function')speakAs(agentName(),n.text+'. '+nt)};
+  const step=k=>{if(!host.isConnected||!M.gl){tour=0;return}if(k>=M.gl.named.length){stop();return}
+    show(k);tour=setTimeout(()=>step(k+1),Math.max(3800,noteOf(M.gl.named[k].so).length*55+2200))};
+  let tb=null;
+  mdlGL(host,model,start,{tag:opts.tag,pick:opts.pick,unit:opts.unit,seek:opts.seek!=null?opts.seek:window.MDL_SEEK,skip:!!kept.built,
+    tap:i=>{const k=M.gl.named.findIndex(n=>n.i===i);if(tour){clearTimeout(tour);tour=0;tb&&tb.classList.remove('on')}if(k===at)stop();else if(k>=0)show(k)},
+    built:()=>{if(!kept.built){hint.classList.add('on');try{if(typeof stageMusicOn==='function'&&stageMusicOn()&&typeof stageBell==='function')stageBell()}catch(e){}}kept.built=true}}).then(gl=>{
     if(!host.isConnected){if(gl)gl.dispose();return}
-    if(!gl){hint.remove();acts.remove();paintStill();return}   // no renderer after all: the ink drawing
-    M.gl=gl;host.append(bar,hint)});
+    if(!gl){hint.remove();acts.remove();cap.remove();paintStill();return}   // no renderer after all: the ink drawing
+    M.gl=gl;host.append(bar,hint);if(!kept.built&&start!=='hologram')mdlSound(3.2);
+    if(gl.named.length>1){tb=sEl('button','mdl-b','▸');tb.append(sEl('span','mdl-w',' Tour'));tb.type='button';tb.title='Go round it, one named thing at a time';
+      tb.setAttribute('aria-label',tb.title);tb.setAttribute('aria-pressed','false');
+      tb.onclick=()=>{if(tour||at>=0){stop();return}tb.classList.add('on');tb.setAttribute('aria-pressed','true');tour=1;step(0)};acts.prepend(tb)}});
+  cv0(host,stop);
   return M;
+}
+
+/* turning it yourself ends a tour */
+function cv0(host,stop){host.addEventListener('pointerdown',e=>{if(e.target&&e.target.tagName==='CANVAS')stop()})}
+
+/* A dimension line beside the tallest named thing: a pole, two ticks and its height in words,
+   as on a drawing. The height is the one the agent gave it. */
+function mdlDimension(solids,unit){
+  const back={mountain:1,cloud:1,bird:1,plane:1};let best=null;
+  solids.forEach(so=>{if(so.label&&!(so.count>1)&&!so.tilt&&!back[so.shape]&&(!best||so.size[1]>best.size[1]))best=so});
+  if(!best||best.size[1]<=0)return [];
+  const h=best.size[1],w=best.size[0],t=h*.007,g=Math.max(w*.22,h*.05),x=best.at[0]+w/2+g,y=best.at[1],z=best.at[2];
+  const txt=(h>=10?String(Math.round(h)):String(Math.round(h*10)/10))+' '+unit;
+  return [{shape:'box',at:[x,y,z],size:[t,h,t],label:txt,note:'How tall '+best.label+' stands.'},
+    {shape:'box',at:[x,y,z],size:[g*.9,t,t]},{shape:'box',at:[x,y+h-t,z],size:[g*.9,t,t]}];
+}
+
+/* The pen is heard while the plan is inked, and a bell when it stands: only when the person has
+   the Stage's music on, and only from the context that music already opened. */
+function mdlSound(seconds){
+  try{if(typeof stageMusicOn!=='function'||!stageMusicOn()||typeof STAGE_MU==='undefined'||!STAGE_MU.ctx)return;
+    const ctx=STAGE_MU.ctx,n=Math.floor(ctx.sampleRate*seconds),buf=ctx.createBuffer(1,n,ctx.sampleRate),d=buf.getChannelData(0);
+    let on=0;for(let i=0;i<n;i++){if(i%Math.floor(ctx.sampleRate*.09)===0)on=Math.random()<.7?1:0;   // strokes, with the pen lifted between them
+      d[i]=(Math.random()*2-1)*on*(.5+.5*Math.sin(i/ctx.sampleRate*38))}
+    const src=ctx.createBufferSource(),bp=ctx.createBiquadFilter(),g=ctx.createGain();src.buffer=buf;bp.type='bandpass';bp.frequency.value=3400;bp.Q.value=.8;
+    g.gain.setValueAtTime(0,ctx.currentTime);g.gain.linearRampToValueAtTime(.035,ctx.currentTime+.3);g.gain.linearRampToValueAtTime(0,ctx.currentTime+seconds);
+    src.connect(bp);bp.connect(g);g.connect(STAGE_MU.master||ctx.destination);src.start();
+  }catch(e){}
 }
 
 /* the scene kind */
 function stageModel(art,sc){
   const fr=sEl('div','stg-model');art.append(fr);
   const cur=typeof STAGE!=='undefined'&&STAGE.scenes&&STAGE.scenes[STAGE.at];
-  mdlMount(fr,{solids:sc.solids||[],style:sc.style,weather:sc.weather,ground:sc.ground,title:sc.title},
-    {key:cur&&cur.scene===sc?cur.id:''});
+  const solids=(sc.solids||[]).concat(mdlDimension(sc.solids||[],'m'));
+  mdlMount(fr,{solids,style:sc.style,weather:sc.weather,ground:sc.ground,title:sc.title},
+    {key:cur&&cur.scene===sc?cur.id:'',unit:'m'});
 }
 function stageModelMs(){return 9500}
 
@@ -44144,7 +44267,7 @@ function bpModelOf(sc){
   solids.push({shape:'box',at:[off,0,0],size:[t,span,t]});
   stageTicks(lo,hi,5).concat([hi]).filter((v,i,a)=>v>=lo&&v<=hi&&a.indexOf(v)===i&&(v===hi||hi-v>span*.06)).forEach(v=>{
     solids.push({shape:'box',at:[off+wide*.09,v-lo-t/2,0],size:[wide*.18,t,t],label:bpFmt(v)+(unit?' '+unit:'')})});
-  return {solids,style:sc.style||'paper',auto:true};
+  return {solids,style:sc.style||'paper',auto:true,unit:sc.unit||''};
 }
 function bpModelView(st){
   const {draw,svg}=st.el;svg.style.display='none';
@@ -44152,7 +44275,8 @@ function bpModelView(st){
   const box=sEl('div','bp-look bp-model');draw.append(box);
   const name={};(function walk(ps){(ps||[]).forEach(p=>{name[p.id]=p;walk(p.parts)})})(st.sc.parts);
   const top={};(st.sc.parts||[]).forEach(t=>{(function walk(ps){(ps||[]).forEach(p=>{top[p.id]=t.id;walk(p.parts)})})([t])});
-  mdlMount(box,{solids:mdl.solids,style:mdl.style,title:st.sc.subject||st.sc.title},{key:st.sid,
+  mdlMount(box,{solids:mdl.solids,style:mdl.style,title:st.sc.subject||st.sc.title},{key:st.sid,unit:mdl.unit||'',
+    note:so=>{const p=so.part&&name[so.part];return so.note||(p?p.role||'':'')},
     tag:so=>so.label||(so.part&&name[so.part]?name[so.part].name:''),
     pick:so=>{if(!so.part||!top[so.part])return;
       // a tap reads the part in the panel; a second tap on it opens it

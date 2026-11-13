@@ -30,7 +30,8 @@ JS = (ROOT / "agentos/ui/src/js/24x-model.js").read_text()
 
 KYOTO = {"kind": "model", "title": "Kyoto in spring", "style": "paper", "weather": "petals", "ground": "grass",
          "solids": [
-             {"shape": "pagoda", "at": [0, 0, -8], "size": [11, 34, 11], "tiers": 5, "label": "Yasaka Pagoda"},
+             {"shape": "pagoda", "at": [0, 0, -8], "size": [11, 34, 11], "tiers": 5, "label": "Yasaka Pagoda",
+              "note": "The landmark of the old town."},
              {"shape": "blossom", "at": [0, 0, 0], "count": 34, "spread": [100, 60], "color": "pink"},
              {"shape": "water", "at": [0, 26], "size": [120, 0.1, 10]},
              {"shape": "cloud", "at": [-25, 34, -20], "move": "drift"}]}
@@ -41,7 +42,9 @@ def test_a_model_is_a_closed_set_read_field_by_field():
     assert not dropped and sc["style"] == "paper" and sc["weather"] == "petals" and sc["ground"] == "grass"
     pagoda, grove, water, cloud = sc["solids"]
     assert pagoda == {"shape": "pagoda", "at": [0.0, 0.0, -8.0], "size": [11.0, 34.0, 11.0], "tiers": 5,
-                      "label": "Yasaka Pagoda"}
+                      "label": "Yasaka Pagoda", "note": "The landmark of the old town."}
+    # a note is what the tour says at a named thing: one with no label has no stop to say it at
+    assert "note" not in stage.clean({"kind": "model", "title": "t", "solids": [{"shape": "box", "note": "x"}]})[0]["solids"][0]
     assert grove["count"] == 34 and grove["spread"] == [100.0, 60.0] and grove["size"] == [5.0, 5.5, 5.0]
     assert water["at"] == [0.0, 0.0, 26.0]                       # [x, z] stands on the ground
     assert cloud["move"] == "drift"
@@ -124,7 +127,9 @@ def test_the_agent_is_told_how_to_build_one():
 def test_the_painter_rests_and_never_runs_what_it_was_given():
     assert "innerHTML" not in JS and "eval(" not in JS and "new Function" not in JS
     for needle in ("host.isConnected", "document.hidden", "MDL_LIFE_S", "forceContextLoss", "mdlLite()",
-                   "stageReduced()", "window.STAGE_REPORT", "mdlStill(host,model", "host.clientWidth"):
+                   "stageReduced()", "window.STAGE_REPORT", "mdlStill(host,model", "host.clientWidth",
+                   # shade is cast once per pixel, a tour ends at a touch, and a name is a stop on it
+                   "stencilWrite:true", "T.NotEqualStencilFunc", "cv0(host,stop)", "'mdl-cap'", "mdlDimension("):
         assert needle in JS, needle
     css = (ROOT / "agentos/ui/src/css/42-model.css").read_text()
     assert "infinite" not in css and "body.still .stg-model" in css
@@ -150,12 +155,18 @@ for(const sh of shapes){for(const pc of mdlPieces({shape:sh,size:[4,6,3],at:[0,0
 const B=mdlBuild({solids:%s});
 const grove=B.solids[1],pag=B.solids[0];
 const inPagoda=grove.meshes.some(m=>m.leaf&&m.v.every(p=>p[0]>pag.lo[0]&&p[0]<pag.hi[0]&&p[2]>pag.lo[2]&&p[2]<pag.hi[2]));
+const ruled=sh=>mdlBuild({solids:[{shape:sh,at:[0,0,0],size:[8,6,6]}]}).solids[0].meshes.reduce((t,x)=>t+x.f.reduce((u,f)=>u+(f.lines||[]).length,0),0);
+const walkers=mdlBuild({solids:[{shape:'person',at:[0,0,0],size:[.6,1.8,.4],count:3,spread:[9,9]}]}).solids[0];
+const dim=mdlDimension(%s,'m');
 const lying=mdlBuild({solids:[{shape:'cylinder',at:[0,1,0],size:[2,6,2],tilt:90}]}).solids[0];
 const twr=bpModelOf({form:'tower',unit:'m',parts:[{id:'a',from:-50,to:0,width:110},{id:'b',from:0,to:400,width:60},{id:'c',from:400,to:828,width:8}]});
 console.log(JSON.stringify({bad,longest:Math.max(B.W,B.D),low:Math.min(...B.solids.map(s=>s.lo[1])),copies:grove.meshes.length,
   inPagoda,lyingLong:(lying.hi[0]-lying.lo[0])/(lying.hi[1]-lying.lo[1]),tower:twr.solids.filter(s=>s.part).map(s=>[s.part,s.at[1],s.size[1]]),
-  rule:twr.solids.filter(s=>s.label).map(s=>s.label)}));
-""" % (json.dumps(list(stage.MODEL_SHAPES)), json.dumps(stage.clean(KYOTO)[0]["solids"]))
+  rule:twr.solids.filter(s=>s.label).map(s=>s.label),ruled:['house','roof','wall','bridge','pagoda'].map(ruled),
+  walk:[walkers.move,walkers.meshes[0].go.length,Math.hypot(walkers.meshes[0].go[0],walkers.meshes[0].go[1])],
+  dim:[dim.length,dim[0].label,dim[0].size[1]]}));
+""" % (json.dumps(list(stage.MODEL_SHAPES)), json.dumps(stage.clean(KYOTO)[0]["solids"]),
+       json.dumps(stage.clean(KYOTO)[0]["solids"]))
     # the helpers the painter borrows from the Stage's other files
     pre = "function stageTicks(lo,hi,n){const o=[];for(let t=0;t<=hi;t+=200)o.push(t);return o}function bpFmt(n){return String(n)}\n"
     out = subprocess.run(["node", "-e", pre + script], capture_output=True, text=True, timeout=60)
@@ -167,3 +178,6 @@ console.log(JSON.stringify({bad,longest:Math.max(B.W,B.D),low:Math.min(...B.soli
     assert got["lyingLong"] > 2.5                                          # tilt 90 lays it on its side
     assert got["tower"] == [["a", 0, 50], ["b", 50, 400], ["c", 450, 428]]
     assert "Ground" in got["rule"] and "828 m" in got["rule"]
+    assert all(n > 0 for n in got["ruled"])                                # tiles, courses, planks are drawn
+    assert got["walk"][0] == "walk" and got["walk"][1] == 3 and abs(got["walk"][2] - 1) < 1e-6
+    assert got["dim"] == [3, "34 m", 34]                                   # the tallest named thing is measured

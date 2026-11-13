@@ -65,6 +65,16 @@ fall, water runs, clouds drift, birds circle.
 
 ![The same model a few seconds into its build: the plan inked flat on the paper, the pagoda and houses rising out of it before their colour arrives](screenshots/stage-model-kyoto-rising.png)
 
+It is drawn as a draughtsman would draw it. Roofs are tiled, walls coursed and bridges planked in ink.
+Everything casts a hatched shadow on the sheet. The tallest named thing gets a dimension line with its
+height, and a scale rule in the corner follows the camera. People walk, boats sail and cars drive.
+
+**Tour** takes you round: the camera goes to each named thing in turn and a caption says what it is, in
+the agent's own sentence (read aloud when your agent's voice is on). Tap any name to go there yourself.
+With the Stage's music on, you hear the pen while the plan is inked and a bell when it stands.
+
+![The tour stopped at the pagoda: the camera close on it, its dimension line beside it, and a caption with its name and one sentence about it](screenshots/stage-model-tour.png)
+
 Drag to turn it. **Pull apart** separates the solids, **Build again** replays the drawing, and ＋ and －
 move you closer or back. Three looks are one tap apart:
 

@@ -7621,10 +7621,11 @@ STAGE_TOOL_SCHEMAS = [
                          "description": "blueprint: what nobody outside can know about it"},
             "solids": {"type": "array", "items": {"type": "object"}, "description":
                        "model: 15 to 50 solids, [{shape, at: [x, y, z] (x right, z towards the viewer, y "
-                       "the height of its base), size: [width, height, depth], color?, label?, count? "
+                       "the height of its base), size: [width, height, depth], color?, label?, note? "
+                       "(one sentence the tour says at a labelled thing), count? "
                        "with spread: [width, depth] (scatter copies over an area), turn? (degrees), tilt? "
                        "(degrees it is laid over; 90 is on its side along x), "
-                       "move? (spin, sway, bob, drift, orbit or flow), tiers? (storeys)}]. shape: box, "
+                       "move? (spin, sway, bob, drift, orbit, flow or walk), tiers? (storeys)}]. shape: box, "
                        "cylinder, cone, pyramid, sphere, dome, roof, ring, arch, or ready-made tree, "
                        "blossom, pine, palm, bamboo, bush, rock, mountain, cloud, water, house, building, "
                        "pagoda, torii, bridge, lantern, wall, column, stairs, path, person, bird, boat, "
