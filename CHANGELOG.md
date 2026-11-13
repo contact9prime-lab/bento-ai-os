@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.1 — 2026-11-13
+
+No release notes were written for this one; the commits since 0.9.0 are what changed (`bento update` lists them).
+
 ## 0.8.9 — 2026-11-12
 
 **App Studio is an IDE.** Open an app's file and write it yourself, as well as describing changes
