@@ -2684,6 +2684,46 @@ def _ai_scan(desc: str, html: str) -> dict:
         return {"scanner": "static/1", "text": ""}
 
 
+def _skills_cli(args) -> int:
+    """`bento skills` — the downloadable skills (agentos/skillpack): list them, copy them
+    into an agent's skills folder, zip them, or (from a checkout) rebuild plugins/bento."""
+    from pathlib import Path
+    from . import skillpack
+    act = args.action
+    if act == "list":
+        for name in skillpack.SKILLS:
+            md = (skillpack.SRC / name / "SKILL.md").read_text(encoding="utf-8")
+            desc = next((ln[13:] for ln in md.splitlines() if ln.startswith("description: ")), "")
+            print(f"{name:16} {desc.split('. ')[0]}")
+        print("\ninstall: bento skills install   (into ~/.claude/skills)")
+        print(f"Claude Code: /plugin marketplace add {skillpack.REPO_SLUG} · "
+              f"/plugin install {skillpack.PLUGIN}@{skillpack.MARKET}")
+        return 0
+    if act == "install":
+        dest = Path(args.to).expanduser() if args.to else Path.home() / ".claude" / "skills"
+        try:
+            for line in skillpack.install(dest, args.names or None, replace=args.replace):
+                print(line)
+        except ValueError as e:
+            print(f"✗ {e}")
+            return 1
+        return 0
+    if act == "zip":
+        for z in skillpack.zip_all(Path(args.to or "skills-dist").expanduser()):
+            print(f"wrote {z.resolve()}")
+        return 0
+    if not (skillpack.REPO / "pyproject.toml").exists():
+        print("build and check need a checkout of the Bento source")
+        return 1
+    if act == "build":
+        changed = skillpack.build()
+        print("\n".join(changed) if changed else "up to date")
+        return 0
+    bad = skillpack.stale()
+    print("up to date" if not bad else "stale (run `bento skills build`):\n  " + "\n  ".join(bad))
+    return 1 if bad else 0
+
+
 def _flow_cli(args):
     """`agentos flow` — the control plane from a terminal.
 
@@ -2730,6 +2770,25 @@ def _flow_cli(args):
             if last:
                 print(f"    last:   {last[0]['status']} · "
                       f"{time.strftime('%d %b %H:%M', time.localtime(last[0]['started_at']))}")
+        return
+
+    if act == "add" and getattr(args, "file", ""):
+        # a mission designed anywhere (the bento-mission skill) comes in through the same door
+        # Missions' drafts use, save_draft: switched off, a taken name numbered, agents made
+        try:
+            draft = json.loads(Path(args.file).expanduser().read_text(encoding="utf-8"))
+            if not isinstance(draft, dict):
+                raise ValueError("a mission file is one JSON object")
+            if args.name:
+                draft["name"] = args.name
+            flow, report = flowsmod.save_draft(store, draft)
+        except (OSError, ValueError) as e:
+            print(f"✗ {e}")
+            sys.exit(1)
+        print(f"✓ added '{flow['name']}' — switched off, so it holds no permissions yet")
+        if report.get("agents_created"):
+            print(f"    new agents: {', '.join(report['agents_created'])}")
+        print(f"    read it in Missions → Build, then: agentos flow enable {flow['name']}")
         return
 
     if act in ("add", "trigger", "rotate", "enable", "disable"):
@@ -9843,6 +9902,8 @@ def main():
     p_flow.add_argument("--days", type=float, default=0,
                         help="with `rotate`: expire the new secret after N days (0 = never)")
     p_flow.add_argument("--limit", type=int, default=20, help="with `runs`/`events`: how many")
+    p_flow.add_argument("--file", default="",
+                        help="with `add`: a mission.json (the bento-mission skill's shape); arrives switched off")
 
     p_job = verb("job", help="give this machine a standing mission — the terminal "
                                        "half of the Missions app and the first-run screen")
@@ -9903,6 +9964,12 @@ def main():
     p_brief.add_argument("choice", nargs="?", default="", help="decide: the choice, in the item's words")
     p_brief.add_argument("--weekdays", action="store_true", help="schedule: on weekdays only")
     p_brief.add_argument("--ai", choices=["on", "off"], help="schedule: an AI summary on top")
+    p_sk = verb("skills", help="Bento's Stage, Blueprint, Brief and Mission as Agent Skills to download")
+    p_sk.add_argument("action", nargs="?", default="list",
+                      choices=["list", "install", "zip", "build", "check"])
+    p_sk.add_argument("names", nargs="*", help="install: which skills (all by default)")
+    p_sk.add_argument("--to", default="", help="install: the skills folder (~/.claude/skills) · zip: the folder for the zips")
+    p_sk.add_argument("--replace", action="store_true", help="install: overwrite a copy that is there")
     p_st = verb("stage", help="answers shown, not only written: the Stage's stories, boards and Answer BIG")
     p_st.add_argument("action", nargs="?", default="show",
                       choices=["show", "list", "boards", "big", "keep", "drop", "xray", "contact", "export"])
@@ -10414,6 +10481,8 @@ def main():
         raise SystemExit(_trace_cli(args))
     elif args.cmd == "stage":
         raise SystemExit(_stage_cli(args))
+    elif args.cmd == "skills":
+        raise SystemExit(_skills_cli(args))
     elif args.cmd == "mind":
         _mind_cli(args)
     elif args.cmd == "link":

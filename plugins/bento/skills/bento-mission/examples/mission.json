@@ -1,0 +1,10 @@
+{"name": "invoice-filer",
+ "description": "Files invoices that land in Downloads.",
+ "mission": "When a new file appears in ~/Downloads, decide whether it is an invoice. If it is, read it, extract the supplier, date and amount, and file one done item in the Brief keyed on the file name. If it is not, do nothing and finish saying so.",
+ "new_agents": [{"name": "filer", "soul": "You sort documents. Read what you are given, decide what it is, and return one structured line: supplier, date, amount. Say 'not an invoice' rather than guessing.",
+                 "tools": ["read_file", "list_dir", "brief_item"], "max_steps": 8, "max_seconds": 240}],
+ "roster": [{"subagent": "filer", "why": "reads the file and decides what it is"}],
+ "permissions": {"tools": ["read_file", "list_dir", "brief_item"], "skills": [], "net": [],
+                 "fs_read": ["~/Downloads/*"], "fs_write": [], "memory": "read-space"},
+ "sinks": [{"kind": "notify"}],
+ "triggers": [{"kind": "os_event", "config": {"event": "file_change", "path": "~/Downloads"}}]}
