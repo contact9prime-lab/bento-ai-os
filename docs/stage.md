@@ -8,6 +8,7 @@ the chain of cause and effect. The written answer still comes too. The Stage pla
 
 | Scene | What it is for |
 |---|---|
+| Model | A place or a thing built in 3D: inked on paper, raised, and set moving |
 | Chart | A trend, a comparison or a share: line, area, bar, scatter or pie, with lines called out ("low IV below 12") |
 | Map | Places (dots sized by their value) and countries (shaded by their value), on a world map that works offline |
 | Numbers | Three to six key figures, counted up |
@@ -52,6 +53,44 @@ shot with its line.
 
 ![The same film on a phone with reduced motion: a storyboard of cards, "1 · 5s · push, It starts in one small building" and "2 · 5s · orbit, 1,000, The first thousand customers find it"](screenshots/stage-film-storyboard.png)
 
+## Models: build a place or a thing in 3D
+
+Ask for a place, a scene or an object ("build me Kyoto in spring", "a castle on a hill", "a space
+station") and the agent builds a model. It places solids: where each stands, how big, what colour, and
+how many. Your screen then draws it in three steps. The plan is inked on the sheet line by line. Each
+solid rises out of the paper. The colour washes in, and the place starts to move: leaves sway, petals
+fall, water runs, clouds drift, birds circle.
+
+![Kyoto in spring on the Stage, built by Claude Code: a five-storey pagoda, a golden pavilion, a temple hall, townhouses, a river and over a hundred cherry trees in ink and colour wash on brown paper, with hills behind and petals falling](screenshots/stage-model-kyoto.png)
+
+![The same model a few seconds into its build: the plan inked flat on the paper, the pagoda and houses rising out of it before their colour arrives](screenshots/stage-model-kyoto-rising.png)
+
+Drag to turn it. **Pull apart** separates the solids, **Build again** replays the drawing, and ＋ and －
+move you closer or back. Three looks are one tap apart:
+
+- **Paper**: black ink on brown paper, the shaded sides hatched with pen strokes, colour as a wash.
+- **Blueprint**: white line on a ruled blue sheet.
+- **Hologram**: lines of light swept up from a projector, turning slowly.
+
+![A tower over a city block as a hologram: buildings as glowing line frames above a projector, with labels on the tower and an aircraft](screenshots/stage-model-hologram.png)
+
+The shapes are box, cylinder, cone, pyramid, sphere, dome, roof, ring and arch, plus ready-made tree,
+blossom, pine, palm, bamboo, bush, rock, mountain, cloud, water, house, building, pagoda, torii, bridge,
+lantern, wall, column, stairs, path, person, bird, boat, car and plane. One solid can be scattered
+(a grove of thirty trees), turned, laid on its side, and told to spin, sway, bob, drift, orbit or flow.
+The weather can be petals, leaves, snow, rain, fireflies or sparks. The agent picks from these lists
+and nothing it writes runs as code.
+
+The model lives for about forty seconds after your last touch and then rests on one frame. A small
+machine's own screen, reduced motion and a browser without 3D graphics show a still ink drawing of the
+same model, and so does your phone:
+
+![Kyoto in spring as it arrives in Telegram: a still ink and wash drawing of the model on brown paper, with its labels](screenshots/stage-model-telegram.png)
+
+![The model on a 390px phone: the drawing fills the width, the look buttons and the pull apart, build again and zoom buttons under it](screenshots/stage-model-kyoto-phone.png)
+
+In a terminal a model is one line saying what stands in it.
+
 ## Blueprints: take anything apart
 
 Ask "give me a fine blueprint of the Burj Khalifa", "what's inside a jet engine?" or "how is a cell
@@ -69,6 +108,17 @@ line and an elevation scale. It doesn't stop at the outside. Every part opens.
   plays here next, with the way back.
 
 ![Three levels in: the buttressed core of the Burj Khalifa, exploded into its walls, with "you are here" on the tower](screenshots/stage-blueprint-inside.png)
+
+### In 3D
+
+A blueprint opens in 3D when it can. A tower with heights is stacked to scale, with its storeys ruled
+round it and a height rule beside it. For anything else the agent gives the shape of each part. Tap a
+part to read it in the panel, tap it again to open it, and use **Pull apart** to see how it goes
+together. **Parts** takes you back to the flat drawing.
+
+![Burj Khalifa as a 3D blueprint on brown paper: the tower stacked to scale from foundation to spire, each part labelled, and a rule beside it marking 0, 200, 400 and 828 m](screenshots/stage-blueprint-3d-tower.png)
+
+![A turbofan engine as a 3D blueprint, pulled apart: fan, compressors, combustor and turbines as separate coloured cylinders on one axis, each labelled](screenshots/stage-blueprint-3d-engine.png)
 
 ### Every part is filled in
 

@@ -180,8 +180,8 @@ async function stageAttach(cid){
    keeps a way back. Asked for as "the look and feel is really horrible, it needs a very
    good immersive experience", with background sound, pictures and videos. */
 var STAGE_KIND={chart:'Chart',map:'Map',numbers:'Key numbers',timeline:'Timeline',steps:'How it works',
-  table:'Table',image:'Picture',video:'Video',film:'Film',blueprint:'Blueprint'};
-var STAGE_HUE={chart:255,map:200,numbers:280,timeline:170,steps:320,table:225,image:30,video:350,film:265,blueprint:205};
+  table:'Table',image:'Picture',video:'Video',film:'Film',blueprint:'Blueprint',model:'3D model'};
+var STAGE_HUE={chart:255,map:200,numbers:280,timeline:170,steps:320,table:225,image:30,video:350,film:265,blueprint:205,model:32};
 async function renderStage(body,w){
   body.classList.add('stage-body');
   if(w&&w.app&&!w.app.onClose)w.app.onClose=()=>{stageMusic(false,true);STAGE.playing=false};
@@ -367,7 +367,7 @@ function stagePlay(){
       if(STAGE.at>=STAGE.scenes.length-1){STAGE.playing=false;STAGE.held=0;stagePaint();return}
       STAGE.at++;stagePaint();step()},900);
     // a video plays at its own pace: the story waits on it rather than cutting it off
-    const hold=sc.kind==='video'?20000:sc.kind==='film'?stageFilmSeconds(sc)*1000:sc.kind==='blueprint'?bpTourMs(sc):0;
+    const hold=sc.kind==='video'?20000:sc.kind==='film'?stageFilmSeconds(sc)*1000:sc.kind==='blueprint'?bpTourMs(sc):sc.kind==='model'?stageModelMs():0;
     if(typeof VOICE!=='undefined'&&VOICE.tts&&typeof speakAs==='function'&&line)speakAs(agentName(),line,()=>setTimeout(after,hold));
     else setTimeout(after,Math.max(4500,line.length*60)+hold);
   };
@@ -549,7 +549,7 @@ function stageBoards(main){
 /* ================= drawing ================= */
 function stageDraw(art,sc){
   ({chart:stageChart,map:stageMap,numbers:stageNumbers,timeline:stageTimeline,steps:stageSteps,table:stageTable,
-    image:stageImage,video:stageVideo,film:stageFilm,blueprint:stageBlueprint}[sc.kind]||(()=>{}))(art,sc);
+    image:stageImage,video:stageVideo,film:stageFilm,blueprint:stageBlueprint,model:stageModel}[sc.kind]||(()=>{}))(art,sc);
   if(stageReduced())art.classList.add('still');
 }
 

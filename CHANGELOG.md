@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.9.2 — 2026-11-13
+
+**The Stage builds things in 3D.** Ask your agent to build a place or a thing ("build me Kyoto in
+spring") and it places solids from a closed set: pagodas, cherry trees, bridges, buildings, people,
+or plain boxes and cylinders for anything else. The page inks the plan on brown paper line by
+line, raises it into 3D, washes the colour in, and then it moves: leaves sway, petals fall, water
+runs. Drag to turn it, pull it apart, or build it again. Three looks, one tap apart: ink on paper,
+a blueprint sheet, or a hologram over a projector.
+
+**A blueprint opens in 3D.** A tower with heights is stacked to scale with a height rule beside it.
+For anything else the agent gives the shape of each part, and a tap on a part opens it in the
+panel. A phone gets the same model as an ink drawing, first in the album.
+
+Nothing the agent writes runs: it picks shapes, places and colours, and the page draws them. A
+small machine's own screen, reduced motion and a browser with no WebGL get the still ink drawing.
+
 ## 0.9.1 — 2026-11-13
 
 No release notes were written for this one; the commits since 0.9.0 are what changed (`bento update` lists them).

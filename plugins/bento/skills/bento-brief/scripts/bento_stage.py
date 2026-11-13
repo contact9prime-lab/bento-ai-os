@@ -37,7 +37,7 @@ import time
 import uuid
 
 KINDS = ("chart", "map", "numbers", "timeline", "steps", "table", "image", "video", "film",
-         "blueprint")
+         "blueprint", "model")
 CHART_TYPES = ("line", "area", "bar", "scatter", "pie")
 NEEDS_SOURCE = ("chart", "map", "numbers", "table")   # the kinds that carry measurements
 
@@ -63,7 +63,9 @@ FIELDS = {
     "image": ("url", "asset", "alt", "credit"),
     "video": ("url", "start"),
     "film": ("shots", "look"),
-    "blueprint": ("subject", "form", "unit", "parts", "links", "unknowns", "facts", "look_for"),
+    "blueprint": ("subject", "form", "unit", "parts", "links", "unknowns", "facts", "look_for",
+                  "model", "style"),
+    "model": ("solids", "style", "weather", "ground"),
 }
 
 # A blueprint takes a thing apart instead of presenting it: its parts, how they connect,
@@ -110,6 +112,37 @@ FILM_CAMERAS = ("orbit", "push", "rise", "fly", "top")
 FILM_LOOKS = ("day", "dusk", "night")
 MAX_SHOTS = 6
 SHOT_S = (2, 8)          # seconds a shot may last; a film is under half a minute
+# A model is a thing or a place built in 3D from solids, asked for as "paper style detailed
+# blueprint with brown paper and black lines, a bit animated … if I have to build Kyoto with
+# pink leaves and trees I should be able to see them coming to life". The film's rule again:
+# the model picks shapes, places and colours from these closed sets and the page's own painter
+# (24x-model.js) inks the plan on the sheet, raises it into 3D and sets it moving. Nothing the
+# model wrote runs. A blueprint may carry the same solids as `model`, each naming the part it draws.
+MODEL_PRIMS = ("box", "cylinder", "cone", "pyramid", "sphere", "dome", "roof", "ring", "arch")
+MODEL_PROPS = ("tree", "blossom", "pine", "palm", "bamboo", "bush", "rock", "mountain", "cloud",
+               "water", "house", "building", "pagoda", "torii", "bridge", "lantern", "wall",
+               "column", "stairs", "path", "person", "bird", "boat", "car", "plane")
+MODEL_SHAPES = MODEL_PRIMS + MODEL_PROPS
+MODEL_STYLES = ("paper", "blueprint", "hologram")
+MODEL_WEATHER = ("none", "petals", "leaves", "snow", "rain", "fireflies", "sparks")
+MODEL_GROUND = ("none", "grass", "water", "sand", "snow", "stone")
+MODEL_MOVES = ("spin", "sway", "bob", "drift", "orbit", "flow")
+# a colour is one of these words or #rrggbb; on paper it is a wash under the ink
+MODEL_COLORS = ("pink", "red", "orange", "gold", "yellow", "green", "leaf", "teal", "blue", "sky",
+                "navy", "purple", "brown", "wood", "stone", "grey", "white", "black", "sand", "glass")
+# a ready-made thing with no size given stands at its usual one, in metres
+MODEL_SIZE = {"tree": (4, 6, 4), "blossom": (5, 5.5, 5), "pine": (3.5, 8, 3.5), "palm": (4, 8, 4),
+              "bamboo": (1.6, 7, 1.6), "bush": (2, 1.4, 2), "rock": (2, 1.4, 1.8),
+              "mountain": (40, 22, 40), "cloud": (8, 2.4, 5), "water": (30, 0.1, 12),
+              "house": (7, 6, 6), "building": (10, 24, 10), "pagoda": (9, 26, 9), "torii": (7, 7, 1),
+              "bridge": (12, 3, 3.5), "lantern": (1, 2, 1), "wall": (12, 2.6, 0.5),
+              "column": (1.2, 8, 1.2), "stairs": (4, 2, 4), "path": (3, 0.05, 20),
+              "person": (0.6, 1.8, 0.4), "bird": (1.4, 0.5, 0.8), "boat": (6, 5, 2.2),
+              "car": (4.2, 1.5, 1.8), "plane": (10, 3, 10)}
+MODEL_SOLIDS = 80        # things in one model
+MODEL_COPIES = 60        # one thing scattered: a grove is one solid
+MODEL_PIECES = 600       # copies in all; it is drawn on a laptop with no graphics card too
+MODEL_SPAN = 2000.0      # any unit: the page fits the whole model to the sheet
 VIEWS = ("world", "africa", "asia", "europe", "north america", "south america", "oceania",
          "middle east", "india")
 # lon_min, lat_min, lon_max, lat_max
@@ -396,6 +429,28 @@ class _KIND:
                             if str(u or "").strip()], look_for=_s(spec.get("look_for"), 90))
         if not sc["title"]:
             sc["title"] = sc["subject"]
+        # what it looks like, in 3D: the same solids a model scene is made of, each naming its part
+        if spec.get("model"):
+            raw = spec["model"].get("solids") if isinstance(spec["model"], dict) else spec["model"]
+            solids = _solids(raw, "model", dropped, seen)
+            if solids:
+                sc["model"] = solids
+        if spec.get("style"):
+            sc["style"] = _one_of(spec.get("style"), MODEL_STYLES, "paper", "style", dropped)
+
+    @staticmethod
+    def model(spec, sc, dropped):
+        """A thing or a place in 3D, as solids from the closed set: where each stands, how big,
+        what colour, how many, and whether it moves. Read field by field; what is dropped is named."""
+        solids = _solids(spec.get("solids"), "solids", dropped, None)
+        if not solids:
+            raise ValueError("a model needs solids: [{shape, at: [x, y, z], size: [w, h, d], color?, "
+                             "label?, count?, spread?, turn?, move?}], shape one of "
+                             + ", ".join(MODEL_SHAPES))
+        sc.update(solids=solids,
+                  style=_one_of(spec.get("style"), MODEL_STYLES, "paper", "style", dropped),
+                  weather=_one_of(spec.get("weather"), MODEL_WEATHER, "none", "weather", dropped),
+                  ground=_one_of(spec.get("ground"), MODEL_GROUND, "none", "ground", dropped))
 
     @staticmethod
     def table(spec, sc, dropped):
@@ -409,6 +464,104 @@ class _KIND:
         if not cols or not rows:
             raise ValueError("a table needs columns: [...] and rows: [[...], …]")
         sc.update(columns=cols, rows=rows)
+
+
+def _one_of(v, allowed: tuple, default: str, name: str, dropped: list) -> str:
+    w = str(v or default).strip().lower()
+    if w not in allowed:
+        dropped.append(f"{name} {w!r}")
+        return default
+    return w
+
+
+_HEX = re.compile(r"^#[0-9a-f]{6}$")
+
+
+def _vec(v, n: int, lo: float, hi: float, default: float):
+    """n numbers held to a range; a single number fills every place (size: 3 is a cube)."""
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        v = [v] * n
+    out = []
+    for i in range(n):
+        x = _num(v[i]) if isinstance(v, (list, tuple)) and i < len(v) else None
+        out.append(round(min(hi, max(lo, x)), 3) if x is not None else default)
+    return out
+
+
+def _solids(raw, where: str, dropped: list, parts: set | None) -> list:
+    """A model's solids, each read alone. `parts` is the blueprint's part ids when the model
+    belongs to one: a solid may name the part it draws, and a name that is no part is dropped."""
+    out, pieces = [], 0
+    items = _list(raw)
+    if len(items) > MODEL_SOLIDS:
+        dropped.append(f"{where}: {len(items) - MODEL_SOLIDS} past {MODEL_SOLIDS}")
+    known = ("shape", "at", "size", "color", "colour", "label", "count", "spread", "turn", "tilt",
+             "move", "tiers", "part")
+    for i, so in enumerate(items[:MODEL_SOLIDS]):
+        at = f"{where}[{i}]"
+        if not isinstance(so, dict):
+            continue
+        shape = str(so.get("shape") or "").strip().lower()
+        if shape not in MODEL_SHAPES:
+            dropped.append(f"{at}.shape {shape!r}")
+            continue
+        dropped += [f"{at}.{k}" for k in so if k not in known and not str(k).startswith("_")]
+        pos = so.get("at")
+        if isinstance(pos, (list, tuple)) and len(pos) == 2:      # [x, z] on the ground
+            pos = [pos[0], 0, pos[1]]
+        node = {"shape": shape, "at": _vec(pos, 3, -MODEL_SPAN, MODEL_SPAN, 0.0),
+                "size": _vec(so.get("size") or MODEL_SIZE.get(shape), 3, 0.01, MODEL_SPAN, 1.0)}
+        col = str(so.get("color") or so.get("colour") or "").strip().lower()
+        if col:
+            if col in MODEL_COLORS or _HEX.match(col):
+                node["color"] = col
+            else:
+                dropped.append(f"{at}.color {col!r}")
+        if str(so.get("label") or "").strip():
+            node["label"] = _s(so.get("label"), 40)
+        n = _num(so.get("count"))
+        n = int(min(MODEL_COPIES, max(1, n))) if n is not None else 1
+        n = max(1, min(n, MODEL_PIECES - pieces))
+        pieces += n
+        if n > 1:
+            node["count"] = n
+            node["spread"] = _vec(so.get("spread"), 2, 0.0, MODEL_SPAN, 10.0)
+        turn = _num(so.get("turn"))
+        if turn:
+            node["turn"] = round(turn % 360, 1)
+        tilt = _num(so.get("tilt"))
+        if tilt:
+            node["tilt"] = round(tilt % 360, 1)
+        move = str(so.get("move") or "").strip().lower()
+        if move:
+            if move in MODEL_MOVES:
+                node["move"] = move
+            else:
+                dropped.append(f"{at}.move {move!r}")
+        tiers = _num(so.get("tiers"))
+        if tiers is not None:
+            node["tiers"] = int(min(12, max(1, tiers)))
+        if so.get("part"):
+            pid = _bp_ref(so.get("part"), parts) if parts is not None else ""
+            if pid:
+                node["part"] = pid
+            else:
+                dropped.append(f"{at}.part (names a part that is not there)")
+        out.append(node)
+    return out
+
+
+def has_model(sc: dict) -> bool:
+    """True when the page draws this scene in 3D: a model, a blueprint that carries one, or a
+    tower blueprint with heights, which the page stacks into one itself (bpAutoModel)."""
+    if sc.get("kind") == "model":
+        return True
+    if sc.get("kind") != "blueprint":
+        return False
+    if sc.get("model"):
+        return True
+    return sc.get("form") == "tower" and sum(
+        1 for p in sc.get("parts") or [] if p.get("from") is not None and p.get("to") is not None) >= 2
 
 
 def _bp_slug(name: str) -> str:
@@ -587,6 +740,18 @@ def _fmt(n) -> str:
     return f"{n:,.0f}" if abs(n) >= 100 else f"{n:,.2f}".rstrip("0").rstrip(".")
 
 
+def model_line(solids: list) -> str:
+    """A model in words: what stands in it, named things first. The terminal and a phone's
+    caption say this, because neither can turn it round."""
+    named = [f"{so['label']} ({so['shape']})" for so in solids if so.get("label")]
+    counts: dict[str, int] = {}
+    for so in solids:
+        if not so.get("label"):
+            counts[so["shape"]] = counts.get(so["shape"], 0) + so.get("count", 1)
+    rest = [f"{n} × {k}" if n > 1 else k for k, n in sorted(counts.items(), key=lambda kv: -kv[1])]
+    return "Built in 3D: " + ", ".join((named + rest)[:14])
+
+
 def text(sc: dict) -> str:
     """A scene in plain lines, for `bento story` and the terminal chat."""
     head = f"▶ {sc.get('title') or sc['kind']}"
@@ -642,6 +807,11 @@ def text(sc: dict) -> str:
             if sh.get("points"):
                 out.append("       " + ", ".join(p["label"] or f"{p['lat']:.1f}, {p['lon']:.1f}"
                                                 for p in sh["points"]))
+    elif k == "model":
+        out.append("  ◈ " + model_line(sc["solids"]))
+        extra = [w for w in (sc.get("ground"), sc.get("weather")) if w and w != "none"]
+        if extra:
+            out.append("    " + ", ".join(extra))
     elif k == "blueprint":
         u = sc.get("unit") or ""
         out.append(f"  ⌖ {sc['form']} · {sum(1 for _ in bp_walk(sc['parts']))} parts")
@@ -1073,7 +1243,27 @@ BP_LINE = ("Asked what is inside something, how a building, a machine, a body, a
            "is (certainty known, estimated or unclear). A child part may take another form (a tower's "
            "foundation drawn exploded). Give look_for: the words to search for a cutaway or diagram of "
            "the whole (\"CFM56 turbofan cutaway\"); the Stage finds a free drawing with them. Never "
-           "give a picture address in a blueprint.")
+           "give a picture address in a blueprint. Give model too: what the thing looks like as "
+           "five to thirty solids (the shapes of a model scene), each with part: the name of the "
+           "part it draws, so the blueprint opens as a 3D drawing the person turns, pulls apart and "
+           "taps into. A tower with heights is stacked in 3D for you.")
+MODEL_LINE = ("Asked to build, imagine, design or show a place, a scene or an object (Kyoto in spring, a "
+              "castle on a hill, a space station, a battle on a city street), show ONE model scene: it is "
+              "drawn in ink on the sheet, rises into 3D and comes to life, and the person turns it round. "
+              "You place solids: each {shape, at: [x, y, z] (x right, z towards the viewer, y the height "
+              "of its base, 0 on the ground), size: [width, height, depth], color, label}. Shapes: "
+              + ", ".join(MODEL_PRIMS) + " to build anything, and ready-made " + ", ".join(MODEL_PROPS)
+              + ". count with spread: [width, depth] scatters one thing over an area (a grove of 30 "
+              "blossom trees is one solid). turn is degrees round the vertical, tilt lays it over (90 "
+              "is on its side along x, so an engine or a pipe is cylinders with tilt 90 on one axis; y "
+              "is still its lowest point); move is one of "
+              + ", ".join(MODEL_MOVES) + "; tiers is the storeys of a pagoda or a building. color is one of "
+              + ", ".join(MODEL_COLORS) + " or #rrggbb. style is paper (ink on brown paper, the default), "
+              "blueprint or hologram (projected in the air); weather is one of "
+              + ", ".join(MODEL_WEATHER[1:]) + "; ground one of " + ", ".join(MODEL_GROUND[1:]) + ". Compose it "
+              "like a set designer: a ground to stand on, one main thing in the middle and named, "
+              "supporting things round it, something that moves, 15 to 50 solids, sizes in metres. "
+              "Label only what matters.")
 BIG_LINE = ("Answer BIG: the person watches your answers on the Stage, so anything worth seeing is "
             "SHOWN with show_scene before you write the text: three to six scenes, in story order. "
             "Tell a story, not a slide: open on what matters most (the headline numbers, or a "
@@ -1097,13 +1287,14 @@ BIG_LINE = ("Answer BIG: the person watches your answers on the Stage, so anythi
             "on Wikipedia or the maker's site) or one you made with generate_image. Use real "
             "figures you looked up and name the source; if a picture is only an example, set "
             "illustrative: true. A plain question (a fact, a yes or no, small talk) gets no scenes. "
-            + BP_LINE + " "
+            + BP_LINE + " " + MODEL_LINE + " "
             "When the person asks to change what is on the Stage (add a place, another chart, "
             "newer figures), show the whole story again with the change: it is kept as a new "
             "version beside the old one.")
 ASKED_LINE = ("show_scene puts a chart, a map, key numbers, a timeline, steps, a table, a picture, a "
-              "YouTube video, a film (a short 3D animation from a shot list) or a blueprint (a thing "
-              "taken apart into parts the person can open, level by level) on the "
+              "YouTube video, a film (a short 3D animation from a shot list), a blueprint (a thing "
+              "taken apart into parts the person can open, level by level) or a model (a place or a "
+              "thing built in 3D from solids) on the "
               "person's screen. Use it when they ask to see something; name the source of any "
               "numbers, or set illustrative: true. Asked to change what is on the Stage, show the "
               "whole story again with the change; the old version is kept.")
@@ -1124,7 +1315,7 @@ def note(cfg: dict, tool: str = "show_scene", surface: str = "") -> str:
     was not true there, and Claude Code answered a Nifty question in words: the phone line
     says where the scenes go instead."""
     # asking for a blueprint is asking to see one, so its guidance goes with Answer BIG off too
-    line = BIG_LINE if settings(cfg)["big"] else ASKED_LINE + " " + BP_LINE
+    line = BIG_LINE if settings(cfg)["big"] else ASKED_LINE + " " + BP_LINE + " " + MODEL_LINE
     out = "THE STAGE. " + line.replace("show_scene", tool)
     if surface in ("telegram", "whatsapp"):
         out += " " + PHONE_LINE.format(surface={"telegram": "Telegram", "whatsapp": "WhatsApp"}[surface])
@@ -1182,6 +1373,8 @@ def still_caption(sc: dict, i: int, n: int) -> str:
         out += [f"{k}. {p['name']}" + (f": {p['role']}" if p.get("role") else "")
                 + (f" ({len(p['parts'])} part{'s' if len(p['parts']) != 1 else ''} inside)" if p.get("parts") else "")
                 for k, p in enumerate(sc.get("parts") or [], 1)][:12]
+    if sc.get("kind") == "model":
+        out.append(model_line(sc.get("solids") or []))
     if sc.get("kind") == "film":
         # the picture is the storyboard; the caption says each shot, so it reads aloud
         out += [f"{k}. {sh['text']}" for k, sh in enumerate(sc.get("shots") or [], 1) if sh.get("text")]
@@ -1220,6 +1413,8 @@ def still_views(sc: dict) -> list:
     if sc.get("kind") != "blueprint":
         return [None]
     v = []
+    if has_model(sc):
+        v.append({"mode": "model", "path": []})      # what it looks like, built in 3D
     if sc.get("picture"):
         v.append({"mode": "look", "path": []})
     v.append({"mode": "parts", "path": []})
@@ -1265,7 +1460,11 @@ def still_caption_for(sc: dict, view, i: int, n: int) -> str:
     head = f"{i + 1}/{n} · " if n > 1 else ""
     subject = sc.get("subject") or sc.get("title") or "Blueprint"
     out = []
-    if view["mode"] == "look":
+    if view["mode"] == "model":
+        out.append(f"{head}{subject}: built in 3D")
+        named = [so["label"] for so in sc.get("model") or [] if so.get("label")]
+        out.append(", ".join(named[:12]) if named else ", ".join(p["name"] for p in sc.get("parts") or []))
+    elif view["mode"] == "look":
         pic = sc.get("picture") or {}
         out.append(f"{head}{subject}: the drawing")
         out.append(bp_picture_line(pic).removeprefix("▣ "))
@@ -1295,7 +1494,7 @@ def still_caption_for(sc: dict, view, i: int, n: int) -> str:
 
 STILL_KIND = {"chart": "Chart", "map": "Map", "numbers": "Numbers", "timeline": "Timeline",
               "steps": "How it works", "table": "Table", "image": "Picture", "video": "Video",
-              "film": "Film", "blueprint": "Blueprint"}
+              "film": "Film", "blueprint": "Blueprint", "model": "3D model"}
 
 
 # A photograph per scene (stagestill.py): the page's chrome goes, each card stands alone with
@@ -1341,8 +1540,8 @@ def _inline_asset(store, sc: dict) -> dict:
 
 REPORT_IMG_CAP = 3 * 1024 * 1024
 # the Stage's painters, which the phone's page embeds as they are: one painter, two places
-PAINTER_JS = ("24l-stage.js", "24v-blueprint.js")
-PAINTER_CSS = ("31-stage.css", "40-blueprint.css")
+PAINTER_JS = ("24l-stage.js", "24v-blueprint.js", "24x-model.js")
+PAINTER_CSS = ("31-stage.css", "40-blueprint.css", "42-model.css")
 
 
 def report_html(store, conversation_id: str, answer_to: str, answer: str = "",

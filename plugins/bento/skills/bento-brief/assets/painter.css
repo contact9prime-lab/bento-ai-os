@@ -680,3 +680,52 @@ body.still .bp-v-look .bp-look{position:relative;inset:auto}
   font:600 13px var(--sans);letter-spacing:0;min-height:var(--tap,36px)}
 .bp-exp-a span{font:400 11.5px var(--sans);color:rgba(186,230,253,.7)}
 .bp-exp-a:hover,.bp-exp-a:focus-visible{background:rgba(125,211,252,.12)}
+
+/* The Stage's model (24x-model.js): a thing or a place built in 3D on the sheet. Three looks,
+   set as data-style on the drawing: ink on brown paper, white line on a blue sheet, or lines of
+   light over a projector. The controls sit on the drawing and take the look's own ink, so they
+   read on every one. Nothing here loops: the hint fades once. */
+.stg-scene.k-model{padding-bottom:0}
+.stg-scene.k-model .stg-art{overflow:hidden}
+.stg-scene.k-model .stg-title{font-size:clamp(17px,2.1vw,25px);line-height:1.2;margin:2px 0 8px}
+.stg-model{position:relative;width:100%;height:100%;min-height:300px}
+.mdl{position:relative;overflow:hidden;border-radius:10px;background:#c8a675;contain:layout paint;container-type:inline-size;
+  --mdl-ink:#20180f;--mdl-chip:rgba(248,238,216,.9);--mdl-line:rgba(32,24,15,.35);
+  box-shadow:inset 0 0 0 1px var(--mdl-line),0 20px 60px -30px #000;user-select:none;-webkit-user-select:none}
+.mdl[data-style=blueprint]{background:#12437b;--mdl-ink:#eef6ff;--mdl-chip:rgba(10,44,86,.9);--mdl-line:rgba(238,246,255,.35)}
+.mdl[data-style=hologram]{background:#02060e;--mdl-ink:#7df3ff;--mdl-chip:rgba(3,14,26,.88);--mdl-line:rgba(125,243,255,.38)}
+.mdl-cv,.mdl-svg{position:absolute;inset:0;width:100%;height:100%;display:block}
+.mdl-cv{touch-action:none;cursor:grab}
+.mdl-cv:active{cursor:grabbing}
+.mdl-svg .mdl-tag{font:600 11.5px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.03em;paint-order:stroke;
+  stroke:var(--mdl-chip);stroke-width:4px;stroke-linejoin:round}
+div.mdl-tags{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+div.mdl-tags .mdl-tag{position:absolute;left:0;top:0;white-space:nowrap;padding:3px 8px;border-radius:4px;
+  font:600 11.5px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.03em;color:var(--mdl-ink);
+  background:var(--mdl-chip);border:1px solid var(--mdl-line);transition:opacity .35s ease;will-change:transform}
+div.mdl-tags button.mdl-tag{pointer-events:auto;cursor:pointer;min-height:24px}
+div.mdl-tags .mdl-tag::after{content:'';position:absolute;left:50%;top:100%;width:1px;height:9px;background:var(--mdl-ink);opacity:.7}
+.mdl-bar{position:absolute;left:10px;right:10px;bottom:10px;display:flex;gap:8px;align-items:flex-end;justify-content:space-between;
+  pointer-events:none;z-index:2}
+.mdl-seg,.mdl-acts{display:flex;gap:4px;pointer-events:auto;padding:3px;border-radius:9px;background:var(--mdl-chip);
+  border:1px solid var(--mdl-line)}
+.mdl-b{appearance:none;background:none;border:0;border-radius:6px;padding:7px 11px;min-height:var(--tap,32px);min-width:32px;cursor:pointer;
+  font:600 12px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.03em;color:var(--mdl-ink);opacity:.78}
+.mdl-b:hover,.mdl-b:focus-visible{opacity:1;background:color-mix(in srgb,var(--mdl-ink) 12%,transparent)}
+.mdl-b:focus-visible{outline:2px solid var(--mdl-ink);outline-offset:1px}
+.mdl-b.on{opacity:1;background:var(--mdl-ink);color:var(--mdl-chip)}
+.mdl-hint{position:absolute;left:50%;top:12px;transform:translateX(-50%);padding:5px 12px;border-radius:999px;pointer-events:none;
+  font:600 11.5px ui-monospace,monospace;letter-spacing:.04em;color:var(--mdl-ink);background:var(--mdl-chip);border:1px solid var(--mdl-line);opacity:0}
+.mdl-hint.on{animation:mdl-hint 4.5s ease 1 both}
+@keyframes mdl-hint{0%{opacity:0}12%,70%{opacity:.95}100%{opacity:0}}
+/* inside a blueprint the model takes the drawing's room */
+.bp-look.bp-model{display:block;padding:0;border-radius:10px}
+.bp-look.bp-model.mdl{position:absolute;inset:0}
+/* photographed for a phone, and on the page Telegram sends: a fixed room, no controls */
+body.still .stg-model{height:600px}
+body.still .bp-v-model .bp-draw{height:600px}
+.rp .stg-model{height:540px}
+/* a narrow drawing keeps the buttons and folds their words away */
+@container (max-width:620px){.mdl-acts .mdl-w{display:none}.mdl-b{padding:7px 9px}}
+@container (max-width:430px){.mdl-seg .mdl-w{display:none}.mdl-b{padding:7px 7px;min-width:30px}.mdl-bar{left:6px;right:6px;bottom:6px;gap:4px}}
+@media (max-width:640px){.rp .stg-model{height:420px}}
