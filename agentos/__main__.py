@@ -2036,6 +2036,115 @@ def _apps_cli(args):
     sys.exit(0 if res.get("ok") else 1)
 
 
+def _studio_cli(args):
+    """`bento studio` — App Studio's code editor for a terminal.
+
+    The same source, checker and save as the desktop's editor (agentos/appsource.py), so a
+    push from SSH is a version like a Save in the window, and is refused in the same words
+    when the app changed since it was pulled. `edit` opens $EDITOR on the source and pushes
+    what you save. Works with the server down: it is the account's own database.
+    """
+    import re
+    import shlex
+    import tempfile
+    from . import appsource
+    from . import users as usersmod
+    _, store = _open_store(getattr(args, "user", ""))
+    act, name = args.action, (args.name or "").strip()
+
+    def find(n):
+        hit = [a for a in store.list_apps() if a["name"].lower() == n.lower()]
+        if not hit:
+            print(f"no app called {n!r}. `bento studio` lists them")
+            sys.exit(1)
+        return hit[0]
+
+    def report(probs):
+        if not probs:
+            print("  ✓ no problems")
+            return
+        for p in probs:
+            at = f"line {p['line']}" if p["line"] else "file"
+            print(f"  {p['severity']:8} {at:9} {p['message']}")
+            if p["fix"]:
+                print(f"  {'':8} {'':9} → {p['fix']}")
+
+    with usersmod.as_user(usersmod.current()):
+        if act == "list":
+            apps = store.list_apps()
+            if not apps:
+                print("no apps yet. `bento studio new \"My app\"` starts one from a blank file")
+                return
+            for a in apps:
+                print(f"  {a['name'][:34]:36} v{appsource.current_version(store, a['id'])}")
+            print("\n  bento studio pull <app> [file.html]   ·   push <app> <file.html>   ·   edit <app>")
+            return
+        if not name:
+            print(f"which app? bento studio {act} <name>")
+            sys.exit(2)
+        if act == "new":
+            from .executors import _unique_app_name
+            nm = _unique_app_name(store, name[:60])
+            store.save_app(nm, "", "", appsource.blank(nm), note="started from a blank file")
+            print(f"✓ {nm} started from a blank file. `bento studio edit {shlex.quote(nm)}` to write it")
+            return
+        if act == "check":
+            html = Path(args.file).read_text() if args.file else \
+                (store.get_app(find(name)["id"]) or {}).get("html") or ""
+            report(appsource.problems(html))
+            return
+        a = find(name)
+        src = appsource.load(store, a["id"])
+        if act == "pull":
+            if not args.file:
+                sys.stdout.write(src["html"])
+                return
+            Path(args.file).write_text(src["html"])
+            print(f"✓ v{src['version']} of {a['name']} → {args.file}")
+            print(f"  push it back with: bento studio push {shlex.quote(a['name'])} {args.file} "
+                  f"(it is refused if the app moves past v{src['version']} meanwhile)")
+            Path(args.file + ".bento-base").write_text(str(src["version"]))
+            return
+
+        def push(html, base):
+            try:
+                res = appsource.save(store, a["id"], html, base=base, force=args.force)
+            except appsource.Conflict as e:
+                print(f"✗ {e}. Pull it again, or push with --force to save over it")
+                sys.exit(1)
+            except ValueError as e:
+                print(f"✗ {e}")
+                sys.exit(1)
+            if not res["changed"]:
+                print("  nothing changed")
+                return
+            print(f"✓ saved as v{res['version']} of {a['name']}")
+            report(appsource.problems(html))
+            if res["review"]:
+                print("  it now asks for something different: App Studio will ask you to "
+                      "review its permissions")
+
+        if act == "push":
+            if not args.file:
+                print("which file? bento studio push <app> <file.html>")
+                sys.exit(2)
+            mark = Path(args.file + ".bento-base")
+            base = int(mark.read_text()) if mark.exists() and mark.read_text().strip().isdigit() else None
+            push(Path(args.file).read_text(), base)
+            if mark.exists():
+                mark.unlink()
+            return
+        if act == "edit":
+            editor = os.environ.get("VISUAL") or os.environ.get("EDITOR") or "nano"
+            with tempfile.TemporaryDirectory() as tmp:
+                path = Path(tmp) / (re.sub(r"[^\w.-]+", "-", a["name"]).strip("-") + ".html")
+                path.write_text(src["html"])
+                if subprocess.call([*shlex.split(editor), str(path)]) != 0:
+                    print("✗ the editor did not finish cleanly, so nothing was saved")
+                    sys.exit(1)
+                push(path.read_text(), src["version"])
+
+
 def _remote_desktop_cli(args):
     """Turn the browser remote desktop on or off without a desktop to click in.
 
@@ -10149,6 +10258,17 @@ def main():
     p_apps.add_argument("name", nargs="?", default="", help="query, or the package to act on")
     p_apps.add_argument("--backend", default="", help="flatpak, apt, dnf or pacman")
 
+    p_studio = verb("studio", help="your apps' source: list, check, pull, push or edit one "
+                                   "from a terminal")
+    p_studio.add_argument("action", nargs="?", default="list",
+                          choices=["list", "check", "pull", "push", "edit", "new"])
+    p_studio.add_argument("name", nargs="?", default="", help="the app's name")
+    p_studio.add_argument("file", nargs="?", default="",
+                          help="with pull/push/check: the .html file (pull prints when omitted)")
+    p_studio.add_argument("--force", action="store_true",
+                          help="push even when the app changed since you pulled it")
+    p_studio.add_argument("--user", default="", help="whose apps, on a machine with accounts")
+
     p_mcp = verb("mcp", help="MCP servers — what is connected, and add the "
                                        "first-party ones (Canva, Higgsfield, Notion…)")
     p_mcp.add_argument("action", nargs="?", default="list",
@@ -10422,6 +10542,8 @@ def main():
         _remote_cli(args)
     elif args.cmd == "apps":
         _apps_cli(args)
+    elif args.cmd == "studio":
+        _studio_cli(args)
     elif args.cmd == "mcp":
         _mcp_cli(args)
     elif args.cmd == "quarantine":

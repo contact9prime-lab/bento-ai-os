@@ -1789,6 +1789,30 @@ connection should be there in the chat". `tests/test_app_schedules.py`. Five thi
 The `app_data` broadcast reaches an open app as the `appdata` event (`09-websocket.js` posts into
 the app's frames; the runtime accepts it only from `parent`).
 
+## App Studio is an IDE, and a hand save is a version like a build
+
+`agentos/appsource.py` (load, `problems`, `save`, `blank`) + `/api/apps/{id}/source`, `/api/apps/check`,
+`/api/apps/new`, `/api/apps/{id}/draft` (served as the page's `?draft=`) + `26b-studio-ide.js` (the editor:
+highlighter, outline, diff) + the layout in `26-studio.js` + `41-studio-ide.css` + `bento studio`;
+`docs/building-apps.md`, `tests/test_studio_ide.py`. Asked for as "an IDE like interface". Five rules:
+- **A save names its base, and a stale one is refused** (`appsource.Conflict`, a 409 with `current`). A build, a
+  chat turn or another window may have saved meanwhile; the page offers Load, Compare or Keep mine (`force`).
+  `bento studio push` reads the base `pull` wrote beside the file. Never save without a base from the editor.
+- **The editor is a textarea under a highlighted `<pre>`**, so the browser's caret, selection, undo, IME and
+  phone keyboard are the real ones. Both share every metric (`41-studio-ide.css` resets the immersive field kit);
+  edits go through `insertText` to keep undo. The highlighter only ever emits escaped text in spans: the test
+  round-trips a file through it and checks nothing else became markup.
+- **The text being edited lives in `STUDIO.docs`, never only in the DOM.** Every save broadcasts `apps`, which
+  repaints the Studio: a repaint for the same app is SOFT (`body._ideSel`), touching the list, tabs and version
+  check and not the editor. Only choosing another app draws the layout again.
+- **A draft runs only for its sender and its app**, from memory, `DRAFT_TTL`, `DRAFT_MAX`. It is the same
+  sandboxed frame and the same app principal as the saved page; it never becomes a version.
+- **What the app asks for is compared on save** (`appsource.asks`). The grants are left alone; a change puts the
+  manifest back to unreviewed, and the route re-proposes it so the Studio asks. `bento studio` cannot propose
+  (the scan needs the server's MCP view), so it says the Studio will ask.
+The phone layout is a container query on `.stide-wrap`, because a container cannot be restyled by its own
+query; and `.ide-center` pins its column (`minmax(0,1fr)`), or the tab row's width pushed Fix it off a phone.
+
 ## An app is held to one bar, wherever it was built
 
 `APP_UI_CSS` (the kit), `APP_RUNTIME` (appData … appToast, appConfirm, appCelebrate, appIcon,

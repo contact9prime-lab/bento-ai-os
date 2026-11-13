@@ -1,0 +1,209 @@
+/* ================= App Studio as an IDE =================
+   Explorer | editor over the panel | preview, and a status bar along the bottom.
+   The editor is a textarea under a highlighted <pre>: the two must share every metric
+   (font, line height, padding, tab size, no wrapping), or the caret drifts off the
+   letters it sits on. The immersive look's field kit is reset here for the same reason. */
+.stide{--ide-bg:color-mix(in srgb,var(--bg) 88%,#000);display:grid;height:100%;min-height:0;min-width:0;
+  grid-template-columns:var(--ide-side,210px) 4px minmax(0,1fr) 4px var(--ide-prev,380px);
+  grid-template-rows:minmax(0,1fr) 24px;
+  grid-template-areas:"side s1 center s2 right" "status status status status status"}
+/* the container is the wrapper: a container query cannot restyle its own container */
+.stide-wrap{height:100%;min-height:0;container-type:inline-size;container-name:stide}
+.stide .ide-seg{display:none}
+.stide>.stside{grid-area:side;flex:none;width:auto;max-width:none}
+.stide>.ide-split[data-split=side]{grid-area:s1}
+.stide>.ide-center{grid-area:center}
+.stide>.ide-split[data-split=prev]{grid-area:s2}
+.stide>.ide-right{grid-area:right}
+.stide>.ide-status{grid-area:status}
+.ide-sec{font-size:var(--fs-2xs);font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--dim2);
+  padding:9px 12px 3px;display:flex;gap:6px;align-items:center;flex:none}
+.stide .stlist{flex:0 1 auto;max-height:45%;padding:2px 6px 6px}
+.ide-outline{flex:1;min-height:0;overflow:auto;padding:0 6px 8px}
+.ide-ol{display:flex;align-items:center;gap:7px;width:100%;padding:3px 8px;border-radius:var(--r-sm);background:none;
+  border:none;cursor:pointer;color:var(--txt);font-size:var(--fs-xs);text-align:left;min-height:24px}
+.ide-ol:hover{background:var(--bg3)}
+.ide-ol .ic{flex:0 0 18px;text-align:center;font:600 11px var(--mono);color:var(--dim2)}
+.ide-ol.k-fn .ic{color:var(--acc)}
+.ide-ol.k-css .ic{color:var(--warn,#e8b04b)}
+.ide-ol.k-surface .ic,.ide-ol.k-ai .ic{color:var(--ok)}
+.ide-ol .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono)}
+.ide-ol .mut{font-size:var(--fs-2xs)}
+.ide-empty{font-size:var(--fs-xs);padding:8px 12px;margin:0}
+.ide-dot{font-style:normal;color:var(--acc);font-size:10px;margin-left:4px}
+
+.ide-split{background:transparent;position:relative;z-index:2;touch-action:none}
+.ide-split.v{cursor:col-resize;border-left:1px solid var(--line)}
+.ide-split.h{cursor:row-resize;border-top:1px solid var(--line);height:4px}
+.ide-split:hover,.ide-split:active{background:color-mix(in srgb,var(--acc) 40%,transparent)}
+
+.ide-center{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto minmax(0,1fr) 4px var(--ide-bot,230px);min-width:0;min-height:0}
+.stide .stident{padding:6px 10px;gap:6px;border-bottom:1px solid var(--line)}
+.stide .stident input{flex:0 1 220px}
+.ide-tabs{display:flex;overflow-x:auto;scrollbar-width:none;background:var(--bg2);border-bottom:1px solid var(--line);min-height:30px}
+.ide-tabs::-webkit-scrollbar{display:none}
+.ide-tab{display:flex;align-items:center;gap:6px;padding:0 6px 0 12px;font:12px var(--mono);color:var(--dim);cursor:pointer;
+  border-right:1px solid var(--line);white-space:nowrap;min-height:30px;flex:none}
+.ide-tab.on{color:var(--txt);background:var(--ide-bg);box-shadow:inset 0 2px 0 var(--acc)}
+.ide-tab .ide-tx{background:none;border:none;color:var(--dim2);cursor:pointer;font-size:10px;padding:3px 5px;border-radius:var(--r-sm);opacity:.6}
+.ide-tab:hover .ide-tx,.ide-tab.on .ide-tx{opacity:1}
+.ide-tab .ide-tx:hover{background:var(--bg3);color:var(--txt)}
+
+.ide-edhost{position:relative;min-height:0;overflow:hidden;background:var(--ide-bg)}
+.ide-ed{position:absolute;inset:0;display:flex}
+.ide-gut{flex:none;min-width:46px;overflow:hidden;border-right:1px solid color-mix(in srgb,var(--line) 60%,transparent);
+  font:12px/19px var(--mono);color:var(--dim2);text-align:right;user-select:none;padding-top:8px;background:var(--ide-bg)}
+.ide-gutin{will-change:transform}
+.ide-gutin div{height:19px;padding:0 10px 0 12px}
+.ide-gutin .m-err{color:var(--err);box-shadow:inset 3px 0 0 var(--err);background:color-mix(in srgb,var(--err) 12%,transparent)}
+.ide-gutin .m-warn{color:var(--warn,#e8b04b);box-shadow:inset 3px 0 0 var(--warn,#e8b04b)}
+.ide-gutin .m-info{box-shadow:inset 3px 0 0 var(--dim2)}
+.ide-code{position:relative;flex:1;min-width:0;overflow:hidden}
+.stide .ide-hl,.stide .ide-ta{margin:0;padding:8px 16px 8px 14px;font:12.5px/19px var(--mono);tab-size:2;-moz-tab-size:2;
+  white-space:pre;letter-spacing:0;word-spacing:0;border:0;border-radius:0;box-shadow:none;text-transform:none;
+  font-variant-ligatures:none;min-height:0}
+.ide-hl{position:absolute;top:0;left:0;pointer-events:none;color:var(--txt);min-width:100%;will-change:transform}
+.ide-hl code{font:inherit;background:none;padding:0;white-space:inherit}
+.stide .ide-ta{position:absolute;inset:0;width:100%;height:100%;resize:none;background:transparent;color:transparent;
+  caret-color:var(--acc);outline:none;overflow:auto;-webkit-text-fill-color:transparent}
+.stide .ide-ta:focus{border:0;box-shadow:none;background:transparent}
+.stide .ide-ta::selection{background:color-mix(in srgb,var(--acc) 34%,transparent);-webkit-text-fill-color:transparent}
+.ide-cur{position:absolute;left:0;right:0;top:8px;height:19px;pointer-events:none;
+  background:color-mix(in srgb,var(--txt) 5%,transparent);will-change:transform}
+/* the token colours, mixed from the theme so a light theme still reads */
+.ide-hl .t-tag{color:color-mix(in srgb,var(--acc) 80%,var(--txt))}
+.ide-hl .t-attr{color:color-mix(in srgb,#e8b04b 75%,var(--txt))}
+.ide-hl .t-str{color:color-mix(in srgb,#5fc98a 80%,var(--txt))}
+.ide-hl .t-com{color:var(--dim2);font-style:italic}
+.ide-hl .t-kw{color:color-mix(in srgb,#c792ea 85%,var(--txt))}
+.ide-hl .t-lit,.ide-hl .t-num{color:color-mix(in srgb,#f78c6c 80%,var(--txt))}
+.ide-hl .t-fn{color:color-mix(in srgb,#82aaff 85%,var(--txt))}
+.ide-hl .t-rt{color:var(--ok);font-weight:600}
+.ide-hl .t-re{color:color-mix(in srgb,#f07178 80%,var(--txt))}
+.ide-hl .t-prop{color:color-mix(in srgb,#82aaff 85%,var(--txt))}
+.ide-hl .t-sel{color:color-mix(in srgb,#ffcb6b 80%,var(--txt))}
+.ide-hl .t-pun{color:var(--dim)}
+
+.ide-find{position:absolute;top:6px;right:18px;z-index:3;display:flex;gap:4px;align-items:center;padding:5px;
+  background:var(--bg2);border:1px solid var(--line);border-radius:var(--r-md);box-shadow:var(--el-3,0 6px 20px #0006)}
+.ide-find[hidden]{display:none}
+.stide .ide-find input{width:180px;padding:4px 8px;font-size:var(--fs-xs);min-height:0}
+.ide-find .ide-fn{font-size:var(--fs-2xs);min-width:52px}
+.ide-find button{background:none;border:none;color:var(--txt);cursor:pointer;padding:3px 7px;border-radius:var(--r-sm)}
+.ide-find button:hover{background:var(--bg3)}
+.ide-welcome{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:10px;padding:24px;text-align:center}
+.ide-welcome b{font-size:var(--fs-lg,17px)}
+.ide-welcome p{max-width:420px;margin:0}
+.ide-welcome .row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.ide-welcome .ide-keys{font-size:var(--fs-2xs);margin-top:8px}
+.ide-stale{position:absolute;top:0;left:0;right:0;z-index:4;display:flex;flex-wrap:wrap;align-items:center;gap:8px;
+  padding:8px 12px;background:color-mix(in srgb,var(--warn,#e8b04b) 16%,var(--bg2));border-bottom:1px solid var(--warn,#e8b04b);
+  font-size:var(--fs-xs)}
+.ide-stale span{flex:1;min-width:180px}
+
+.ide-bottom{display:flex;flex-direction:column;min-height:0;background:var(--bg2)}
+.stide .sttabs{border-top:0;border-bottom:1px solid var(--line);padding:3px 8px 0;overflow-x:auto;scrollbar-width:none;flex:none}
+.stide .sttabs::-webkit-scrollbar{display:none}
+.stide .sttabs button{white-space:nowrap;padding:5px 10px;border-radius:var(--r-sm) var(--r-sm) 0 0}
+.ide-pane{flex:1;min-height:0;overflow:auto}
+.ide-pane[hidden]{display:none}
+.ide-pane[data-for=builder]:not([hidden]){display:flex;flex-direction:column;overflow:hidden}
+.stide .stlog{flex:1;overflow-y:auto;padding:4px 12px 8px;font-size:12.5px;user-select:text}
+.stide .stcompose{border-top:1px solid var(--line);border-bottom:0;padding:8px 10px}
+.stide #st-build{flex:0 0 88px}
+.ide-selchip{padding:0 12px 8px;font-size:var(--fs-2xs);color:var(--dim)}
+.ide-selchip[hidden]{display:none}
+.ide-selchip label{display:inline-flex;gap:6px;align-items:center;cursor:pointer;justify-content:flex-start}
+.stide .ide-selchip input{flex:none;width:auto;min-height:0;margin:0}
+#st-panel{padding:8px 12px 10px}
+.ide-count{display:inline-block;min-width:16px;padding:0 5px;border-radius:999px;background:var(--bg4);color:var(--txt);
+  font-size:10px;line-height:15px;text-align:center}
+.ide-count.err{background:var(--err);color:#fff}
+.ide-prob,.ide-con{display:flex;gap:10px;align-items:flex-start;padding:6px 12px;border-bottom:1px solid var(--line);font-size:var(--fs-xs)}
+.ide-prob.go{cursor:pointer}
+.ide-prob.go:hover{background:var(--bg3)}
+.ide-prob .ic{flex:0 0 14px;text-align:center;font-size:11px;line-height:17px}
+.ide-prob.err .ic{color:var(--err)}
+.ide-prob.warn .ic{color:var(--warn,#e8b04b)}
+.ide-prob.info .ic{color:var(--dim2)}
+.ide-prob .grow,.ide-con .grow{flex:1;min-width:0;line-height:1.4}
+.ide-prob .sub,.ide-con .sub{display:block;color:var(--dim2);font-size:var(--fs-2xs)}
+.ide-prob .ln{flex:none;font:11px var(--mono);line-height:17px}
+.ide-prob .endbtn{flex:none;font-size:var(--fs-2xs);padding:2px 9px}
+.ide-con{font-family:var(--mono);font-size:11.5px}
+.ide-con .mut{flex:none}
+.ide-conbar{display:flex;align-items:center;justify-content:space-between;padding:6px 12px;border-bottom:1px solid var(--line);font-size:var(--fs-2xs)}
+
+.ide-right{display:flex;flex-direction:column;min-width:0;min-height:0}
+.ide-prevbar{display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--line);flex-wrap:wrap;min-height:38px}
+.ide-prevbar #st-actions{margin-left:auto;display:flex;gap:6px;flex-wrap:nowrap;justify-content:flex-end}
+.ide-prevbar #st-actions .endbtn{font-size:var(--fs-2xs);padding:3px 9px}
+.stide #st-prev{flex:1;min-height:0;background:#0e1116}
+.ide-pill{font-size:10.5px;border:1px solid var(--line);border-radius:999px;padding:1px 8px;color:var(--dim);white-space:nowrap}
+.ide-pill.ok{color:var(--ok);border-color:var(--ok)}
+.ide-pill.warn{color:var(--warn,#e8b04b);border-color:var(--warn,#e8b04b)}
+.ide-pill.err{color:var(--err);border-color:var(--err)}
+
+.ide-status{display:flex;align-items:center;gap:14px;padding:0 12px;font-size:11px;color:var(--on-acc,#fff);
+  background:var(--acc-grad,var(--acc));white-space:nowrap;overflow:hidden}
+.ide-status .sp{flex:1}
+.ide-status .bad{font-weight:700}
+.ide-status .acc{font-weight:700}
+
+.ide-diffhead{display:flex;align-items:center;gap:8px}
+.ide-diffhead b{font-size:14px}
+.ide-diffhead .sp{flex:1}
+.ide-diffhead>*{flex:none}
+.ide-diffhead>.sp{flex:1}
+.ide-diffbox{width:min(980px,94vw);max-height:86vh;display:flex;flex-direction:column;gap:10px}
+.ide-diff{overflow:auto;font:12px/18px var(--mono);border:1px solid var(--line);border-radius:var(--r-md);background:var(--ide-bg,var(--bg))}
+.ide-diff .dl{display:flex;white-space:pre}
+.ide-diff .dl .n{flex:0 0 42px;text-align:right;padding-right:8px;color:var(--dim2);user-select:none}
+.ide-diff .dl .k{flex:0 0 16px;color:var(--dim2);user-select:none}
+.ide-diff .dl .t{flex:1}
+.ide-diff .add{background:color-mix(in srgb,var(--ok) 16%,transparent)}
+.ide-diff .del{background:color-mix(in srgb,var(--err) 16%,transparent)}
+.ide-diff .skip{color:var(--dim2);padding:2px 12px;font-style:italic}
+
+/* a phone, or a narrow window: one pane at a time, chosen from a row of tabs */
+@container stide (max-width:760px){
+  .stide{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr) 24px;
+    grid-template-areas:"seg" "main" "status"}
+  .stide .ide-seg{display:flex;grid-area:seg;gap:4px;padding:6px 8px;border-bottom:1px solid var(--line);overflow-x:auto;scroll-snap-type:x mandatory}
+  .stide .ide-seg button{flex:1;min-height:var(--tap,40px);border:none;border-radius:var(--r-md);background:var(--bg3);color:var(--dim);
+    font-size:var(--fs-sm);font-weight:600;scroll-snap-align:start;white-space:nowrap;padding:0 12px}
+  .stide .ide-seg button.on{background:var(--bg4);color:var(--txt);box-shadow:inset 0 -2px 0 var(--acc)}
+  .stide>.ide-split{display:none}
+  .stide>.stside,.stide>.ide-center,.stide>.ide-right{grid-area:main;display:none}
+  .stide[data-pane=files]>.stside{display:flex}
+  .stide[data-pane=code]>.ide-center,.stide[data-pane=panel]>.ide-center{display:grid}
+  .stide[data-pane=preview]>.ide-right{display:flex}
+  .stide[data-pane=code] .ide-center{grid-template-rows:auto auto minmax(0,1fr)}
+  .stide[data-pane=code] .ide-bottom,.stide[data-pane=code] .ide-center>.ide-split{display:none}
+  .stide[data-pane=panel] .ide-center{grid-template-rows:minmax(0,1fr)}
+  .stide[data-pane=panel] .ide-center>:not(.ide-bottom){display:none}
+  .stide .stlist{max-height:none;flex:1}
+  .stide .stapp{min-height:var(--tap,40px)}
+  .stide .ide-ol{min-height:var(--tap,40px)}
+  body .stide .stident{flex-wrap:nowrap}
+  .stide .stident input{flex:1 1 auto;min-width:0;width:0}
+  .stide #st-run .lbl{display:none}
+  .stide .stident .sp,.stide #st-idsave{display:none}   /* rename: Enter in the name, or ✏️ in Apps */
+  .stide .stident .endbtn,.stide .stident .pact{min-height:var(--tap,40px)}
+  .stide .ide-tab{min-height:var(--tap,40px)}
+  .stide .ide-tab .ide-tx{min-width:var(--tap,40px);min-height:var(--tap,40px);font-size:12px}
+  .stide .sttabs button{min-height:var(--tap,40px);scroll-snap-align:start}
+  .stide .sttabs{scroll-snap-type:x mandatory}
+  .stide .stcompose{flex-wrap:wrap}
+  .stide .stcompose input{flex:1 1 100%;min-height:var(--tap,40px)}
+  .stide .stcompose .stmodel{flex:1 1 0;min-width:0;max-width:none;min-height:var(--tap,40px)}
+  .stide #st-build{min-height:var(--tap,40px)}
+  .stide .ide-prob .endbtn,.stide .ide-conbar .endbtn,.stide .ide-prevbar #st-actions .endbtn{min-height:var(--tap,40px)}
+  .stide .ide-prob{flex-wrap:wrap}
+  .stide .ide-find{left:8px;right:8px}
+  .stide .ide-find input{flex:1;width:auto;min-height:var(--tap,40px)}
+  .stide .ide-find button{min-width:var(--tap,40px);min-height:var(--tap,40px)}
+  .stide .ide-status span:nth-child(n+5){display:none}
+  .stide .ide-split.h{display:none}
+}

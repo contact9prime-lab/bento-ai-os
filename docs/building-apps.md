@@ -8,19 +8,76 @@ data and call the operating system.
 
 ## App Studio
 
-Open **App Studio** and describe what you want — *"a habit tracker with daily checkboxes," "a
-dashboard of my scheduled tasks," "a button that runs a command and shows the output."* The builder:
+App Studio is an IDE for your apps. You can describe an app and your agent builds it, open its
+file and write it yourself, or both, on the same app.
 
-1. streams its work in the panel on the left,
-2. installs the app,
-3. shows a **live preview** on the right, and
-4. asks you to approve the permissions the app needs before you use it.
+![App Studio: the apps and the file's outline on the left, the code in the middle with the Builder under it, the app running on the right](screenshots/studio-ide.png)
 
-**Refine** an app by selecting it from the dropdown and describing a change — the builder edits the
-existing app in place, keeping context across iterations.
+- **Apps and Outline** on the left. The outline lists the open file's style and script blocks,
+  its functions, the ids it draws into and its two views. Click one to jump to its line.
+- **The editor** in the middle, one tab per open app. Edits are kept while you switch apps.
+- **The preview** on the right runs the saved app. **▶ Run** runs what's in the editor without
+  saving it.
+- **The panel** under the editor: Builder, Problems, Console, Versions, Permissions and Schedules.
+- **The status bar** says which version is live, whether you have unsaved edits, how many
+  problems the checker found, and where the cursor is.
 
-From App Studio you can also **Open** an app in its own window, **Pin** it to the desktop as a widget,
-or **Delete** it. You can hand-edit an app's HTML directly, too.
+Describe what you want in the Builder: *"a habit tracker with daily checkboxes,"* *"a dashboard
+of my scheduled tasks,"* *"a button that runs a command and shows the output."* The builder
+streams its work, installs the app, shows it in the preview and asks you to approve the
+permissions it needs. Describe a change to an app that exists and it edits that app in place.
+
+From the bar over the preview you can **Open** an app in its own window or switch the preview
+to its **widget view**. **⋯** has Pin to the desktop, the widget size, Export and Delete.
+
+### Editing the code
+
+Click **Save** (or press Ctrl+S) and what's in the editor becomes the app's next version, live at
+once. The keys work the way they do in other editors:
+
+| Keys | Does |
+|---|---|
+| Ctrl+S | Save as a new version |
+| Ctrl+Enter | Run the editor's code in the preview, unsaved |
+| Ctrl+F | Find (Enter and Shift+Enter step through) |
+| Ctrl+G | Go to a line |
+| Ctrl+/ | Comment the line or the selection in or out |
+| Tab, Shift+Tab | Indent or outdent the selected lines |
+
+**Problems** is the same checker a build goes through, run on the text in the editor while you
+type. Each finding says its line (click it to jump there, the line number is marked in red or
+amber) and has **Fix it**, which asks the builder to fix that one thing. **Console** collects the
+errors the app throws while it runs in the preview.
+
+![The Problems tab: a confirm() call the app's sandbox always answers with no, on line 83, with the line marked](screenshots/studio-ide-problems.png)
+
+Select some lines and the next request to the Builder can be about them: a tick under the
+request box adds "lines 40 to 52" and their text to it. If you start a build with unsaved edits,
+the Studio offers to save them first, because the builder works on the saved app.
+
+**When the app changes while you edit it.** A build, a chat turn or another window can save the
+app while you have edits open. Your Save is then refused rather than written over theirs, and a
+bar over the editor gives you the choice: **Load** the new version, **Compare** the two, or **Keep
+mine and save**.
+
+![The bar over the editor after the app changed elsewhere: Load v3, Compare, Keep mine and save](screenshots/studio-ide-changed.png)
+
+**Start from a blank file.** **＋ New app** then **Start from a blank file** makes an app that
+already follows the contract (a desktop view, a widget view, its data in `appData`, the copilot)
+so you have something running to change.
+
+**From a terminal.** `bento studio` is the same file and the same save, with your own editor:
+
+```bash
+bento studio                         # your apps and their versions
+bento studio edit "Habit Streaks"    # opens $EDITOR; saving the file saves a version
+bento studio pull "Habit Streaks" habits.html
+bento studio push "Habit Streaks" habits.html   # refused if the app moved on since the pull
+bento studio check "Habit Streaks"   # the checker, with line numbers
+bento studio new "Scratchpad"        # a new app from the blank file
+```
+
+On a phone the Studio shows one pane at a time: Apps, Code, Preview or Builder.
 
 ### Watching a build
 
@@ -105,15 +162,15 @@ emoji if you prefer one, or the default monogram — a letter on a colour derive
 
 ### Versions and permissions
 
-Under the builder log are two tabs:
+In the panel under the editor:
 
-- **Versions** — every build and every hand edit records one, with the note that produced it. Any
-  version can be restored; the current one stays in history, so a bad build is one click back.
-  The last 30 are kept.
+- **Versions**: every build and every save records one, with the note that produced it. Any
+  version can be restored, and the current one stays in history, so a bad build is one click
+  back. **Compare** shows what changed between a version and the editor. The last 30 are kept.
 - **Permissions** — what the app asks for and what it has actually been granted. A finished build
   is read for the capabilities it uses (OS tools, MCP tools, the network, the AI model, its own
   data store) and the consent screen comes up as part of finishing, not as a link you may miss.
-  Untick anything optional; **Rescan** re-reads the app after an edit. Nothing is granted by
+  Untick anything optional. **Rescan** re-reads the app after an edit, and a save that makes the app ask for something new puts it up for review again. Nothing is granted by
   default, and everything here can be revoked later in **Permissions**.
 
 > Build quality tracks the model. A tool-capable model (a `qwen` model, or a cloud model) produces

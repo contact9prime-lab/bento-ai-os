@@ -7786,11 +7786,20 @@ window.addEventListener('unhandledrejection', e => {
 
 
 @app.get("/api/apps/{aid}/page")
-async def api_app_page(aid: str, request: Request, surface: str = "", size: str = ""):
+async def api_app_page(aid: str, request: Request, surface: str = "", size: str = "",
+                       draft: str = ""):
     from fastapi.responses import HTMLResponse
     a = state["store"].get_app(aid)
     if not a:
         return JSONResponse({"error": "not found"}, status_code=404)
+    if draft:
+        # unsaved code from the Studio's editor, for the account that sent it and this app
+        d = state.get("app_drafts", {}).get(draft)
+        if not d or d["aid"] != aid or d["uid"] != usersmod.current() \
+                or time.time() - d["t"] > DRAFT_TTL:
+            return JSONResponse({"error": "that preview has expired, run it again"},
+                                status_code=404)
+        a = {**a, "html": d["html"]}
     # mint the app's runtime identity token (revocation lives in grants, not token expiry,
     # since the PDP reads live grants — the token only says WHO is calling)
     tok = secrets.token_urlsafe(24)
@@ -7840,6 +7849,92 @@ async def api_app_version_restore(aid: str, version: int):
         state["store"].log("system", f"app {aid}: restored v{version}")
         await state["broadcast"]({"type": "apps"})
     return {"ok": ok}
+
+
+# ---- an app's source, edited by hand (App Studio's code editor; appsource.py) ----
+
+@app.get("/api/apps/{aid}/source")
+async def api_app_source(aid: str):
+    """The saved source and the version it is, for the editor to start from."""
+    from . import appsource
+    src = appsource.load(state["store"], aid)
+    if not src:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return src
+
+
+@app.post("/api/apps/check")
+async def api_app_check(body: dict):
+    """The checker on text that is not saved yet, each finding with the line it is on."""
+    from . import appsource
+    html = body.get("html") or ""
+    if not isinstance(html, str) or len(html) > appsource.MAX_BYTES:
+        return JSONResponse({"error": "not an app"}, status_code=400)
+    probs = await asyncio.to_thread(appsource.problems, html,
+                                    _known_tool_names(state["toolbox"]))
+    return {"problems": probs, "structure": _validate_app_html(html)}
+
+
+@app.put("/api/apps/{aid}/source")
+async def api_app_source_save(aid: str, body: dict):
+    """Save edited source as the next version. A stale `base` is a 409 with the
+    app's current version, unless `force`: a build may have changed it meanwhile."""
+    from . import appsource
+    store = state["store"]
+    try:
+        res = appsource.save(store, aid, body.get("html"), base=body.get("base"),
+                             force=bool(body.get("force")))
+    except appsource.Conflict as e:
+        return JSONResponse({"error": str(e), "conflict": True, "current": e.current},
+                            status_code=409)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    status = (store.get_app(aid) or {}).get("manifest_status") or "none"
+    if res["changed"] and status == "none":
+        _propose_manifest(aid)        # what it asks for is put to the person, as after a build
+        status = "proposed"
+    if res["changed"]:
+        await state["broadcast"]({"type": "apps"})
+    return {**res, "manifest_status": status}
+
+
+@app.post("/api/apps/new")
+async def api_app_new(body: dict):
+    """A new app from a blank file, for somebody who would rather write it."""
+    from . import appsource
+    from .executors import _unique_app_name
+    store = state["store"]
+    name = _unique_app_name(store, (body.get("name") or "").strip()[:60] or "My app")
+    aid = store.save_app(name, body.get("icon") or "", "", appsource.blank(name),
+                         note="started from a blank file")
+    await state["broadcast"]({"type": "apps"})
+    return {"id": aid, "name": name}
+
+
+@app.post("/api/apps/{aid}/draft")
+async def api_app_draft(aid: str, body: dict):
+    """Run unsaved source in the preview. Kept in memory for a few minutes, for the
+    account that sent it, and served by the page route as `?draft=`."""
+    from . import appsource
+    if not state["store"].get_app(aid):
+        return JSONResponse({"error": "not found"}, status_code=404)
+    html = body.get("html") or ""
+    if not isinstance(html, str) or len(html) > appsource.MAX_BYTES:
+        return JSONResponse({"error": "not an app"}, status_code=400)
+    drafts = state.setdefault("app_drafts", {})
+    now = time.time()
+    for k, v in list(drafts.items()):
+        if now - v["t"] > DRAFT_TTL:
+            drafts.pop(k, None)
+    while len(drafts) >= DRAFT_MAX:
+        drafts.pop(min(drafts, key=lambda k: drafts[k]["t"]), None)
+    did = secrets.token_urlsafe(12)
+    drafts[did] = {"aid": aid, "html": html, "uid": usersmod.current(), "t": now}
+    return {"draft": did}
+
+
+DRAFT_TTL = 900        # a preview of unsaved code is for the next few minutes, not a store
+DRAFT_MAX = 24
 
 
 @app.get("/api/apps/{aid}/data")
