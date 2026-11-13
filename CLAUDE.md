@@ -826,6 +826,24 @@ things rather than presenting the chart". Six rules:
   never sits over the part it is about, and Details scrolls the art, never `scrollIntoView` (which scrolled
   the Stage's own room).
 
+## Bento skills: the Stage, Blueprint, Brief and Mission as downloads
+
+`agentos/skillpack` (the builder and the skills' sources) writes `plugins/bento` (a Claude Code
+plugin) and `.claude-plugin/marketplace.json`; `bento skills list|install|zip|build|check`;
+`bento flow add --file`; `docs/skills.md`, `tests/test_skillpack.py`. Asked for as "build bento
+stage and blueprint mission and some of the cool features as skills … easy to download". Four rules:
+- **One painter, one cleaner.** The skills draw with `stage.page_html` and the Stage's own JS/CSS
+  (`stage.painter()`), and check scenes with stage.py itself, copied in at build time (it is stdlib
+  only, and so is brief.py: keep them that way, or the skills stop running outside Bento).
+- **The closed sets are read, never retyped**: `{{NAME}}` blanks in each SKILL.md are filled from
+  stage/flows/brief, and the guidance is BIG_LINE/BP_LINE with the Bento-only sentences cut by
+  `_cut`, which FAILS the build when a phrase it cuts has changed. Never paste the guidance in.
+- **Generated and checked in.** Edit `agentos/skillpack/src`, run `bento skills build`; the test
+  fails on a stale tree, like the UI bundle. Any change to stage.py, brief.py or the painter files
+  changes the skills, so rebuild with it.
+- **A file has no buttons**, so the Brief skill strips Bento's "Tap …" sentences, and a mission file
+  arrives through `flows.save_draft`: switched off, holding nothing until a person enables it.
+
 ## The Brief: a mission delivers ITEMS a person acts on, never a message
 
 `agentos/brief.py` is how a mission's result reaches somebody, and it is the reason

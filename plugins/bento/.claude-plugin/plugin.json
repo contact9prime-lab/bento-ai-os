@@ -1,0 +1,15 @@
+{
+  "name": "bento",
+  "description": "Bento Box AI's Stage, Blueprint, Brief and Mission as Agent Skills: answers drawn as visual stories, things taken apart into drillable blueprints, work delivered as items to act on, and standing missions with a consent sheet.",
+  "author": {
+    "name": "Bento Box AI"
+  },
+  "license": "See LICENSE",
+  "keywords": [
+    "stage",
+    "blueprint",
+    "brief",
+    "mission",
+    "visualisation"
+  ]
+}
