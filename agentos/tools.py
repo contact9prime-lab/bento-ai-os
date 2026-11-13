@@ -7551,13 +7551,14 @@ STAGE_TOOL_SCHEMAS = [
                        "(a short 3D animation the screen plays from your shot list: for something "
                        "that moves, grows or gets built) or blueprint (a thing taken apart: parts "
                        "that nest, each with what it does, its numbers and how sure anyone is, which "
-                       "the person opens level by level). Call "
+                       "the person opens level by level) or model (a place or a thing built in 3D from "
+                       "solids you place: it is inked on paper, rises into 3D and comes to life). Call "
                        "it once per scene, in "
                        "story order, two to five scenes for an answer worth seeing. Numbers need a "
                        "source, or illustrative: true when they are only an example.",
         "parameters": {"type": "object", "properties": {
             "kind": {"type": "string", "enum": ["chart", "map", "numbers", "timeline", "steps", "table",
-                                                "image", "video", "film", "blueprint"]},
+                                                "image", "video", "film", "blueprint", "model"]},
             "title": {"type": "string", "description": "the scene's headline, a few words"},
             "caption": {"type": "string", "description": "one or two sentences: what to notice"},
             "say": {"type": "string", "description": "the line read aloud with it, if different from the caption"},
@@ -7617,7 +7618,29 @@ STAGE_TOOL_SCHEMAS = [
             "facts": {"type": "array", "items": {"type": "object"},
                       "description": "blueprint: the whole's own key numbers, [{label, value, unit?}]"},
             "unknowns": {"type": "array", "items": {"type": "string"},
-                         "description": "blueprint: what nobody outside can know about it"}},
+                         "description": "blueprint: what nobody outside can know about it"},
+            "solids": {"type": "array", "items": {"type": "object"}, "description":
+                       "model: 15 to 50 solids, [{shape, at: [x, y, z] (x right, z towards the viewer, y "
+                       "the height of its base), size: [width, height, depth], color?, label?, note? "
+                       "(one sentence the tour says at a labelled thing), count? "
+                       "with spread: [width, depth] (scatter copies over an area), turn? (degrees), tilt? "
+                       "(degrees it is laid over; 90 is on its side along x), "
+                       "move? (spin, sway, bob, drift, orbit, flow or walk), tiers? (storeys)}]. shape: box, "
+                       "cylinder, cone, pyramid, sphere, dome, roof, ring, arch, or ready-made tree, "
+                       "blossom, pine, palm, bamboo, bush, rock, mountain, cloud, water, house, building, "
+                       "pagoda, torii, bridge, lantern, wall, column, stairs, path, person, bird, boat, "
+                       "car, plane. color: pink, red, orange, gold, yellow, green, leaf, teal, blue, sky, "
+                       "navy, purple, brown, wood, stone, grey, white, black, sand, glass or #rrggbb."},
+            "model": {"type": "array", "items": {"type": "object"}, "description":
+                      "blueprint: what it looks like in 3D, 5 to 30 solids as in a model scene, each "
+                      "with part: the name of the part it draws"},
+            "style": {"type": "string", "enum": ["paper", "blueprint", "hologram"], "description":
+                      "model or blueprint: ink on brown paper (default), a blueprint sheet, or a "
+                      "hologram projected in the air"},
+            "weather": {"type": "string", "enum": ["none", "petals", "leaves", "snow", "rain",
+                                                   "fireflies", "sparks"], "description": "model: what falls or drifts"},
+            "ground": {"type": "string", "enum": ["none", "grass", "water", "sand", "snow", "stone"],
+                       "description": "model: what it stands on"}},
             "required": ["kind", "title"]},
     },
 ]

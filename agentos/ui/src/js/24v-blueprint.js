@@ -76,6 +76,8 @@ function stageBlueprint(art,sc){
     for(const id of STAGE_CHAT.want.path){const k=bpKids(n).find(p=>p.id===id);if(!k)break;ok.push(id);n=k}
     st.path=bpKids(n).length?ok:ok.slice(0,-1)}
   if(sc._view){art.classList.add('bp-v-'+sc._view.mode);st.mode=sc._view.mode;st.path=(sc._view.path||[]).filter(id=>(sc.parts||[]).some(p=>p.id===id))}
+  // a blueprint that can be built in 3D opens that way (24x-model.js); your own choice is kept
+  if(!st.mode&&!st.path.length&&!sc._view&&bpModelOf(sc))st.mode='model';
   art._bp=st;
   const wrap=sEl('div','bp');
   const crumbs=sEl('div','bp-crumbs');
@@ -132,8 +134,14 @@ function bpRender(st,how){
   const world=sSvg('g',{class:'bp-world'});svg.append(world);
   const form=node.form||(node.root?st.sc.form:'')||'exploded';
   st.needH=0;
-  const look=st.el.draw.querySelector('.bp-look');if(look)look.remove();
+  // the 3D model is kept across a repaint: mounting it again would start its build over
+  if(st.mode==='model'&&st.path.length)st.mode='parts';
+  const built=st.mode==='model'&&st.el.draw.querySelector('.bp-model');
+  const look=st.el.draw.querySelector('.bp-look');if(look&&look!==built)look.remove();
   svg.style.display='';
+  if(st.mode==='model'&&(built||bpModelView(st))){svg.style.display='none';st.items=[];st.form=form;bpCrumbs(st);bpSpec(st);
+    if(st.live&&typeof stageChatFollow==='function')stageChatFollow(st);
+    if(st.sid)BP_KEEP[st.sid]={path:[],mode:'model'};return}
   if(st.mode==='look'){bpLook(st);st.items=[];st.form=form;bpCrumbs(st);bpSpec(st);bpMark(st);
     if(st.live&&typeof stageChatFollow==='function')stageChatFollow(st);
     if(st.sid)BP_KEEP[st.sid]={path:st.path.slice(),mode:'look'};return}
@@ -613,8 +621,8 @@ function bpCrumbs(st){
   // two ways to read a level: what it is made of, and what flows between its parts
   const ne=bpFlowEdges(st,bpKids(bpNode(st))).length;
   const pic=bpPicOf(st),canLook=!!pic||bpLooking(st)||(st.live&&!!st.sid);
-  if(ne||canLook){const seg=sEl('span','bp-modes');seg.setAttribute('role','group');
-    [['parts','Parts']].concat(ne?[['flows','How it works · '+ne]]:[]).concat(canLook?[['look',pic?'Drawing':'◌ Drawing']]:[]).forEach(([m,w])=>{
+  if(ne||canLook||bpModelOf(st.sc)){const seg=sEl('span','bp-modes');seg.setAttribute('role','group');
+    (!st.path.length&&bpModelOf(st.sc)?[['model','◈ 3D']]:[]).concat([['parts','Parts']]).concat(ne?[['flows','How it works · '+ne]]:[]).concat(canLook?[['look',pic?'Drawing':'◌ Drawing']]:[]).forEach(([m,w])=>{
       const b=sEl('button','bp-mode'+((st.mode||'parts')===m?' on':''),w);b.setAttribute('aria-pressed',String((st.mode||'parts')===m));
       b.onclick=()=>{st.mode=m;st.sel=null;st.peek=null;bpRender(st,'in')};seg.append(b)});
     c.append(seg)}

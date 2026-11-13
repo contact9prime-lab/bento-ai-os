@@ -820,6 +820,20 @@ things rather than presenting the chart". Six rules:
   behaviour test now (it had only a grep), and its first picture carries the question as Telegram's does.
   While a blueprint fills, a phone is told at once (`bpfill.filling`, `HOLD_LINE`): the desktop drew it straight away
   and Telegram sat silent for three minutes, reported as "the stage shows on the desktop but not on Telegram".
+- **A model is built in 3D from a closed set of solids, and a blueprint opens as one** (`stage.MODEL_*`,
+  `_solids`, `has_model`, `24x-model.js`, `42-model.css`; `docs/stage.md`, `tests/test_stage_model.py`). Asked for
+  as "paper style blueprint with brown paper and black lines, a bit animated … projected in the air … build Kyoto
+  with pink trees and see them coming to life". The film's rule: the agent places shapes, nothing it wrote runs.
+  One geometry (`mdlBuild`: every piece a closed mesh, the Node test checks it) feeds two painters: WebGL
+  (`mdlGL`) and an SVG ink drawing (`mdlStill`) for phones, lite screens, reduced motion and no WebGL. Lines
+  are quads widened in the vertex shader (WebGL lines are 1px); a round thing's outline is its back faces pushed
+  out; shade is hatching in screen space. A line is biased towards the eye in VIEW space: a clip-space bias of
+  .0009 was 16 units deep and every wall was see-through. The eye frames what the scene is about (mountains,
+  clouds and what flies are a backdrop) and faces it as it was composed (z towards the viewer): measured with
+  real Claude Code, whose river "across the front" ran away from the eye at the first camera angle. Small things
+  take a finer pen, or a grove is a blot. A repaint of the Stage keeps the look you picked and never restarts a
+ A tower blueprint is stacked by the
+  page (`bpModelOf`); other blueprints carry `model` solids naming their parts.
 - **Labels never overlap and the panel holds the rest.** Labels compress, then drop their second line; the
   title block, "you are here" and the links of a tower live in the spec panel. Sized from `clientWidth`, a
   ResizeObserver dropped when the drawing leaves; on a phone the scene scrolls and a tap brings a sheet that

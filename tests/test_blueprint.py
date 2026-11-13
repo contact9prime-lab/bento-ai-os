@@ -237,7 +237,7 @@ def test_one_painter_drawn_as_text():
         assert f"{k}:'" in sjs.split("var STAGE_KIND=")[1].split(";")[0], k
     assert stage.STILL_KIND["blueprint"] == "Blueprint"
     # the phone's page embeds the same painter and its styles
-    assert stage.PAINTER_JS == ("24l-stage.js", "24v-blueprint.js")
+    assert stage.PAINTER_JS[:2] == ("24l-stage.js", "24v-blueprint.js")
     assert "40-blueprint.css" in stage.PAINTER_CSS
 
 
