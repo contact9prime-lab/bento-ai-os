@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.9.4 — 2026-11-14
+
+**A drawing comes to life.** A model is still inked on paper and raised, and then the light
+comes on: a sky, sunlight, soft cast shadows and real surfaces, with the trees swaying and the
+people walking in it. That look is called Real and it is the default now; Paper, Blueprint and
+Hologram are one tap away.
+
+**Charts and maps are built in 3D.** A bar, line or area chart rises out of the sheet, each bar
+carrying its name and value, with a labelled rule beside it. A map is a washed world with pins as
+tall as their values, countries with a value standing up out of the land, and a journey as arcs
+in the air. Tour goes round them and reads each note. Flat brings the flat drawing back, and a
+pie or a scatter stays flat.
+
+**A 3D scene fills the Stage.** The drawing runs edge to edge, with the title laid over its top
+and the narrator's line over its foot.
+
+**Telegram gets a video with sound.** After the pictures, whatever is built in 3D arrives as a
+video: the plan inked, the thing raised and lit, a turn round its named things with their notes,
+over a soundtrack made for it, and the story read aloud when this machine has a voice. `/clips
+off` goes back to pictures only. The Clip button on the desktop saves the same video as a file.
+
+**Among the stars.** `ground: space` gives a model no ground and a sky of stars: the sphere in
+the middle shines on the rest, and whatever orbits goes round it, the nearer the faster, along a
+drawn path. Ask for the solar system.
+
+**India's map is India's.** For a viewer in India a map draws India's boundary as India's own
+maps do, with all of Jammu and Kashmir and Ladakh. It is drawn by hand at this map's coarse
+scale, so it is right in shape and not survey-accurate.
+
+**The skills build in 3D too.** A page made by the Stage or Blueprint skill carries its own 3D
+engine, so models, charts and maps build live in it with no network, and the Stage skill now
+documents the model kind.
+
 ## 0.9.3 — 2026-11-14
 
 **A model chosen from Telegram is the one that answers.** `/model` used to save a provider's

@@ -834,6 +834,21 @@ things rather than presenting the chart". Six rules:
   take a finer pen, or a grove is a blot. A repaint of the Stage keeps the look you picked and never restarts a
  A tower blueprint is stacked by the
   page (`bpModelOf`); other blueprints carry `model` solids naming their parts.
+- **A drawing comes to life, and a chart and a map are models** (`MDL_LOOK.real`, `mdlLive`, `mdlOfChart`,
+  `mdlOfMap`, `stageD3`, `stageWide`, `mdlClip`, `agentos/stageclip.py`, `stage.builds_3d`/`clip_html`/`clip_words`,
+  `TelegramBridge.send_clips`; `tests/test_stage_3d.py`). Asked for as "the 3D should not be short of the 3D we see
+  today", "Telegram should not just send a diagram, a working feed with audio", "update the skills", "India map
+  has to be proper". Real is the paper build, then the SAME geometry as lit standard materials with the drawing's
+  sway and walk injected into the vertex stage (and into the shadow's depth material, or people walk off their
+  shadows). The injection needs a newline before three's `#define`: without it nothing was drawn and nothing was
+  logged outside the page. A chart or map is turned into solids by the page, from its own numbers; every bar
+  carries its value, pie and scatter stay flat, stills and reduced motion stay flat, Flat is one tap. A map's
+  outlines are CUT at the sheet's edge (clamped, China became a wedge across the sea). The clip is recorded in
+  real time by the page's own MediaRecorder over the CDP pipe (never a port, never `--mute-audio`); mp4 from
+  Chrome, ffmpeg only for a webm. A page carries three.js as a blob (`MDL_THREE`) to build live: the skills pass
+  it, a phone's picture never does. `ground: space`: the middle sphere is the light, orbits are Kepler-ish, paths
+  are ruled lines that also centre the fit on the sun. Borders follow the viewer (`stagePov`, `pov` in
+  world-110m.json): the India ring was drawn by hand and the test checks no area was lost or doubled.
 - **Labels never overlap and the panel holds the rest.** Labels compress, then drop their second line; the
   title block, "you are here" and the links of a tower live in the spec panel. Sized from `clientWidth`, a
   ResizeObserver dropped when the drawing leaves; on a phone the scene scrolls and a tap brings a sheet that

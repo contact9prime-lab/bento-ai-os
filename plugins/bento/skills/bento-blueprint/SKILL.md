@@ -58,5 +58,13 @@ where it matters, `made_of`, `limits` and `certainty`.
 - `steps` on a part: how it works, in order, up to 6.
 - Limits: 4 levels, 12 parts at one level, 160 parts in all.
 - Facts with numbers need `source` on the scene, or `"illustrative": true`.
+- `model`: what it looks like, in 3D. A tower is stacked from its parts by the page. Anything
+  else carries `model`: solids `{"shape", "at": [x, y, z], "size": [w, h, d], "color", "part": "<part id>"}`
+  from `box`, `cylinder`, `cone`, `pyramid`, `sphere`, `dome`, `roof`, `ring`, `arch` and `tree`, `blossom`, `pine`, `palm`, `bamboo`, `bush`, `rock`, `mountain`, `cloud`, `water`, `house`, `building`, `pagoda`, `torii`, `bridge`, `lantern`, `wall`, `column`, `stairs`, `path`, `person`, `bird`, `boat`, `car`, `plane`, each naming the part it draws, so a tap on it opens
+  that part. `style` one of `real`, `paper`, `blueprint`, `hologram`.
+
+The page carries its own 3D engine: the blueprint opens on the model, inked on paper, raised and
+then lit like a real object; drag turns it, Tour goes round its parts, Pull apart separates them,
+and Clip saves a video of the build with sound.
 
 An example is in [examples/blueprint.json](examples/blueprint.json).

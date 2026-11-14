@@ -367,7 +367,7 @@ function stagePlay(){
       if(STAGE.at>=STAGE.scenes.length-1){STAGE.playing=false;STAGE.held=0;stagePaint();return}
       STAGE.at++;stagePaint();step()},900);
     // a video plays at its own pace: the story waits on it rather than cutting it off
-    const hold=sc.kind==='video'?20000:sc.kind==='film'?stageFilmSeconds(sc)*1000:sc.kind==='blueprint'?bpTourMs(sc):sc.kind==='model'?stageModelMs():0;
+    const hold=sc.kind==='video'?20000:sc.kind==='film'?stageFilmSeconds(sc)*1000:sc.kind==='blueprint'?bpTourMs(sc):sc.kind==='model'||((sc.kind==='chart'||sc.kind==='map')&&stageD3ok()&&!stageD3flat())?stageModelMs():0;
     if(typeof VOICE!=='undefined'&&VOICE.tts&&typeof speakAs==='function'&&line)speakAs(agentName(),line,()=>setTimeout(after,hold));
     else setTimeout(after,Math.max(4500,line.length*60)+hold);
   };
@@ -641,6 +641,7 @@ function stageDate(x){
 
 /* --- charts --- */
 function stageChart(art,sc){
+  if(stageD3(art,sc,mdlOfChart(sc),stageChart))return;
   const W=960,H=500,R=24;
   const svg=sSvg('svg',{viewBox:`0 0 ${W} ${H}`,class:'st-svg',role:'img','aria-label':sc.title||'chart'});
   art.append(svg);const K=stageK(svg);svg.style.setProperty('--k',K);
@@ -776,7 +777,19 @@ function stageWorldIndex(d){
     'ivory coast':'CIV',burma:'MMR',taiwan:'TWN',palestine:'PSE',holland:'NLD'};
   d.countries.forEach(c=>{[c.n,...(c.alt||[]),c.a3,c.a2].filter(Boolean).forEach(k=>idx[String(k).toLowerCase()]=c)});
   Object.entries(al).forEach(([k,a3])=>{const c=d.countries.find(x=>x.a3===a3);if(c&&!idx[k])idx[k]=c});
+  // borders as the viewer's country draws them, where the map file has them (pov): India's own
+  // boundary for a viewer in India
+  const pv=d.pov&&d.pov[stagePov()];
+  if(pv&&!d.povOn){d.povOn=true;d.countries.forEach(c=>{if(pv[c.a3])c.r=pv[c.a3]})}
   d.idx=idx;STAGE.world=d;return d;
+}
+/* Whose borders a map shows: the person's choice (localStorage stage.borders: a country code, or
+   'default'), else where this screen is. A phone's picture is drawn on this machine, so it follows it. */
+function stagePov(){
+  try{const v=localStorage.getItem('stage.borders');if(v)return v==='default'?'':v.toUpperCase()}catch(e){}
+  try{const tz=Intl.DateTimeFormat().resolvedOptions().timeZone||'';if(tz==='Asia/Kolkata'||tz==='Asia/Calcutta')return 'IN'}catch(e){}
+  try{if(/-IN$/i.test(navigator.language||''))return 'IN'}catch(e){}
+  return '';
 }
 async function stageWorld(){
   if(STAGE.world)return STAGE.world;
@@ -801,6 +814,9 @@ async function stageMap(art,sc){
       li.append(sEl('b','',(i+1)+' · '+(p.label||'')+(p.value!=null?' '+stageFmtS(p.value,sc.unit,nsigned):'')),sEl('span','',p.note));
       if(nsigned&&p.value)li.classList.add(p.value<0?'down':'up');ol.append(li)});
     art.append(ol)}
+  if(stageD3(art,sc,mdlOfMap(sc,world),stageMap,ol)){
+    const gone=(sc.regions||[]).filter(r=>!world.idx[String(r.country).toLowerCase()]).map(r=>r.country);
+    if(gone.length)art.append(sEl('p','mut st-note','Not on this map: '+gone.join(', ')));return}
   const W=960,fw=art.clientWidth,fh=art.clientHeight-(ol?ol.offsetHeight+10:0);
   const H=fw>40&&fh>40?Math.round(Math.min(1400,Math.max(320,W*fh/fw))):500;
   const svg=sSvg('svg',{viewBox:`0 0 ${W} ${H}`,class:'st-svg st-mapsvg',role:'img','aria-label':sc.title||'map'});

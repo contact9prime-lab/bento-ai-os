@@ -48,6 +48,7 @@ COMMANDS = [
     ("/perms", "", "who has been granted what"),
     ("/clear", "", "wipe this conversation and start fresh"),
     ("/updown", "[on|off]", "a message when I go offline or come back"),
+    ("/clips", "[on|off]", "a video with sound when a story builds something in 3D"),
     ("/companies", "", "your companies, with a button to open each"),
     ("/company", "[name]", "the open company and its departments; with a name, open that one"),
     ("/people", "", "who may talk to me here, and who is waiting"),
@@ -172,6 +173,17 @@ class Console:
         on = t.get("status_messages", True) is not False
         return ("▲ I'll message you when I go offline and when I'm back." if on
                 else "▲ I won't message you when I go offline or come back. /updown on turns it back on.")
+
+    async def _cmd_clips(self, chat_id: int, arg: str) -> str:
+        """The owner's switch for the videos of 3D scenes (TelegramBridge.send_clips)."""
+        from . import config as cfgmod
+        t = self.tg._t()
+        if arg.lower() in ("on", "off"):
+            t["clips"] = arg.lower() == "on"
+            cfgmod.save_config(self.tg.cfg)
+        on = t.get("clips", True) is not False
+        return ("▶ When a story builds something in 3D, I'll send a video of it with sound after the pictures."
+                if on else "▶ Pictures only. /clips on brings the videos back.")
 
     # --------------------------------------------------------- companies
     # "With Telegram I should be able to open the companies." The same company.switch the

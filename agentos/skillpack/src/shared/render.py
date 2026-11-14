@@ -69,7 +69,8 @@ def build(data: dict, footer: str = "") -> tuple[str, list[str]]:
         notes.append("this skill has no world map file; map scenes draw without countries")
     page = stage.page_html(scenes, str(data.get("question") or ""),
                            _answer_html(str(data.get("answer") or "")),
-                           str(data.get("agent") or ""), paint=paint, footer=footer)
+                           str(data.get("agent") or ""), paint=paint, footer=footer,
+                           three=_read("three.module.min.js"))
     return page, notes
 
 

@@ -57,5 +57,13 @@ where it matters, `made_of`, `limits` and `certainty`.
 - `steps` on a part: how it works, in order, up to {{BP_STEPS}}.
 - Limits: {{BP_DEPTH}} levels, {{BP_CHILDREN}} parts at one level, {{BP_NODES}} parts in all.
 - Facts with numbers need `source` on the scene, or `"illustrative": true`.
+- `model`: what it looks like, in 3D. A tower is stacked from its parts by the page. Anything
+  else carries `model`: solids `{"shape", "at": [x, y, z], "size": [w, h, d], "color", "part": "<part id>"}`
+  from {{MODEL_PRIMS}} and {{MODEL_PROPS}}, each naming the part it draws, so a tap on it opens
+  that part. `style` one of {{MODEL_STYLES}}.
+
+The page carries its own 3D engine: the blueprint opens on the model, inked on paper, raised and
+then lit like a real object; drag turns it, Tour goes round its parts, Pull apart separates them,
+and Clip saves a video of the build with sound.
 
 An example is in [examples/blueprint.json](examples/blueprint.json).

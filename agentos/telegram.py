@@ -315,6 +315,7 @@ class TelegramBridge(usersmod.Scoped):
                                             text=f"▶ {sc.get('title') or 'Video'}\n"
                                                  f"https://www.youtube.com/watch?v={sc['video']}"
                                                  + (f"&t={int(sc['start'])}" if sc.get("start") else ""))
+                    await self.send_clips(scenes, chat_id)
                     await self.send_narration(scenes, chat_id)
                     await self.send_blueprint_docs(rows, ans, chat_id)
                     return
@@ -345,6 +346,72 @@ class TelegramBridge(usersmod.Scoped):
             with contextlib.suppress(Exception):
                 await self._api("sendChatAction", chat_id=chat_id, action="upload_photo")
             await asyncio.wait([wait], timeout=4.5)   # Telegram's indicator lasts five seconds
+
+    async def send_clips(self, scenes: list, chat_id: int) -> int:
+        """What is built in 3D goes as a video with sound, after the pictures (stageclip.py): the
+        plan inked, the thing raised and brought to life, a turn round its named things with
+        their notes, and the story read over it when this machine has a voice. Asked for as "it
+        should not just send a diagram … a working feed with audio". A clip is made in real
+        time, so the chat shows "sending a video" meanwhile and a story gets `stageclip.CLIPS`
+        at most. `/clips off` is `telegram.clips: false`. Never fatal: the pictures already went."""
+        from . import stage as stagemod, stageclip, speech
+        if self._t().get("clips") is False or not stageclip.available(self.cfg):
+            return 0
+        sent = 0
+        for sc in [s for s in scenes if stagemod.builds_3d(s)][:stageclip.CLIPS]:
+            narration = None
+            if speech.conf(self.cfg).get("engine") not in ("", "browser") and self._t().get("narrate") is not False:
+                try:
+                    audio, mime, _i = await speech.speak(self.cfg, stagemod.clip_words(sc),
+                                                         agent=self.cfg.get("agent_name") or "", lead=True)
+                    narration = (audio, mime)
+                except Exception as e:
+                    self.store.log("telegram", f"a clip without a voice: {e}")
+            job = asyncio.ensure_future(stageclip.render(sc, self.cfg, narration))
+            while not job.done():
+                with contextlib.suppress(Exception):
+                    await self._api("sendChatAction", chat_id=chat_id, action="upload_video")
+                await asyncio.wait([job], timeout=4.5)
+            got = None
+            with contextlib.suppress(Exception):
+                got = job.result()
+            if not got:
+                self.store.log("telegram", f"no video for '{sc.get('title') or sc.get('kind')}': it could not be recorded here")
+                continue
+            data, mime, secs = got
+            res = await self.send_video(data, mime, f"▶ {sc.get('title') or 'Watch it built'}"[:1024], chat_id, secs)
+            if res.startswith("[error]"):
+                self.store.log("telegram", f"could not send the video: {res}")
+            else:
+                sent += 1
+        return sent
+
+    async def send_video(self, data: bytes, mime: str, caption: str = "", chat_id: int | None = None,
+                         seconds: float = 0) -> str:
+        """A video that plays in the chat (mp4); anything else goes as a file, which is all
+        Telegram does with it."""
+        chat_id = chat_id or self._t().get("owner_chat_id")
+        token = self._t().get("bot_token", "")
+        if not token or not chat_id or not data:
+            return "[error] Telegram is not set up"
+        mp4 = "mp4" in (mime or "")
+        try:
+            async with httpx.AsyncClient(timeout=180) as client:
+                if mp4:
+                    from . import stageclip
+                    r = await client.post(api_url(token, "sendVideo"),
+                                          data={"chat_id": str(chat_id), "caption": caption, "supports_streaming": "true",
+                                                "width": str(stageclip.WIDTH), "height": str(stageclip.HEIGHT),
+                                                **({"duration": str(int(seconds))} if seconds else {})},
+                                          files={"video": ("story.mp4", data, "video/mp4")})
+                else:
+                    r = await client.post(api_url(token, "sendDocument"), data={"chat_id": str(chat_id), "caption": caption},
+                                          files={"document": ("story.webm", data, mime or "video/webm")})
+            if not r.json().get("ok"):
+                raise RuntimeError(r.json().get("description", f"HTTP {r.status_code}"))
+        except Exception as e:
+            return f"[error] {e}"
+        return "sent"
 
     async def send_narration(self, scenes: list, chat_id: int) -> str:
         """The story told aloud, as one audio message after the pictures: each scene's line,

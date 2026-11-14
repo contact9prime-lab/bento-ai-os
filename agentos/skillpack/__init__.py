@@ -42,9 +42,9 @@ REPO_SLUG = "contact9prime-lab/bento-ai-os"
 #: name -> (scripts, assets). Scripts and assets are (source, file name in the skill).
 SKILLS = {
     "bento-stage": {"scripts": ["render.py", "bento_stage.py"],
-                    "assets": ["painter.js", "painter.css", "world-110m.json"]},
+                    "assets": ["painter.js", "painter.css", "world-110m.json", "three.module.min.js"]},
     "bento-blueprint": {"scripts": ["render.py", "bento_stage.py"],
-                        "assets": ["painter.js", "painter.css"]},
+                        "assets": ["painter.js", "painter.css", "three.module.min.js"]},
     "bento-brief": {"scripts": ["brief.py", "render.py", "bento_stage.py", "bento_brief.py"],
                     "assets": ["painter.js", "painter.css"]},
     "bento-mission": {"scripts": ["mission.py"], "assets": []},
@@ -99,6 +99,10 @@ def fills() -> dict:
         "BP_FORMS": _words(stage.BP_FORMS), "BP_PART": _words(stage.BP_PART),
         "BP_CERTAINTY": _words(stage.BP_CERTAINTY), "BP_STATUS": _words(stage.BP_STATUS),
         "BP_FLOWS": _words(stage.BP_FLOWS),
+        "MODEL_PRIMS": _words(stage.MODEL_PRIMS), "MODEL_PROPS": _words(stage.MODEL_PROPS),
+        "MODEL_STYLES": _words(stage.MODEL_STYLES), "MODEL_COLORS": _words(stage.MODEL_COLORS),
+        "MODEL_MOVES": _words(stage.MODEL_MOVES), "MODEL_WEATHER": _words(stage.MODEL_WEATHER[1:]),
+        "MODEL_GROUND": _words(stage.MODEL_GROUND[1:]),
         "TRIGGER_KINDS": _words(flows.TRIGGER_KINDS), "SINK_KINDS": _words(flows.SINK_KINDS),
         "MEMORY_SCOPES": _words(flows.MEMORY_SCOPES), "BRIEF_KINDS": _words(brief.KINDS),
         **{k: str(getattr(stage, k)) for k in (
@@ -134,7 +138,9 @@ def files() -> dict[str, bytes]:
         .replace("__MEMORY_SCOPES__", repr(tuple(flows.MEMORY_SCOPES)))
         .replace("__BRIEF_KINDS__", repr(tuple(brief.KINDS))),
     }
-    assets = {"painter.js": js, "painter.css": css, "world-110m.json": world}
+    assets = {"painter.js": js, "painter.css": css, "world-110m.json": world,
+              # three.js (MIT, its licence in its own header): a page that carries it builds in 3D live
+              "three.module.min.js": (HERE.parent / "ui/assets/three.module.min.js").read_text(encoding="utf-8")}
     values = fills()
     out: dict[str, bytes] = {}
     for name, spec in SKILLS.items():

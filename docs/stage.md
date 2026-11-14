@@ -101,6 +101,70 @@ same model, and so does your phone:
 
 In a terminal a model is one line saying what stands in it.
 
+### It comes to life
+
+A model is drawn the way a draughtsman would: the plan in ink, then each thing raised. Then the
+light comes on. The paper gives way to ground and sky, the sun casts soft shadows, surfaces take
+their colour, and what moves keeps moving. That look is **Real**, and it's what you get unless you
+or the agent pick another. **Paper**, **Blueprint** and **Hologram** are beside it.
+
+![Kyoto in spring, lit: a red pagoda among pink blossom trees and pines, a red bridge over a blue river, a mountain behind, soft shadows on the grass](screenshots/stage-model-real.png)
+
+On a computer with no graphics card the shadows are drawn at half the detail. A small machine's
+own screen, reduced motion and a phone's picture still get the ink drawing.
+
+### Charts and maps, built
+
+A bar, line or area chart and a map are built the same way, and they fill the Stage.
+
+![A bar chart built in 3D on the Stage: seven bars rising from the sheet, each with its name and value on a tag, a labelled rule at the back, the title laid over the top](screenshots/stage-3d-chart.png)
+
+- **A bar** stands as tall as its value and carries its name and value, because a turned chart
+  is harder to read off than a flat one. The tallest is gold. Rises and falls both stand up, in
+  green with ▲ and red with ▼. A rule at the back is labelled with round values.
+- **A line** is drawn through the air once its points have risen, with a drop line under each.
+- **A map** is land washed on a sea. A pin is as tall as its value and numbered when it has a
+  note. A country with a value stands up out of the land. A journey is arcs in the air.
+- **Tour** goes round the bars or the places and shows what each one is. For a bar that's its
+  rank, worked out from the numbers shown. For a place it's the agent's note.
+- **Flat** brings the flat drawing back, and **3D** on the flat one builds it again. The page
+  remembers which you chose. A pie and a scatter are always flat, and on a phone's width a chart
+  or a map stays flat until you press **3D**.
+
+![A map built in 3D: the world as washed land on a blue sea, five red pins of different heights with numbered names](screenshots/stage-3d-map.png)
+
+### Among the stars
+
+Give a model `ground: space` and it has no ground. The sphere in the middle shines on everything
+else, the sky is stars, and anything with `move: orbit` goes round the middle along a drawn path,
+the nearer the faster.
+
+![The solar system: a glowing sun, eight planets on their orbits lit from the middle, Saturn with its ring, stars behind](screenshots/stage-model-solar.png)
+
+### As a video
+
+**Clip** records the build as a video with sound and saves it as a file: the plan being inked,
+the rise, the light coming on, then a turn round the named things with their notes. It takes as
+long to make as it runs, about half a minute.
+
+In Telegram the same video arrives after the pictures, for up to two scenes of a story. If this
+machine has a voice (Settings → Voice), the story is read over it. `/clips off` in the chat goes
+back to pictures only. It needs a browser on this machine. A browser that can only record webm
+has it turned into mp4 by ffmpeg when ffmpeg is installed, and it's sent as a file otherwise.
+WhatsApp still gets pictures.
+
+![Four moments of the video a phone gets: the plan in ink, the model raised on paper, the lit garden, and the tour stopped at the bridge with its note](screenshots/stage-clip-frames.png)
+
+### Whose borders a map shows
+
+For a viewer in India, a map draws India's boundary as India's own maps do, including all of
+Jammu and Kashmir and Ladakh. The page decides by where the screen is (its time zone or language),
+and a phone's picture follows the machine that drew it. The outline was drawn by hand at this
+map's coarse scale: right in shape, not survey-accurate. To choose yourself, set `stage.borders`
+in the browser's storage to `IN` or `default`.
+
+![India on the flat map, with Gilgit, Srinagar and Leh inside its boundary](screenshots/stage-map-india.png)
+
 ## Blueprints: take anything apart
 
 Ask "give me a fine blueprint of the Burj Khalifa", "what's inside a jet engine?" or "how is a cell

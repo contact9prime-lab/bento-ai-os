@@ -7644,12 +7644,12 @@ STAGE_TOOL_SCHEMAS = [
             "model": {"type": "array", "items": {"type": "object"}, "description":
                       "blueprint: what it looks like in 3D, 5 to 30 solids as in a model scene, each "
                       "with part: the name of the part it draws"},
-            "style": {"type": "string", "enum": ["paper", "blueprint", "hologram"], "description":
-                      "model or blueprint: ink on brown paper (default), a blueprint sheet, or a "
-                      "hologram projected in the air"},
+            "style": {"type": "string", "enum": ["real", "paper", "blueprint", "hologram"], "description":
+                      "model or blueprint: real (drawn on paper, then lit like a real place: the "
+                      "default), ink on brown paper, a blueprint sheet, or a hologram in the air"},
             "weather": {"type": "string", "enum": ["none", "petals", "leaves", "snow", "rain",
                                                    "fireflies", "sparks"], "description": "model: what falls or drifts"},
-            "ground": {"type": "string", "enum": ["none", "grass", "water", "sand", "snow", "stone"],
+            "ground": {"type": "string", "enum": ["none", "grass", "water", "sand", "snow", "stone", "space"],
                        "description": "model: what it stands on"}},
             "required": ["kind", "title"]},
     },
