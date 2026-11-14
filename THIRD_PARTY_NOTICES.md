@@ -38,7 +38,15 @@ THE SOFTWARE.
 ### three.js r170 (MIT)
 
 File: `agentos/ui/assets/three.module.min.js`, the unmodified minified module build of
-[three.js](https://github.com/mrdoob/three.js) 0.170.0. Loaded only by the World scene.
+[three.js](https://github.com/mrdoob/three.js) 0.170.0. Loaded by the World, the Office in 3D and the Stage.
+
+Files: `agentos/ui/assets/three-addons/GLTFLoader.js` and `BufferGeometryUtils.js`, from the same
+release's `examples/jsm`, under the same licence. Their one change is the import path: they import
+`../three.module.min.js` (and each other) instead of the bare name `three`. Loaded by the Stage when
+a scene holds a real model.
+
+Models shown on the Stage are not shipped with Bento. They are downloaded on request from
+[Poly Haven](https://polyhaven.com) (CC0) into the person's own home, each with its maker's name.
 
 ```
 The MIT License

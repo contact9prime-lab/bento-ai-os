@@ -100,6 +100,7 @@ function stageFill(ev){
   const hit=(STAGE.scenes||[]).find(s=>s.id===ev.id);
   if(!hit)return;
   const old=hit.scene;hit.scene=ev.scene;
+  if(ev.models){stagePaintIfOpen();return}     // real models were found for its solids: the drawing is mounted again with them
   document.querySelectorAll('.bp-art').forEach(art=>{if(art._bp&&art._bp.sc===old)bpRefill(art._bp,ev.scene)});
 }
 function stagePaintIfOpen(){const w=typeof WM!=='undefined'&&WM.wins.get('stage');if(w)stagePaint()}

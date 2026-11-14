@@ -115,6 +115,33 @@ or the agent pick another. **Paper**, **Blueprint** and **Hologram** are beside 
 On a computer with no graphics card the shadows are drawn at half the detail. A small machine's
 own screen, reduced motion and a phone's picture still get the ink drawing.
 
+### Real models
+
+A scene built only from simple shapes can be well lit and still look like shapes. So a thing in a
+model can ask for a real 3D model by name. The agent writes two or three plain words ("wooden
+armchair"), Bento looks them up in a library it trusts, downloads the model once and stands it
+where the built shape was, at the size the agent gave. The built shape stays as the plan in ink
+and as the fallback when nothing fits.
+
+![A reading corner built by the agent: a real armchair, side table, vase and potted plant from a public-domain library, on a rug in a room made of simple shapes, with the makers named](screenshots/stage-model-real-models.png)
+
+- The library today is [Poly Haven](https://polyhaven.com): about 500 photo-scanned models, all
+  public domain (CC0). It has furniture, plants, rocks, lamps and props. It has no buildings,
+  vehicles or people, so those are still built from shapes.
+- The address of a model never comes from the agent. It comes from the library's own answer, and
+  only from the library's own sites.
+- The maker, the licence and the library are named on the drawing.
+- Up to eight lookups a scene. A model is kept in your own home after the first download, a
+  megabyte or two each.
+- When nothing fits, the agent is told which words found nothing and the built shape stays.
+- Real models show in the **Real** look. Paper, Blueprint and Hologram draw the plan. A phone's
+  video and a page made by a skill also show the built shapes for now.
+
+A room is looked into like a doll's house: a wall between you and what you're looking at isn't
+drawn while the scene is lit, and neither is what hangs on it.
+
+![The whole reading corner from outside: two walls, a window with curtains, a bookshelf, a rug, and the real models on it](screenshots/stage-model-real-models-room.png)
+
 ### Charts and maps, built
 
 A bar, line or area chart and a map are built the same way, and they fill the Stage.

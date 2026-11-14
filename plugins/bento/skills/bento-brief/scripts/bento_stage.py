@@ -496,7 +496,7 @@ def _solids(raw, where: str, dropped: list, parts: set | None) -> list:
     if len(items) > MODEL_SOLIDS:
         dropped.append(f"{where}: {len(items) - MODEL_SOLIDS} past {MODEL_SOLIDS}")
     known = ("shape", "at", "size", "color", "colour", "label", "count", "spread", "turn", "tilt",
-             "move", "tiers", "part", "note")
+             "move", "tiers", "part", "note", "look_for")
     for i, so in enumerate(items[:MODEL_SOLIDS]):
         at = f"{where}[{i}]"
         if not isinstance(so, dict):
@@ -521,6 +521,10 @@ def _solids(raw, where: str, dropped: list, parts: set | None) -> list:
             node["label"] = _s(so.get("label"), 40)
             if str(so.get("note") or "").strip():      # what the tour says at this stop
                 node["note"] = _s(so.get("note"), 160)
+        # words to look a real model up by (stagemodels.py); the model it finds is the server's
+        # field (`mesh`), which nothing the agent sends can set
+        if str(so.get("look_for") or "").strip():
+            node["look_for"] = _s(so.get("look_for"), 60)
         n = _num(so.get("count"))
         n = int(min(MODEL_COPIES, max(1, n))) if n is not None else 1
         n = max(1, min(n, MODEL_PIECES - pieces))
@@ -1272,7 +1276,11 @@ MODEL_LINE = ("Asked to build, imagine, design or show a place, a scene or an ob
               "supporting things round it, something that moves, 15 to 50 solids, sizes in metres. "
               "Label only what matters, five to eight things, and give each a note: one sentence the "
               "tour says when the eye stops there (what it is, why it matters). People, boats and cars "
-              "move on their own.")
+              "move on their own. For a real object that people make or that grows (a chair, a table, "
+              "a lamp, a plant, a rock, a barrel, a statue), also give look_for: two or three plain "
+              "words for it, the noun last (\"wooden armchair\"). A real model is looked up and stands "
+              "where your solid is, at your size; your solid stays as its plan, so still choose the "
+              "nearest shape. Not for buildings, vehicles or people: none are in the library yet.")
 BIG_LINE = ("Answer BIG: the person watches your answers on the Stage, so anything worth seeing is "
             "SHOWN with show_scene before you write the text: three to six scenes, in story order. "
             "Tell a story, not a slide: open on what matters most (the headline numbers, or a "

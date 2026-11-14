@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.9.6 — 2026-11-14
+
+**Real models stand in a scene.** A thing in a model can now ask for a real 3D model by name
+("wooden armchair", "potted plant"). Bento looks it up in Poly Haven's public-domain library,
+downloads it once with its maker's credit, and stands it where the built shape was, at the size
+the agent gave. The makers are named on the drawing. Poly Haven has furniture, plants, rocks and
+props; buildings, vehicles and people are still built from shapes.
+
+**The sky lights the scene.** The lit look now takes its light from the whole sky as well as the
+sun, and shiny things reflect it.
+
+**A room is looked into.** A wall between you and what you're looking at steps out of the way
+while the scene is lit, with whatever hangs on it.
+
 ## 0.9.5 — 2026-11-14
 
 **Every planet is in the drawing.** Asked to explain the solar system, the agent sent all eight

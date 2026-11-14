@@ -780,3 +780,7 @@ body.still .stg-d3btn,.rp .stg-d3btn{display:none}
 /* a named thing too small to see at this distance has a mark where it is, at the end of its name's line */
 div.mdl-tags .mdl-tag.tiny::before{content:'';position:absolute;left:50%;top:calc(100% + var(--lead,9px));width:9px;height:9px;margin:-1px 0 0 -5px;
   border-radius:50%;border:1.5px solid var(--mdl-ink);box-sizing:border-box}
+/* who made the real models in the drawing, and under what licence */
+.mdl-credit{position:absolute;left:12px;top:10px;max-width:60%;z-index:2;pointer-events:none;font:500 10.5px/1.35 var(--sans,system-ui);
+  color:var(--mdl-ink);opacity:.72;text-shadow:0 0 3px var(--mdl-chip)}
+.stg-scene.k-3d .mdl-credit{top:64px;left:auto;right:14px;max-width:34%;text-align:right;color:#fff;text-shadow:0 1px 4px #000;opacity:.85}

@@ -6069,6 +6069,17 @@ async def api_stage_deeper(body: dict):
     return {"text": text, "conversation_id": cid}
 
 
+@app.get("/api/stage/model/{aid}/{rel:path}")
+async def api_stage_model(aid: str, rel: str):
+    """One file of a real model kept for a scene (stagemodels.py): only what was looked up and
+    kept in this person's home, by a plain name."""
+    from . import stagemodels
+    hit = stagemodels.file_of(state["store"], aid, rel)
+    if not hit:
+        return JSONResponse({"error": "no such model file"}, status_code=404)
+    return FileResponse(hit[0], media_type=hit[1], headers={"Cache-Control": "private, max-age=86400"})
+
+
 @app.post("/api/stage/draw")
 async def api_stage_draw(body: dict):
     """Draw a blueprint (or one of its top-level parts) with this machine's image engine, on the
