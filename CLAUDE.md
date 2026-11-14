@@ -849,6 +849,19 @@ things rather than presenting the chart". Six rules:
   it, a phone's picture never does. `ground: space`: the middle sphere is the light, orbits are Kepler-ish, paths
   are ruled lines that also centre the fit on the sun. Borders follow the viewer (`stagePov`, `pov` in
   world-110m.json): the India ring was drawn by hand and the test checks no area was lost or doubled.
+- **A real model stands where a solid was, found by words** (`agentos/stagemodels.py`, `look_for` on a solid,
+  the server's `mesh` field, `/api/stage/model/{id}/{file}`, `assets/three-addons/GLTFLoader.js`; `docs/stage.md`,
+  `tests/test_stage_models.py`). Asked for with three.js's keyframes example ("so so amazing … we have the
+  potential"): that example is good because of an artist's model, not its renderer, so solids alone cannot reach it.
+  The owner allowed three sources: a bundled free kit, free online libraries, a 3D generation service. This is the
+  second (Poly Haven, CC0, no key); `LIBRARIES` is where the next goes. bppicture's rules: words in and never an
+  address, only the library's hosts, names read strictly (`_safe`), credit kept and shown, `MAX` a scene, and a
+  word match has to name the thing (the noun last) or nothing is placed. `mesh` is dropped from what the agent
+  sends. The vendored loader imports `../three.module.min.js` so there is one three, never two; a page that carries
+  three as a blob (skills, the clip) has no loader and keeps the solids. Measured live with real Claude Code: it
+  asked for six models unprompted and all six were found; "floor lamp" got a wall lamp (the noun matched, the
+  kind did not). The sky lights the lit look (PMREM of the dome). A wall on the eye's side is not drawn (`o.wall`,
+  `o.hung`), found when the tour showed the back of one.
 - **Labels never overlap and the panel holds the rest.** Labels compress, then drop their second line; the
   title block, "you are here" and the links of a tower live in the spec panel. Sized from `clientWidth`, a
   ResizeObserver dropped when the drawing leaves; on a phone the scene scrolls and a tap brings a sheet that

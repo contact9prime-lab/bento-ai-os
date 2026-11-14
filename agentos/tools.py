@@ -1889,7 +1889,21 @@ class Toolbox(usersmod.Scoped):
             asyncio.create_task(tell({"type": "stage", **row}))
         except Exception:
             pass
+        looked = ""
+        from . import stagemodels
+        if stagemodels.wanted(scene):
+            # real models for the solids that ask for one: found, kept with their credit and
+            # swapped in on the screens; what is not found stays the solid it was
+            try:
+                missing = await stagemodels.fill(self.store, row, tell)
+                n = len(stagemodels.wanted(scene)) - len(missing)
+                looked = f" ({n} real model{'s' if n != 1 else ''} found and placed"
+                looked += (f"; nothing fitted for: {', '.join(missing)}, so those stay as you built them)"
+                           if missing else ")")
+            except Exception:
+                looked = ""
         out = f"[on the Stage · scene {row['seq']} · {scene['kind']} · {scene['title'] or scene['kind']}]"
+        out += looked
         if filling:
             out += (f" (filling in {len(filling)} parts on its own, looked up; do not show it again, "
                     f"carry on with your answer)")

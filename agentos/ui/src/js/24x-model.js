@@ -311,7 +311,7 @@ function mdlBuild(model){
       meshes.push(m)})});
     let lo=[1e9,1e9,1e9],hi=[-1e9,-1e9,-1e9];
     meshes.forEach(m=>m.v.forEach(p=>{for(let a=0;a<3;a++){if(p[a]<lo[a])lo[a]=p[a];if(p[a]>hi[a])hi[a]=p[a]}}));
-    out.push({so,i:si,meshes,lo,hi,flat:hi[1]-lo[1]<Math.max(hi[0]-lo[0],hi[2]-lo[2])*.03,
+    out.push({so,i:si,meshes,lo,hi,copies:copies.map(cp=>({p:[cp.x,so.at[1],cp.z],yaw:cp.yaw,sc:cp.sc})),flat:hi[1]-lo[1]<Math.max(hi[0]-lo[0],hi[2]-lo[2])*.03,
       move:so.move||MDL_MOVE[so.shape]||''});
   });
   // fit: the longest side becomes MDL_FIT, the middle of the plan the origin, the lowest point the
@@ -327,7 +327,7 @@ function mdlBuild(model){
   const ext=Math.max(hi[0]-lo[0],hi[2]-lo[2],(hi[1]-lo[1])*1.05,.001),k=MDL_FIT/ext;
   const cx=(lo[0]+hi[0])/2,cz=(lo[2]+hi[2])/2,y0=Math.min(lo[1],0);
   const fit=p=>{p[0]=(p[0]-cx)*k;p[1]=(p[1]-y0)*k;p[2]=(p[2]-cz)*k};
-  out.forEach(s=>{s.meshes.forEach(m=>m.v.forEach(fit));fit(s.lo);fit(s.hi);
+  out.forEach(s=>{s.meshes.forEach(m=>m.v.forEach(fit));fit(s.lo);fit(s.hi);s.copies.forEach(cp=>fit(cp.p));
     s.c=[(s.lo[0]+s.hi[0])/2,s.lo[1],(s.lo[2]+s.hi[2])/2]});
   lines.forEach(l=>l.p.forEach(fit));
   const W=(hi[0]-lo[0])*k,H=(hi[1]-y0)*k,D=(hi[2]-lo[2])*k;
@@ -672,6 +672,43 @@ async function mdlGL(host,model,style,opts){
   solids.forEach(o=>{o.a1=o.a0+(lined?radii.indexOf(o.r.toFixed(2))*2.399:0)});
   dome.visible=false;dome.renderOrder=-3;S.add(dome);mats.push(dome.material);
   const haze=new T.Fog(SKY,10,100);
+  // the sky as light: it fills the shade from every side and is what a shiny thing reflects
+  let envTex=null;
+  try{const pm=new T.PMREMGenerator(R),es=new T.Scene(),em=dome.material.clone();em.uniforms.uK={value:1};em.transparent=false;
+    es.add(new T.Mesh(new T.SphereGeometry(40,24,12),em));envTex=pm.fromScene(es,0,.1,100).texture;pm.dispose();em.dispose()}catch(e){envTex=null}
+  // real models (stagemodels.py): what the server found for a solid stands where the solid was, at its size
+  // A room is looked into, as a doll's house is: a wall on the eye's side is not drawn while the scene is lit.
+  // Found with a reading corner built by the agent: the tour went to the armchair and showed the back of a wall.
+  solids.forEach(o=>{const s=o.s,w=s.hi[0]-s.lo[0],h=s.hi[1]-s.lo[1],d=s.hi[2]-s.lo[2],thin=Math.min(w,d),long=Math.max(w,d),off=Math.hypot(s.c[0],s.c[2]);
+    if(!(s.so.count>1)&&!s.so.move&&thin<long*.14&&h>long*.25&&h>B.H*.3&&off>B.R*.18){const nx=w<d?Math.sign(s.c[0]):0,nz=w<d?0:Math.sign(s.c[2]);o.wall=[nx,nz,(w<d?Math.abs(s.c[0]):Math.abs(s.c[2]))]}});
+  const walls=solids.filter(o=>o.wall);
+  // what hangs on a wall goes with it
+  if(walls.length)solids.forEach(o=>{if(o.wall||o.s.so.count>1)return;const s=o.s;
+    const on=walls.find(wl=>{const a=wl.wall[0]?0:2,dist=Math.abs(s.c[a]-wl.s.c[a]),depth=Math.max(s.hi[a]-s.lo[a],.01);return dist<depth*.5+(wl.s.hi[a]-wl.s.lo[a])*.5+B.R*.03&&s.lo[1]>B.H*.08&&depth<B.R*.08});
+    if(on)o.hung=on});
+  const meshed=solids.filter(o=>o.s.so.mesh&&o.s.so.mesh.id&&o.s.so.mesh.file),mixers=[],credits=[];
+  if(meshed.length&&!window.MDL_THREE)(async()=>{
+    let GL;try{GL=(await import('/assets/three-addons/GLTFLoader.js')).GLTFLoader}catch(e){console.error('no model loader: '+(e&&e.message||e));return}
+    const loader=new GL(),seen={};
+    for(const o of meshed){const mi=o.s.so.mesh;
+      try{const key=mi.id,gl=seen[key]||(seen[key]=await loader.loadAsync('/api/stage/model/'+encodeURIComponent(mi.id)+'/'+mi.file));
+        if(st.stopped)return;
+        const src=gl.scene,bb=new T.Box3().setFromObject(src),sz=bb.getSize(new T.Vector3()),ct=bb.getCenter(new T.Vector3());
+        // the size the agent gave is the room it has: the model keeps its own proportions inside it
+        const one=o.s.copies.length||1,w=(o.s.hi[0]-o.s.lo[0]),hh=(o.s.hi[1]-o.s.lo[1]),dd=(o.s.hi[2]-o.s.lo[2]);
+        const room=one>1?[o.s.so.size[0]*B.k,o.s.so.size[1]*B.k,o.s.so.size[2]*B.k]:[w,hh,dd];
+        const k=Math.min(room[0]/Math.max(sz.x,1e-6),room[1]/Math.max(sz.y,1e-6),room[2]/Math.max(sz.z,1e-6));
+        const hold=new T.Group();
+        o.s.copies.forEach(cp=>{const c=one>1||o.s.copies.indexOf(cp)?src.clone(true):src,g2=new T.Group();
+          c.position.set(-ct.x,-bb.min.y,-ct.z);g2.add(c);g2.scale.setScalar(k*cp.sc);g2.rotation.y=cp.yaw;
+          g2.position.set(cp.p[0]-o.base[0],cp.p[1],cp.p[2]-o.base[2]);hold.add(g2)});
+        hold.traverse(n=>{if(n.isMesh){n.castShadow=true;n.receiveShadow=true;n.frustumCulled=false}});
+        hold.visible=false;o.grp.add(hold);o.asset=hold;
+        if(gl.animations&&gl.animations.length){const mx=new T.AnimationMixer(hold);gl.animations.forEach(a=>mx.clipAction(a).play());mixers.push(mx)}
+        const line=(mi.name||mi.id)+' by '+(mi.credit||mi.library||'')+' ('+(mi.licence||'')+', '+(mi.library||'')+')';
+        if(credits.indexOf(line)<0)credits.push(line);
+        if(opts.credit)opts.credit(credits);wake()}catch(e){console.error('model '+mi.id+': '+(e&&e.message||e))}}
+  })();
   // lines ruled on the sheet with the plan, and the ones drawn in the air once it stands
   const ruled=[];
   [false,true].forEach(late=>{const lp=[],lo=[],sd=[],sds=[],idx=[],rn=mdlRnd(late?53:59);let n=0;
@@ -748,13 +785,15 @@ async function mdlGL(host,model,style,opts){
     const t=st.seek!=null?st.seek:(now-st.t0)/1000;st.t=t;U.uTime.value=t;
     const holo=st.style==='hologram',L=look();
     // each solid
-    const life=L.real?ease((t-END+.3)/2.4):0;
+    const life=L.real?ease((t-END+.3)/2.4):0,alive0=(now-st.lastTouch)/1000<MDL_LIFE_S;
     let moving=t<END+(ruled.length?2:0)||(L.real&&life<1);
     sun.visible=hemi.visible=land.visible=dome.visible=life>0;sheet.visible=life<1;
-    if(space){sun.visible=land.visible=false;star.visible=life>0;hemi.intensity=.16}
+    if(space){sun.visible=land.visible=false;star.visible=life>0}
     if(space&&L.real){const k=life;U.uInk.value.setRGB(L.ink[0]+(.5-L.ink[0])*k,L.ink[1]+(.64-L.ink[1])*k,L.ink[2]+(.9-L.ink[2])*k)}   // a path among the stars is drawn in light
     land.material.opacity=life;land.material.transparent=life<1;dome.material.uniforms.uK.value=life;U.uFade.value=1-.45*life;
     if(L.real)S.background.set(L.bg).lerp(SKY,life);S.fog=life>0&&!space?haze:null;
+    S.environment=life>0&&envTex&&!space?envTex:null;S.environmentIntensity=.7*life;hemi.intensity=space?.16:envTex?.4:1.1;
+    if(mixers.length&&life>=1){const dt=Math.min(.1,Math.max(0,t-(st.mt||t)));st.mt=t;mixers.forEach(m=>m.update(dt));moving=moving||alive0}
     ruled.forEach(x=>{const k=x.late?ease((t-(holo?3:END-.4))/1.9):holo?1:ease((t-INK0)/(INKW+INKD));x.mesh.geometry.setDrawRange(0,Math.round(x.n*k)*6)});
     solids.forEach(o=>{
       const a=INK0+o.rank*INKW,ink=holo?1:ease((t-a)/INKD);
@@ -764,7 +803,8 @@ async function mdlGL(host,model,style,opts){
       const shown=holo||t>r0;o.fill.visible=shown;o.out.visible=shown&&!holo&&up>.2;
       o.own.uWash.value=ease((t-r0-RISED*.55)/1.1);o.own.uShade.value=holo?0:ease((t-r0)/RISED);
       o.own.uGo.value=o.span*ease((t-END)/3);
-      o.real.visible=life>0&&shown;o.real.material.opacity=life;o.real.material.transparent=life<1;
+      o.real.visible=life>0&&shown&&!(o.asset&&life>=1);o.real.material.opacity=life;o.real.material.transparent=life<1;
+      if(o.asset){o.asset.visible=life>=1;o.lines.visible=life<1;if(o.shade)o.shade.visible=o.shade.visible&&life<1;const k2=ease((t-END-2.1-o.rank*.5)/.9);o.asset.scale.setScalar(.6+.4*k2)}
       if(life>=1)o.fill.visible=o.out.visible=false;
       if(life>0){o.own.uShade.value*=1-life;o.own.uLW.value=L.lw*px*o.pen*(1-.4*life);if(o!==core)o.real.material.emissive.setScalar(o.own.uSel.value*.1)}
       // pulled apart: up a tower, outward from the middle of anything else
@@ -811,6 +851,8 @@ async function mdlGL(host,model,style,opts){
     const tx=fp.x*fk,ty=cy+(fp.y-cy)*fk,tz=fp.z*fk;
     const dist=(st.fit+(Math.max(fp.r/tv/.46,2)-st.fit)*fk)*st.zoom*(holo?.88:1);
     cam.position.set(tx+dx*dist,ty+dy*dist,tz+dz*dist);cam.lookAt(tx,ty,tz);
+    if(walls.length&&life>=1){walls.forEach(o=>{const wl=o.wall;o.away=(cam.position.x*wl[0]+cam.position.z*wl[1])>wl[2]&&(dx*wl[0]+dz*wl[1])>.12});
+      solids.forEach(o=>{const gone=o.wall?o.away:o.hung?o.hung.away:false;if(gone){o.real.visible=false;o.lines.visible=false;if(o.asset)o.asset.visible=false}else if(o.wall||o.hung)o.lines.visible=!o.asset})}
     haze.near=dist*1.15;haze.far=dist*1.15+Math.max(B.R,B.far)*9;
     cam.near=Math.max(.3,dist*.12);cam.far=dist*5+Math.max(B.R,B.far)*16;cam.updateProjectionMatrix();
     if(cv.width!==Math.round(Math.max(160,host.clientWidth)*px)||cv.height!==Math.round(Math.max(140,host.clientHeight)*px))size();
@@ -843,7 +885,8 @@ async function mdlGL(host,model,style,opts){
   };
   const wake=()=>{st.lastTouch=performance.now();host.classList.remove('mdl-rest');if(!st.running&&!st.stopped){st.running=true;requestAnimationFrame(frame)}};
   const dispose=()=>{if(st.stopped)return;st.stopped=true;
-    S.traverse(o=>{if(o.geometry)o.geometry.dispose()});mats.forEach(m=>m.dispose());R.dispose();
+    S.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.isMesh&&o.material&&o.material.map)[o.material.map,o.material.normalMap,o.material.roughnessMap].forEach(x=>x&&x.dispose())});
+    if(envTex)envTex.dispose();mats.forEach(m=>m.dispose());R.dispose();
     try{R.forceContextLoss()}catch(e){}
     if(ro)ro.disconnect()};
   // turning it: drag to turn, pinch or the buttons to come closer, a tap to pick
@@ -944,7 +987,8 @@ function mdlMount(host,model,opts){
   const step=k=>{if(!host.isConnected||!M.gl){tour=0;return}if(k>=M.gl.named.length){stop();return}
     show(k);tour=setTimeout(()=>step(k+1),Math.max(3800,noteOf(M.gl.named[k].so).length*55+2200))};
   let tb=null;
-  mdlGL(host,model,start,{tag:opts.tag,pick:opts.pick,unit:opts.unit,maxTags:opts.maxTags,stack:opts.stack,seek:opts.seek!=null?opts.seek:window.MDL_SEEK,skip:!!kept.built,
+  mdlGL(host,model,start,{tag:opts.tag,pick:opts.pick,unit:opts.unit,maxTags:opts.maxTags,stack:opts.stack,
+    credit:list=>{let c=host.querySelector('.mdl-credit');if(!c){c=sEl('div','mdl-credit');host.append(c)}c.textContent='Models: '+list.join(' · ')},seek:opts.seek!=null?opts.seek:window.MDL_SEEK,skip:!!kept.built,
     tap:i=>{const k=M.gl.named.findIndex(n=>n.i===i);if(tour){clearTimeout(tour);tour=0;tb&&tb.classList.remove('on')}if(k===at)stop();else if(k>=0)show(k)},
     built:()=>{if(!kept.built){hint.classList.add('on');try{if(typeof stageMusicOn==='function'&&stageMusicOn()&&typeof stageBell==='function')stageBell()}catch(e){}}kept.built=true}}).then(gl=>{
     if(!host.isConnected){if(gl)gl.dispose();return}
