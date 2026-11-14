@@ -61,6 +61,7 @@ MACHINE_ONLY: tuple[tuple[frozenset, str], ...] = (
     (WRITE, "/api/models/*"),
     (WRITE, "/api/tunnel"),
     (WRITE, "/api/remote"),
+    (WRITE, "/api/handoff/switch"),
     (WRITE, "/api/restart"),
     (WRITE, "/api/update/*"),
     (WRITE, "/api/train/service"),

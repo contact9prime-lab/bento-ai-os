@@ -365,6 +365,10 @@ DEFAULTS = {
         "trust_loopback": True,
         "allowed_hosts": [],
     },
+    # Sign-in links (handoff.py): a page the shared browser is stuck on, opened on the
+    # phone the person is holding. `enabled` is whether it is OFFERED (each one still needs
+    # their tap); `port` is the temporary door's, used only while remote access is off.
+    "handoff": {"enabled": True, "port": 8327},
 }
 
 

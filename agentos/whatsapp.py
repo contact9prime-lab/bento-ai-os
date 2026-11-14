@@ -256,15 +256,16 @@ class WhatsAppBridge(usersmod.Scoped):
                     "Reports if you want them to reach a silent chat.)")
         return ""
 
-    async def send(self, text: str, wa_id: str | None = None) -> str:
-        """Deliver a message, or say in one sentence why WhatsApp would not carry it."""
+    async def send(self, text: str, wa_id: str | None = None, quiet: bool = False) -> str:
+        """Deliver a message, or say in one sentence why WhatsApp would not carry it.
+        `quiet` keeps the words out of the diary (a sign-in link is in them)."""
         c = self._c()
         wa_id = wa_id or c.get("owner_wa_id") or ""
         no = self._refusal(c, wa_id)
         if no:
             return no
         if c.get("mode") == "baileys":
-            return await self.link.send(text, wa_id)
+            return await self.link.send(text, wa_id, **({"quiet": True} if quiet else {}))
         text = text or "(empty)"
         try:
             for i in range(0, len(text), CHUNK):
@@ -273,8 +274,16 @@ class WhatsAppBridge(usersmod.Scoped):
                     "text": {"preview_url": False, "body": text[i:i + CHUNK]}})
         except Exception as e:
             return f"[error] whatsapp send failed: {e}"
-        self.store.log("whatsapp", f"→ sent: {text[:200]}")
+        self.store.log("whatsapp", "→ said something about a sign-in link" if quiet else f"→ sent: {text[:200]}")
         return "sent via WhatsApp"
+
+    async def say_wall(self, wa_id: str, text: str, buttons: list) -> None:
+        """A line about a sign-in link (handoff.py). No buttons here: an address is in the
+        words already, and a question is answered by replying with one of its words."""
+        asks = [word for _label, word in buttons or [] if not word.startswith("url:")]
+        if asks:
+            text += "\nReply " + " or ".join(f"“{w}”" for w in asks) + "."
+        await self.send(text, wa_id, quiet=True)
 
     async def send_photo(self, png: bytes, caption: str = "", wa_id: str | None = None) -> str:
         """A picture with its caption — the Office's roll call, a comic strip. The same
@@ -522,7 +531,8 @@ class WhatsAppBridge(usersmod.Scoped):
         said = await _cdpb.from_phone(usersmod.current() or "", f"wa:{wa_id}", text)
         if said:
             self.store.log("whatsapp", f"a reply from {wa_id} answered the browser")
-            await self.send("✓ " + said, wa_id)
+            if _cdpb.reply_of(said):
+                await self.send(_cdpb.reply_of(said), wa_id)
             return
 
         name = self._profile_name(val, wa_id)
@@ -613,7 +623,8 @@ class WhatsAppBridge(usersmod.Scoped):
         # a sign-in wall met during this turn is asked here, on the phone
         from . import cdpbrowser as _cdpb
         _wall_uid = usersmod.current() or ""
-        _cdpb.reach(_wall_uid, f"wa:{wa_id}", lambda att, png: self.ask_wall(wa_id, att, png))
+        _cdpb.reach(_wall_uid, f"wa:{wa_id}", lambda att, png: self.ask_wall(wa_id, att, png),
+                    say=lambda text, buttons: self.say_wall(wa_id, text, buttons))
         try:
             await self._turn(chat, wa_id, text)
         except Exception as e:
@@ -627,7 +638,8 @@ class WhatsAppBridge(usersmod.Scoped):
         turn: a picture of the page and one question (cdpbrowser.tool_wait). No button: a
         reply of "done" carries on, which works on both transports."""
         from . import cdpbrowser as _cdpb
-        text = _cdpb.phone_words(att, self.cfg.get("agent_name") or "Aria", button=False)
+        text = _cdpb.phone_words(att, self.cfg.get("agent_name") or "Aria", button=False,
+                                 offer=_cdpb.phone_offer(att))
         if png:
             out = await self.send_photo(png, text, wa_id)
             if out == "sent via WhatsApp":

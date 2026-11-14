@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.9.7 — 2026-11-14
+
+**Sign in from the phone you're holding.** When a page needs your password during a Telegram
+or WhatsApp turn, the message now has an **Open on this phone** button. It sends a link that
+opens that one page from your Bento in your phone's browser, so you type the password into
+the real page yourself. Passwords still never go through the chat.
+
+- The link only works after you confirm, in the chat, the number your phone shows. Another
+  device that opens it is refused and you're told.
+- It shows only the page that is waiting, for 15 minutes at most, and closes by itself when
+  the site lets you in.
+- With remote access off, Bento opens a door on your network for that one page and closes it
+  afterwards. The message says so before you tap.
+- The message and the page say whether the connection is encrypted (HTTPS, Tailscale) or only
+  as safe as your Wi-Fi.
+- No agent can open a link. Settings → Remote access has the switch, and `bento handoff`
+  shows and closes what is open.
+
+**Typing a password no longer squeezes the page.** In a Web window narrower than 1280 pixels
+(always, on a phone), the picture shrank into a strip as soon as a password was typed. The
+browser's own password pop-up caused it, and it is off now. The shared browser doesn't offer
+to save passwords; sign-ins last as cookies.
+
 ## 0.9.6 — 2026-11-14
 
 **Real models stand in a scene.** A thing in a model can now ask for a real 3D model by name

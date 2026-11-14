@@ -5656,6 +5656,11 @@ body.zero-face .of-co{display:none}
 .bw-ask{display:flex;align-items:center;gap:12px;padding:10px 14px;background:color-mix(in srgb,#f59e0b 18%,var(--bg2));
   border-bottom:1px solid color-mix(in srgb,#f59e0b 45%,transparent)}
 .bw-ask[hidden]{display:none}
+/* the same page open on a phone through a sign-in link: its own line under the ask */
+.bw-ask{flex-wrap:wrap}
+.bw-ask .bw-hand{flex:1 1 100%;flex-direction:row;align-items:center;gap:10px;padding-top:8px;
+  border-top:1px solid color-mix(in srgb,var(--txt) 12%,transparent)}
+.bw-ask .bw-hand span{flex:1}
 .bw-ask-ic{font-size:22px}.bw-ask div{flex:1;display:flex;flex-direction:column;gap:2px;font-size:13px}
 .bw-view{flex:1;min-height:0;display:flex}
 .bw-foot{padding:3px 10px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -15889,6 +15894,10 @@ document.addEventListener('click',e=>{
    agent's hand, notices). Input goes back as JSON ops the server maps to the process
    (cdpbrowser.Browser.person, appstream.Stream.person).
 
+   This file's first part (down to the browser window's own shell) is also the client of
+   the sign-in link's page (agentos/handoff.py embeds it), so it must stay free of the
+   desktop's helpers apart from `esc`.
+
    Faces: GUI and SUI are this. On a phone a tap is a click and the ⌨ button opens the
    keyboard. TUI: a terminal cannot draw pixels; the agent's tools reach the same browser
    and apps (`browser_*`), and `bento browser` says what it shows. */
@@ -15998,7 +16007,8 @@ async function renderBrowser(body,w){
   url.addEventListener('keydown',e=>{if(e.key==='Enter'){sv.send({type:'navigate',url:url.value});view.querySelector('.sv-cv')?.focus()}});
   q('.bw-kb').onclick=()=>sv.keyboard();
   q('.bw-ext').onclick=()=>{const u=w._url||'';if(/^https?:/.test(u))openHost({url:u});else toast('Nothing to open yet')};
-  ask.addEventListener('click',e=>{if(e.target.closest('.bw-done')){sv.send({type:'resume'})}});
+  ask.addEventListener('click',e=>{if(e.target.closest('.bw-done')){sv.send({type:'resume'})}
+    else if(e.target.closest('.bw-hand-x')){sv.send({type:'handoff_close'})}});
 }
 function browserPaint(w,m){
   const body=w.el.querySelector('.wbody');if(!body)return;
@@ -16021,6 +16031,13 @@ function browserPaint(w,m){
       <div><b>${esc((typeof agentName==='function'&&agentName())||'Your agent')} needs you here</b>
       <span>${esc(a.reason||('This page wants '+(a.why||'a person')+'.'))} Do it in the page below, then press Done.</span></div>
       <button class="pact bw-done">Done, carry on</button>`;
+    // the same page, open on the person's phone through a sign-in link (handoff.py)
+    const h=m.handoff;
+    if(a&&h&&h.state!=='ended')ask.insertAdjacentHTML('beforeend',`<div class="bw-hand" role="status"><span>📱 ${
+      h.state==='live'?'This page is open on your phone until you tap Done there.':
+      h.state==='joined'?'A device opened the sign-in link. Say in the chat whether it is yours.':
+      'A sign-in link for this page was sent to your phone.'}</span>
+      <button class="endbtn bw-hand-x">Close it</button></div>`);
   }
   winNeedsYou('browser',!!a,a&&(a.site||''));
   const who=q('.bw-who');if(who)who.textContent=m.title?m.title:'';
@@ -31283,9 +31300,13 @@ let REMOTE={};
    tunnel provider, not config. Kept beside REMOTE because the addresses are
    only meaningful once remote access is on. */
 let TUNNEL={};
+/* Sign-in links (agentos/handoff.py): whether a page the browser is stuck on may be offered
+   on the phone the person is chatting from. The machine's switch, changed at the machine. */
+var HANDOFF={};
 async function sysRemote(el){
   try{REMOTE=await (await fetch('/api/remote')).json()}catch(e){REMOTE={}}
   try{TUNNEL=await (await fetch('/api/tunnel')).json()}catch(e){TUNNEL={}}
+  try{HANDOFF=await apiJSON('/api/handoff')}catch(e){HANDOFF={}}
   const on=!!REMOTE.enabled, set=!!REMOTE.configured,
         byAccounts=REMOTE.lock==='accounts';   // the accounts ARE the lock — see remote.py
   el.innerHTML=`
@@ -31386,6 +31407,18 @@ async function sysRemote(el){
         '<p class="mut" style="margin-top:8px;color:var(--warn)">Restart AgentOS for this to take effect — it is still listening on loopback only.</p>'}
     </div>`:''}
 
+    <div class="provbox" id="rm-handoff">
+      <div class="ptitle">Sign-in links for your phone
+        <label class="psw" style="margin-left:auto"><input type="checkbox" id="rm-ho" ${HANDOFF.enabled?'checked':''}
+          onchange="rmHandoff(this.checked)" aria-label="Offer sign-in links"><i></i></label></div>
+      <p class="mut" style="margin-top:8px;line-height:1.6">When a page needs you to sign in, your agent can offer to open it on the phone you're chatting from.
+        ${pInfo(HANDOFF.how==='door'
+          ?'Remote access is off, so each link opens a door on your network for that one page, on port '+esc(String(HANDOFF.port||''))+', and closes it when you finish. You confirm the device in the chat first.'
+          :'The link works on one device and closes when you finish. A phone that isn\'t signed in here confirms itself in the chat first.')}</p>
+      ${HANDOFF.open?`<div class="rm-lock"><b>Open now:</b> ${esc(HANDOFF.open.site||'a page')}
+        <button class="endbtn" style="margin-left:8px" onclick="rmHandoffClose()">Close it</button></div>`:''}
+    </div>
+
     <div class="provbox">
       <div class="ptitle">Before you open it up</div>
       <ul class="rm-notes">
@@ -31397,6 +31430,16 @@ async function sysRemote(el){
         <li>Sign-in attempts back off after ${5} failures from one address, and every attempt is written to the Logs app.</li>
       </ul>
     </div>`;
+}
+async function rmHandoff(on){
+  try{await apiJSON('/api/handoff/switch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:!!on})});
+    toast(on?'✓ Sign-in links will be offered':'✓ Sign-in links are off')}
+  catch(e){toast(e.message||'Could not change that',{kind:'err'})}
+  refreshApp('syssettings');
+}
+async function rmHandoffClose(){
+  try{await apiJSON('/api/handoff',{method:'DELETE'});toast('✓ Closed')}catch(e){toast(e.message||'Could not close it',{kind:'err'})}
+  refreshApp('syssettings');
 }
 async function rmPost(body){
   const r=await fetch('/api/remote',{method:'POST',headers:{'Content-Type':'application/json'},

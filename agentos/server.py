@@ -2348,6 +2348,8 @@ async def shutdown():
     with contextlib.suppress(Exception):
         await _standby_flush()
     with contextlib.suppress(Exception):
+        await _handoff.close_all()
+    with contextlib.suppress(Exception):
         await _cdpb.stop_all()
     with contextlib.suppress(Exception):
         from . import ptyhub as _ph
@@ -9621,7 +9623,12 @@ REMOTE_OPEN_PATHS = ("/login", "/api/remote/login", "/api/users/login",
                      # caller is the paired machine, with no cookie; every route under
                      # it checks the pairing's Bearer token in constant time behind a
                      # per-address guess ceiling, or (pairing itself) the one-time code.
-                     "/api/standby/peer/")
+                     "/api/standby/peer/",
+                     # The sign-in link (handoff.py): the phone that opens it may hold no
+                     # session. Its defence is the single-use ticket, the one device the
+                     # first POST binds it to, and the number the person confirms in the
+                     # chat; it reaches one browser tab, for minutes.
+                     "/handoff/")
 
 
 def _client_addr(conn) -> str:
@@ -19659,6 +19666,69 @@ async def _browser_attention(uid: str, payload: dict):
 
 from . import cdpbrowser as _cdpb  # noqa: E402
 _cdpb.bind(attention=_browser_attention, presence=_someone_here)
+
+
+# ---------------------------------------------------------------------------
+# The sign-in link (handoff.py): a page the browser is stuck on, opened on the phone the
+# person is holding. Asked for by their tap in the chat; these routes are what the link
+# reaches. They are open to the remote gate because that phone may hold no session: the
+# ticket, the one device it binds to and the number confirmed in the chat are the defence.
+# ---------------------------------------------------------------------------
+
+from . import handoff as _handoff  # noqa: E402
+
+
+def _handoff_ledger(uid: str, action: str, resource: str, detail: str, surface: str = "api"):
+    with contextlib.suppress(Exception), usersmod.as_user(uid):
+        state["store"].audit_add(uid=uid or "", principal_kind="user", principal_id="", surface=surface,
+                                 action=action, resource=resource,
+                                 effect="deny" if action.endswith(".refused") else "allow",
+                                 rule="person", reason=str(detail)[:400], outcome="ok")
+        state["store"].log("browser", f"sign-in link: {detail}"[:300])
+
+
+async def _handoff_screens(uid: str, ev: dict):
+    await state["broadcast_user"](ev, uid)
+
+
+def _handoff_session(request, uid: str) -> bool:
+    """Is this phone signed in to this Bento as the same person, with its screen unlocked?"""
+    d = remotemod.session_claims(state.machine_cfg(), request.cookies.get(remotemod.COOKIE) or "")
+    return bool(d is not None and not d.get("lk") and str(d.get("uid") or "") == (uid or ""))
+
+
+# `dict.get`: before the server has started there is no config, and nothing is offered
+_handoff.bind(cfg=lambda: dict.get(state, "cfg"), ledger=_handoff_ledger, screens=_handoff_screens,
+              session=_handoff_session)
+app.mount("/handoff", _handoff.app().routes[0].app, name="handoff")
+
+
+@app.get("/api/handoff")
+async def api_handoff():
+    """The switch, how a phone would get here, and the link this person has open."""
+    return _handoff.status(state.machine_cfg(), usersmod.current() or "")
+
+
+@app.post("/api/handoff/switch")
+async def api_handoff_switch(body: dict, request: Request):
+    """Whether sign-in links are offered on this machine. A link can open a door on the
+    network, so the switch is the machine's: its admin, at the machine."""
+    if (no := _local_admin_refusal(request, "sign-in links can only be switched from the machine itself")):
+        return no
+    cfg = state.machine_cfg()
+    on = bool((body or {}).get("enabled"))
+    cfg.setdefault("handoff", {})["enabled"] = on
+    cfgmod.save_config(cfg)
+    _ledger("handoff.write", "handoff", f"sign-in links {'offered' if on else 'switched off'}")
+    if not on:
+        await _handoff.close_all()
+    return _handoff.status(cfg, usersmod.current() or "")
+
+
+@app.delete("/api/handoff")
+async def api_handoff_close():
+    """Close the link this person has open. Theirs only."""
+    return {"ok": True, "closed": await _handoff.close(usersmod.current() or "")}
 
 
 @app.get("/api/browser")

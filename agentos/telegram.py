@@ -522,7 +522,8 @@ class TelegramBridge(usersmod.Scoped):
         said = await _cdpb.from_phone(usersmod.current() or "", f"tg:{chat_id}", text)
         if said:
             self.store.log("telegram", f"a reply from {chat_id} answered the browser")
-            await self.send("✓ " + said, chat_id)
+            if _cdpb.reply_of(said):
+                await self.send(_cdpb.reply_of(said), chat_id)
             return
         frm = msg.get("from", {})
         title = (chat_info.get("title")
@@ -635,7 +636,8 @@ class TelegramBridge(usersmod.Scoped):
         # a sign-in wall met during this turn is asked here, on the phone
         from . import cdpbrowser as _cdpb
         _wall_uid = usersmod.current() or ""
-        _cdpb.reach(_wall_uid, f"tg:{chat_id}", lambda att, png: self.ask_wall(chat_id, att, png))
+        _cdpb.reach(_wall_uid, f"tg:{chat_id}", lambda att, png: self.ask_wall(chat_id, att, png),
+                    say=lambda text, buttons: self.say_wall(chat_id, text, buttons))
         try:
             await self._api("sendChatAction", chat_id=chat_id, action="typing")
         except Exception:
@@ -799,8 +801,13 @@ class TelegramBridge(usersmod.Scoped):
         """The shared browser met a page only a person can get past, during this chat's turn:
         a picture of the page and one question, with Done under it (cdpbrowser.tool_wait)."""
         from . import cdpbrowser as _cdpb
-        text = _cdpb.phone_words(att, self.cfg.get("agent_name") or "Aria")
-        kb = {"inline_keyboard": [[{"text": "Done, carry on", "callback_data": "bw:done"}]]}
+        offer = _cdpb.phone_offer(att)
+        text = _cdpb.phone_words(att, self.cfg.get("agent_name") or "Aria", offer=offer)
+        rows = [[{"text": "Done, carry on", "callback_data": "bw:done"}]]
+        if offer.get("ok"):
+            # the page itself, on this phone (handoff.py): the tap is the permission
+            rows.insert(0, [{"text": "Open on this phone", "callback_data": "bw:open"}])
+        kb = {"inline_keyboard": rows}
         token = self._t().get("bot_token", "")
         if png and token:
             try:
@@ -816,6 +823,25 @@ class TelegramBridge(usersmod.Scoped):
                 pass
         with contextlib.suppress(Exception):
             await self._api("sendMessage", chat_id=chat_id, text=text, reply_markup=kb)
+
+    async def say_wall(self, chat_id: int, text: str, buttons: list) -> None:
+        """A line about a sign-in link (handoff.py), with its answers under it. Sent as plain
+        text and never written to the diary: the words may hold the link. A button whose
+        word starts `url:` opens that address; any other answers through `bw:<word>`."""
+        rows = [[({"text": label, "url": word[4:]} if word.startswith("url:")
+                  else {"text": label, "callback_data": "bw:" + word})] for label, word in buttons or []]
+        kw = {"link_preview_options": {"is_disabled": True}}
+        try:
+            await self._api("sendMessage", chat_id=chat_id, text=text,
+                            **kw, **({"reply_markup": {"inline_keyboard": rows}} if rows else {}))
+        except Exception:
+            # Telegram refuses a button for some addresses (a bare IP on a home network):
+            # the address is in the words too, so the line goes again without the button
+            rows = [r for r in rows if "url" not in r[0]]
+            with contextlib.suppress(Exception):
+                await self._api("sendMessage", chat_id=chat_id, text=text,
+                                **kw, **({"reply_markup": {"inline_keyboard": rows}} if rows else {}))
+        self.store.log("telegram", "→ said something about a sign-in link")
 
     async def send_brief(self, text: str, rows: list, chat_id: int | None = None) -> str:
         """The Brief's digest with Done / Later / decision buttons under it — the
@@ -945,6 +971,17 @@ class TelegramBridge(usersmod.Scoped):
             chat_id = (msg.get("chat") or {}).get("id") or cq.get("from", {}).get("id")
             said = await _cdpb.from_phone(usersmod.current() or "", f"tg:{chat_id}", "done")
             await self.send("✓ " + (said or "Nothing is waiting on that page now."), chat_id)
+            return
+        if data in ("bw:open", "bw:yes", "bw:no"):
+            # the sign-in link (handoff.py): ask for it, or say whose screen opened it
+            from . import cdpbrowser as _cdpb
+            msg = cq.get("message", {})
+            chat_id = (msg.get("chat") or {}).get("id") or cq.get("from", {}).get("id")
+            said = await _cdpb.from_phone(usersmod.current() or "", f"tg:{chat_id}", data[3:])
+            if not said:
+                await self.send("Nothing is waiting on that page now.", chat_id)
+            elif _cdpb.reply_of(said):
+                await self.send(_cdpb.reply_of(said), chat_id)
             return
         if data.startswith("co:"):
             # a company's Open button (telegram_admin /companies)

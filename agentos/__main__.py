@@ -3298,6 +3298,64 @@ def _api_call(port: int, path: str, method: str = "GET", body: dict | None = Non
             return {"error": str(e)}
 
 
+def _handoff_cli(args):
+    """`bento handoff` — sign-in links for your phone (agentos/handoff.py), from a terminal:
+    whether they are offered here, what is open now, and closing it. The link's page is a
+    phone's; a terminal can't draw it, so this is the switch and the record."""
+    from . import config as cfgmod
+    from . import handoff
+    cfg = cfgmod.load_config()
+    port = int(os.environ.get("AGENTOS_PORT") or cfg.get("port") or 8321)
+    act = args.action
+    try:
+        live = _api_call(port, "/api/handoff")
+    except OSError:
+        live = None
+    if act in ("on", "off"):
+        on = act == "on"
+        if live is None:
+            cfg.setdefault("handoff", {})["enabled"] = on
+            cfgmod.save_config(cfg)
+        else:
+            got = _api_call(port, "/api/handoff/switch", "POST", {"enabled": on})
+            if got.get("error"):
+                print(f"✗ {got['error']}")
+                print("  Sign in on this machine as its admin and use Settings → Remote access.")
+                sys.exit(1)
+        print("✓ Sign-in links will be offered when a page needs you." if on else
+              "✓ Sign-in links are off. A page that needs you waits for a screen.")
+        return
+    if act == "close":
+        if live is None:
+            print("Bento isn't running here, so nothing is open.")
+            return
+        got = _api_call(port, "/api/handoff", "DELETE")
+        print("✓ Closed." if got.get("closed") else "Nothing was open.")
+        return
+    st = live if (live is not None and "enabled" in live) else handoff.status(cfg)
+    print("Sign-in links: " + ("offered" if st.get("enabled") else "off"))
+    if st.get("enabled"):
+        can = st.get("can") or {}
+        if not can.get("ok"):
+            print(f"  Can't be offered now: {can.get('why') or 'no reason given'}")
+        elif st.get("how") == "door":
+            print(f"  Remote access is off, so each link opens a door on port {st.get('port')} "
+                  "for that one page and closes it when you finish.")
+        else:
+            print("  Remote access is on, so a link opens on this Bento's own address.")
+    o = st.get("open")
+    if o:
+        left = max(0, int((o.get("until") or 0) - time.time()))
+        words = {"sent": "sent, not opened yet", "joined": "opened, waiting for you to confirm the device",
+                 "live": "open on a phone"}.get(o.get("state"), o.get("state"))
+        print(f"  Open now: {o.get('site')} · {words} · closes by itself in {left // 60} min")
+        print("  bento handoff close   closes it")
+    elif live is None:
+        print("  Bento isn't running here, so nothing is open.")
+    else:
+        print("  Nothing is open.")
+
+
 def _voice_cli(args):
     """`bento voice` — which engine reads your agents aloud (agentos/speech.py), from a
     terminal: the same settings and the same speaking function Settings → Voice uses.
@@ -10198,6 +10256,8 @@ def main():
     p_team.add_argument("--messages", type=int, default=20, help="freetalk: stop after this many messages (up to 40)")
     p_team.add_argument("--agents", default="", help="freetalk: who talks, comma-separated (default: all)")
     p_team.add_argument("--act", action="store_true", help="freetalk: let them use their tools too")
+    p_handoff = verb("handoff", help="sign-in links for your phone: are they offered, what is open, close it")
+    p_handoff.add_argument("action", nargs="?", default="status", choices=["status", "on", "off", "close"])
     p_voice = verb("voice", help="which engine reads your agents aloud: this browser, this computer, "
                                   "ElevenLabs, OpenAI or Google Cloud")
     p_voice.add_argument("action", nargs="?", default="show", choices=["show", "set", "voices", "try"])
@@ -10534,6 +10594,8 @@ def main():
         sys.exit(0 if all(r["ok"] for r in rows) else 1)
     elif args.cmd in ("mail", "calendar"):
         _account_cli(args, args.cmd)
+    elif args.cmd == "handoff":
+        _handoff_cli(args)
     elif args.cmd == "voice":
         sys.exit(_voice_cli(args) or 0)
     elif args.cmd == "vault":

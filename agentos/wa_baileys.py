@@ -325,7 +325,7 @@ class BaileysTransport:
 
     # -- outbound -----------------------------------------------------------
 
-    async def send(self, text: str, wa_id: str) -> str:
+    async def send(self, text: str, wa_id: str, quiet: bool = False) -> str:
         """Reply to the ADDRESS the message came from, not a reconstruction of it.
 
         `wa_id` is the bare local part, because that is the shape the Cloud API uses
@@ -354,7 +354,8 @@ class BaileysTransport:
         if not ok:
             return "[error] the WhatsApp bridge is not running"
         if self.store:
-            self.store.log("whatsapp", f"→ sent: {text[:200]}")
+            # `quiet`: a sign-in link is in the words, and the diary keeps what it is given
+            self.store.log("whatsapp", "→ said something about a sign-in link" if quiet else f"→ sent: {text[:200]}")
         return "sent via WhatsApp"
 
     async def send_photo(self, png: bytes, caption: str, wa_id: str) -> str:

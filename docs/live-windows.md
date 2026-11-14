@@ -47,8 +47,60 @@ from your phone", never the digits.
   it, while that turn runs. A message from anyone else, or anything that isn't a code,
   goes to the agent as usual.
 - **A password is never taken from a chat.** Chat history would keep it. For a password or a
-  CAPTCHA the phone is told to sign in on a screen and tap **Done, carry on** (on WhatsApp,
-  reply "done").
+  CAPTCHA you can open the page on the phone itself (next section), or sign in on a screen
+  and tap **Done, carry on** (on WhatsApp, reply "done").
+
+### Signing in from the phone you're holding
+
+For a password or a CAPTCHA the message has a second button, **Open on this phone** (on
+WhatsApp, reply "open"). It sends you a link. The link opens that one page from your Bento
+in your phone's browser, and what you type goes straight into the real page.
+
+![The whole exchange on Telegram: the offer, the link, the question about your screen, and the agent carrying on](screenshots/handoff-telegram.png)
+
+*Redrawn from the messages the bot sent in a test run against a stand-in for Telegram.*
+
+1. Tap **Open on this phone**. The message says what that does before you tap.
+2. Open the link and tap **Show the page**. Your phone shows a four-digit number.
+3. The chat asks "is that your screen?" with the same number. Tap **Yes, that's my screen**.
+4. The page appears. Sign in, including any code it asks for next.
+5. When the site lets you in, the link closes by itself and the agent carries on. You can
+   also tap **Done**.
+
+![The link's first page: what it is, and how the connection is protected](screenshots/handoff-phone-landing.png)
+![The number your phone shows, to confirm in the chat](screenshots/handoff-phone-code.png)
+![The real sign-in page on the phone, with a password typed](screenshots/handoff-phone-page.png)
+
+How it is kept safe:
+
+- **Only you can ask for it.** No agent can open a link: there is no tool for it. Your tap
+  in your own chat is the permission, and it is written in the ledger.
+- **The link alone opens nothing.** Reading the link (a chat app fetching a preview) gets a
+  page with a button. Tapping the button ties the link to that one device, and any other
+  device is refused and reported in the chat.
+- **You say which device it is.** The page stays shut until you confirm the number in the
+  chat. Somebody who only saw the link gets a number nobody confirms. A phone that is
+  already signed in to your Bento skips the question.
+- **Only that page.** The phone can tap and type on the page at the wall. It has no address
+  bar and can't reach the browser's other tabs.
+- **Only for that long.** The link has to be opened within 5 minutes and lasts 15 at most.
+  It ends when you finish, when the site lets you in, or when you say "no".
+- **A door only while it is used.** If remote access is off, Bento opens a door on your
+  network for this one page (port 8327 by default) and closes it when the link ends. If
+  remote access is on, the link uses Bento's own address.
+- **It says how the connection is protected.** Over HTTPS or Tailscale it is encrypted. On
+  the same Wi-Fi with neither, it isn't encrypted beyond your Wi-Fi's own lock, and both the
+  chat and the page say so. Use Tailscale or HTTPS if you sign in away from home.
+- **Nothing is kept.** The password goes into the page. The link is never written to the log.
+
+On the desktop, the Web window says the page is open on your phone and has **Close it**.
+Settings → Remote access has the switch (**Sign-in links for your phone**), which only the
+machine's admin can change, at the machine. In a terminal, `bento handoff` shows whether
+links are offered and what is open, `bento handoff close` closes it, and
+`bento handoff on|off` is the switch.
+
+![The Web window while a link is out, with Close it](screenshots/handoff-web-window.png)
+![The switch in Settings → Remote access](screenshots/handoff-settings.png)
 
 Things to know:
 
@@ -65,6 +117,9 @@ Things to know:
   phone, the agent stops and tells you what is needed instead of waiting.
 - The browser keeps its own profile in your home (`browser/profile`), apart from any
   browser you use yourself. It closes after 20 idle minutes and opens again on use.
+- **It doesn't offer to save passwords.** Sign-ins last as cookies. The browser's own
+  password and autofill pop-ups are off, because a pop-up can't be shown in a window like
+  this one.
 
 ## Terminal sessions that stay
 

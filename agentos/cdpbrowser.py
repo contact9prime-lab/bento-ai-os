@@ -92,15 +92,23 @@ CODE_RE = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9 -]{2,14}[A-Za-z0-9])\s*$")
 DONE_WORDS = {"done", "carry on", "continue", "ok", "okay", "signed in", "go on"}
 
 
-def reach(uid: str, key: str, ask) -> None:
+_SAY: dict[tuple, object] = {}       # (uid, chat) -> how to send that chat a line with buttons
+
+
+def reach(uid: str, key: str, ask, say=None) -> None:
     """While a phone turn runs, a wall is asked of that phone. `ask(attention, png)` sends
-    the picture and the question; `key` names the chat (`unreach` takes it out)."""
+    the picture and the question; `key` names the chat (`unreach` takes it out).
+    `say(text, buttons)` sends a line with answers under it: the sign-in link's questions
+    (handoff.py) go through it."""
     _REACH.setdefault(uid or "", {})[key] = ask
+    if say is not None:
+        _SAY[(uid or "", key)] = say
 
 
 def unreach(uid: str, key: str) -> None:
     got = _REACH.get(uid or "") or {}
     got.pop(key, None)
+    _SAY.pop((uid or "", key), None)
     if not got:
         _REACH.pop(uid or "", None)
 
@@ -113,23 +121,51 @@ def phone_waiting(uid: str, key: str) -> dict | None:
     return dict(b.attention)
 
 
-def phone_words(att: dict, agent: str = "Aria", button: bool = True) -> str:
+def phone_offer(att: dict) -> dict:
+    """Can this wall be opened on the phone itself (handoff.py)? A code is typed in the chat,
+    so it needs no page; anything else may be offered where the machine allows it."""
+    if (att.get("kind") or "ask") == "code":
+        return {"ok": False}
+    from . import handoff
+    return handoff.can_offer(handoff.cfg())
+
+
+def reply_of(said: str) -> str:
+    """What a channel sends for `from_phone`'s answer: nothing when the chat was already told
+    (a sign-in link is never repeated through a sender that keeps a diary), else the words."""
+    from . import handoff
+    if not said or said == handoff.HANDLED:
+        return ""
+    return said if not said[:1].isalnum() else "✓ " + said
+
+
+def phone_words(att: dict, agent: str = "Aria", button: bool = True, offer: dict | None = None) -> str:
     """What the phone is told about a wall: who needs what, on which site, and the one thing
     to do. One function for every channel, so Telegram and WhatsApp say the same thing.
-    `button` is False where the message carries no Done button: the person replies "done"."""
+    `button` is False where the message carries no buttons: the person replies "done" or
+    "open". `offer` is `phone_offer`'s answer: when it is ok the page can be opened on this
+    phone, and the sentence says what opening it does before anybody taps."""
     site = att.get("site") or "a page"
     tap = "tap Done" if button else "reply “done”"
     kind = att.get("kind") or "ask"
     head = f"🔐 {agent} needs you on {site}."
+    here = ""
+    if offer and offer.get("ok"):
+        here = ("Tap “Open on this phone”" if button else "Reply “open”") + " to do it here"
+        if offer.get("how") == "door":
+            here += (". That opens a door on your network for this one page, "
+                     "until you're done or 15 minutes pass")
     if kind == "code":
         do = "Reply here with the code and I'll type it into the page."
     elif kind == "login":
-        do = (f"It wants your password. Sign in on a screen in the Web window, then {tap}. "
-              "Passwords don't go through chat.")
+        do = ((f"It wants your password. {here}. Or sign in" if here else "It wants your password. Sign in")
+              + f" on a screen in the Web window, then {tap}. Passwords don't go through chat.")
     elif kind == "captcha":
-        do = f"It wants to check you're a person. Do that on a screen in the Web window, then {tap}."
+        do = ((f"It wants to check you're a person. {here}. Or do that" if here
+               else "It wants to check you're a person. Do that")
+              + f" on a screen in the Web window, then {tap}.")
     else:
-        do = f"Do it on a screen in the Web window, then {tap}."
+        do = (f"{here}. Or do it" if here else "Do it") + f" on a screen in the Web window, then {tap}."
     said = str(att.get("reason") or "").strip()
     return head + ("\n“" + said[:300] + "”" if said else "") + "\n" + do
 
@@ -137,6 +173,10 @@ def phone_words(att: dict, agent: str = "Aria", button: bool = True) -> str:
 async def from_phone(uid: str, key: str, text: str) -> str:
     """A message from the phone while the browser waits on a wall. Returns what to tell the
     phone, or '' when the message is not an answer to the wall (it goes to the agent).
+
+    "open" asks for the page on this phone, and "yes"/"no" answer whether the device that
+    opened it is theirs (handoff.py). Those answers come back as `handoff.HANDLED`: the chat
+    was told through its own sender, and `reply_of` gives a channel what is left to send.
 
     A code page takes the code: it is typed into the code field and submitted by the person,
     not by the agent, and it is never written to the conversation. "done" carries on, as the
@@ -149,6 +189,11 @@ async def from_phone(uid: str, key: str, text: str) -> str:
     if words.lower().rstrip(".!") in DONE_WORDS:
         await b.person({"type": "resume"})
         return "Carrying on."
+    from . import handoff
+    if handoff.cfg() is not None:
+        said = await handoff.from_chat(handoff.cfg(), uid or "", key, words, _SAY.get((uid or "", key)))
+        if said:
+            return said
     if att.get("kind") == "code" and CODE_RE.match(words) and sum(c.isdigit() for c in words) >= 4:
         ok = await b.person_code(words.replace(" ", ""))
         if not ok:
@@ -220,6 +265,34 @@ def site_of(url: str) -> str:
 
 
 # ---- the CDP connection ----------------------------------------------------------------
+
+def quiet_prefs(prof: Path) -> None:
+    """Switch off Chromium's own password and autofill pop-ups in the shared profile.
+
+    Found by the sign-in link's live run, with a phone-sized window: as soon as a password
+    was typed, the picture became the whole 1280-wide browser window squeezed into the
+    view (frames of 390x201 for a 390x735 page). The pop-up Chromium opens over a password
+    field is a surface of its own, and the screencast then covers the window instead of the
+    page. A pop-up can't be drawn or tapped through a screencast anyway, and an agent's
+    shared browser shouldn't be collecting passwords: sign-ins persist as cookies.
+
+    The profile's other settings are kept; this runs before every start, while no Chromium
+    has the file open."""
+    p = prof / "Default" / "Preferences"
+    try:
+        d = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+        if not isinstance(d, dict):
+            d = {}
+    except (OSError, ValueError):
+        d = {}
+    d["credentials_enable_service"] = False
+    d.setdefault("profile", {})["password_manager_enabled"] = False
+    for k in ("profile_enabled", "credit_card_enabled"):
+        d.setdefault("autofill", {})[k] = False
+    with contextlib.suppress(OSError):
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(d), encoding="utf-8")
+
 
 class CDPError(RuntimeError):
     pass
@@ -388,6 +461,7 @@ class Browser:
         prof.mkdir(parents=True, exist_ok=True)
         with contextlib.suppress(OSError):
             os.chmod(self.home / "browser", 0o700)
+        quiet_prefs(prof)
         args = [st["binary"], "--headless=new", "--remote-debugging-pipe",
                 f"--user-data-dir={prof}", "--no-first-run", "--no-default-browser-check",
                 "--disable-background-networking", "--disable-sync", "--mute-audio",
@@ -572,7 +646,12 @@ class Browser:
                 "tabs": [{"id": k, "title": v.get("title") or site_of(v.get("url")) or "New tab",
                           "url": v.get("url", ""), "active": k == self.active}
                          for k, v in self.tabs.items()],
-                "attention": self.attention}
+                "attention": self.attention, "handoff": self._handoff()}
+
+    def _handoff(self) -> dict | None:
+        """The sign-in link this page is open through on a phone, if any (handoff.py)."""
+        from . import handoff
+        return handoff.view(handoff.for_user(self.uid))
 
     async def _state(self):
         await self._tell(self.snapshot_state())
@@ -663,6 +742,10 @@ class Browser:
             await self.close_tab(str(op.get("id") or ""))
         elif k == "resize":
             await self.resize(int(op.get("w") or 0), int(op.get("h") or 0))
+        elif k == "handoff_close":
+            # the desk closes the page that is open on a phone
+            from . import handoff
+            await handoff.close(self.uid, "closed by you")
         elif k == "resume":
             # "Done, carry on": the person has signed in or typed the code
             self.attention = None
