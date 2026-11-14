@@ -972,17 +972,6 @@ class TelegramBridge(usersmod.Scoped):
             said = await _cdpb.from_phone(usersmod.current() or "", f"tg:{chat_id}", "done")
             await self.send("✓ " + (said or "Nothing is waiting on that page now."), chat_id)
             return
-        if data in ("bw:open", "bw:yes", "bw:no"):
-            # the sign-in link (handoff.py): ask for it, or say whose screen opened it
-            from . import cdpbrowser as _cdpb
-            msg = cq.get("message", {})
-            chat_id = (msg.get("chat") or {}).get("id") or cq.get("from", {}).get("id")
-            said = await _cdpb.from_phone(usersmod.current() or "", f"tg:{chat_id}", data[3:])
-            if not said:
-                await self.send("Nothing is waiting on that page now.", chat_id)
-            elif _cdpb.reply_of(said):
-                await self.send(_cdpb.reply_of(said), chat_id)
-            return
         if data.startswith("co:"):
             # a company's Open button (telegram_admin /companies)
             said = await self._console.open_company(data[3:])
@@ -1001,6 +990,17 @@ class TelegramBridge(usersmod.Scoped):
                 with contextlib.suppress(Exception):
                     await self._api("editMessageText", chat_id=msg["chat"]["id"], message_id=msg["message_id"],
                                     text=(msg.get("text") or "")[:3900] + f"\n\n→ {said}")
+            return
+        if data in ("bw:open", "bw:yes", "bw:no"):
+            # the sign-in link (handoff.py): ask for it, or say whose screen opened it
+            from . import cdpbrowser as _cdpb
+            msg = cq.get("message", {})
+            chat_id = (msg.get("chat") or {}).get("id") or cq.get("from", {}).get("id")
+            said = await _cdpb.from_phone(usersmod.current() or "", f"tg:{chat_id}", data[3:])
+            if not said:
+                await self.send("Nothing is waiting on that page now.", chat_id)
+            elif _cdpb.reply_of(said):
+                await self.send(_cdpb.reply_of(said), chat_id)
             return
         if data.startswith("br:"):
             # a Brief button: Done / Later / a decision — the same act() the

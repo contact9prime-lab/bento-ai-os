@@ -9619,16 +9619,16 @@ REMOTE_OPEN_PATHS = ("/login", "/api/remote/login", "/api/users/login",
                      # is the defence, and the identity completed is the one
                      # recorded at start — see api_signin_callback.
                      "/api/accounts/oauth/callback/",
-                     # The cloud standby's machine-to-machine door (standby.py). The
-                     # caller is the paired machine, with no cookie; every route under
-                     # it checks the pairing's Bearer token in constant time behind a
-                     # per-address guess ceiling, or (pairing itself) the one-time code.
-                     "/api/standby/peer/",
                      # The sign-in link (handoff.py): the phone that opens it may hold no
                      # session. Its defence is the single-use ticket, the one device the
                      # first POST binds it to, and the number the person confirms in the
                      # chat; it reaches one browser tab, for minutes.
-                     "/handoff/")
+                     "/handoff/",
+                     # The cloud standby's machine-to-machine door (standby.py). The
+                     # caller is the paired machine, with no cookie; every route under
+                     # it checks the pairing's Bearer token in constant time behind a
+                     # per-address guess ceiling, or (pairing itself) the one-time code.
+                     "/api/standby/peer/")
 
 
 def _client_addr(conn) -> str:
