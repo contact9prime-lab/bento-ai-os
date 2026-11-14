@@ -202,6 +202,12 @@ together. **Parts** takes you back to the flat drawing.
 
 ![A turbofan engine as a 3D blueprint, pulled apart: fan, compressors, combustor and turbines as separate coloured cylinders on one axis, each labelled](screenshots/stage-blueprint-3d-engine.png)
 
+Things that go round a middle (planets, moons, satellites) each keep their own distance and go
+the nearer the faster. Names never hide each other: one that would overlap steps up on a longer
+line, and a thing too small to see at that distance has a small circle where it is.
+
+![A blueprint of the solar system as a hologram: the sun in the middle, every planet named on its own orbit, small ones marked with a circle](screenshots/stage-blueprint-3d-solar.png)
+
 ### Every part is filled in
 
 The agent puts an outline on the Stage straight away. Then each part is filled in on its own, in

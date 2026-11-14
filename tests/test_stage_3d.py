@@ -256,3 +256,17 @@ def test_among_the_stars_the_middle_shines_and_the_rest_go_round_it():
     for needle in ("const space=model.ground==='space'", "new T.PointLight(", "Math.pow(near/rr,1.5)",
                    "if(space){let cx=0,cz=0,n=0;", "space:'#1b2540'"):
         assert needle in JS, needle
+
+
+def test_things_that_go_round_keep_their_own_distance_and_every_name_is_shown():
+    """Reported with a blueprint of the solar system: the agent sent eight planets and the drawing
+    named three. A floor meant for circling birds (30% of the scene) had put Mercury, Venus, Earth
+    and Mars on one path at one place, and a name that overlapped another was dropped."""
+    assert "rr=Math.max(o.r,B.R*.3)" not in JS                       # no floor under a planet's distance
+    for needle in ("const kepler=space||radii.length>=3", "Math.pow(near/rr,1.5)",       # the nearer, the faster
+                   "radii.indexOf(o.r.toFixed(2))*2.399",                                # told in a row, spread round
+                   "if(on)for(let n=0;n<6&&hit&&y>40;n++){y-=21;lead+=21;hit=clash()}",  # a name steps up, in every model
+                   "tg.el.classList.toggle('tiny',small)"):
+        assert needle in JS, needle
+    assert "opts.stack&&on" not in JS
+    assert ".mdl-tag.tiny::before" in CSS
