@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.9.3 — 2026-11-14
+
+**A model chosen from Telegram is the one that answers.** `/model` used to save a provider's
+model and nothing else, so on a machine answering through Claude Code the phone said "model is
+now X" and every turn still went to Claude Code. It now makes the same switch as the desktop's
+picker, and says when Claude Code stops answering because of it.
+
+**Claude Code's own models are on the phone.** `/model` lists each installed agent with its
+models, `/model fable` picks one of the agent answering now, and `/model claude-code opus` names
+both. `/status` shows what answers, not a saved model that is not in use.
+
+**Fable is in Claude Code's model list**, beside opus, sonnet and haiku, in every picker.
+
+**Your agent says when a model it saved is not in use.** Asked in chat to change the model while
+another agent answers, it now says so and how to switch.
+
 ## 0.9.2 — 2026-11-13
 
 **The Stage builds things in 3D.** Ask your agent to build a place or a thing ("build me Kyoto in

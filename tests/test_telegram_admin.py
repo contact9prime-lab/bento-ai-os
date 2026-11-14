@@ -184,14 +184,22 @@ async def test_refusing_the_prompt_does_not_run_it(tmp_path):
     assert "not approved" in tg.sent[-1]
 
 
-@pytest.mark.asyncio
-async def test_switching_the_model_is_gated_and_then_sticks(tmp_path, monkeypatch):
-    console, tg = _console(tmp_path)
+def _models(monkeypatch, ids, cli=True):
+    """Stand-in providers, and Claude Code installed (or not) without running a binary."""
+    from agentos import executors as execmod
     from agentos import providers
 
     async def fake(_cfg):
-        return [{"id": "ollama/qwen"}, {"id": "anthropic/claude-opus-5"}]
+        return [{"id": i, "provider": i.split("/", 1)[0]} for i in ids]
     monkeypatch.setattr(providers, "available_models", fake)
+    monkeypatch.setattr(execmod, "probe", lambda eid: {"installed": cli and eid == "claude-code",
+                                                       "title": eid})
+
+
+@pytest.mark.asyncio
+async def test_switching_the_model_is_gated_and_then_sticks(tmp_path, monkeypatch):
+    console, tg = _console(tmp_path)
+    _models(monkeypatch, ["ollama/qwen", "anthropic/claude-opus-5"])
 
     await _run(console, "/model anthropic/claude-opus-5")
     assert tg.asked and tg.asked[0][0] == "configure_agentos"
@@ -202,17 +210,87 @@ async def test_switching_the_model_is_gated_and_then_sticks(tmp_path, monkeypatc
 @pytest.mark.asyncio
 async def test_an_unknown_model_is_refused_with_the_near_miss(tmp_path, monkeypatch):
     console, tg = _console(tmp_path)
-    from agentos import providers
-
-    async def fake(_cfg):
-        return [{"id": "anthropic/claude-opus-5"}]
-    monkeypatch.setattr(providers, "available_models", fake)
+    _models(monkeypatch, ["anthropic/claude-opus-5"])
     await _run(console, "/model gpt-9")
     assert "not one of this machine's models" in tg.sent[-1]
     assert tg.cfg["default_model"] == "ollama/qwen", "nothing changed"
     # a unique substring is resolved rather than refused on a phone keyboard
     await _run(console, "/model opus")
     assert tg.cfg["default_model"] == "anthropic/claude-opus-5"
+
+
+@pytest.mark.asyncio
+async def test_a_model_chosen_on_the_phone_is_the_one_that_answers(tmp_path, monkeypatch):
+    """Reported as "I changed the model using Telegram and it still uses the old model": the
+    machine answered through Claude Code, /model wrote `default_model` alone, and every turn
+    was still forwarded. The switch is the brain's one write, so the engine moves with it."""
+    from agentos import executors as execmod
+    console, tg = _console(tmp_path)
+    tg.cfg["engine"] = "claude-code"
+    _models(monkeypatch, ["ollama/qwen", "anthropic/claude-opus-5"])
+    assert execmod.resolve_engine(tg.cfg) == "claude-code"
+
+    await _run(console, "/model anthropic/claude-opus-5")
+    assert execmod.resolve_engine(tg.cfg) == "aria", "the turn must stop being forwarded"
+    assert tg.cfg["default_model"] == "anthropic/claude-opus-5"
+    assert "claude-code no longer answers" in tg.sent[-1]
+
+
+@pytest.mark.asyncio
+async def test_claude_codes_own_models_are_listed_and_chosen_from_the_phone(tmp_path, monkeypatch):
+    from agentos import executors as execmod
+    console, tg = _console(tmp_path)
+    tg.cfg["engine"] = "claude-code"
+    _models(monkeypatch, ["ollama/qwen"])
+
+    await _run(console, "/model")
+    assert "claude-code" in tg.sent[-1] and "fable" in tg.sent[-1] and "→ claude-code" in tg.sent[-1]
+    await _run(console, "/status")
+    assert "model: claude-code" in tg.sent[-1], "never the provider model that is not in use"
+
+    await _run(console, "/model fable")                    # a model of the agent answering now
+    assert execmod.executor_model(tg.cfg, "claude-code") == "fable"
+    assert tg.cfg["engine"] == "claude-code" and tg.cfg["default_model"] == "ollama/qwen"
+    assert tg.asked[-1][0] == "set_engine", "which agent answers is asked like the tool"
+    await _run(console, "/status")
+    assert "claude-code · fable" in tg.sent[-1]
+
+    await _run(console, "/model claude-code opus")         # an agent and its model, by name
+    assert execmod.executor_model(tg.cfg, "claude-code") == "opus"
+    await _run(console, "/model claude-code gpt-9")
+    assert "not one of this machine's models" in tg.sent[-1]
+    assert execmod.executor_model(tg.cfg, "claude-code") == "opus", "nothing changed"
+
+
+@pytest.mark.asyncio
+async def test_an_agent_that_is_not_installed_cannot_be_chosen(tmp_path, monkeypatch):
+    console, tg = _console(tmp_path)
+    _models(monkeypatch, ["ollama/qwen"], cli=False)
+    await _run(console, "/model claude-code fable")
+    assert "not one of this machine's models" in tg.sent[-1]
+    assert tg.cfg.get("engine") in (None, "", "aria")
+
+
+@pytest.mark.asyncio
+async def test_a_refused_switch_changes_nothing(tmp_path, monkeypatch):
+    console, tg = _console(tmp_path, approve=False)
+    tg.cfg["engine"] = "claude-code"
+    _models(monkeypatch, ["ollama/qwen", "anthropic/claude-opus-5"])
+    await _run(console, "/model fable")
+    await _run(console, "/model anthropic/claude-opus-5")
+    assert tg.cfg["engine"] == "claude-code" and tg.cfg["default_model"] == "ollama/qwen"
+
+
+@pytest.mark.asyncio
+async def test_the_agent_is_told_when_the_model_it_saved_is_not_in_use(tmp_path, monkeypatch):
+    from agentos import executors as execmod
+    _, tg = _console(tmp_path)
+    monkeypatch.setattr("agentos.config.save_config", lambda cfg: None)
+    monkeypatch.setattr(execmod, "resolve_engine", lambda cfg: "claude-code")
+    out = await tg.toolbox.configure_agentos('{"default_model": "ollama/llama"}')
+    assert "answers through claude-code" in out and "set_engine" in out
+    monkeypatch.setattr(execmod, "resolve_engine", lambda cfg: "aria")
+    assert "Not in use" not in await tg.toolbox.configure_agentos('{"default_model": "ollama/qwen"}')
 
 
 @pytest.mark.asyncio

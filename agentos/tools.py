@@ -2919,6 +2919,16 @@ class Toolbox(usersmod.Scoped):
         if self.broadcast:
             await self.broadcast({"type": "config"})
         note = f" (ignored: {', '.join(skipped)})" if skipped else ""
+        if "default_model" in applied:
+            # While another agent answers, this model is saved and not in use. Saying only
+            # "updated" is how a phone was told the model changed while every turn was
+            # still forwarded.
+            from . import executors as execmod
+            eng = execmod.resolve_engine(self.cfg)
+            if eng != "aria":
+                note += (f"\nNot in use yet: this machine answers through {eng}, and that model is "
+                         "for the built-in agent. To answer with it, the person switches in "
+                         "Settings → AI providers, or you call set_engine (they are asked).")
         return "updated: " + ", ".join(applied) + note + (f"\n{refusal}" if refusal else "")
 
     async def create_app(self, name: str, icon: str = "", description: str = "",

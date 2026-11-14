@@ -37,7 +37,7 @@ import time
 COMMANDS = [
     ("/help", "", "this list"),
     ("/status", "", "model, autonomy, what is running"),
-    ("/model", "[id]", "show what can answer; with an id, switch this machine to it"),
+    ("/model", "[id]", "show what answers; with an id, or an agent and its model, switch to it"),
     ("/agents", "", "the specialists this machine has"),
     ("/office", "", "the office right now — who is at work, as a picture"),
     ("/run", "<agent> <task>", "hand a task to one of them"),
@@ -346,9 +346,12 @@ class Console:
         from . import executors as execmod
         eng = execmod.resolve_engine(cfg)
         running = "idle" if not self.tg._busy else "a turn is running"
+        # what answers, never `default_model` alone: while an agent CLI is the engine that
+        # model is not the one in use
+        brain = (cfg.get("default_model") or "(none)") if eng == "aria" else (
+            eng + (f" · {execmod.executor_model(cfg, eng)}" if execmod.executor_model(cfg, eng) else ""))
         return (f"▲ online · {running}\n"
-                f"model: {cfg.get('default_model') or '(none)'}"
-                + (f" · forwarding to {eng}" if eng != "aria" else "") + "\n"
+                f"model: {brain}\n"
                 f"autonomy: {cfg.get('autonomy')}")
 
     async def _cmd_agents(self, chat_id: int, arg: str) -> str:
@@ -430,37 +433,106 @@ class Console:
 
     # ------------------------------------------------------------ actions
 
-    async def _cmd_model(self, chat_id: int, arg: str) -> str:
+    async def _brains(self) -> tuple[dict, list]:
+        """What can answer here (`executors.brains`), and the model list it was built from."""
+        import asyncio
+        from . import executors as execmod
         from . import providers
-        cfg = self.tg.cfg
-        if not arg:
-            models = await providers.available_models(cfg)
-            cur = cfg.get("default_model") or ""
-            rows = [("→ " if m.get("id") == cur else "  ") + m.get("id", "") for m in models[:30]]
-            return _lines(f"▲ Models  (/model <id> to switch · now: {cur or 'none'})",
-                          rows, "no models available — add a provider key on the desktop")
-        models = await providers.available_models(cfg)
-        ids = [m.get("id", "") for m in models]
+        try:
+            models = await providers.available_models(self.tg.cfg)
+        except Exception:
+            models = []                 # an agent CLI can still be chosen with every provider down
+        return await asyncio.to_thread(execmod.brains, self.tg.cfg, models), models
+
+    @staticmethod
+    def _pick_brain(state: dict, arg: str) -> tuple[str, str, list[str]]:
+        """Which executor and model `arg` names: (executor, model, near misses).
+
+        `<executor> [model]`, a provider's model id, a model of the agent that is answering now,
+        or a part of one of those that fits only one. An empty executor means nothing fitted.
+        """
+        ex = {e["id"]: e for e in state["executors"] if e["available"]}
+        first, _, rest = arg.strip().partition(" ")
+        rest = rest.strip()
+        if first in ex:
+            e = ex[first]
+            ids = [m["id"] for m in e["models"]]
+            if not rest:
+                return first, e["model"] if e["model"] in ids else "", []
+            if rest in ids:
+                return first, rest, []
+            near = [i for i in ids if i and rest.lower() in i.lower()]
+            return (first, near[0], []) if len(near) == 1 else ("", "", [f"{first} {i}" for i in near])
         want = arg.strip()
-        if want not in ids:
-            near = [i for i in ids if want.lower() in i.lower()]
-            if len(near) != 1:
-                return (f"▲ “{want}” is not one of this machine's models"
-                        + (f" — did you mean: {', '.join(near[:5])}?" if near else "")
-                        + "\nSend /model to see the list.")
-            want = near[0]
-        # Switching the machine's model is a configuration change, so it goes
-        # through the same gate `configure_agentos` would — including the buttons.
-        ok, why = await self._gated(chat_id, "configure_agentos", {"default_model": want},
-                                    f"Switch this machine's model to {want}.")
+        # every choice as (what the person may type, executor, model)
+        rows = [(m["id"], e["id"], m["id"]) for e in ex.values() if e["kind"] == "provider"
+                for m in e["models"]]
+        now = ex.get(state["current"]["executor"])
+        if now and now["kind"] == "agent":
+            rows += [(m["id"], now["id"], m["id"]) for m in now["models"] if m["id"]]
+        for label, eid, mid in rows:
+            if label == want:
+                return eid, mid, []
+        near = [r for r in rows if want.lower() in r[0].lower()]
+        if len(near) == 1:
+            return near[0][1], near[0][2], []
+        return "", "", [r[0] for r in near]
+
+    async def _cmd_model(self, chat_id: int, arg: str) -> str:
+        """Show or change what answers. The switch is `executors.set_brain`, the one write the
+        desktop's picker makes: it used to set `default_model` alone, so on a machine answering
+        through Claude Code the phone said "model is now X" and every turn was still forwarded."""
+        from . import executors as execmod
+        cfg = self.tg.cfg
+        state, models = await self._brains()
+        cur = state["current"]
+        if not arg:
+            rows = []
+            for e in state["executors"]:
+                if not e["available"]:
+                    continue
+                on = e["id"] == cur["executor"]
+                if e["kind"] == "agent":
+                    names = ", ".join(m["id"] or "default" for m in e["models"])
+                    rows.append(("→ " if on else "  ") + f"{e['id']}  ({names})")
+                    continue
+                for m in e["models"][:30]:
+                    rows.append(("→ " if on and m["id"] == cur["model"] else "  ") + m["id"])
+            head = cur["executor"] + (f" · {cur['model']}" if cur["model"] else "") or "none"
+            return _lines(f"▲ Answering now: {head}\n/model <id> to switch, or /model <agent> [model]",
+                          rows, "nothing can answer yet. Add a provider key on the desktop.")
+        executor, model, near = self._pick_brain(state, arg)
+        if not executor:
+            return (f"▲ “{arg.strip()}” is not one of this machine's models"
+                    + (f" — did you mean: {', '.join(near[:5])}?" if near else "")
+                    + "\nSend /model to see the list.")
+        ex = next(e for e in state["executors"] if e["id"] == executor)
+        if ex["kind"] == "agent":
+            # which agent answers is the machine's, for everybody on it (`api_set_brain`)
+            from . import users as usersmod
+            if usersmod.enabled() and not usersmod.is_admin(usersmod.current()):
+                return "▲ only an admin can change which agent answers on this machine"
+            name = ex["name"] + (f" · {model}" if model else "")
+            ok, why = await self._gated(chat_id, "set_engine", {"engine": executor, "model": model},
+                                        f"Answer with {name} on this machine.")
+        else:
+            # Switching the machine's model is a configuration change, so it goes
+            # through the same gate `configure_agentos` would — including the buttons.
+            ok, why = await self._gated(chat_id, "configure_agentos", {"default_model": model},
+                                        f"Switch this machine's model to {model}.")
         if not ok:
             return f"▲ {why}"
-        cfg["default_model"] = want
+        was = execmod.resolve_engine(cfg)
+        ok, msg = execmod.set_brain(cfg, executor, model, models)
+        if not ok:
+            return f"▲ {msg}"
         from . import config as cfgmod
         cfgmod.save_config(cfg)
-        self.tg.store.log("policy", f"default model set to {want} from telegram")
+        self.tg.store.log("policy", f"brain set to {msg} from telegram")
         await self.tg.broadcast({"type": "config"})
-        return f"▲ model is now {want}"
+        left = (f"\n{was} no longer answers; turns run on this model now."
+                if ex["kind"] != "agent" and was != "aria" else "")
+        return f"▲ answering with {msg}{left}"
 
     async def _cmd_run(self, chat_id: int, arg: str) -> str:
         name, _, task = arg.partition(" ")

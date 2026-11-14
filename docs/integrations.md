@@ -26,7 +26,7 @@ commands; every other enabled chat can only converse.
 |---|---|
 | `/help` | the list below |
 | `/status` | model, autonomy, and whether a turn is running |
-| `/model` `[id]` | what can answer; with an id, switch this machine to it |
+| `/model` `[id]` | what answers now and what could. `/model <id>` switches to a provider's model, `/model claude-code fable` to an installed agent and one of its models |
 | `/agents` | the specialists this machine has |
 | `/office` | the office right now, as a picture: each room, its people, and who is busy with what |
 | `/run <agent> <task>` | hand a task to one of them |
@@ -51,7 +51,7 @@ the menu ever looks out of date, restart the bridge from the Telegram app — pu
 start. (Telegram clients cache the list briefly; it can take a minute to appear.)
 
 Two things about it are deliberate. **A command is never a way around the gate:** `/run` is
-`delegate` and `/model` is `configure_agentos`, so each goes through the same policy decision,
+`delegate` and `/model` is `configure_agentos` (or `set_engine` when it names an agent such as Claude Code), so each goes through the same policy decision,
 the same Allow / Deny buttons and the same audit row as the equivalent action at the desk — a
 console that bypassed policy would be a second, unaudited way to use the machine. And **reading
 works while it is busy**, because "what is it doing" is exactly the question you ask when it is
