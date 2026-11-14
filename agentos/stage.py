@@ -1613,16 +1613,19 @@ def clip_html(sc: dict, narration: str = "", paint: tuple | None = None, three: 
     if sc.get("kind") != "map":
         world = "null"
     three = three or (_UI / "assets/three.module.min.js").read_text(encoding="utf-8")
+    # outside the f-string: Python 3.10 refuses a backslash inside an f-string expression
     cut = lambda t: t.replace("</", "<\\/")
+    three_in = three.replace("</script", "<\\/script")
+    world_in, scene_in, narr_in = cut(world), cut(json.dumps(sc)), json.dumps(narration)
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><title>clip</title>
 <style>{REPORT_TOKENS}
 {css}html,body{{margin:0;background:#111}}</style></head><body>
-<script type="text/plain" id="three">{three.replace("</script", "<\\/script")}</script>
+<script type="text/plain" id="three">{three_in}</script>
 <script>window.STAGE_CLIP=true;
 window.MDL_THREE=URL.createObjectURL(new Blob([document.getElementById('three').textContent],{{type:'text/javascript'}}));
 {js}
-(function(){{var W={cut(world)};if(W)stageWorldIndex(W);
-  stageClip({cut(json.dumps(sc))},{{narr:{json.dumps(narration)}}}).catch(function(){{window.STAGE_CLIP_DONE='none'}})}})();
+(function(){{var W={world_in};if(W)stageWorldIndex(W);
+  stageClip({scene_in},{{narr:{narr_in}}}).catch(function(){{window.STAGE_CLIP_DONE='none'}})}})();
 </script></body></html>"""
 
 
