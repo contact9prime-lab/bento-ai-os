@@ -1588,8 +1588,11 @@ PROVIDER_EXECUTORS = (
 # guessed here, because a forwarded run reports the real model back
 # (`engine_info`) and that is what the chip shows.
 AGENT_MODELS = {
+    # `claude --help` (2.1.325): "an alias for the latest model (e.g. 'fable', 'opus', or
+    # 'sonnet')". An alias follows the newest model of its family, so the list needs no
+    # refresh when a version number moves.
     "claude-code": (("", "whatever Claude Code is set to"),
-                    ("opus", "opus"), ("sonnet", "sonnet"), ("haiku", "haiku")),
+                    ("fable", "fable"), ("opus", "opus"), ("sonnet", "sonnet"), ("haiku", "haiku")),
     # The model names each CLI's own documentation uses for `--model`; newer ones
     # arrive through the empty choice, which is whatever the CLI is set to.
     "gemini-cli": (("", "whatever Gemini CLI is set to"),
