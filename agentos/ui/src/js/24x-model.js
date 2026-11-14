@@ -637,7 +637,7 @@ async function mdlGL(host,model,style,opts){
     fill.userData.si=si;fill.userData.real=real;picks.push(fill);
     const span=walks?(s.so.shape==='person'?Math.max((s.hi[1]-s.lo[1])*1.4,.5):MDL_FIT*.11):0;
     solids.push({s,grp,fill,out,lines,shade,real,span,own,pen,nseg:segs.length,base:[cx,0,cz],r:Math.hypot(cx,cz),a0:Math.atan2(cz,cx),
-      rank:rank[si],h:Math.max(s.hi[1],.01),tall:s.hi[1]-s.lo[1]});
+      rank:rank[si],h:Math.max(s.hi[1],.01),tall:s.hi[1]-s.lo[1],wide:Math.max(s.hi[0]-s.lo[0],s.hi[1]-s.lo[1],s.hi[2]-s.lo[2])});
   });
   // the world a drawing comes to life in: a sky, a sun that casts, the ground it stands on, haze far off
   const space=model.ground==='space';
@@ -662,7 +662,14 @@ async function mdlGL(host,model,style,opts){
   const core=space?solids.filter(o=>o.r<B.R*.1&&o.s.so.shape==='sphere').sort((a,b)=>b.tall-a.tall)[0]:null;
   if(star&&core)star.position.set(core.base[0],(core.s.lo[1]+core.s.hi[1])/2,core.base[2]);
   if(core){core.real.material.emissive.set(1,.6,.16);core.real.material.emissiveIntensity=1.15;core.real.castShadow=false}
-  const near=space?Math.min(...solids.filter(o=>o.s.move==='orbit').map(o=>Math.max(o.r,B.R*.08)).concat([1e9])):0;
+  // Things that go round a middle go as planets do: each at its own distance, the nearer the faster, and
+  // spread round their paths (told in a row, their names piled up and the inner ones could not be told apart).
+  // Found with a blueprint of the solar system: a floor meant for circling birds had put Mercury, Venus,
+  // Earth and Mars on one path at one place. One or two things circling (birds, a plane) fly as before.
+  const rounders=solids.filter(o=>o.s.move==='orbit'&&o.r>B.R*.02),radii=[...new Set(rounders.map(o=>o.r.toFixed(2)))].sort((a,b)=>a-b);
+  const kepler=space||radii.length>=3,near=rounders.length?Math.min(...rounders.map(o=>o.r)):1;
+  const lined=radii.length>=3&&rounders.every(o=>Math.abs(Math.sin(o.a0-rounders[0].a0))<.05);
+  solids.forEach(o=>{o.a1=o.a0+(lined?radii.indexOf(o.r.toFixed(2))*2.399:0)});
   dome.visible=false;dome.renderOrder=-3;S.add(dome);mats.push(dome.material);
   const haze=new T.Fog(SKY,10,100);
   // lines ruled on the sheet with the plan, and the ones drawn in the air once it stands
@@ -769,8 +776,8 @@ async function mdlGL(host,model,style,opts){
         if(m==='spin')o.grp.rotation.y=live*.6;
         else if(m==='bob')y+=Math.sin(live*1.4+o.rank*9)*Math.max(.05,o.tall*.04);
         else if(m==='drift'){const span=B.R*2.6;x=((o.base[0]+live*.35+span/2)%span+span)%span-span/2}
-        else if(m==='orbit'&&space){const rr=Math.max(o.r,B.R*.08),a2=o.a0+live*.55*Math.pow(near/rr,1.5);x=Math.cos(a2)*rr;z=Math.sin(a2)*rr;o.grp.rotation.y=live*.5}   // the nearer, the faster
-        else if(m==='orbit'){const a2=o.a0+live*.22,rr=Math.max(o.r,B.R*.3);x=Math.cos(a2)*rr;z=Math.sin(a2)*rr;o.grp.rotation.y=-a2-Math.PI/2+Math.PI;y+=Math.sin(live*1.1+o.rank*5)*.25}
+        else if(m==='orbit'&&kepler){const rr=o.r,a2=o.a1+live*.55*Math.pow(near/rr,1.5);x=Math.cos(a2)*rr;z=Math.sin(a2)*rr;o.grp.rotation.y=live*.5}   // the nearer, the faster
+        else if(m==='orbit'){const a2=o.a0+live*.22,rr=o.r>B.R*.02?o.r:B.R*.3;x=Math.cos(a2)*rr;z=Math.sin(a2)*rr;o.grp.rotation.y=-a2-Math.PI/2+Math.PI;y+=Math.sin(live*1.1+o.rank*5)*.25}
       }
       o.grp.position.set(x,y,z);
       o.own.uSel.value+=((st.sel===o.s.i||st.hover===o.s.i?1:0)-o.own.uSel.value)*.25;
@@ -810,14 +817,15 @@ async function mdlGL(host,model,style,opts){
     R.render(S,cam);
     // names follow, and step aside for each other
     const W=host.clientWidth,H=host.clientHeight,used=[];
-    tags.forEach(tg=>{const o=tg.o;v.set(o.grp.position.x,o.grp.position.y+o.h*o.grp.scale.y+.3,o.grp.position.z).project(cam);
+    tags.forEach(tg=>{const o=tg.o;v.set(o.grp.position.x,o.grp.position.y+o.h*o.grp.scale.y+.3,o.grp.position.z);const far_=cam.position.distanceTo(v);v.project(cam);
       const on=(holo?t>1.2+o.rank*2:t>RISE0+o.rank*RISEW+RISED*.8)&&v.z<1;
       let x=(v.x+1)/2*W,y=(1-v.y)/2*H-10;
       const clash=()=>used.some(u=>Math.abs(u.y-y)<20&&Math.abs(u.x-x)<(u.w+tg.w)/2);
       let hit=clash(),lead=9;
-      if(opts.stack&&on)for(let n=0;n<5&&hit&&y>40;n++){y-=21;lead+=21;hit=clash()}
+      if(on)for(let n=0;n<6&&hit&&y>40;n++){y-=21;lead+=21;hit=clash()}
       const show=on&&!hit&&x>20&&x<W-20&&y>14&&y<H-8;if(show)used.push({x,y,w:tg.w});
-      if(opts.stack&&tg.lead!==lead){tg.lead=lead;tg.el.style.setProperty('--lead',lead+'px')}
+      if(tg.lead!==lead){tg.lead=lead;tg.el.style.setProperty('--lead',lead+'px')}
+      const small=o.wide*H/(2*Math.tan(cam.fov*Math.PI/360)*Math.max(far_,.01))<9;if(small!==tg.small){tg.small=small;tg.el.classList.toggle('tiny',small)}
       tg.x=x;tg.y=y;tg.on=show;
       tg.el.style.transform=`translate(${x.toFixed(1)}px,${y.toFixed(1)}px) translate(-50%,-100%)`;tg.el.style.opacity=show?'1':'0';
       tg.el.style.pointerEvents=show?'':'none'});

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.5 — 2026-11-14
+
+**Every planet is in the drawing.** Asked to explain the solar system, the agent sent all eight
+planets and the 3D drawing showed three names. Things that go round a middle now keep their own
+distance (the inner four had been moved onto one path, on top of each other), go the nearer the
+faster, and are spread round their paths. Names that would overlap step up instead of
+disappearing, in every model. A named thing too small to see at that distance gets a small
+circle where it is.
+
 ## 0.9.4 — 2026-11-14
 
 **A drawing comes to life.** A model is still inked on paper and raised, and then the light

@@ -777,3 +777,6 @@ body.still .stg-d3btn,.rp .stg-d3btn{display:none}
 .mdl-clipbox{pointer-events:none}
 /* on a phone the drawing's buttons take two rows, so the narrator's line stands above both */
 @container (max-width:480px){.stg-scene.k-3d>.stg-foot{margin-bottom:112px}.stg-scene.k-3d>.stg-title{max-width:92%}}
+/* a named thing too small to see at this distance has a mark where it is, at the end of its name's line */
+div.mdl-tags .mdl-tag.tiny::before{content:'';position:absolute;left:50%;top:calc(100% + var(--lead,9px));width:9px;height:9px;margin:-1px 0 0 -5px;
+  border-radius:50%;border:1.5px solid var(--mdl-ink);box-sizing:border-box}
