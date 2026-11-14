@@ -375,7 +375,7 @@ def test_a_phone_gives_the_story_the_room():
     assert "if(document.fullscreenEnabled){" in js
     # the map takes the frame's shape, and an upright frame keeps the places' longitudes
     i = js.index("async function stageMap(")
-    body = js[i:i + 2600]
+    body = js[i:i + 3100]
     assert "W*fh/fw" in body and "stageK(svg,W,H)" in body and "aspect<1.6&&lons.length" in body
     # measured after the scene laid out, and after the places' notes took their row
     assert body.index("await stageWorld()") < body.index("art.clientHeight")

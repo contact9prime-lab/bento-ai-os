@@ -55,7 +55,7 @@ def test_a_model_is_a_closed_set_read_field_by_field():
                        "solids[1].move 'teleport'", "style 'neon'", "weather 'frogs'"]
     box = sc["solids"][0]
     assert box["count"] == stage.MODEL_COPIES and box["tilt"] == 90.0 and len(box["label"]) <= 40
-    assert sc["style"] == "paper" and sc["weather"] == "none" and "color" not in box
+    assert sc["style"] == "real" and sc["weather"] == "none" and "color" not in box
     with pytest.raises(ValueError, match="needs solids"):
         stage.clean({"kind": "model", "title": "nothing", "solids": [{"shape": "dragon"}]})
     many, dropped = stage.clean({"kind": "model", "title": "t", "solids": [

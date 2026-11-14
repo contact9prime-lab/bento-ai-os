@@ -123,9 +123,9 @@ MODEL_PROPS = ("tree", "blossom", "pine", "palm", "bamboo", "bush", "rock", "mou
                "water", "house", "building", "pagoda", "torii", "bridge", "lantern", "wall",
                "column", "stairs", "path", "person", "bird", "boat", "car", "plane")
 MODEL_SHAPES = MODEL_PRIMS + MODEL_PROPS
-MODEL_STYLES = ("paper", "blueprint", "hologram")
+MODEL_STYLES = ("real", "paper", "blueprint", "hologram")
 MODEL_WEATHER = ("none", "petals", "leaves", "snow", "rain", "fireflies", "sparks")
-MODEL_GROUND = ("none", "grass", "water", "sand", "snow", "stone")
+MODEL_GROUND = ("none", "grass", "water", "sand", "snow", "stone", "space")
 MODEL_MOVES = ("spin", "sway", "bob", "drift", "orbit", "flow", "walk")
 # a colour is one of these words or #rrggbb; on paper it is a wash under the ink
 MODEL_COLORS = ("pink", "red", "orange", "gold", "yellow", "green", "leaf", "teal", "blue", "sky",
@@ -436,7 +436,7 @@ class _KIND:
             if solids:
                 sc["model"] = solids
         if spec.get("style"):
-            sc["style"] = _one_of(spec.get("style"), MODEL_STYLES, "paper", "style", dropped)
+            sc["style"] = _one_of(spec.get("style"), MODEL_STYLES, "real", "style", dropped)
 
     @staticmethod
     def model(spec, sc, dropped):
@@ -448,7 +448,7 @@ class _KIND:
                              "label?, count?, spread?, turn?, move?}], shape one of "
                              + ", ".join(MODEL_SHAPES))
         sc.update(solids=solids,
-                  style=_one_of(spec.get("style"), MODEL_STYLES, "paper", "style", dropped),
+                  style=_one_of(spec.get("style"), MODEL_STYLES, "real", "style", dropped),
                   weather=_one_of(spec.get("weather"), MODEL_WEATHER, "none", "weather", dropped),
                   ground=_one_of(spec.get("ground"), MODEL_GROUND, "none", "ground", dropped))
 
@@ -1260,9 +1260,14 @@ MODEL_LINE = ("Asked to build, imagine, design or show a place, a scene or an ob
               "is on its side along x, so an engine or a pipe is cylinders with tilt 90 on one axis; y "
               "is still its lowest point); move is one of "
               + ", ".join(MODEL_MOVES) + "; tiers is the storeys of a pagoda or a building. color is one of "
-              + ", ".join(MODEL_COLORS) + " or #rrggbb. style is paper (ink on brown paper, the default), "
+              + ", ".join(MODEL_COLORS) + " or #rrggbb. style is real (inked and raised on paper, then it comes to life in "
+              "sunlight with cast shadows, the default), paper (ink on brown paper), "
               "blueprint or hologram (projected in the air); weather is one of "
-              + ", ".join(MODEL_WEATHER[1:]) + "; ground one of " + ", ".join(MODEL_GROUND[1:]) + ". Compose it "
+              + ", ".join(MODEL_WEATHER[1:]) + "; ground one of " + ", ".join(MODEL_GROUND[1:]) + " (space "
+              "puts it among the stars with no ground: the sphere in the middle shines on the rest, "
+              "and whatever has move orbit goes round it, the nearer the faster, its path drawn; a "
+              "solar system is a sun at the middle and each planet a sphere at its distance, not to "
+              "scale, Saturn with a ring at the same place). Compose it "
               "like a set designer: a ground to stand on, one main thing in the middle and named, "
               "supporting things round it, something that moves, 15 to 50 solids, sizes in metres. "
               "Label only what matters, five to eight things, and give each a note: one sentence the "
@@ -1569,6 +1574,61 @@ def report_html(store, conversation_id: str, answer_to: str, answer: str = "",
     return page_html(scenes, question, answer_html, agent, still)
 
 
+def builds_3d(sc: dict) -> bool:
+    """Whether the page builds this scene in 3D (24x-model.js): a model, a blueprint with one, a
+    bar, line or area chart, a map with places or countries. The same rule the page applies."""
+    k = sc.get("kind")
+    if k == "model":
+        return bool(sc.get("solids"))
+    if k == "blueprint":
+        return has_model(sc)
+    if k == "chart":
+        n = sum(len(x.get("points") or []) for x in sc.get("series") or [])
+        return sc.get("chart_type") in ("bar", "line", "area") and 2 <= n <= 220
+    if k == "map":
+        return bool(sc.get("points") or sc.get("regions"))
+    return False
+
+
+def clip_words(sc: dict, stops: int = 5) -> str:
+    """What is read aloud over a scene's clip: its line, then each named thing the tour stops at
+    with its note, in the order the page visits them. Only the scene's own words."""
+    out = [str(sc.get("say") or sc.get("caption") or sc.get("title") or "").strip()]
+    named = []
+    for so in (sc.get("solids") or sc.get("model") or []):
+        if so.get("label") and so.get("note"):
+            named.append(f"{so['label']}. {so['note']}")
+    for pt in sc.get("points") or []:
+        if isinstance(pt, dict) and pt.get("label") and pt.get("note"):
+            named.append(f"{str(pt['label']).split(',')[0]}. {pt['note']}")
+    out += named[:stops]
+    return " ".join(x if x.endswith((".", "!", "?")) else x + "." for x in out if x)
+
+
+def clip_html(sc: dict, narration: str = "", paint: tuple | None = None, three: str = "") -> str:
+    """The page a scene's video is recorded on (stageclip.py): the Stage's own painter, three.js
+    carried inside it, the scene, and `stageClip`, which builds it, tours it and leaves the
+    recording on `window`. `narration` is a data: URL of the story read aloud, or nothing."""
+    js, css, world = paint or painter()
+    if sc.get("kind") != "map":
+        world = "null"
+    three = three or (_UI / "assets/three.module.min.js").read_text(encoding="utf-8")
+    # outside the f-string: Python 3.10 refuses a backslash inside an f-string expression
+    cut = lambda t: t.replace("</", "<\\/")
+    three_in = three.replace("</script", "<\\/script")
+    world_in, scene_in, narr_in = cut(world), cut(json.dumps(sc)), json.dumps(narration)
+    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><title>clip</title>
+<style>{REPORT_TOKENS}
+{css}html,body{{margin:0;background:#111}}</style></head><body>
+<script type="text/plain" id="three">{three_in}</script>
+<script>window.STAGE_CLIP=true;
+window.MDL_THREE=URL.createObjectURL(new Blob([document.getElementById('three').textContent],{{type:'text/javascript'}}));
+{js}
+(function(){{var W={world_in};if(W)stageWorldIndex(W);
+  stageClip({scene_in},{{narr:{narr_in}}}).catch(function(){{window.STAGE_CLIP_DONE='none'}})}})();
+</script></body></html>"""
+
+
 def painter() -> tuple[str, str, str]:
     """(js, css, world map json): the Stage's own painter, read from the UI sources."""
     js = "\n".join((_UI / f"src/js/{f}").read_text(encoding="utf-8") for f in PAINTER_JS)
@@ -1577,7 +1637,8 @@ def painter() -> tuple[str, str, str]:
 
 
 def page_html(scenes: list, question: str, answer_html: str = "", agent: str = "",
-              still: bool = False, paint: tuple | None = None, footer: str = "") -> str:
+              still: bool = False, paint: tuple | None = None, footer: str = "",
+              three: str = "") -> str:
     """The page itself, with no store: cleaned scenes in, one self-contained HTML file out.
     report_html calls it for a chat's story, and the downloadable skills (skillpack.py) call
     it from their own render script with `paint` read from the files they carry, so a story
@@ -1588,6 +1649,13 @@ def page_html(scenes: list, question: str, answer_html: str = "", agent: str = "
         world = "null"
     data = json.dumps({"scenes": scenes}).replace("</", "<\\/")
     world = world.replace("</", "<\\/")
+    # A page that carries three.js builds its models, charts and maps live, as the Stage does
+    # (24x-model.js reads MDL_THREE). The skills pass it; a picture for a phone never does.
+    live = ""
+    if three and not still and any(builds_3d(s) for s in scenes):
+        live = ('<script type="text/plain" id="three">' + three.replace("</script", "<\\/script") + "</script>\n"
+                "<script>window.MDL_THREE=URL.createObjectURL(new Blob([document.getElementById('three')"
+                ".textContent],{type:'text/javascript'}));</script>\n")
     when = time.strftime("%d %b %Y, %H:%M")
     # outside the f-string: Python 3.10 refuses a backslash inside an f-string expression
     lt = "\\u003c"
@@ -1604,7 +1672,7 @@ def page_html(scenes: list, question: str, answer_html: str = "", agent: str = "
 {f'<div class="rp-a">{answer_html}</div>' if answer_html else ''}
 <div class="rp-f">{_html.escape(footer or 'Made by Bento Box AI. Numbers carry their source; scenes marked illustrative are examples, not data.')}</div>
 </div>
-<script>window.STAGE_REPORT=true;window.STAGE_STILL={'true' if still else 'false'};
+{live}<script>window.STAGE_REPORT=true;window.STAGE_STILL={'true' if still else 'false'};
 {js}
 (function(){{
   var D={data}, W={world};

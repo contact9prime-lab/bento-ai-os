@@ -5,13 +5,18 @@ reading skills can use. That includes Claude Code, Claude.ai, Codex and Bento it
 
 | Skill | What it does |
 |---|---|
-| **bento-stage** | Answers as a visual story: charts, maps with a note on each place, key numbers, timelines, steps, tables, pictures and videos, drawn as one HTML page. |
+| **bento-stage** | Answers as a visual story: charts, maps with a note on each place, key numbers, timelines, steps, tables, pictures, videos and places or objects built in 3D, drawn as one HTML page. |
 | **bento-blueprint** | Takes a building, machine, body, company or process apart into a blueprint you can drill into, part by part. |
 | **bento-brief** | Turns what a task produced into a Brief: what needs you, decisions with their choices, FYI and what was done. |
 | **bento-mission** | Designs a standing mission with its team, what starts it and a consent sheet, and checks it against Bento's rules. |
 
 The pages are drawn by the Stage's own painter, so a story looks the same as it does on
 Bento's Stage. The scripts use only Python's standard library.
+
+The Stage and Blueprint skills carry their own 3D engine (three.js, about 700 kB), so a page
+they make builds its models, bar and line charts and maps in 3D with no network: inked on paper,
+raised, then lit. Tour goes round the named things, Clip saves a video with sound, and Flat
+brings a chart or map back to the flat drawing.
 
 ## Install
 
