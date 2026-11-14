@@ -155,8 +155,8 @@ async def inject(request: Request):
     """What the person does in the chat: {"text": …} or {"tap": "bw:open"}."""
     b = await request.json()
     N[0] += 1
-    who = {"id": 5150, "first_name": "Piyush", "is_bot": False}
-    chat = {"id": 5150, "type": "private", "first_name": "Piyush"}
+    who = {"id": 5150, "first_name": "Ada", "is_bot": False}
+    chat = {"id": 5150, "type": "private", "first_name": "Ada"}
     if "tap" in b:
         QUEUE.append({"update_id": 9000 + N[0], "callback_query": {"id": f"cq{N[0]}", "from": who, "data": b["tap"],
                                                                   "message": {"message_id": 1, "chat": chat}}})

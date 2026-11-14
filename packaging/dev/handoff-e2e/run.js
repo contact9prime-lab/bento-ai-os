@@ -138,7 +138,7 @@ const portOpen=port=>new Promise(res=>{const s=net.connect(port,'127.0.0.1');s.o
     check(Math.abs(box.width-390)<2,'the page fills the phone, at the phone\'s width');
     // the stand-in site's fields sit at fixed places: username at y 148-196, password at 240-288
     await phone.touchscreen.tap(box.x+150,box.y+172);await sleep(300);
-    await phone.keyboard.type('octo-piyush',{delay:20});
+    await phone.keyboard.type('octo-ada',{delay:20});
     await phone.touchscreen.tap(box.x+150,box.y+264);await sleep(300);
     await phone.keyboard.type(PASSWORD,{delay:20});
     await sleep(700);
