@@ -110,6 +110,8 @@ or the agent pick another. **Paper**, **Blueprint** and **Hologram** are beside 
 
 ![Kyoto in spring, lit: a red pagoda among pink blossom trees and pines, a red bridge over a blue river, a mountain behind, soft shadows on the grass](screenshots/stage-model-real.png)
 
+![The lit model on a 390px phone, with the look buttons and the controls in two rows under it](screenshots/stage-model-real-phone.png)
+
 On a computer with no graphics card the shadows are drawn at half the detail. A small machine's
 own screen, reduced motion and a phone's picture still get the ink drawing.
 
@@ -130,6 +132,12 @@ A bar, line or area chart and a map are built the same way, and they fill the St
 - **Flat** brings the flat drawing back, and **3D** on the flat one builds it again. The page
   remembers which you chose. A pie and a scatter are always flat, and on a phone's width a chart
   or a map stays flat until you press **3D**.
+
+The flat drawing is still there, and it's what a phone's width shows first:
+
+![The same chart flat on the Stage, with a Flat button pressed](screenshots/stage-3d-chart-flat.png)
+
+![The chart on a 390px phone: flat, with a 3D button in its corner](screenshots/stage-3d-chart-phone.png)
 
 ![A map built in 3D: the world as washed land on a blue sea, five red pins of different heights with numbered names](screenshots/stage-3d-map.png)
 
