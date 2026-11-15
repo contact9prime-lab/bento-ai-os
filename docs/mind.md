@@ -126,3 +126,15 @@ directly, so it works with the server down. The drawing itself has no terminal f
 - **A wake word.** Talking starts with the Talk button or the mic, not by saying a name.
 - **A wall display.** The scene works full screen on any browser, including a TV's, but
   there is no kiosk mode that opens straight into it.
+
+## With several companies
+
+The departments of the company you have open are clusters, one each. Each of your other
+companies is one cluster, and opening its card lists its people with their department there.
+Agents who belong to no company each keep a cluster while there are six or fewer; more than
+that and they stand together as "On their own". The Team list on the right has one row per
+cluster.
+
+To give another company's department a task, open that company first (the Office, or the
+desktop's menu).
+

@@ -27,6 +27,8 @@ MAX_KNOWLEDGE = 160
 MAX_KG_EDGES = 260
 MAX_RUNS_PER_AGENT = 14
 MAX_MENTIONS = 320
+MAX_OWN = 6                  # agents in no company who may each keep a cluster of their own
+LOOSE, LOOSE_LABEL = "free", "On their own"
 WEEK = 7 * 86400
 #: fixed hues for the three shared lobes; specialists take the rest of the wheel
 HUES = {"memory": 188, "knowledge": 276, "missions": 36}
@@ -82,11 +84,55 @@ def snapshot(store, cfg: dict, running: set | None = None, now: float | None = N
             nodes.append({"id": f"a:{m}", "hub": hid, "label": m, "kind": "person",
                           "head": m == dept["head"] and dept["named"],
                           "title": org["of"].get(m, {}).get("title", ""), "busy": m in running})
-    for i, d in enumerate(a for a in agents if a["name"] not in where):
-        hubs.append({"id": f"agent:{d['name']}", "kind": "agent", "label": d["name"],
-                     "hue": AGENT_HUES[i % len(AGENT_HUES)],
-                     "busy": d["name"] in running})
-        where[d["name"]] = f"agent:{d['name']}"
+    # The person's OTHER companies: each is one cluster, its people points in it, each
+    # titled with their department there. Reported with a screenshot of 47 clusters ("the
+    # mind should be better organized"): only the open company's departments were grouped,
+    # and everybody in the two parked companies stood as a cluster of their own.
+    group_of: dict = {m: org["of"][m]["dept"] for m in where}
+    hue_i = 0
+    try:
+        parked = [c for c in companymod.companies(cfg) if not c["active"] and c["id"]]
+    except Exception:
+        parked = []
+    for co in parked:
+        try:
+            their = companymod.membership(companymod.cfg_of(cfg, co["id"]) or {}, store)
+        except Exception:
+            continue
+        people = [m for m in their["of"] if m in names_live and m not in where]
+        if not people:
+            continue
+        hid = f"co:{co['id']}"
+        hubs.append({"id": hid, "kind": "dept", "company": True, "label": co["name"],
+                     "hue": AGENT_HUES[hue_i % len(AGENT_HUES)], "head": "", "members": people,
+                     "busy": any(m in running for m in people)})
+        hue_i += 1
+        for m in people:
+            where[m] = hid
+            group_of[m] = co["name"]
+            t = their["of"][m]
+            nodes.append({"id": f"a:{m}", "hub": hid, "label": m, "kind": "person",
+                          "head": bool(t.get("head")), "busy": m in running,
+                          "title": " · ".join(x for x in (t.get("dept"), t.get("title")) if x)})
+    # Who is left belongs to no company. A few keep a cluster each, as before; more than
+    # MAX_OWN stand together, or the ring is a wall of names again.
+    loose = [a for a in agents if a["name"] not in where]
+    if len(loose) > MAX_OWN:
+        hubs.append({"id": LOOSE, "kind": "dept", "loose": True, "label": LOOSE_LABEL,
+                     "hue": AGENT_HUES[hue_i % len(AGENT_HUES)], "head": "",
+                     "members": [a["name"] for a in loose],
+                     "busy": any(a["name"] in running for a in loose)})
+        for a in loose:
+            where[a["name"]] = LOOSE
+            group_of[a["name"]] = LOOSE_LABEL
+            nodes.append({"id": f"a:{a['name']}", "hub": LOOSE, "label": a["name"], "kind": "person",
+                          "head": False, "title": "", "busy": a["name"] in running})
+    else:
+        for i, d in enumerate(loose):
+            hubs.append({"id": f"agent:{d['name']}", "kind": "agent", "label": d["name"],
+                         "hue": AGENT_HUES[(hue_i + i) % len(AGENT_HUES)],
+                         "busy": d["name"] in running})
+            where[d["name"]] = f"agent:{d['name']}"
 
     mems = store.search_memories(limit=MAX_MEMORY)
     for m in mems:
@@ -190,6 +236,8 @@ def snapshot(store, cfg: dict, running: set | None = None, now: float | None = N
         last = mine[0] if mine else None
         team.append({"name": d["name"], "busy": d["name"] in running, "runs": len(mine),
                      "dept": org["of"].get(d["name"], {}).get("dept", ""),
+                     # the cluster this person is drawn in, and what it is called
+                     "hub": where.get(d["name"], ""), "group": group_of.get(d["name"], ""),
                      "last": _short(str(last.get("input") or "").split("\n")[0], 60) if last else "",
                      "last_status": (last or {}).get("status", ""),
                      "brain": fabricmod.agent_brain(cfg, d).get("provider_name", "")})
