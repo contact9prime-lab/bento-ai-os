@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.9.13 — 2026-11-15
+
+**Telegram answers in a group only when you turned group chats on and picked that group.** A bot
+can be added to any group. Now the agent says nothing in a group until **Answer in group chats**
+is on (the Telegram app, or `/groups on` from your phone) and that group is enabled. The first
+message from a new group reaches you on your own chat with Allow this group and Block. `/groups`
+lists the groups a message came in from, with a button for each; `/groups off` stops all of them
+and keeps your picks. A machine that already had a group enabled keeps answering it.
+
+**An old story no longer sits under your newest answer in Chat.** After `/clear`, the Stage chips
+of the wiped questions were pinned to the bottom of the chat, so "Bengaluru this weekend" from
+weeks ago showed under a question about the market. A story whose question is gone now has no
+chip in the chat; it is still in the Stage's library.
+
 ## 0.9.12 — 2026-11-15
 
 **What comes back from delegated work arrives whole.** An answer handed back to your agent by a

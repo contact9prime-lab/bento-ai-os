@@ -167,9 +167,14 @@ async function stageAttach(cid){
     const u=st.answer_to&&feed.querySelector('.msg.user[data-mid="'+CSS.escape(st.answer_to)+'"]');
     let host=u&&u.nextElementSibling;
     while(host&&!host.classList.contains('assistant')&&!host.classList.contains('user'))host=host.nextElementSibling;
+    /* A story whose question is not in this chat any more (wiped by /clear, or not loaded)
+       gets no chip. It used to go at the END of the feed, so an old story sat under the
+       newest answer: "Weather for Bangalore" below a question about the market. It is
+       still in the Stage's library. */
+    if(!u)return;
     const chip=stageChip(cid,st.answer_to,st.scenes.length);
     if(host&&host.classList.contains('assistant'))host.appendChild(chip);
-    else if(u)u.after(chip);else feed.appendChild(chip);
+    else u.after(chip);
   });
 }
 
