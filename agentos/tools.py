@@ -1507,6 +1507,25 @@ def _automation_step_label(s: dict) -> str:
     return str(k)
 
 
+# What a specialist, a mission or a department hands back to whoever asked for it. It was cut at
+# 3,500 characters with no mark, in three places: measured on the owner's machine, four desk
+# deliverables of 4,140 to 5,759 characters each reached the lead cut off mid-sentence, and the lead
+# answered from the part it had. Reported as "the answers fall short". The whole answer goes back
+# up to HANDBACK; past that it is cut at a paragraph and the cut is SAID, with where the rest is.
+HANDBACK = 20000
+
+
+def handed_back(body: str, run_id: str = "") -> str:
+    body = str(body or "")
+    if len(body) <= HANDBACK:
+        return body
+    cut = body.rfind("\n\n", HANDBACK // 2, HANDBACK)
+    cut = cut if cut > 0 else HANDBACK
+    where = (f" The whole answer is in Missions → History, run {run_id}" if run_id else "")
+    return (body[:cut].rstrip() + f"\n\n[… {len(body) - cut:,} more characters are not shown here."
+            + where + ". Say that the answer was cut if you rely on it.]")
+
+
 class Toolbox(usersmod.Scoped):
     """Executes tools. `store` is a memory.Store; `scheduler` is set by the app."""
 
@@ -2174,7 +2193,7 @@ class Toolbox(usersmod.Scoped):
         # no second mark, and a new mark would end a link's standing permissions (policy)
         known = list(_taint or [])
         fresh = any(t not in known for t in res.get("taint") or []) if "taint" in res else res.get("tainted")
-        return (TAINTED_REPLY if fresh else "") + f"{head}\n{body[:3500]}"
+        return (TAINTED_REPLY if fresh else "") + f"{head}\n{handed_back(body, res.get('run_id') or '')}"
 
     async def linked_teams(self) -> str:
         """Each linked team and who there this team may give work to, asked over the link."""
@@ -4069,7 +4088,7 @@ class Toolbox(usersmod.Scoped):
                                          conversation_id=conversation_id)
         head = (f"[flow {defn['name']} · {res['status']} · {res['delegations']} delegations]")
         return ((TAINTED_REPLY if res.get("tainted") else "")
-                + f"{head}\n{(res['content'] or res['fault'] or '(no output)')[:3500]}")
+                + f"{head}\n{handed_back(res['content'] or res['fault'] or '(no output)', res.get('run_id') or '')}")
 
     async def department_task(self, department: str, task: str, _conv: str = "") -> str:
         """Hand a task to a department of the company: a run of its desk, led by its
@@ -4088,7 +4107,7 @@ class Toolbox(usersmod.Scoped):
         head = (f"[{got['department']} · {res['status']} · led by {got['head'] or 'its head'} · "
                 f"{res['delegations']} hand-over{'' if res['delegations'] == 1 else 's'}]")
         return ((TAINTED_REPLY if res.get("tainted") else "")
-                + f"{head}\n{(res['content'] or res['fault'] or '(no output)')[:3500]}")
+                + f"{head}\n{handed_back(res['content'] or res['fault'] or '(no output)', res.get('run_id') or '')}")
 
     async def telegram_send(self, message: str, chat_id: int = 0) -> str:
         """`chat_id` 0 means the owner's chat. It exists so work that arrived from a

@@ -589,6 +589,20 @@ Office showed nothing for six minutes. Four rules:
 - **The chat card follows the desk's run**: flow_start names the chat, the department and the head; the page binds the
   open `department_task` card to that run and writes each hand-over, step, finish and sign-off into it.
 
+**What is handed back is whole, and a run that stops keeps what it finished** (`tools.handed_back`/`HANDBACK`,
+`company._shown`/`REVIEW_CHARS`, `fabric._salvage`/`SALVAGED`; `tests/test_desk_handback.py`). Reported as "the company
+delegation is not very great, the answers fall short". Read from the owner's record and then measured live:
+- **Five doors back were cut at 3,500 characters with no mark**: `delegate`, `run_flow`, `department_task` (tools.py),
+  a colleague's answer and a linked team's (fabric.py). Every desk deliverable on the owner's machine (4,140 to 5,759
+  characters) reached the lead cut mid-sentence. With real Claude Code as the lead and 60 numbered items asked of a
+  specialist, 21 and 27 arrived; after, all 60. A cut is at a paragraph and is SAID, with the run to read.
+- **A boss read 6,000 characters and a send-back showed 4,000.** Both read `_shown` now.
+- **A run that ends without `finish` hands back its board**: each finished step in full, the master's notes, what did
+  not finish, said to be unfinished and unchecked. Status stays `error`/`timeout`, so no boss or auditor signs it. A
+  Research desk had worked 39 minutes and handed back "the executor exited with 143".
+- `fabric_runs.output` stays 8,000: the runs list is a summary, the board holds the whole thing.
+- The first fix passed its tests and changed nothing live: it had been written into another worktree. Run it live.
+
 **A phone turn is its owner's, on every screen** (`server._owner_send`, `users.OWN_CHANNELS`;
 `tests/test_telegram_owner.py`). Reported as "the instruction given by Telegram to the tied user is accepted by Aria in
 all the users": every Telegram and WhatsApp bridge was built with the machine-wide `broadcast`, so one account's phone

@@ -461,6 +461,20 @@ bento company kit Sales crm=hubspot --yes      # give it to Sales
   tapped; the Mind's and the World's tags can be.
 
 
+## What comes back
+
+A department's answer goes back to your agent whole, up to 20,000 characters. A longer one is
+cut at a paragraph, and the cut says how much is missing and which run in Missions → History
+has the rest. The same holds for a specialist your agent hands work to, a mission it runs and a
+colleague one agent asks.
+
+The heads who sign a department's work off, and the auditor, read up to 20,000 characters of it.
+
+If a task stops before it is finished (an error, out of time, its process ended), you still get
+what was done: each finished step in full, the notes the department's lead kept, and what did
+not finish. It says plainly that nobody put the pieces together or checked them, and the task
+still shows as failed.
+
 ## When a department cannot do a step
 
 A department may lack what a step needs: Research cannot run code until it is allowed to. Nobody stops at

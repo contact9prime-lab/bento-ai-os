@@ -42,6 +42,9 @@ HEARTBEAT_PERSIST_EVERY = 6  # persist 1 of every N beats (avoid write spam)
 # What the master orchestrator is allowed to hold itself (see _master_tools). It plans
 # and aggregates; the roster acts. An orchestrator with hands does the work itself and
 # the roster never runs.
+# a run that stopped without `finish` still hands back what its steps finished (_salvage)
+SALVAGED = ("error", "timeout")
+SALVAGE_CHARS = 24000
 MASTER_READONLY = ["recall", "kg_query", "brief_item"]
 # Appended to the system prompt of a run on the bridge: the executor sees our tools
 # under its MCP naming, and it must not go looking for the native ones it has not got.
@@ -1612,7 +1615,8 @@ class ControlPlane(usersmod.Scoped):
             except Exception:
                 pass
         head = f"[{target} · {res['model']}]\n"
-        return (TAINTED_REPLY if res.get("tainted") else "") + head + text[:3500]
+        from .tools import handed_back      # a colleague's answer arrives whole, or says it was cut
+        return (TAINTED_REPLY if res.get("tainted") else "") + head + handed_back(text, res.get("run_id") or "")
 
     def _flow_run_of(self, run_id: str) -> str:
         """The mission run a run belongs to, walking up parent_run ('' outside one)."""
@@ -1761,7 +1765,8 @@ class ControlPlane(usersmod.Scoped):
                 audit_team(self.store, "link.files", f"link:{lk['label']}",
                            f"received {len(paths)} file(s) from {lk['label']}: "
                            + ", ".join(p.name for p in paths))
-        return TAINTED_REPLY + f"[{target} · {model}]\n" + text[:3500] + came
+        from .tools import handed_back
+        return TAINTED_REPLY + f"[{target} · {model}]\n" + handed_back(text) + came
 
     def mission_card(self, flow: dict, label: str, deleted: bool = False) -> dict:
         """What the other team records about one of OUR missions: its name, which of
@@ -3105,6 +3110,43 @@ class ControlPlane(usersmod.Scoped):
             "and report it plainly if you cannot.",
         ])
 
+    def _salvage(self, run_id: str, status: str, fault: str) -> str:
+        """What a run had finished when it stopped without `finish`: each completed step in
+        full, the master's notes, and the steps that did not finish. Found in the owner's
+        record: a Research desk worked 39 minutes, three steps came back (11.8 kB) and a note
+        was kept, then the master's process was killed while a card waited; the run handed
+        back nothing but "the executor exited with 143". The work was on the board the whole
+        time. It is handed back as what it is: unfinished, put together by nobody, checked by
+        nobody (a stopped run is not in company.AUDITED, so no boss or auditor signs it)."""
+        done, notes, lost = [], [], []
+        for a in self.store.artifact_index(run_id):
+            if a.get("kind") == "note":
+                full = self.store.artifact_get(run_id, a["handle"]) or {}
+                notes.append(" ".join(str(full.get("content") or a.get("preview") or "").split()))
+            elif a.get("kind") == "output":
+                (done if a.get("status") == "ok" and a.get("bytes") else lost).append(a)
+        if not done and not notes:
+            return ""
+        left = SALVAGE_CHARS
+        parts = [f"This task stopped before it was finished ({status}: {fault or 'no reason recorded'}). "
+                 f"Nobody put the pieces together and nobody checked them. "
+                 f"{len(done)} step{'' if len(done) == 1 else 's'} had finished:"]
+        for n, a in enumerate(done, 1):
+            body = str((self.store.artifact_get(run_id, a["handle"]) or {}).get("content") or "").strip()
+            take = max(0, min(len(body), left))
+            left -= take
+            parts.append(f"--- {n}. {a.get('agent') or 'a specialist'}: "
+                         f"{' '.join(str(a.get('task') or '').split())[:200]} ---\n"
+                         + (body[:take] if take else "")
+                         + (f"\n[… {len(body) - take:,} more characters, on the run's board as "
+                            f"{a['handle']}]" if take < len(body) else ""))
+        if notes:
+            parts.append("Notes the lead of the task kept:\n" + "\n".join(f"- {x[:600]}" for x in notes[:12]))
+        if lost:
+            parts.append("Did not finish: " + "; ".join(
+                f"{a.get('agent') or 'a step'} ({a.get('status') or 'unknown'})" for a in lost[:12]))
+        return "\n\n".join(parts)
+
     def _fold_children(self, run_id: str, status: str, fault: str) -> tuple[str, str]:
         """A flow whose delegated steps all failed did not succeed, whatever the master
         says; one that lost some is partial. Reviews and audits are not steps."""
@@ -3126,7 +3168,7 @@ class ControlPlane(usersmod.Scoped):
         back = review["sent_back"][-1]
         fixes = "\n".join(f"- {x}" for x in back.get("notes") or []) or "- (no reason given)"
         return (f"{opening}\n\n=== your last answer, which {back['who']} sent back ===\n"
-                f"{str(content or '').strip()[:4000] or '(nothing)'}\n\n"
+                f"{_company._shown(content) or '(nothing)'}\n\n"
                 f"=== what {back['who']} wants fixed ===\n{fixes}\n\n"
                 f"Fix exactly that. Your earlier work is still on the board (read_handle), so "
                 f"delegate only what has to be redone, then `finish` with the corrected "
@@ -3366,6 +3408,8 @@ class ControlPlane(usersmod.Scoped):
                     "delivered": [], "brief_id": brief_id,
                     "board": self.store.artifact_index(run_id)}
         status, fault = self._fold_children(run_id, status, fault)
+        if not content and status in SALVAGED:
+            content = self._salvage(run_id, status, fault)
         self.store.fabric_run_finish(run_id, status, output=content, fault=fault,
                                      tokens_in=usage["in"], tokens_out=usage["out"],
                                      steps=state["delegations"])
