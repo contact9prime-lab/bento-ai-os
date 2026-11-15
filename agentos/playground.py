@@ -123,7 +123,7 @@ def rollcall(store, cfg: dict, lead_busy: bool | None = False, now: float | None
         for m in r["members"]:
             if m == "@agent":
                 out.append({"room": r["name"], "color": r["color"], "key": m,
-                            "label": (cfg or {}).get("agent_name") or "Aria",
+                            "label": (cfg or {}).get("agent_name") or "Bento",
                             "working": bool(lead_busy), "doing": "",
                             "unknown": lead_busy is None})
                 continue

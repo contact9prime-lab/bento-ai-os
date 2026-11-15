@@ -281,6 +281,13 @@ async function kioskSend(wav){
     const d=await r.json().catch(()=>({}));
     if(!r.ok){KIOSK.sending=false;kioskSay(d.error||('could not understand that ('+r.status+')'),'listening');return}
     text=String(d.text||'').trim();
+    // Only an enrolled voice wakes this screen (voiceprint.py): the server says whether this
+    // one matched. A voice it does not know is ignored, and one too short to judge is told so.
+    if(d.voice&&d.voice.match!==true&&text){
+      KIOSK.sending=false;
+      kioskSay(d.voice.match===false?'That is not a voice I know, so I did not act on it.'
+        :'I could not tell whose voice that was. Say a little more.','listening');
+      return}
   }catch(e){KIOSK.sending=false;kioskSay('The machine could not be reached.','listening');return}
   KIOSK.sending=false;
   kioskHeard(text);
@@ -429,6 +436,61 @@ function micOnce(opts){
 }
 /* Record one utterance and ask this machine whether it heard its wake word.
    Shared by the voice step and Settings' Test button, so both prove the same thing. */
+/* A voice print (voiceprint.py), for whoever is signed in: say the wake word three times. Each
+   recording becomes numbers on the server and is thrown away; the print stays in that person's
+   own home. Used by the setup step and by Settings → Voice. `fresh` starts the print over.
+   TUI: `bento face print`. SUI: the same page; the host grants the microphone to it. */
+var VOICEPRINT={busy:false};
+async function voicePrintLoad(){try{return await apiJSON('/api/voiceprint')}catch(e){return {available:false,line:String(e.message||e),samples:0,need:3}}}
+async function voicePrintSample(out,meter,fresh){
+  const say=(t,c)=>{if(out){out.textContent=t;out.className='mut '+(c||'')}};
+  say('Listening… say it now.');
+  let wav;
+  try{wav=await micOnce({onLevel:v=>{if(meter)meter.style.width=Math.round(v*100)+'%'}})}
+  catch(e){say(String(e.message||e),'warn');return null}
+  say('Taking your voice print…');
+  const lang=String((typeof VOICE!=='undefined'&&VOICE.lang)||'').slice(0,5);
+  let d;
+  try{const r=await fetch('/api/voiceprint/enroll?lang='+encodeURIComponent(lang)+(fresh?'&fresh=1':''),
+      {method:'POST',headers:{'Content-Type':'audio/wav'},body:wav});
+    d=await r.json().catch(()=>({}));if(!r.ok){say(d.error||('could not use that ('+r.status+')'),'warn');return null}}
+  catch(e){say('The machine could not be reached.','warn');return null}
+  say(d.enrolled?`✓ Saved. ${d.samples} recordings make your voice print.`:`✓ ${d.samples} of ${d.need}. Say it again.`,'ok');
+  return d;
+}
+/* The block both faces draw. `again` repaints whoever asked. */
+function voicePrintHTML(v,word){
+  const n=v.samples||0,need=v.need||3;
+  if(!v.available)return `<div class="vp"><b>Your voice print</b>
+    <p class="mut">Lets only your voice wake this screen. It needs a speaker model on this machine first.</p>
+    <div class="sp-row"><button class="endbtn" data-vp="install">Install it here</button>
+      <span class="mut">about 70 MB, Apache-2.0, runs on this machine</span></div></div>`;
+  return `<div class="vp"><b>Your voice print</b>
+    <p class="mut">${esc(v.line||'')} ${typeof pInfo==='function'?pInfo('It filters who can wake the screen. It never signs anybody in, and a recording of you could pass it. The print is kept in your own home on this machine; the recordings are not kept.'):''}</p>
+    <div class="vp-dots" role="img" aria-label="${n} of ${need} recordings">${Array.from({length:need},(_,i)=>`<i class="${i<n?'on':''}"></i>`).join('')}</div>
+    <p>Press the button and say: <b>“${esc(word)}, good morning.”</b></p>
+    <div class="ob-meter"><i data-vp-meter></i></div>
+    <p class="mut" data-vp-out aria-live="polite"></p>
+    <div class="sp-row"><button class="wiz-next" data-vp="record">${n>=need?'Record once more':n?'Record again':'Record my voice'}</button>
+      ${n?`<button class="endbtn" data-vp="fresh">Start over</button><button class="endbtn" data-vp="forget">Delete my voice print</button>`:''}</div>
+    ${v.enrolled?`<label class="ck vp-only"><input type="checkbox" data-vp="only" ${v.only?'checked':''}> Only my voice wakes this screen</label>`:''}
+    ${v.idle?'<p class="mut warn">The filter is on, but it is not running yet.</p>':''}</div>`;
+}
+function voicePrintWire(box,again){
+  const q=s=>box.querySelector(s),out=q('[data-vp-out]'),meter=q('[data-vp-meter]');
+  const rec=async fresh=>{if(VOICEPRINT.busy)return;VOICEPRINT.busy=true;
+    const d=await voicePrintSample(out,meter,fresh);VOICEPRINT.busy=false;
+    if(d)setTimeout(again,d.enrolled?1600:900)};
+  box.querySelectorAll('[data-vp]').forEach(b=>{const a=b.dataset.vp;
+    if(a==='install')b.onclick=async()=>{b.disabled=true;b.textContent='Installing… (a minute or two)';
+      try{await installComponent('voice-print')}finally{again()}};
+    if(a==='record')b.onclick=()=>rec(false);
+    if(a==='fresh')b.onclick=()=>rec(true);
+    if(a==='forget')b.onclick=async()=>{await fetch('/api/voiceprint',{method:'DELETE'});toast('Your voice print was deleted.');again()};
+    if(a==='only')b.onchange=async()=>{const r=await fetch('/api/voiceprint',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({only:b.checked})});
+      const d=await r.json().catch(()=>({}));if(!r.ok)toast(d.error||'could not change that',{kind:'err'});again()};
+  });
+}
 async function voiceWakeTest(out,meter){
   const say=(t,c)=>{if(out){out.textContent=t;out.className='mut '+(c||'')}};
   const f=kioskFace(),hear=f.hear||{};
@@ -562,7 +624,13 @@ async function hearSettingsPaint(){
        f:'speech to text whisper openai elevenlabs google transcribe hearing stt'}),
     hear.engine?'':pRow('Make it hear',hearFixHTML(hear,'s-hear'),
       {desc:'Add a voice key above, or understand speech on this machine.',f:'install whisper voice key hear'}),
+    '<div class="ghint" id="s-vp"></div>',
   ].join('');
+  // your voice print (voiceprint.py): the same block the setup step draws
+  const vpPaint=async()=>{const el=document.getElementById('s-vp');if(!el)return;
+    const words=(d.wake_words||[]).filter(Boolean);
+    el.innerHTML=voicePrintHTML(await voicePrintLoad(),words[0]||agentName());voicePrintWire(el,vpPaint)};
+  vpPaint();
   box.querySelector('#s-face-hear').onchange=async e=>{
     const r=await fetch('/api/face',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({hear:e.target.value})});
     const j=await r.json().catch(()=>({}));

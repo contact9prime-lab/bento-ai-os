@@ -156,7 +156,7 @@ def _step_company(cfg, store) -> None:
 
 
 def _step_name(cfg, store) -> None:
-    v = _ask("\n  Name", cfg.get("agent_name") or "Aria")
+    v = _ask("\n  Name", cfg.get("agent_name") or "Bento")
     if not v:
         return
     cfg["agent_name"] = v
@@ -544,9 +544,43 @@ def _step_voice(cfg, store) -> None:
             _save(cfg)
             facemod.record(store, f"heard the wake word “{got[0]}” ({st['engine']}, terminal)")
             print(f"  ✓ heard “{text}”. The wake word works.")
+            _voice_print(cfg, words[0])
             return
         print(f"  I heard “{text or '(nothing)'}”, but not " + " or ".join(f"“{w}”" for w in words) + ".")
     print("  Three tries. `bento face test` tries again any time.")
+
+
+def _voice_print(cfg, word: str) -> None:
+    """After the wake word works: record the person's voice, so only they wake the screen
+    (voiceprint.py). On a machine with accounts each person does it on the screen, signed
+    in: a terminal has no sign-in, and a print must not be made for somebody else."""
+    from . import hearing, users as usersmod, voiceprint
+    if usersmod.enabled():
+        print(_wrap("To have only your voice wake it, record your voice print on the screen while "
+                    "signed in: Settings → Voice → Listening."))
+        return
+    if not _yes("Record your voice, so only you wake it?", True):
+        return
+    if not voiceprint.ready() and not _offer_component(voiceprint.COMPONENT):
+        return
+    home = cfgmod.AGENTOS_HOME
+    voiceprint.forget(home)
+    tries = 0
+    while not voiceprint.enrolled(home) and tries < 6:
+        tries += 1
+        input(f"  Press Enter, then say “{word}, good morning.” ")
+        print("  ● listening for 4 seconds…")
+        try:
+            got = voiceprint.enroll(home, hearing.record(4))
+        except (voiceprint.PrintError, hearing.HearError) as e:
+            print(f"  {e}")
+            continue
+        print(f"  ✓ {got['samples']} of {got['need']}")
+    if voiceprint.enrolled(home):
+        cfg["voiceprint"] = {"only": True}
+        _save(cfg)
+        print(_wrap("✓ Your voice print is saved. Only your voice wakes this screen. It is a filter, "
+                    "not a lock: `bento face print forget` deletes it."))
 
 
 def _hear_fix(cfg, st) -> dict:

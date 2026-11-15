@@ -43,7 +43,7 @@ async function topoMappingPaint(){
 function topoTargetSelect(t){
   const tt=t.talks_to||{to:'lead'},cur=tt.to==='department'?`d|${tt.company||''}|${tt.department}`:'lead';
   const T=TOPO.targets||{companies:[]};
-  const opts=[`<option value="lead"${cur==='lead'?' selected':''}>${esc(T.lead||'Aria')}: everything (all departments)</option>`];
+  const opts=[`<option value="lead"${cur==='lead'?' selected':''}>${esc(T.lead||'Bento')}: everything (all departments)</option>`];
   (T.companies||[]).forEach(c=>{if(!(c.departments||[]).length)return;
     opts.push(`<optgroup label="${esc(c.name)}">`+c.departments.map(d=>{const v=`d|${c.id}|${d.name}`;
       return `<option value="${esc(v)}"${v===cur||(tt.to==='department'&&!tt.company&&c.open&&tt.department===d.name)?' selected':''}${d.desk?'':' disabled'}>${esc(d.name)}${d.desk?'':' (no desk yet)'}</option>`}).join('')+'</optgroup>')});

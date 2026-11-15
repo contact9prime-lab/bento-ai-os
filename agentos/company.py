@@ -1479,7 +1479,7 @@ def review_mode(cfg: dict) -> str:
 
 
 def lead_name(cfg: dict) -> str:
-    return str(cfg.get("agent_name") or "Aria")
+    return str(cfg.get("agent_name") or "Bento")
 
 
 def chain(cfg: dict, store, dept_name: str, mode: str | None = None) -> list[dict]:

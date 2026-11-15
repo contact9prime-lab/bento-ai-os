@@ -298,14 +298,14 @@ def test_the_voice_step_ticks_only_when_the_wake_word_was_really_heard(client, m
     # the audio road: this machine's speech-to-text understands the recording
     async def fake(cfg, wav, lang=""):
         assert wav.startswith(b"RIFF")
-        return "Aria, what time is it?"
+        return "Bento, what time is it?"
     monkeypatch.setattr(hearing, "transcribe", fake)
     monkeypatch.setattr(hearing, "status", lambda cfg: {"engine": "openai", "line": "", "setting": "auto", "have": {}})
     r = cl.post("/api/face/wake-test", content=b"RIFF....WAVEfmt ", headers={"Content-Type": "audio/wav"})
     d = r.json()
-    assert d["matched"] and d["word"] == "Aria" and d["after"] == "what time is it?" and d["engine"] == "openai"
+    assert d["matched"] and d["word"] == "Bento" and d["after"] == "what time is it?" and d["engine"] == "openai"
     h = face.heard(servermod.state.machine_cfg())
-    assert h["word"] == "Aria" and h["engine"] == "openai"
+    assert h["word"] == "Bento" and h["engine"] == "openai"
     steps = {s["id"]: s for s in ob.state(servermod.state.machine_cfg(), show_all=True)["steps"]}
     assert steps["voice"]["status"] == "done"
     assert servermod.state["store"].audit_list(action="face.write"), "hearing it is a ledger row"
@@ -316,7 +316,7 @@ def test_the_terminal_voice_step_records_understands_and_checks(tmp_path, monkey
     from agentos import setup_tui
     cfg = {"agent_name": "Aria", "providers": {"openai": {"api_key": "k"}}}
     store = Store(tmp_path / "a.db")
-    answers = iter(["", "y"])
+    answers = iter(["", "y", "n"])            # the last: no voice print this time
     monkeypatch.setattr("builtins.input", lambda *_: next(answers))
     monkeypatch.setattr(setup_tui, "_save", lambda c: None)
     monkeypatch.setattr(hearing, "recorder", lambda: "arecord")

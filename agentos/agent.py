@@ -957,7 +957,7 @@ class Agent:
                 + "\n".join(f"- {s['path']} ({'read and write' if s['mode'] == 'rw' else 'read only'})"
                              for s in shared))
         base = SYSTEM_PROMPT.format(
-            name=self.cfg.get("agent_name") or "Aria",
+            name=self.cfg.get("agent_name") or "Bento",
             now=localeinfo.now_string(self.cfg),
             locale=localeinfo.describe(self.cfg),
             workspace=self.cfg["workspace"],

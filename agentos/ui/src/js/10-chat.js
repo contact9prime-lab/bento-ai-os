@@ -539,8 +539,8 @@ function paintForwardChip(){
   chip.innerHTML=(agent?'⇥ ':'▲ ')+esc(name)+'<span class="fwdmdl">'+esc(model)+'</span>';
   chip.title=(agent
       ?'Every turn on this machine is answered by '+name
-        +' — apps and App Studio still use '+((cfg&&cfg.agent_name)||'Aria')
-      :((cfg&&cfg.agent_name)||'Aria')+' answers, running on '+(cur.model||'no model yet'))
+        +' — apps and App Studio still use '+((cfg&&cfg.agent_name)||'Bento')
+      :((cfg&&cfg.agent_name)||'Bento')+' answers, running on '+(cur.model||'no model yet'))
     +'. Click to change it.';
   chip.classList.toggle('engine',agent);
 }

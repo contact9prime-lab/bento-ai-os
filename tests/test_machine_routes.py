@@ -28,7 +28,7 @@ MUTATING = {"POST", "PUT", "PATCH", "DELETE"}
 ACCOUNT_ROUTES = (
     "/api/agent", "/api/agents", "/api/apps", "/api/arena", "/api/accounts", "/api/assets",
     "/api/automations", "/api/avatars", "/api/brain", "/api/brief", "/api/chat", "/api/channels",
-    "/api/companies", "/api/company", "/api/conversations", "/api/devices/alarms", "/api/devices/company",
+    "/api/companies", "/api/company", "/api/conversations", "/api/devices/alarms", "/api/devices/company", "/api/voiceprint",
     "/api/drama", "/api/evals", "/api/fabric", "/api/files/which", "/api/flows", "/api/freetalk",
     "/api/grants", "/api/handoff", "/api/hands", "/api/hooks", "/api/intent", "/api/jobs", "/api/kg", "/api/knowledge",
     "/api/logs", "/api/mcp", "/api/memories", "/api/office", "/api/onboarding", "/api/plane/llm",

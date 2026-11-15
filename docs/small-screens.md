@@ -338,3 +338,56 @@ bento face hear auto|whisper.cpp|elevenlabs|openai|google|browser
 ```
 
 A terminal has no office to draw, so here you only set it.
+
+## Only your voice wakes it
+
+Each person can record a voice print, so the screen ignores the wake word from voices it does
+not know. Setup offers it in the voice step, right after the wake word works. Later it is under
+Settings → Voice → Listening.
+
+![Your voice print in Settings: three recordings saved, and the switch that makes only your voice wake the screen](screenshots/voice-print.png)
+
+Say the wake word in a short sentence three times ("Bento, good morning."). Each recording is
+turned into numbers on this machine and then thrown away. A recording that does not sound like
+the earlier ones is refused, so somebody else speaking does not become part of your print. After
+the third, **Only my voice wakes this screen** is on; untick it to let any voice wake it again.
+
+![Your voice print on a phone, with the buttons at tap size](screenshots/voice-print-phone.png)
+
+What it is:
+
+- A filter. It never signs anybody in, never switches account and never approves anything. A
+  recording of your voice could pass it, so everything an agent does is still asked as before.
+- Yours. The print is a file in your own home on this machine, readable only by you. No screen,
+  command or agent can read the numbers back. **Delete my voice print** removes it.
+- For whoever is signed in. On a machine with accounts each person records their own, signed
+  in, and the screen filters for the person signed in on it.
+
+It needs a speaker model on the machine first: a speech library and a 28 MB model, about 70 MB
+together, Apache-2.0, installed in your home folder when you say yes. Nothing is sent anywhere.
+
+![Before the model is installed: one line and the install button](screenshots/voice-print-install.png)
+
+Limits to know: a recording shorter than about a second cannot be judged, and the screen says
+"say a little more" instead of guessing. It was measured on recordings of three speakers (the
+same voice scored 0.67 to 0.91, different voices at most 0.46, the line is 0.55); it has not
+been measured on a Raspberry Pi's microphone across a room. While the filter is on the model
+stays loaded and uses about 100 MB of memory.
+
+From a terminal, on a machine without accounts:
+
+```
+bento face print                              # what is saved
+bento face print install                      # the speaker model
+bento face print record                       # three recordings from the microphone
+bento face print record a.wav b.wav c.wav     # or from files
+bento face print only off                     # any voice wakes it
+bento face print forget                       # delete it
+```
+
+## The agent's name
+
+A new machine's agent is called Bento, and that is the first thing setup asks: keep it or type
+your own. A machine set up before this, whose agent was Aria, keeps Aria. The agent's name is
+always a wake word.
+

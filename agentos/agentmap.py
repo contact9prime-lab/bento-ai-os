@@ -83,7 +83,7 @@ def overview(store, cfg: dict) -> dict:
 
     master_brain = fabric.agent_brain(cfg, None)
     agents = [{
-        "key": MASTER, "name": cfg.get("agent_name") or "Aria", "master": True,
+        "key": MASTER, "name": cfg.get("agent_name") or "Bento", "master": True,
         "soul": " ".join(str(cfg.get("soul") or "").split())[:160],
         "brain": master_brain, "hands": hands_of(cfg.get("agent_profile") or hands.DEFAULT),
         "authority": {"autonomy": cfg.get("autonomy") or "balanced", "allow": 0, "deny": 0,
