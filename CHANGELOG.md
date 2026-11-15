@@ -8,6 +8,17 @@ as a cluster of their own. With three companies that was about fifty clusters an
 piled up. Now each other company is one cluster, its people titled with their department there,
 and agents in no company stand together once there are more than six. The Team list has one row
 per cluster. On a 47-agent setup: 50 clusters became 12, with no names overlapping.
+**Telegram answers in a group only when you turned group chats on and picked that group.** A bot
+can be added to any group. Now the agent says nothing in a group until **Answer in group chats**
+is on (the Telegram app, or `/groups on` from your phone) and that group is enabled. The first
+message from a new group reaches you on your own chat with Allow this group and Block. `/groups`
+lists the groups a message came in from, with a button for each; `/groups off` stops all of them
+and keeps your picks. A machine that already had a group enabled keeps answering it.
+
+**An old story no longer sits under your newest answer in Chat.** After `/clear`, the Stage chips
+of the wiped questions were pinned to the bottom of the chat, so "Bengaluru this weekend" from
+weeks ago showed under a question about the market. A story whose question is gone now has no
+chip in the chat; it is still in the Stage's library.
 
 ## 0.9.12 — 2026-11-15
 

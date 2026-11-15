@@ -55,6 +55,7 @@ COMMANDS = [
     ("/companies", "", "your companies, with a button to open each"),
     ("/company", "[name]", "the open company and its departments; with a name, open that one"),
     ("/people", "", "who may talk to me here, and who is waiting"),
+    ("/groups", "[on|off]", "whether I answer in group chats, and which groups"),
     ("/allow", "<@name|chat id>", "let somebody talk to me"),
     ("/block", "<@name|chat id>", "stop somebody talking to me"),
 ]
@@ -284,6 +285,35 @@ class Console:
             out += "\n\nLet in when they first write: " + ", ".join(
                 x if x.isdigit() else "@" + x for x in ahead)
         return out + "\n\n/allow @name or /allow <chat id> adds somebody."
+
+    async def _cmd_groups(self, chat_id: int, arg: str) -> str:
+        """The owner's switch for group chats, and the groups a message came in from, each
+        with a button. A group is answered only when the switch is on AND it was picked."""
+        word = arg.strip().lower()
+        if word in ("on", "off"):
+            self.tg.set_groups(word == "on", "owner's /groups")
+            with contextlib.suppress(Exception):
+                await self.tg.broadcast({"type": "telegram_chats"})
+        elif word:
+            return "▲ /groups on or /groups off. /groups alone shows the groups."
+        on = self.tg.groups_on()
+        rows = self.tg.groups()
+        lines = [f"{'✓' if c['allowed'] else '•'} {c.get('title') or c['chat_id']} ({c['chat_id']}) · "
+                 + (("answered" if on else "picked, not answered while group chats are off")
+                    if c["allowed"] else "not allowed") for c in rows]
+        head = ("▲ Group chats are on. I answer only in the groups you allowed."
+                if on else "▲ Group chats are off. I answer in no group. /groups on turns them on.")
+        text = head + "\n\n" + _lines("Groups a message came in from", lines,
+                                      "none yet. Add me to a group and write there")
+        buttons = [[{"text": (f"Stop {c.get('title') or c['chat_id']}" if c["allowed"]
+                              else f"Allow {c.get('title') or c['chat_id']}")[:40],
+                     "callback_data": f"who:{c['chat_id']}:{0 if c['allowed'] else 1}"}] for c in rows[:12]]
+        if buttons:
+            with contextlib.suppress(Exception):
+                await self.tg._api("sendMessage", chat_id=chat_id, text=text[:4000],
+                                   reply_markup={"inline_keyboard": buttons})
+                return ""
+        return text
 
     async def _cmd_allow(self, chat_id: int, arg: str) -> str:
         who = arg.split()[0] if arg else ""

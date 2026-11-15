@@ -6678,6 +6678,10 @@ async def api_put_telegram(body: dict):
             t["enabled"] = True               # setting a token means "connect"
     if body.get("unpair"):
         t["owner_chat_id"] = 0
+    if "groups" in body:
+        # the owner's switch: off, no group or channel is answered, whichever were picked
+        t["groups"] = bool(body["groups"])
+        state["store"].log("telegram", f"group chats switched {'on' if t['groups'] else 'off'} (from the desktop)")
     cfgmod.save_config(state["cfg"])
     return {"ok": True}
 
