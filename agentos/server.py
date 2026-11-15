@@ -6131,6 +6131,31 @@ async def api_stage_export(sid: str, format: str = "pdf"):
         "Content-Disposition": f'attachment; filename="{bpdoc.filename(subject, "pdf")}"'})
 
 
+@app.get("/api/stage/story/file")
+async def api_stage_story_file(format: str = "pptx", conv: str = "", answer: str = "", sid: str = ""):
+    """A story as a file to keep or pass on (stagedoc.py): PowerPoint, Word or PDF. Named by its chat and
+    question, or by one of its scenes."""
+    from fastapi.responses import Response
+    from . import stagedoc
+    store = state["store"]
+    if sid:
+        r = store.db.execute("SELECT conversation_id, answer_to FROM stage_scenes WHERE id=?", (sid,)).fetchone()
+        if not r:
+            return JSONResponse({"error": "that scene is not here"}, status_code=404)
+        conv, answer = r[0], r[1] or ""
+    try:
+        data, name, _doc = await stagedoc.make(store, state["cfg"], conv, answer, format,
+                                               state["cfg"].get("agent_name") or "")
+    except KeyError:
+        return JSONResponse({"error": "that story is not here"}, status_code=404)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=422)
+    except RuntimeError as e:
+        return JSONResponse({"error": str(e)}, status_code=503)
+    return Response(data, media_type=stagedoc.FORMATS[stagedoc.fmt_of(format)][1], headers={
+        "Content-Disposition": f'attachment; filename="{name}"'})
+
+
 def stagemod_question(store, answer_to: str) -> str:
     from . import stage as stagemod
     try:

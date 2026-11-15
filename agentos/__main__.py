@@ -7722,6 +7722,24 @@ def _stage_cli(args) -> int:
         _cfgmod.save_config(cfg)
         print(f"Answer BIG is {what}. A running server reads it on the next turn.")
         return 0
+    if act == "export" and getattr(args, "fmt", ""):
+        # a story as a file to pass on (stagedoc.py): the newest one, or the chat id given
+        import asyncio as _aio
+        from . import executors as _ex, stagedoc
+        try:
+            fmt = stagedoc.fmt_of(args.fmt)
+            cid = what or (stagemod.library(store, 1) or [{}])[0].get("conversation_id") or ""
+            ans = stagedoc.newest(store, cid)
+            p = _aio.run(stagedoc.to_file(store, cfg, cid, ans, fmt, _ex.default_workspace(cfg),
+                                          cfg.get("agent_name") or ""))
+        except KeyError:
+            print("No story there yet. Ask something worth showing, then: bento stage export --as pptx")
+            return 1
+        except (ValueError, RuntimeError) as e:
+            print(str(e))
+            return 1
+        print(f"The story as a {stagedoc.FORMATS[fmt][0]} file: {p}")
+        return 0
     if act == "export":
         # a blueprint as drawing sheets (bpdoc.py): the newest one, or the scene id given
         import asyncio as _aio
@@ -10089,6 +10107,9 @@ def main():
     p_st.add_argument("--answer", default="", help="xray: the question (message id) to take apart; the last by default")
     p_st.add_argument("--every", default="", choices=["", "hour", "day", "week"],
                       help="keep: ask the question again this often (needs the server running)")
+    p_st.add_argument("--as", dest="fmt", default="", metavar="FORMAT",
+                      help="export: pptx (PowerPoint), docx (Word) or pdf, the newest story or the chat id given; "
+                           "without it, export is a blueprint's drawing sheets")
     p_st.add_argument("--user", default="", help="whose stage, on a machine with users")
     p_tr = verb("trace", help="one execution as one JSON file: what happened, the office, what ran (secrets masked)")
     p_tr.add_argument("id", nargs="?", default="", help="a chat id or a run id (the last chat by default)")

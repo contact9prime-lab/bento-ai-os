@@ -1865,7 +1865,9 @@ CAPABILITY_DOOR_TOOLS = ("find_tools", "discover_mcp_servers", "install_mcp_serv
 # silent. Measured in chat: a forwarded brain says nothing for fifty seconds, and scenes
 # arrive over this door during them.
 STAGE_DOOR_TOOLS = ("show_scene",)
-DOOR_TOOLS = TEAM_TOOLS + WORKSPACE_DOOR_TOOLS + CAPABILITY_DOOR_TOOLS + STAGE_DOOR_TOOLS
+# the story as a file (stagedoc.py): for a chat, never for a board's own refresh, which has nobody to hand a file to
+STAGE_FILE_TOOLS = ("stage_file",)
+DOOR_TOOLS = TEAM_TOOLS + WORKSPACE_DOOR_TOOLS + CAPABILITY_DOOR_TOOLS + STAGE_DOOR_TOOLS + STAGE_FILE_TOOLS
 
 
 def capability_note(prefix: str = "mcp__bento__") -> str:
