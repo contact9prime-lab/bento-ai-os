@@ -902,6 +902,18 @@ things rather than presenting the chart". Six rules:
   encoder ran ten seconds behind the sound, cutting every ending; pausing the recorder did not bring it back.
   Vulkan gives 30 frames a second in step with the sound. ANGLE's GL backends are faster too but the copied
   frame was sometimes half drawn (no land, or no pins): do not use them.
+- **A story leaves as a file, and the file is the phone's pictures** (`agentos/stagedoc.py`, `stage_file`,
+  `/api/stage/story/file`, `stageSaveMenu`, `bento stage export --as`, `stage.FILE_LINE`; `tests/test_stage_files.py`).
+  Asked for as "have word documents, pdf and ppt in the stage". One page per `still_items` view, photographed by
+  stagestill, so a file never shows what the Stage did not draw. The .pptx and .docx are written here as zipped
+  XML (no python-pptx, no python-docx); the PDF is a page printed by bpdoc's printer. A picture taller than
+  `BAND` times its width is shown in overlapping bands with the format's own crop (`a:srcRect`): fitted whole,
+  a blueprint's sheet was a few points high. No browser: words only, said in the file, and a PDF is refused in
+  a sentence. The tool is safe but asked for when paranoid, writes only `<workspace>/stage` and never through a
+  link, and is not in a board's door (`STAGE_FILE_TOOLS`, apart from `STAGE_DOOR_TOOLS`). Measured with real
+  Claude Code: told "show the story, then call stage_file", it started researching the numbers again before
+  saving; told an existing story is saved straight away, it called the tool first and named the path. The list
+  is put in the Stage as Keep's is: as a menu inside the bar it was cut off by the bar's own scrolling.
 - **Labels never overlap and the panel holds the rest.** Labels compress, then drop their second line; the
   title block, "you are here" and the links of a tower live in the spec panel. Sized from `clientWidth`, a
   ResizeObserver dropped when the drawing leaves; on a phone the scene scrolls and a tap brings a sheet that

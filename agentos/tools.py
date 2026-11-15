@@ -617,8 +617,9 @@ SAFE_TOOLS = {
     # untrusted content: see policy.TAINT_WATCH.
     "remember", "forget", "kg_add", "save_skill", "run_automation",
     "brief_item", "notify", "save_report", "create_space", "snapshot_os",
-    # the Stage: drawn on the person's own screen and kept with the chat (stage.py)
-    "show_scene",
+    # the Stage: drawn on the person's own screen and kept with the chat (stage.py); its story as
+    # a file is written only into the workspace's own stage folder, from what was already shown
+    "show_scene", "stage_file",
     "set_avatar", "set_office", "set_wallpaper", "save_asset",
     # a machine's own screen: which face, which widgets. Cosmetic and undone with a tap
     "screen_face",
@@ -1875,6 +1876,30 @@ class Toolbox(usersmod.Scoped):
             pass
         return (f"[{'added' if res['created'] else 'updated'} in the Brief · {res['kind']} · "
                 f"{res['title']}]")
+
+    async def stage_file(self, format: str = "pptx", _conv: str = "") -> str:
+        """The newest story of this chat as a file in the workspace's stage folder (stagedoc.py): a
+        PowerPoint, a Word document or a PDF. The chat is the agent's (`_conv`), never the model's."""
+        from . import stagedoc
+        if not _conv:
+            return "[error] there is no chat here to take a story from"
+        try:
+            fmt = stagedoc.fmt_of(format)
+            ans = stagedoc.newest(self.store, _conv)
+            from . import bpfill, stage as stagemod
+            # a blueprint still filling itself in is saved once its parts have landed
+            await bpfill.settle([r["id"] for r in stagemod.story(self.store, _conv, ans)], 60)
+            p = await stagedoc.to_file(self.store, self.cfg, _conv, ans, fmt,
+                                       os.path.expanduser(self.cfg["workspace"]), self.cfg.get("agent_name") or "")
+        except KeyError:
+            return ("[error] this chat has shown nothing on the Stage yet. Show the story first with "
+                    "show_scene, then save it.")
+        except (ValueError, RuntimeError) as e:
+            return f"[error] {e}"
+        except Exception as e:
+            return f"[error] the file could not be made: {e}"
+        return (f"[saved · {stagedoc.FORMATS[fmt][0]}] {p}\nName this path in your reply, exactly as written: "
+                f"that is how the person gets the file, on a phone too.")
 
     async def show_scene(self, kind: str = "", title: str = "", _conv: str = "", **spec) -> str:
         """One scene of the answer onto the person's Stage (agentos/stage.py). The chat is
@@ -5766,7 +5791,7 @@ class Toolbox(usersmod.Scoped):
                     f"payload (e.g. a whole app's html), emit it as a ```html code block in "
                     f"plain text instead of a tool call, or produce a smaller version.")
         try:
-            keep = ({"_flow", "_run_id"} if name == "brief_item" else {"_conv"} if name in ("create_app", "department_task", "show_scene", "create_subagent") else {"_from"} if name == "request_capability" else {"_who", "_why"} if name in ("device_get", "device_set") else {"_taint", "_space", "_files", "_files_note", "_root"} if name == "delegate" else {"_taint"} if name == "run_automation" else
+            keep = ({"_flow", "_run_id"} if name == "brief_item" else {"_conv"} if name in ("create_app", "department_task", "show_scene", "stage_file", "create_subagent") else {"_from"} if name == "request_capability" else {"_who", "_why"} if name in ("device_get", "device_set") else {"_taint", "_space", "_files", "_files_note", "_root"} if name == "delegate" else {"_taint"} if name == "run_automation" else
                     {"_app"} if name in APP_BOUND_TOOLS else
                     {"_from", "_chain", "_root", "_run_id", "_conv", "_space", "_taint"}
                     if name == "ask_agent" else set())
@@ -7583,6 +7608,21 @@ TOOL_SCHEMAS.extend(BRIEF_TOOL_SCHEMAS)
 # written. One tool, a closed set of kinds; the page draws them and the chat keeps them.
 _PT = {"type": "array", "items": {}, "description": "[x, y]: x a number, a date or a label; y a number"}
 STAGE_TOOL_SCHEMAS = [
+    {
+        "name": "stage_file",
+        "description": "Save the story you showed on the Stage in this chat as a file the person can keep, "
+                       "send or present: format pptx (a PowerPoint deck, a slide per scene), docx (a Word "
+                       "document) or pdf. Use it when they ask for a deck, slides, a presentation, a "
+                       "document, a Word file or a PDF of what was shown. It saves the newest story already "
+                       "on the Stage in this chat, with its pictures as drawn, so when there is one call this "
+                       "straight away: no research, no redrawing, no hand-over first. Only when nothing has "
+                       "been shown yet, show the scenes with show_scene and then call it. It answers with the "
+                       "file's path: name that path in your reply so they get the file.",
+        "parameters": {"type": "object", "properties": {
+            "format": {"type": "string", "enum": ["pptx", "docx", "pdf"],
+                       "description": "pptx for PowerPoint, docx for Word, pdf for PDF"}},
+            "required": ["format"]},
+    },
     {
         "name": "show_scene",
         "description": "Show ONE scene of your answer on the person's screen, on the Stage, while "

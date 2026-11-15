@@ -639,7 +639,7 @@ NOT_MACHINE = {
     "read_file", "read_skill", "read_source", "recall", "remember", "request_capability", "run_automation", "run_command",
     "run_flow", "run_python", "save_asset", "save_automation", "save_report", "save_skill", "schedule_task", "screen_face",
     "search_docs", "search_files", "set_agent_brain", "set_avatar", "set_brightness", "set_office", "set_wallpaper",
-    "show_scene", "system_control", "system_info", "take_screenshot", "telegram_send", "terminal_read", "terminal_send",
+    "show_scene", "stage_file", "system_control", "system_info", "take_screenshot", "telegram_send", "terminal_read", "terminal_send",
     "terminal_sessions", "timeline", "train_autopilot", "train_datasets", "train_job", "train_model", "update_app_data",
     "use_skill", "verify_openclaw_port", "whatsapp_send", "write_file",
     # refused by their own lists, tested where those live

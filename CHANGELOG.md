@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.13 — 2026-11-15
+
+**A story can leave the Stage as a file.** **Save as** on the Stage gives the story you are looking at
+as a PowerPoint deck, a Word document or a PDF, with the same pictures a phone gets and each scene's
+words and source. A blueprint's Export menu has Word and PowerPoint too. Ask your agent for "a deck of
+that" or "send it as a Word file" and it saves the story and gives you the file, in the chat and on
+Telegram or WhatsApp. From a terminal: `bento stage export --as pptx`.
+
+A tall picture is shown over several slides or pages instead of being shrunk until it can't be read.
+On a machine with no browser to draw with, the deck and the document carry the scenes in words and say
+so, and a PDF is refused with the reason.
 ## 0.9.14 — 2026-11-15
 
 No release notes were written for this one; the commits since 0.9.13 are what changed (`bento update` lists them).

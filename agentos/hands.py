@@ -56,7 +56,7 @@ GROUPS = {
             "git_remote_set", "git_push", "git_pull", "git_clone", "export_app_to_git"],
     "Memory": ["remember", "recall", "forget", "kg_add", "kg_query", "timeline"],
     "Mail & calendar": ["mail_search", "mail_read", "mail_send", "calendar_events"],
-    "Messages": ["notify", "telegram_send", "whatsapp_send", "brief_item", "show_scene"],
+    "Messages": ["notify", "telegram_send", "whatsapp_send", "brief_item", "show_scene", "stage_file"],
     "Images & assets": ["generate_image", "list_assets", "get_asset", "save_asset", "delete_asset",
                         "generate_wallpaper"],
     "Desktop": ["open_app", "launch_native_app", "list_windows", "focus_window", "manage_window",

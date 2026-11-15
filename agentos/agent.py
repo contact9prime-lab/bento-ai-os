@@ -1077,6 +1077,9 @@ class Agent:
         if name == "create_subagent":
             # the chat a temporary agent was built in, where its "Keep it?" is asked
             args = {**{k: v for k, v in args.items() if k != "_conv"}, "_conv": self.conversation_id or ""}
+        if name == "stage_file":
+            # the chat whose story is saved as a file: the agent's, never the model's
+            args = {**{k: v for k, v in args.items() if k != "_conv"}, "_conv": self.conversation_id or ""}
         if name == "show_scene":
             # the chat the scene is shown in and kept with: the agent's, never the model's
             args = {**{k: v for k, v in args.items() if k != "_conv"},
