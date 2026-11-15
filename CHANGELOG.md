@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.14 — 2026-11-15
+
+No release notes were written for this one; the commits since 0.9.13 are what changed (`bento update` lists them).
+
 ## 0.9.13 — 2026-11-15
 
 **The Mind groups your other companies and unattached agents.** Only the open company's
