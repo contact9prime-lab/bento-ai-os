@@ -29325,11 +29325,15 @@ async function renderTelegram(body){
         to a group (as a member) or a channel (as an admin). New arrivals start <b>blocked</b>; only chats you enable can talk to the agent.
         Telegram is an IO gate of the permission framework: scope any grant to the <code>telegram</code> surface in the Permissions app
         and it applies (only) here — blocked IO is denied and logged.</p>
+      <label class="tg-groups" style="display:flex;align-items:center;gap:8px;margin:0 0 10px">
+        <input type="checkbox" id="tg-groups" style="width:auto" ${d.groups?'checked':''} onchange="tgGroups(this.checked)">
+        Answer in group chats ${pInfo('Off, the agent answers in no group or channel. On, it answers only in the ones you enable below. Everybody in an enabled group can talk to it.')}
+      </label>
       ${(d.chats||[]).map(c=>`<div class="item">
         <span class="lbadge">${c.type==='private'?'user':c.type==='channel'?'channel':'group'}</span>
         <div class="grow"><b>${esc(c.title||c.chat_id)}</b>${c.username?` <span class="mut">@${esc(c.username)}</span>`:''}${c.chat_id===d.owner_chat_id?' <span class="badge ok">owner</span>':''}
           <div class="sub">${esc(c.type)} · ${c.msg_count} msg · last ${new Date(c.last_seen*1000).toLocaleString()}</div></div>
-        <span class="badge ${c.allowed?'ok':'err'}">${c.allowed?'enabled':'blocked'}</span>
+        <span class="badge ${c.allowed&&(c.type==='private'||d.groups)?'ok':'err'}">${c.allowed?(c.type==='private'||d.groups?'enabled':'groups are off'):'blocked'}</span>
         <button title="${c.allowed?'disable':'enable'}" onclick="tgAllow(${+c.chat_id},${c.allowed?0:1})">${c.allowed?'⏸':'▶'}</button>
         <button onclick="tgDelChat(${+c.chat_id})">✕</button>
       </div>`).join('')||'<p class="mut">No chats registered yet.</p>'}
@@ -29349,6 +29353,10 @@ async function tgTest(){
 async function tgAllow(id,allowed){
   await fetch('/api/telegram/chats/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({allowed:!!allowed})});
   refreshApp('telegram');
+}
+async function tgGroups(on){
+  await fetch('/api/telegram',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({groups:!!on})});
+  toast(on?'Group chats are on. Enable the groups to answer in.':'Group chats are off.');refreshApp('telegram');
 }
 async function tgDelChat(id){
   await fetch('/api/telegram/chats/'+id,{method:'DELETE'});refreshApp('telegram');
@@ -38884,9 +38892,14 @@ async function stageAttach(cid){
     const u=st.answer_to&&feed.querySelector('.msg.user[data-mid="'+CSS.escape(st.answer_to)+'"]');
     let host=u&&u.nextElementSibling;
     while(host&&!host.classList.contains('assistant')&&!host.classList.contains('user'))host=host.nextElementSibling;
+    /* A story whose question is not in this chat any more (wiped by /clear, or not loaded)
+       gets no chip. It used to go at the END of the feed, so an old story sat under the
+       newest answer: "Weather for Bangalore" below a question about the market. It is
+       still in the Stage's library. */
+    if(!u)return;
     const chip=stageChip(cid,st.answer_to,st.scenes.length);
     if(host&&host.classList.contains('assistant'))host.appendChild(chip);
-    else if(u)u.after(chip);else feed.appendChild(chip);
+    else u.after(chip);
   });
 }
 
