@@ -6735,11 +6735,13 @@ body.has-win #devscene,body.deck-full #devscene,body.exposing #devscene{opacity:
 body.imm-devices .hm-greet,body.imm-devices .hm-chips,body.imm-devices .hm-play,body.imm-devices .hm-now,
   body.imm-devices .hm-links{display:none!important}
 #omnibar #omni-fold,#devchat{display:none}
+/* The docked chat is the App Hub's too (01i-apphub.js): every rule that is not about the board itself
+   names both scenes. */
 @media (min-width:901px){
   /* Folded: a small bar at the top right, over the end of a header that stays put, so nothing ever
      scrolls under it and the board has the full width. Open: a panel slides in and the board makes
      room in the same breath. */
-  body.imm-devices:not(.dev-mobile){--dvc-w:min(440px,34vw);--dvc-pill:min(290px,25vw);--dvc-t:300ms;
+  body:is(.imm-devices,.imm-apps):not(.dev-mobile){--dvc-w:min(440px,34vw);--dvc-pill:min(290px,25vw);--dvc-t:300ms;
     --dvc-top:calc(var(--mbh,28px) + 14px)}
   body.imm-devices:not(.dev-mobile) #devscene{padding-top:0;transition:right var(--dvc-t) var(--ease-out)}
   body.imm-devices.dvc-open:not(.dev-mobile) #devscene{right:calc(var(--dvc-w) + 30px)}
@@ -6748,20 +6750,20 @@ body.imm-devices .hm-greet,body.imm-devices .hm-chips,body.imm-devices .hm-play,
     padding-right:calc(var(--dvc-pill) + 26px);transition:padding-right var(--dvc-t) var(--ease-out)}
   body.imm-devices.dvc-open:not(.dev-mobile) .dvs-head{padding-right:14px}
 
-  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar,
-  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar.pop{top:calc(var(--dvc-top) + 11px);bottom:auto;
+  body.immersive:is(.imm-devices,.imm-apps):not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar,
+  body.immersive:is(.imm-devices,.imm-apps):not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar.pop{top:calc(var(--dvc-top) + 11px);bottom:auto;
     left:auto;right:28px;transform:none;width:var(--dvc-pill);height:44px;padding:0 6px 0 12px;gap:8px;
     transition:width var(--dvc-t) var(--ease-out),right var(--dvc-t) var(--ease-out),top var(--dvc-t) var(--ease-out),
       height var(--dvc-t) var(--ease-out),box-shadow var(--d-base) var(--ease-out),border-color var(--d-base) var(--ease-out)}
-  body.immersive.imm-devices.dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar,
-  body.immersive.imm-devices.dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar.pop{
+  body.immersive:is(.imm-devices,.imm-apps).dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar,
+  body.immersive:is(.imm-devices,.imm-apps).dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar.pop{
     top:calc(var(--dvc-top) + 10px);right:26px;width:calc(var(--dvc-w) - 20px);height:50px;padding:0 8px 0 14px}
-  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omni-in{font-size:var(--fs-base);min-width:0;text-overflow:ellipsis}
+  body.immersive:is(.imm-devices,.imm-apps):not(.has-win):not(.deck-full):not(.dev-mobile) #omni-in{font-size:var(--fs-base);min-width:0;text-overflow:ellipsis}
   /* what the small bar has room for: type, talk, open */
-  body.immersive.imm-devices:not(.dvc-open):not(.has-win):not(.deck-full):not(.dev-mobile) #omni-shot,
-  body.immersive.imm-devices:not(.dvc-open):not(.has-win):not(.deck-full):not(.dev-mobile) #omni-chat{display:none}
+  body.immersive:is(.imm-devices,.imm-apps):not(.dvc-open):not(.has-win):not(.deck-full):not(.dev-mobile) #omni-shot,
+  body.immersive:is(.imm-devices,.imm-apps):not(.dvc-open):not(.has-win):not(.deck-full):not(.dev-mobile) #omni-chat{display:none}
 
-  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar #omni-fold{display:flex;position:relative;
+  body.immersive:is(.imm-devices,.imm-apps):not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar #omni-fold{display:flex;position:relative;
     color:var(--txt);transition:background var(--d-fast) var(--ease-out)}
   #omni-fold svg{transition:transform var(--dvc-t,300ms) var(--ease-out)}
   body.dvc-open #omni-fold svg{transform:rotate(180deg)}
@@ -6769,39 +6771,39 @@ body.imm-devices .hm-greet,body.imm-devices .hm-chips,body.imm-devices .hm-play,
     box-shadow:0 0 0 2px var(--bg2);opacity:0;transform:scale(.4);transition:opacity var(--d-fast),transform var(--d-fast)}
   #omnibar.dvc-news #omni-fold i{opacity:1;transform:none}
 
-  body.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #devchat{display:block;position:absolute;z-index:6;
+  body:is(.imm-devices,.imm-apps):not(.has-win):not(.deck-full):not(.dev-mobile) #devchat{display:block;position:absolute;z-index:6;
     top:var(--dvc-top);right:16px;bottom:100px;width:var(--dvc-w);box-sizing:border-box;padding:76px 18px 16px;
     border-radius:var(--r-lg);border:1px solid var(--line);background:color-mix(in srgb,var(--bg2) 96%,transparent);
     box-shadow:var(--el-4);
     transform:translateX(calc(100% + 24px));opacity:0;visibility:hidden;
     transition:transform var(--dvc-t) var(--ease-out),opacity var(--dvc-t) var(--ease-out),visibility 0s linear var(--dvc-t)}
-  body.imm-devices.dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) #devchat{transform:none;opacity:1;visibility:visible;
+  body:is(.imm-devices,.imm-apps).dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) #devchat{transform:none;opacity:1;visibility:visible;
     transition:transform var(--dvc-t) var(--ease-out),opacity var(--dvc-t) var(--ease-out),visibility 0s}
   .dvc-hint{margin:0;color:var(--dim);font-size:var(--fs-sm);line-height:1.45}
   body:has(#omnicards .ocard) .dvc-hint{visibility:hidden}
 
   /* the answers follow the panel in a moment after it, and leave first */
-  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omnicards{top:calc(var(--dvc-top) + 74px);bottom:112px;
+  body.immersive:is(.imm-devices,.imm-apps):not(.has-win):not(.deck-full):not(.dev-mobile) #omnicards{top:calc(var(--dvc-top) + 74px);bottom:112px;
     left:auto;right:28px;transform:translateX(36px);width:calc(var(--dvc-w) - 24px);flex-direction:column;
     overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;opacity:0;visibility:hidden;
     transition:transform 180ms var(--ease-out),opacity 180ms var(--ease-out),visibility 0s linear 180ms}
-  body.immersive.imm-devices.dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile):not(.omni-pop) #omnicards{transform:none;opacity:1;visibility:visible;
+  body.immersive:is(.imm-devices,.imm-apps).dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile):not(.omni-pop) #omnicards{transform:none;opacity:1;visibility:visible;
     transition:transform var(--dvc-t) var(--ease-out) 90ms,opacity var(--dvc-t) var(--ease-out) 90ms,visibility 0s}
-  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omnicards .ocard{flex:none}
+  body.immersive:is(.imm-devices,.imm-apps):not(.has-win):not(.deck-full):not(.dev-mobile) #omnicards .ocard{flex:none}
   /* a window over the scene hides the board; a finished answer waits in the panel, not over the window */
-  body.imm-devices.has-win:not(.dev-mobile) #omnicards .ocard[data-done]{display:none}
+  body:is(.imm-devices,.imm-apps).has-win:not(.dev-mobile) #omnicards .ocard[data-done]{display:none}
 
   /* what floats keeps clear of the panel, and of the small bar */
-  body.immersive.imm-devices.dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) .approval.ap-float,
-  body.immersive.imm-devices.dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) #aibubble{right:calc(var(--dvc-w) + 32px)}
-  body.immersive.imm-devices:not(.dvc-open):not(.has-win):not(.deck-full):not(.dev-mobile) .approval.ap-float{top:calc(var(--dvc-top) + var(--mbh,28px) + 76px)}
+  body.immersive:is(.imm-devices,.imm-apps).dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) .approval.ap-float,
+  body.immersive:is(.imm-devices,.imm-apps).dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) #aibubble{right:calc(var(--dvc-w) + 32px)}
+  body.immersive:is(.imm-devices,.imm-apps):not(.dvc-open):not(.has-win):not(.deck-full):not(.dev-mobile) .approval.ap-float{top:calc(var(--dvc-top) + var(--mbh,28px) + 76px)}
   /* a Pi's own screen doesn't animate this; the board just takes its place */
   body.lite-screen.imm-devices{--dvc-t:0ms}
   body.lite-screen #omnibar,body.lite-screen #devchat,body.lite-screen #omnicards{transition-duration:0ms!important;transition-delay:0ms!important}
 }
 @media (max-width:900px){
   body.imm-devices #devscene{bottom:156px}
-  body.immersive.imm-devices:not(.has-win):not(.deck-full) #omnibar{top:auto;bottom:92px}
+  body.immersive:is(.imm-devices,.imm-apps):not(.has-win):not(.deck-full) #omnibar{top:auto;bottom:92px}
 }
 .dvs-wait{margin:18vh auto 0;max-width:520px;text-align:center;color:var(--txt);font-size:var(--fs-md);
   padding:14px 18px;border-radius:var(--r-lg);background:color-mix(in srgb,var(--bg2) 92%,transparent);border:1px solid var(--line)}
@@ -7603,6 +7605,96 @@ div.mdl-tags .mdl-tag.tiny::before{content:'';position:absolute;left:50%;top:cal
 .mdl-credit{position:absolute;left:12px;top:10px;max-width:60%;z-index:2;pointer-events:none;font:500 10.5px/1.35 var(--sans,system-ui);
   color:var(--mdl-ink);opacity:.72;text-shadow:0 0 3px var(--mdl-chip)}
 .stg-scene.k-3d .mdl-credit{top:64px;left:auto;right:14px;max-width:34%;text-align:right;color:#fff;text-shadow:0 1px 4px #000;opacity:.85}
+/* What a desktop shows, chosen on the desktop (03-virtual-desktops.js): the menu-bar button, its
+   menu, and the App Hub scene (01i-apphub.js). Colours are mixed from the theme's tokens, so it
+   reads on every theme, and nothing here blurs. */
+#deskbtn{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 7px;border-radius:var(--r-sm);
+  font-size:var(--fs-2xs);font-weight:650;color:var(--dim);border:1px solid transparent;white-space:nowrap;flex:none;max-width:210px}
+#deskbtn:hover,#deskbtn[aria-expanded=true]{background:color-mix(in srgb,var(--txt) 10%,transparent);color:var(--txt)}
+#deskbtn:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+#deskbtn .dkb-l{overflow:hidden;text-overflow:ellipsis}
+#deskbtn .dkb-c{opacity:.6;font-size:9px}
+/* A phone's menu bar is shorter than a fingertip, so there the button stands on the desktop,
+   under the bar, at full tap size. A window on a phone is a sheet over everything: it goes. */
+body.dev-mobile #deskbtn{position:fixed;z-index:6;top:calc(var(--mbh) + var(--safe-t,0px) + 6px);right:10px;
+  height:var(--tap);min-width:var(--tap);padding:0 12px;font-size:var(--fs-xs);max-width:62vw;color:var(--txt);
+  background:color-mix(in srgb,var(--bg2) 86%,transparent);border-color:color-mix(in srgb,var(--txt) 16%,transparent);border-radius:999px}
+body.dev-mobile.has-win #deskbtn,body.dev-mobile.deck-full #deskbtn,body.kiosk #deskbtn{display:none}
+body.dev-mobile.imm-devices #devscene{top:calc(var(--mbh) + var(--safe-t,0px) + var(--tap) + 14px)}
+
+
+#deskmenu{position:fixed;z-index:9000;width:min(340px,calc(100vw - 16px));max-height:calc(100vh - 80px);overflow:auto;
+  padding:12px 14px 14px;border-radius:var(--r-lg);background:var(--bg2);color:var(--txt);
+  border:1px solid color-mix(in srgb,var(--txt) 14%,transparent);box-shadow:var(--el-4);font-family:var(--sans)}
+#deskmenu h3{margin:0 0 2px;font-size:var(--fs-md);font-weight:700}
+#deskmenu h4{margin:12px 0 6px;font-size:var(--fs-2xs);font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
+#deskmenu .dkm-main{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+#deskmenu .dkm-more,#deskmenu .dkm-co{display:flex;flex-wrap:wrap;gap:6px}
+#deskmenu .dkm-s,#deskmenu .dkm-c{display:flex;align-items:center;gap:6px;min-height:32px;padding:5px 10px;border-radius:var(--r-md);
+  border:1px solid color-mix(in srgb,var(--txt) 14%,transparent);background:color-mix(in srgb,var(--txt) 5%,transparent);
+  color:var(--txt);font-size:var(--fs-sm);text-align:left}
+#deskmenu .dkm-main .dkm-s{flex-direction:column;justify-content:center;gap:3px;padding:10px 4px;text-align:center}
+#deskmenu .dkm-main .dkm-s i{font-style:normal;font-size:20px;line-height:1}
+#deskmenu .dkm-more .dkm-s i{font-style:normal;opacity:.75}
+#deskmenu .dkm-s:hover,#deskmenu .dkm-c:hover{background:color-mix(in srgb,var(--txt) 11%,transparent)}
+#deskmenu .dkm-s.on,#deskmenu .dkm-c.on{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 18%,transparent);font-weight:650}
+#deskmenu .dkm-s:focus-visible,#deskmenu .dkm-c:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+#deskmenu .dkm-c small{color:var(--dim);font-size:var(--fs-2xs);font-weight:500}
+#deskmenu .dkm-note{margin:8px 0 0;font-size:var(--fs-xs);color:var(--dim);line-height:1.4}
+#deskmenu .dkm-rm{margin-top:14px}
+body.dev-touch #deskmenu .dkm-s,body.dev-touch #deskmenu .dkm-c,body.dev-touch #deskmenu .endbtn{min-height:var(--tap)}
+
+/* ---- the App Hub scene ----
+   Widgets first, as a board; the apps under them; the chat docked on the right (the Devices scene's
+   panel, 39-devscene.css, open by default here). */
+#apphub{position:absolute;z-index:4;left:16px;right:16px;top:calc(var(--mbh,28px) + 14px);bottom:100px;overflow:auto;
+  overscroll-behavior:contain;display:flex;flex-direction:column;gap:22px;color:var(--txt);font-family:var(--sans);
+  scrollbar-width:thin;padding:2px 4px 12px 2px;container-type:inline-size}
+#apphub[hidden],body:not(.imm-apps) #apphub{display:none}
+body.has-win #apphub,body.deck-full #apphub,body.exposing #apphub{opacity:0;pointer-events:none}
+body.imm-apps .hm-greet,body.imm-apps .hm-chips,body.imm-apps .hm-play,body.imm-apps .hm-now,body.imm-apps .hm-links{display:none!important}
+@media (min-width:901px){
+  /* the folded bar sits over the top right corner, so the first heading keeps clear of it */
+  body.imm-apps:not(.dev-mobile) #apphub{transition:right var(--dvc-t) var(--ease-out)}
+  body.imm-apps:not(.dev-mobile) #apphub>section:first-child>header{padding-right:calc(var(--dvc-pill) + 26px);min-height:66px}
+  body.imm-apps.dvc-open:not(.dev-mobile) #apphub{right:calc(var(--dvc-w) + 30px)}
+  body.imm-apps.dvc-open:not(.dev-mobile) #apphub>section:first-child>header{padding-right:0;min-height:34px}
+  body.lite-screen.imm-apps{--dvc-t:0ms}
+}
+@media (max-width:900px){
+  body.imm-apps #apphub{bottom:156px;left:10px;right:10px}
+}
+#apphub section>header{display:flex;align-items:center;gap:10px;margin:0 2px 10px;min-height:34px}
+#apphub h2{margin:0;font-size:var(--fs-lg);font-weight:700}
+#apphub section>header .endbtn{margin-left:auto}
+#apphub section>header .mut{color:var(--dim);font-size:var(--fs-sm)}
+/* the board: every widget a card on one grid, a large one two columns wide */
+#apphub .ah-board{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px;align-items:start;grid-auto-flow:dense}
+#apphub .ah-board .deck-group{width:auto;padding:0;gap:0;overflow:hidden;border-radius:var(--r-lg);
+  background:color-mix(in srgb,var(--bg2) 90%,transparent);border:1px solid color-mix(in srgb,var(--txt) 12%,transparent)}
+#apphub .ah-board .deck-group:has(.db-l){grid-column:span 2}
+#apphub .ah-board .deck-gname{padding:9px 12px;font-size:var(--fs-sm);font-weight:650;letter-spacing:0;text-transform:none;color:var(--txt)}
+#apphub .ah-board .deck-wframe{border-radius:0;border:0;border-top:1px solid color-mix(in srgb,var(--txt) 10%,transparent)}
+@container (max-width:560px){#apphub .ah-board .deck-group:has(.db-l){grid-column:auto}}
+#apphub .deck-empty{grid-column:1/-1;margin:0;display:flex;flex-direction:column;gap:8px;padding:18px;border-radius:var(--r-lg);
+  border:1px dashed color-mix(in srgb,var(--txt) 22%,transparent);background:color-mix(in srgb,var(--bg2) 70%,transparent);
+  color:var(--dim);font-size:var(--fs-sm);line-height:1.45}
+#apphub .deck-empty b{color:var(--txt);font-size:var(--fs-md)}
+#apphub .deck-empty .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+/* the apps: every group on one sheet, side by side while there is room */
+#apphub .ah-groups{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;align-items:start}
+#apphub .ah-g{width:auto;background:color-mix(in srgb,var(--bg2) 82%,transparent)}
+#apphub .deck-tiles{grid-template-rows:none;grid-auto-flow:row;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:6px 4px}
+#apphub .deck-tile{width:auto;min-width:0;padding:10px 4px 8px;gap:7px}
+#apphub .deck-tile span{max-width:100%;font-size:var(--fs-xs)}
+body.dev-mobile #apphub{top:calc(var(--mbh) + var(--safe-t,0px) + var(--tap) + 14px)}
+
+/* the Devices scene: which company a machine is for, and which company a board is for */
+.dvs-m h2 .dvs-co{font-size:var(--fs-xs);max-width:150px;height:24px;padding:0 6px;border-radius:var(--r-sm);
+  border:1px solid color-mix(in srgb,var(--txt) 16%,transparent);background:color-mix(in srgb,var(--txt) 6%,transparent);color:var(--txt)}
+body.dev-touch .dvs-m h2 .dvs-co{height:var(--tap)}
+.dvs-head h1 .dvs-for{font-size:var(--fs-sm);font-weight:600;color:var(--dim);margin-left:6px;vertical-align:middle}
+#pager .pgb[data-scene=apps] .pgs{color:var(--acc)}
 </style>
 </head>
 <body>
@@ -7622,6 +7714,7 @@ div.mdl-tags .mdl-tag.tiny::before{content:'';position:absolute;left:50%;top:cal
   <span id="mbspace"></span>
   <div id="mb-spacer"></div>
   <div id="pager" title="Virtual desktops — click to switch, right-click to move the active window here"></div>
+  <button id="deskbtn" type="button" aria-haspopup="dialog" title="What this desktop shows"></button>
   <div id="tray">
     <button id="tray-voice" title="Voice mode — Alt+J"></button>
     <button id="tray-ctl" title="Sound & battery — click for Quick Settings"></button>
@@ -9709,7 +9802,7 @@ function zeroScreen(){
    the Devices scene (01h-devscene.js), and on a browser that never chose, desktop 1 does and
    desktop 2 is the Town. Desktop 1's choice is still `immersive.scene`, as before desktops had
    scenes; the others are `immersive.scene.d<n>`. curDesk and DESKS are `let`s in a later file. */
-var IMMERSIVE_NAMES={aurora:'Aurora',movement:'Movement',crew:'Crew',office:'Office',hq:'Office HQ',world:'World',mind:'Mind',island:'Town',devices:'Devices'};
+var IMMERSIVE_NAMES={aurora:'Aurora',movement:'Movement',crew:'Crew',office:'Office',hq:'Office HQ',world:'World',mind:'Mind',island:'Town',devices:'Devices',apps:'App Hub'};
 function deskNow(){try{return curDesk}catch(e){try{return +localStorage.getItem('curDesk')||1}catch(e2){return 1}}}
 function deskCount(){try{return DESKS}catch(e){try{return +localStorage.getItem('desks')||2}catch(e2){return 2}}}
 function deviceHub(){
@@ -9781,6 +9874,7 @@ function applyImmersive(){
   document.body.classList.toggle('imm-world',IMMERSIVE.on&&scene==='world');
   document.body.classList.toggle('imm-mind',IMMERSIVE.on&&scene==='mind');
   document.body.classList.toggle('imm-devices',IMMERSIVE.on&&scene==='devices');
+  document.body.classList.toggle('imm-apps',IMMERSIVE.on&&scene==='apps');
   immersiveParallax(IMMERSIVE.on);
   immersiveIcons(IMMERSIVE.on);
   homeRender();
@@ -9806,6 +9900,8 @@ function applyImmersive(){
   if(typeof MIND!=='undefined'){if(IMMERSIVE.on&&scene==='mind')mindStart();else mindStop()}
   // the Devices scene (01h): the floor, live, with its alarms
   if(typeof DEVSCENE!=='undefined'){if(IMMERSIVE.on&&scene==='devices')devSceneStart();else devSceneStop()}
+  // the App Hub (01i): your apps and your widgets, as the desktop
+  if(typeof APPHUB!=='undefined'){if(IMMERSIVE.on&&scene==='apps')appHubStart();else appHubStop()}
 }
 /* Which scene: 'aurora' (a sky that follows the day), 'movement' (a watch movement
    that shows what is running) or 'crew' (the roster, drawn, working). Per browser,
@@ -9813,7 +9909,7 @@ function applyImmersive(){
    this value comes out of localStorage, which outlives any release that renames a
    scene, and a desktop that fails to paint because of a stale string is not a
    trade worth making. */
-var IMMERSIVE_SCENES=['aurora','movement','crew','office','hq','world','mind','island','devices'];
+var IMMERSIVE_SCENES=['aurora','movement','crew','office','hq','world','mind','island','devices','apps'];
 /* The scene of the desktop in front. A browser choosing for the first time keeps what every other
    desktop showed until then, so choosing on desktop 2 never moves desktop 1. */
 function setImmersiveScene(scene){
@@ -9835,6 +9931,7 @@ function immersiveWinChange(){
   if(!IMMERSIVE.on)return;
   const inp=document.getElementById('omni-in'),bar=document.getElementById('omnibar');
   if(!inp||!bar)return;
+  if(typeof appHubSync==='function')appHubSync();
   if(document.body.classList.contains('has-win')&&document.activeElement===inp&&!bar.classList.contains('summoned')&&!bar.classList.contains('pop'))inp.blur();
 }
 /* The brain chip's text, as words. Its two spans (executor, model) have no
@@ -13049,16 +13146,24 @@ function devSceneStop(){
    bar stays under the board. TUI: not applicable, `bento chat` already is the whole screen. SUI: the
    same page, nothing here touches the compositor. */
 var DEVCHAT={open:false,read:false};
-function devChatWide(){return !!DEVSCENE.on&&innerWidth>900&&!document.body.classList.contains('dev-mobile')}
+/* The App Hub scene (01i) has the same panel, open unless you fold it there: each scene keeps its
+   own choice, because a board wants the room and a hub wants the chat. */
+function devChatHub(){return typeof APPHUB!=='undefined'&&!!APPHUB.on}
+function devChatKey(){return devChatHub()?'apphub.chat':'devscene.chat'}
+function devChatWide(){return (!!DEVSCENE.on||devChatHub())&&innerWidth>900&&!document.body.classList.contains('dev-mobile')}
 function devChatKeeps(){return devChatWide()}
 function devChatMount(){
-  if(!DEVCHAT.read){DEVCHAT.read=true;
-    try{DEVCHAT.open=localStorage.getItem('devscene.chat')==='open'}catch(e){}}
+  DEVCHAT.read=true;
+  let v=null;try{v=localStorage.getItem(devChatKey())}catch(e){}
+  DEVCHAT.open=v?v==='open':devChatHub();
   let p=document.getElementById('devchat');
   if(!p){const bar=document.getElementById('omnicards');if(!bar)return;
     p=document.createElement('aside');p.id='devchat';
-    p.innerHTML='<p class="dvc-hint">Ask about a machine, an alarm or a reading. Answers stay here until you close them.</p>';
+    p.innerHTML='<p class="dvc-hint"></p>';
     bar.parentNode.insertBefore(p,bar)}
+  const h=p.querySelector('.dvc-hint');
+  if(h)h.textContent=devChatHub()?'Ask anything, or ask for an app or a widget. Answers stay here until you close them.'
+    :'Ask about a machine, an alarm or a reading. Answers stay here until you close them.';
   devChatPaint();
 }
 function devChatPaint(){
@@ -13070,7 +13175,7 @@ function devChatPaint(){
 }
 function devChatSet(open){
   DEVCHAT.open=open;
-  try{localStorage.setItem('devscene.chat',open?'open':'fold')}catch(e){}
+  try{localStorage.setItem(devChatKey(),open?'open':'fold')}catch(e){}
   devChatPaint();
 }
 function devChatOpen(){if(devChatWide()&&!DEVCHAT.open)devChatSet(true)}
@@ -13092,7 +13197,9 @@ function devChatNews(){
 async function devSceneLoad(){
   if(!DEVSCENE.on||DEVSCENE.busy)return;
   DEVSCENE.busy=true;
-  try{const r=await fetch('/api/devices/board');const d=await r.json();
+  // a desktop that opens one company shows that company's machines (03 deskCompanyOf)
+  const co=!DEVSCENE.every&&typeof deskCompanyOf==='function'&&typeof deskNow==='function'?deskCompanyOf(deskNow()):'';
+  try{const r=await fetch('/api/devices/board'+(co?'?company='+encodeURIComponent(co):''));const d=await r.json();
     if(!r.ok)throw new Error(d.error||'The board could not be read');DEVSCENE.d=d;DEVSCENE.err=''}
   catch(e){DEVSCENE.err=String(e.message||e)}
   DEVSCENE.busy=false;
@@ -13140,7 +13247,8 @@ function devScenePaint(){
   const hot={};al.forEach(a=>{if(a.item)hot[a.machine.toLowerCase()+'|'+a.item]=a.state==='active'?a.level:'pending'});
   const mHot={};al.forEach(a=>{if(a.state==='active'){const k=a.machine.toLowerCase();mHot[k]=mHot[k]==='alarm'?'alarm':a.level}});
   const head=`<header class="dvs-head">
-      <div><h1>Devices</h1><p class="dvs-sum">${ms.length} machine${ms.length===1?'':'s'} · ${things} thing${things===1?'':'s'} ·
+      <div><h1>Devices${d.company?` <small class="dvs-for">${esc(((d.companies||[]).find(c=>c.id===d.company)||{}).name||'')}</small>`
+        :DEVSCENE.every?` <button type="button" class="endbtn dvs-for" data-dvs="every" data-v="0">Every company · show this desktop's</button>`:''}</h1><p class="dvs-sum">${ms.length} machine${ms.length===1?'':'s'} · ${things} thing${things===1?'':'s'} ·
         <b class="${loud.length?'bad':raised.length?'warn':'ok'}">${raised.length?`${raised.length} alarm${raised.length===1?'':'s'}`:'all clear'}</b>
         ${DEVSCENE.err?`<span class="bad"> · ${esc(DEVSCENE.err)}</span>`:''}</p></div>
       <div class="dvs-acts">
@@ -13159,7 +13267,10 @@ function devScenePaint(){
     const st=m.up===false?'down':mHot[ml]||'ok';
     return `<article class="dvs-m ${st}" aria-label="${esc(m.machine)}">
       <h2><i class="dvs-dot" aria-hidden="true"></i>${esc(m.machine)}
-        <span>${m.demo?'warehouse demo · ':''}${m.up===false?'not answering':m.here?'this hub':m.live?'live':'every minute'}</span></h2>
+        <span>${m.demo?'warehouse demo · ':''}${m.up===false?'not answering':m.here?'this hub':m.live?'live':'every minute'}</span>
+        ${(d.companies||[]).length>1&&m.ckey?`<select class="dvs-co" data-ck="${esc(m.ckey)}" aria-label="Company ${esc(m.machine)} is for"
+          title="Which of your companies this machine is for">
+          <option value="">Every company</option>${d.companies.map(c=>`<option value="${esc(c.id)}"${c.id===m.company?' selected':''}>${esc(c.name)}</option>`).join('')}</select>`:''}</h2>
       ${groups.map(g=>`<div class="dvs-g"><h3>${esc(g.name)}</h3>${g.list.map(t=>{
         const h=hot[ml+'|'+t.id]||'';
         return `<button type="button" class="dvs-t${h?' '+h:''}${t.onoff&&t.value?' lit':''}${t.trend?' has-tr':''}" data-dvs="hist"
@@ -13169,10 +13280,14 @@ function devScenePaint(){
           ${t.trend?`<small class="dvs-tr">${devSceneTrendWords(t)}</small>`:''}</button>`}).join('')}</div>`).join('')
         ||'<p class="mut">Nothing on this machine can be read yet.</p>'}
     </article>`}).join('')
+    :d.company&&d.elsewhere?`<p class="dvs-wait">No machine is for ${esc(((d.companies||[]).find(c=>c.id===d.company)||{}).name||'this company')} yet.
+        ${d.elsewhere} of your machine${d.elsewhere===1?' is':'s are'} for another company.
+        <button type="button" class="endbtn" data-dvs="every">Show every machine</button></p>`
     :`<p class="dvs-wait">No devices yet. Machines this hub sets up, and ESP32 boards it holds, show here. ${pInfo('Set a Raspberry Pi up from Devices, or add ESP32 boards to this hub. The warehouse demo in Devices has three zones to try.')}</p>`;
   el.innerHTML=head+(page==='rules'?devRulesHTML(d)
     :devSceneStatsHTML(d.analytics||{})+alarms+`<div class="dvs-grid">${cards}</div>`);
   el.querySelectorAll('[data-dvs]').forEach(b=>b.onclick=()=>devSceneAct(b.dataset.dvs,b));
+  el.querySelectorAll('select.dvs-co').forEach(sel=>sel.onchange=()=>devSceneCompany(sel));
   if(page==='rules')devRulesWire(el,devScenePaint,devSceneLoad);
 }
 /* ---- the analytics: what the floor did, not only what it reads now ----
@@ -13288,8 +13403,21 @@ function devAlarmsHTML(d){
     ${gone.length>cap?`<button class="linkbtn" data-dvs="morepast">Show ${gone.length-cap} more</button>`:''}
   </section>`;
 }
+/* Which company a machine is for (devboard.company_map). A view: a board asked for one company
+   leaves the others' machines out. What an agent may read or switch is still the gate's. */
+async function devSceneCompany(sel){
+  sel.disabled=true;
+  try{const r=await fetch('/api/devices/company',{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({machine:sel.dataset.ck,company:sel.value})});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(j.error||'could not be saved');
+    toast(j.company_name?`Saved. It shows on ${j.company_name}'s desktops.`:'Saved. It shows for every company.');
+  }catch(e){toast('Could not change the company: '+(e.message||e),{kind:'err'})}
+  sel.blur();devSceneLoad();
+}
 async function devSceneAct(act,b){
   if(act==='desk')return switchDesk(+b.dataset.n);
+  if(act==='every'){DEVSCENE.every=b.dataset.v!=='0';return devSceneLoad()}
   if(act==='app')return openApp('devices');
   if(act==='view'){DEVSCENE.view=b.dataset.v;return devAlarmsRepaint()}
   if(act==='morepast'){DEVSCENE.allPast=true;return devAlarmsRepaint()}
@@ -13637,6 +13765,96 @@ function devSceneAlarm(ev){
 }
 // first paint: 01b ran before this file existed, so the scene starts itself (as 01c and 01g do)
 if(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on&&immersiveSceneNow()==='devices')setTimeout(devSceneStart,0);
+/* ================= the App Hub scene: your apps and your widgets, as the desktop =================
+   Asked for as "every desktop I add, I can change the scene: Town, Device, App Hub (with widgets)".
+   The wall (06a-deck.js) already has both faces, but it is an overlay you open and leave. This is
+   the same two things at rest: every widget you have, live, laid out as a board, then the groups
+   of your deck, with the chat docked on the right ("App hub should be organizing widgets with the
+   Chat on the right side"). A desktop set to it is a glance board, a launcher and a place to ask.
+
+   Nothing here is a second list. The groups are DECK.groups (deckShown hides what you hid), the
+   widgets are deckBoardHTML's cards, a tile opens with openApp and its menu is the deck's.
+   Widget frames are the deck's own sandboxed frames, built by deckBoardHTML, mounted only while the
+   desktop is bare: a hidden frame left running is a timer nobody can see. No frame loop and no
+   blur of its own. It is not in LITE_SCENES: what its widgets cost on a Pi's own screen has not
+   been measured, so that screen shows Aurora and a phone or laptop looking at it shows the hub.
+
+   TUI: not applicable, a terminal has no desktop; `bento apps` lists the apps. SUI: words and
+   frames in the desktop layer, like the Devices scene; nothing touches the compositor. */
+var APPHUB={on:false,el:null,live:false,sig:''};
+function appHubStart(){
+  if(APPHUB.on)return;
+  APPHUB.on=true;
+  const desk=document.getElementById('desktop'),home=document.getElementById('home');
+  if(!desk)return;
+  let el=document.getElementById('apphub');
+  if(!el){el=document.createElement('div');el.id='apphub';el.setAttribute('role','region');
+    el.setAttribute('aria-label','Your apps and widgets');desk.insertBefore(el,home?home.nextSibling:null)}
+  APPHUB.el=el;el.hidden=false;
+  // the chat on the right is the Devices scene's panel (01h devChat*), open here unless folded
+  if(typeof devChatMount==='function')devChatMount();
+  appHubPaint();
+}
+function appHubStop(){
+  if(!APPHUB.on)return;
+  APPHUB.on=false;APPHUB.live=false;APPHUB.sig='';
+  const el=document.getElementById('apphub');if(el){el.hidden=true;el.textContent=''}
+  // leaving gives the bar back: answers kept for the panel have nowhere to stay
+  const wrap=document.getElementById('omnicards');
+  if(wrap)[...wrap.children].forEach(c=>{if(c.dataset.done&&c._close)c._close()});
+  const bar=document.getElementById('omnibar');if(bar)bar.classList.remove('dvc-news');
+  // the Devices scene may be the one starting: it reads its own choice for the panel
+  if(typeof DEVSCENE!=='undefined'&&DEVSCENE.on&&typeof devChatMount==='function')devChatMount();
+}
+function appHubBare(){
+  const b=document.body.classList;
+  return !document.hidden&&!b.contains('has-win')&&!b.contains('deck-full')&&!b.contains('exposing');
+}
+/* A window opened or closed, or the wall did: the widgets run only while they can be seen. */
+function appHubSync(){
+  if(!APPHUB.on)return;
+  if(appHubBare()!==APPHUB.live)appHubPaint();
+}
+function appHubPaint(){
+  const el=APPHUB.el;if(!APPHUB.on||!el)return;
+  // the deck and the app table are `let`s in later files: until they exist there is nothing to draw
+  let ready=false;try{ready=!!(DECK&&APPS)}catch(e){}
+  if(!ready)return;
+  if(!appHubBare()){if(APPHUB.live){el.textContent='';APPHUB.live=false;APPHUB.sig=''}return}
+  const groups=DECK.groups.map(g=>({g,ids:deckShown(g)})).filter(x=>x.ids.length);
+  const apps={};(typeof USERAPPS!=='undefined'?USERAPPS:[]).forEach(a=>apps[a.id]=a);
+  const wid=(typeof WIDGETS!=='undefined'?WIDGETS:[]).filter(w=>apps[w.app_id]);
+  // the deck rebuilds often (a fold, a window): only a real change redraws, or every frame reloads
+  const sig=JSON.stringify([groups.map(x=>[x.g.name,x.ids]),wid.map(w=>[w.app_id,w.place||'',apps[w.app_id].widget_size||'m'])]);
+  if(APPHUB.live&&sig===APPHUB.sig)return;
+  APPHUB.live=true;APPHUB.sig=sig;
+  el.innerHTML=`<section class="ah-wid" aria-label="Widgets">
+      <header><h2>Widgets</h2><span class="mut">${wid.length?wid.length+' live':''}</span></header>
+      <div class="ah-board">${deckBoardHTML()}</div></section>
+    <section class="ah-apps" aria-label="Apps">
+      <header><h2>Apps</h2><button type="button" class="endbtn ah-all">All apps</button></header>
+      <div class="ah-groups">${groups.map(({g,ids})=>`<div class="deck-group ah-g">
+        <div class="deck-gname">${esc(g.name)}</div>
+        <div class="deck-tiles">${ids.map(id=>`<button type="button" class="deck-tile" data-app="${esc(id)}"
+          title="${esc(APPS[id].desc||APPS[id].title)}">${appIcon(id,46)}<span>${esc(APPS[id].title)}</span></button>`).join('')}</div>
+      </div>`).join('')}</div></section>`;
+  el.querySelector('.ah-all').onclick=()=>deckFull(true,'apps');
+  el.querySelectorAll('.deck-tile[data-app]').forEach(t=>{
+    t.onclick=()=>openApp(t.dataset.app);
+    t.oncontextmenu=e=>{e.preventDefault();deckTileMenu(e,t.dataset.app)};
+  });
+  el.querySelectorAll('.deck-board').forEach(c=>{
+    const id=c.dataset.w;
+    c.querySelector('.db-open').onclick=()=>openApp('ua_'+id);
+    c.querySelector('.deck-gname').oncontextmenu=e=>{e.preventDefault();deckBoardMenu(e,id)};
+  });
+  const st=el.querySelector('.de-studio'),so=el.querySelector('.de-store');
+  if(st)st.onclick=()=>openApp('studio');
+  if(so)so.onclick=()=>openApp('store');
+}
+document.addEventListener('visibilitychange',()=>appHubSync());
+// the first paint runs before this file exists (01b applyImmersive), so the scene starts itself
+if(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on&&immersiveSceneNow()==='apps')setTimeout(appHubStart,0);
 /* ================= themes ================= */
 // A theme is not just colors — it can carry a web font and extra CSS that restyles the whole
 // desktop (taskbar, windows, icons, widgets). Built-in themes:
@@ -14054,10 +14272,146 @@ function buildPager(){
   // the wheel over the pager scrolls the desktops, one notch at a time
   if(!p._wheel){p._wheel=1;p.addEventListener('wheel',e=>{e.preventDefault();
     const now=Date.now();if(now-(p._wt||0)<220)return;p._wt=now;switchDeskBy(e.deltaY>0||e.deltaX>0?1:-1)},{passive:false})}
+  // a new desktop is somewhere to put something: go there and ask what it shows
   if(DESKS<6){const a=document.createElement('button');a.className='pgb add';a.textContent='+';a.title='add a desktop';
-    a.onclick=()=>{DESKS++;localStorage.setItem('desks',DESKS);buildPager()};p.appendChild(a)}
+    a.onclick=()=>deskAdd();p.appendChild(a)}
+  deskBtnPaint();
 }
-var DESK_SCENE_GLYPH={island:'⌂',devices:'▦',aurora:'✦',movement:'◷',crew:'☺',office:'▤',hq:'▤',world:'❀',mind:'✺'};
+var DESK_SCENE_GLYPH={island:'⌂',devices:'▦',apps:'⊞',aurora:'✦',movement:'◷',crew:'☺',office:'▤',hq:'▤',world:'❀',mind:'✺'};
+/* ---- what a desktop shows, chosen on the desktop ----
+   Asked for as "every desktop I add, I can change the scene of the desktop: Town, Device, App Hub
+   (with widgets). That option should be available on the desktop itself. Also I should be able to
+   have a different company in different desktops". The scenes were already per desktop
+   (01b immersiveSceneOf), but the only picker was in Settings. #deskbtn in the menu bar names
+   the scene of the desktop in front and opens the menu; a new desktop opens it by itself.
+   A desktop may also OPEN one of your companies when you come to it (desk.company.d<n>, this
+   browser's). The open company is the account's, so another browser signed in as you moves too.
+   TUI: not applicable, a terminal has no desktops or scenes; `bento company open` switches
+   companies there. SUI: a page control inside the menu-bar band, whose height it never changes. */
+var DESK_MAIN_SCENES=['island','devices','apps'];
+var DESKCO={list:[],at:0};
+function deskCompanyOf(n){try{return localStorage.getItem('desk.company.d'+n)||''}catch(e){return ''}}
+function deskCompanyName(id){const c=DESKCO.list.find(x=>x.id===id);return c?c.name:''}
+async function deskCompaniesLoad(){
+  try{const r=await fetch('/api/companies',{quiet:true});if(!r.ok)return;
+    const j=await r.json();DESKCO.list=(j.companies||[]).filter(c=>c.id);DESKCO.at=Date.now();deskBtnPaint()}catch(e){}
+}
+function deskCompanySet(n,id){
+  try{id?localStorage.setItem('desk.company.d'+n,id):localStorage.removeItem('desk.company.d'+n)}catch(e){}
+  deskBtnPaint();
+  if(n===curDesk){deskCompanySync(n);deskCompanyChanged()}
+}
+/* The desktop's company differs from the one the scene was drawn for: the Devices board asks again. */
+function deskCompanyChanged(){if(typeof DEVSCENE!=='undefined')DEVSCENE.every=false;if(typeof DEVSCENE!=='undefined'&&DEVSCENE.on&&typeof devSceneLoad==='function')devSceneLoad()}
+/* Coming to a desktop opens its company. A desktop with none keeps whichever is open. */
+async function deskCompanySync(n){
+  const id=deskCompanyOf(n);if(!id)return;
+  if(!DESKCO.at)await deskCompaniesLoad();
+  const c=DESKCO.list.find(x=>x.id===id);
+  if(!c){if(DESKCO.at)deskCompanySet(n,'');return}      // a company you no longer keep
+  if(c.active||n!==curDesk)return;
+  try{
+    const r=await fetch('/api/companies/active',{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id,surface:'gui'})});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok)return toast(`Desktop ${n} could not open ${c.name}: ${j.error||'the server refused'}`,{kind:'err'});
+    DESKCO.list=(j.companies||[]).filter(x=>x.id);DESKCO.at=Date.now();
+    toast(`Desktop ${n} · ${c.name}`);deskBtnPaint();
+  }catch(e){toast(`Desktop ${n} could not open ${c.name}`,{kind:'err'})}
+}
+function deskAdd(){
+  if(DESKS>=9)return;
+  DESKS++;localStorage.setItem('desks',DESKS);
+  // a number used before starts clean: no scene or company left from a desktop removed earlier
+  try{localStorage.removeItem('immersive.scene.d'+DESKS);localStorage.removeItem('desk.company.d'+DESKS)}catch(e){}
+  buildPager();switchDesk(DESKS);
+  setTimeout(()=>deskMenu(),240);
+}
+/* Desktop n is going: every desktop after it takes the number before, with its scene and company. */
+function deskShift(n){
+  const get=k=>{try{return localStorage.getItem(k)}catch(e){return null}};
+  const put=(k,v)=>{try{v?localStorage.setItem(k,v):localStorage.removeItem(k)}catch(e){}};
+  const im=typeof immersiveSceneOf==='function',sc=[],co=[];
+  for(let i=n+1;i<=DESKS;i++){sc.push(im?immersiveSceneOf(i):'');co.push(deskCompanyOf(i))}
+  for(let i=n;i<DESKS;i++){
+    const s=sc[i-n];
+    if(i===1){if(im&&IMMERSIVE.chosen&&s){put('immersive.scene',s);IMMERSIVE.scene=s}}
+    else put('immersive.scene.d'+i,s);
+    put('desk.company.d'+i,co[i-n]);
+  }
+  put('immersive.scene.d'+DESKS,'');put('desk.company.d'+DESKS,'');
+}
+function deskBtnPaint(){
+  const b=document.getElementById('deskbtn');if(!b)return;
+  const on=typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on;
+  const sc=on&&typeof immersiveSceneNow==='function'?immersiveSceneNow():'';
+  const co=deskCompanyName(deskCompanyOf(curDesk));
+  b.textContent='';
+  const g=document.createElement('span');g.className='dkb-g';g.setAttribute('aria-hidden','true');g.textContent=sc?(DESK_SCENE_GLYPH[sc]||'·'):'▪';
+  const l=document.createElement('span');l.className='dkb-l';l.textContent=(sc?(IMMERSIVE_NAMES[sc]||sc):'Desktop '+curDesk)+(co?' · '+co:'');
+  const c=document.createElement('span');c.className='dkb-c';c.setAttribute('aria-hidden','true');c.textContent='▾';
+  b.append(g,l,c);
+  b.setAttribute('aria-label',`Desktop ${curDesk} shows ${sc?(IMMERSIVE_NAMES[sc]||sc):'no scene'}${co?', company '+co:''}. Change it`);
+  b.onclick=()=>deskMenu();
+}
+function deskMenuClose(){
+  const m=document.getElementById('deskmenu');if(m)m.remove();
+  document.removeEventListener('pointerdown',deskMenuOutside,true);document.removeEventListener('keydown',deskMenuKey,true);
+  const b=document.getElementById('deskbtn');if(b)b.setAttribute('aria-expanded','false');
+}
+function deskMenuOutside(e){const m=document.getElementById('deskmenu');
+  if(m&&!m.contains(e.target)&&!(e.target.closest&&e.target.closest('#deskbtn')))deskMenuClose()}
+function deskMenuKey(e){if(e.key==='Escape'){e.stopPropagation();deskMenuClose();const b=document.getElementById('deskbtn');if(b)b.focus()}}
+/* The menu for the desktop in front. Built with text nodes: a company's name is the person's words. */
+function deskMenu(){
+  if(document.getElementById('deskmenu'))return deskMenuClose();
+  const n=curDesk,m=document.createElement('div');m.id='deskmenu';m.setAttribute('role','dialog');m.setAttribute('aria-label',`Desktop ${n}`);
+  const el=(tag,cls,text)=>{const x=document.createElement(tag);if(cls)x.className=cls;if(text!==undefined)x.textContent=text;return x};
+  const paint=()=>{
+    m.textContent='';
+    m.append(el('h3','',`Desktop ${n}`));
+    const on=typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on,now=on?immersiveSceneNow():'';
+    m.append(el('h4','','Scene'));
+    if(!on){
+      const p=el('p','dkm-note','Scenes come with the immersive look, which is off in this browser.');
+      const t=el('button','endbtn','Turn it on');t.type='button';
+      t.onclick=()=>{if(typeof setImmersive==='function')setImmersive(true);paint();deskBtnPaint()};
+      m.append(p,t);
+    }else{
+      const lite=typeof liteScreen==='function'&&liteScreen(),ok=s=>!lite||LITE_SCENES[s];
+      const row=(list,cls)=>{const r=el('div',cls);r.setAttribute('role','group');
+        list.filter(ok).forEach(s=>{const b=el('button','dkm-s'+(s===now?' on':''));b.type='button';b.setAttribute('aria-pressed',String(s===now));
+          b.append(el('i','',DESK_SCENE_GLYPH[s]||'·'),el('span','',IMMERSIVE_NAMES[s]||s));
+          b.onclick=()=>{setImmersiveScene(s);paint()};r.append(b)});
+        return r};
+      m.append(row(DESK_MAIN_SCENES,'dkm-main'));
+      const rest=IMMERSIVE_SCENES.filter(s=>DESK_MAIN_SCENES.indexOf(s)<0&&ok(s));
+      if(rest.length){m.append(el('h4','','More scenes'),row(rest,'dkm-more'))}
+      if(lite)m.append(el('p','dkm-note','This small machine draws only the light scenes on its own screen.'));
+    }
+    if(DESKCO.list.length>1){
+      m.append(el('h4','','Company'));
+      const cur=deskCompanyOf(n),r=el('div','dkm-co');r.setAttribute('role','radiogroup');r.setAttribute('aria-label','Company on this desktop');
+      [{id:'',name:'Whichever is open'}].concat(DESKCO.list).forEach(c=>{
+        const b=el('button','dkm-c'+(c.id===cur?' on':''));b.type='button';b.setAttribute('role','radio');b.setAttribute('aria-checked',String(c.id===cur));
+        b.append(el('span','',c.name));if(c.id&&c.active)b.append(el('small','','open now'));
+        b.onclick=()=>{deskCompanySet(n,c.id);paint()};r.append(b)});
+      m.append(r,el('p','dkm-note','Coming to this desktop opens that company, everywhere you are signed in.'));
+    }
+    if(DESKS>1){const x=el('button','endbtn dkm-rm','Remove this desktop');x.type='button';
+      x.onclick=()=>{deskMenuClose();removeDesk(n)};m.append(x)}
+  };
+  paint();
+  document.body.append(m);
+  const b=document.getElementById('deskbtn');
+  if(b){b.setAttribute('aria-expanded','true');const r=b.getBoundingClientRect();
+    m.style.top=Math.round(r.bottom+6)+'px';
+    m.style.right=Math.max(8,Math.round(innerWidth-r.right))+'px'}
+  document.addEventListener('pointerdown',deskMenuOutside,true);document.addEventListener('keydown',deskMenuKey,true);
+  const first=m.querySelector('button.on')||m.querySelector('button');if(first)first.focus();
+  // the list may be older than a company made in another window
+  deskCompaniesLoad().then(()=>{if(document.getElementById('deskmenu')===m)paint()});
+}
 function deskScenesDiffer(){
   if(typeof immersiveSceneOf!=='function')return false;
   const s=new Set();for(let i=1;i<=DESKS;i++)s.add(immersiveSceneOf(i));return s.size>1;
@@ -14082,6 +14436,8 @@ function switchDesk(n){
   curDesk=n;localStorage.setItem('curDesk',n);
   // each desktop shows its own scene: the Town on one, the Devices board on another
   if(typeof immersiveDeskChanged==='function')immersiveDeskChanged(sceneWas);
+  // a desktop may open one of your companies (deskCompanySync), and its board follows
+  deskMenuClose();deskCompanySync(n);deskCompanyChanged();
   // In session mode a desktop is a real sway workspace, so external windows move
   // with it instead of following you everywhere. The shell comes along too.
   if(typeof PLATFORM!=='undefined'&&PLATFORM.mode==='de')
@@ -14120,6 +14476,9 @@ function moveActiveToDesk(n){
   toast('moved "'+act.app.title+'" to Desktop '+n);
 }
 
+
+// which companies a desktop can open (the menu asks again when it opens)
+setTimeout(()=>{deskCompaniesLoad()},1200);
 /* ================= motion =================
    One motion vocabulary for the whole shell (WAAPI). Everything routes through
    Motion so prefers-reduced-motion is honored in one place. Durations/curves
@@ -17014,6 +17373,8 @@ function buildDeck(fresh){
   if(DECKFULL&&!board)deckFilter(DECKQ,true);   // a rebuild must not drop the query
   if(open&&(fresh||!DECK_LASTOPEN))deckStagger();
   DECK_LASTOPEN=open;
+  // the App Hub scene (01i) draws the same groups and widgets: one seam keeps it current
+  if(typeof appHubPaint==='function')appHubPaint();
 }
 /* ---- the wall's header: two tabs, a search box, and the way out ----
    The count is on the tab rather than beside a title because the tabs are what
@@ -19083,7 +19444,7 @@ function handle(ev){
       refreshApp('telegram');break;
     case 'knowledge_update': refreshApp('memory'); refreshApp('kg'); refreshApp('profile'); break;
     case 'assets_update': refreshApp('gallery'); refreshApp('timeline'); break;
-    case 'spaces_update': loadSpaces(true).then(paintSpaceChip); refreshApp('spaces'); break;
+    case 'spaces_update': loadSpaces(true).then(paintSpaceChip); refreshApp('spaces'); if(typeof deskCompaniesLoad==='function')deskCompaniesLoad(); break;
     case 'fabric_event':
       // a flow moved: its mark lights on the dial (heartbeats are not movement)
       if(typeof movementPulse==='function'&&ev.event!=='heartbeat')movementPulse('flow',ev.flow||ev.agent||ev.event,ev);
@@ -21048,10 +21409,10 @@ function setTab(body,all){
          stated in the row, and so is the terminal's answer: none. */
       /* A small machine's own screen offers only the scenes it draws (01b-immersive.js
          liteScreen): a choice that changes nothing would be a dead control. */
-      pRow('Scene',pSelect('s-imm-scene',[['aurora','Aurora'],['movement','Movement'],['crew','Crew at work'],['office','Office'],['hq','Office HQ (3D)'],['world','World (experimental)'],['mind','Mind'],['island','Town'],['devices','Devices']]
+      pRow('Scene',pSelect('s-imm-scene',[['aurora','Aurora'],['movement','Movement'],['crew','Crew at work'],['office','Office'],['hq','Office HQ (3D)'],['world','World (experimental)'],['mind','Mind'],['island','Town'],['devices','Devices'],['apps','App Hub']]
             .filter(o=>!liteScreen()||LITE_SCENES[o[0]]),
           (typeof IMMERSIVE!=='undefined'&&immersiveSceneNow())||'aurora'),
-        {desc:liteScreen()?'This small machine shows Aurora, Office or Devices on its own screen.':'What this desktop shows behind your windows. Each desktop can show its own.',
+        {desc:liteScreen()?'This small machine shows Aurora, Office or Devices on its own screen.':'What this desktop shows behind your windows. Each desktop has its own, and the menu bar changes it too.',
          more:liteScreen()?'The other scenes draw in 3D or many times a second, which is too much for a machine this size. A phone or laptop that opens Bento here can show any of them. To draw them here anyway, run bento profile full.':'Aurora is a sky that follows the day. Office is the whole office behind your windows. Movement draws at most twenty times a second, pauses when hidden, holds still under reduced motion and uses no blur. Crew shows only the specialists you actually have. World is an experiment: your agents get feelings from what they really do, and all of it sleeps when you pick another scene. Mind draws every memory, fact, mission and run as a strand from your lead, and sparks only when something runs. Town puts your office in a place you choose, an island, a canal city, a castle or a forest. Each room is a building that opens while it works. Devices is every machine and sensor this hub looks after, live, with its alarms. Pick a scene on each desktop and switch between them from the desktop numbers.',
          f:'scene movement watch automatic aurora wallpaper live crew characters avatars figures specialists animated world sims feelings emotions experimental mind brain neural connections island town venice canal castle forest railroad train builder devices sensors alarms faults hub floor desktop'}),
       pRow('Wallpaper','<button class="endbtn" onclick="openApp(\'personalize\')">Personalize</button><button class="endbtn" onclick="wpSystem()">Use system</button>',
@@ -47623,13 +47984,22 @@ function exposeSpaces(){
     };
   });
   const add=$('#sp-add');
-  if(add)add.onclick=()=>{DESKS++;localStorage.setItem('desks',DESKS);buildPager();exposeSpaces()};
+  if(add)add.onclick=()=>{DESKS++;localStorage.setItem('desks',DESKS);
+    try{localStorage.removeItem('immersive.scene.d'+DESKS);localStorage.removeItem('desk.company.d'+DESKS)}catch(e){}
+    buildPager();exposeSpaces()};
 }
 function removeDesk(n){
   if(DESKS<=1)return;
   deskWins(n).forEach(w=>{w.desk=Math.max(1,n-1)});     // never orphan a window
+  // the desktops after it move down one, and what each showed moves with it
+  WM.wins.forEach(w=>{if((w.desk||1)>n)w.desk=(w.desk||1)-1});
+  if(typeof deskShift==='function')deskShift(n);
   DESKS--;localStorage.setItem('desks',DESKS);
+  if(curDesk>n){curDesk--;localStorage.setItem('curDesk',curDesk)}
   if(curDesk>DESKS)switchDesk(DESKS);
+  // the desktop in front may be another one now: its scene and its company
+  if(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on){applyImmersive();if(typeof loadWallpaper==='function')loadWallpaper()}
+  if(typeof deskCompanySync==='function')deskCompanySync(curDesk);
   applyDeskVisibility();buildPager();exposeSpaces();exposeGrid();
   toast('desktop removed');
 }

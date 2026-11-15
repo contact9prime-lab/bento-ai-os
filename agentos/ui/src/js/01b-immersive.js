@@ -54,7 +54,7 @@ function zeroScreen(){
    the Devices scene (01h-devscene.js), and on a browser that never chose, desktop 1 does and
    desktop 2 is the Town. Desktop 1's choice is still `immersive.scene`, as before desktops had
    scenes; the others are `immersive.scene.d<n>`. curDesk and DESKS are `let`s in a later file. */
-var IMMERSIVE_NAMES={aurora:'Aurora',movement:'Movement',crew:'Crew',office:'Office',hq:'Office HQ',world:'World',mind:'Mind',island:'Town',devices:'Devices'};
+var IMMERSIVE_NAMES={aurora:'Aurora',movement:'Movement',crew:'Crew',office:'Office',hq:'Office HQ',world:'World',mind:'Mind',island:'Town',devices:'Devices',apps:'App Hub'};
 function deskNow(){try{return curDesk}catch(e){try{return +localStorage.getItem('curDesk')||1}catch(e2){return 1}}}
 function deskCount(){try{return DESKS}catch(e){try{return +localStorage.getItem('desks')||2}catch(e2){return 2}}}
 function deviceHub(){
@@ -126,6 +126,7 @@ function applyImmersive(){
   document.body.classList.toggle('imm-world',IMMERSIVE.on&&scene==='world');
   document.body.classList.toggle('imm-mind',IMMERSIVE.on&&scene==='mind');
   document.body.classList.toggle('imm-devices',IMMERSIVE.on&&scene==='devices');
+  document.body.classList.toggle('imm-apps',IMMERSIVE.on&&scene==='apps');
   immersiveParallax(IMMERSIVE.on);
   immersiveIcons(IMMERSIVE.on);
   homeRender();
@@ -151,6 +152,8 @@ function applyImmersive(){
   if(typeof MIND!=='undefined'){if(IMMERSIVE.on&&scene==='mind')mindStart();else mindStop()}
   // the Devices scene (01h): the floor, live, with its alarms
   if(typeof DEVSCENE!=='undefined'){if(IMMERSIVE.on&&scene==='devices')devSceneStart();else devSceneStop()}
+  // the App Hub (01i): your apps and your widgets, as the desktop
+  if(typeof APPHUB!=='undefined'){if(IMMERSIVE.on&&scene==='apps')appHubStart();else appHubStop()}
 }
 /* Which scene: 'aurora' (a sky that follows the day), 'movement' (a watch movement
    that shows what is running) or 'crew' (the roster, drawn, working). Per browser,
@@ -158,7 +161,7 @@ function applyImmersive(){
    this value comes out of localStorage, which outlives any release that renames a
    scene, and a desktop that fails to paint because of a stale string is not a
    trade worth making. */
-var IMMERSIVE_SCENES=['aurora','movement','crew','office','hq','world','mind','island','devices'];
+var IMMERSIVE_SCENES=['aurora','movement','crew','office','hq','world','mind','island','devices','apps'];
 /* The scene of the desktop in front. A browser choosing for the first time keeps what every other
    desktop showed until then, so choosing on desktop 2 never moves desktop 1. */
 function setImmersiveScene(scene){
@@ -180,6 +183,7 @@ function immersiveWinChange(){
   if(!IMMERSIVE.on)return;
   const inp=document.getElementById('omni-in'),bar=document.getElementById('omnibar');
   if(!inp||!bar)return;
+  if(typeof appHubSync==='function')appHubSync();
   if(document.body.classList.contains('has-win')&&document.activeElement===inp&&!bar.classList.contains('summoned')&&!bar.classList.contains('pop'))inp.blur();
 }
 /* The brain chip's text, as words. Its two spans (executor, model) have no

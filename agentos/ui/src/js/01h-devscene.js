@@ -53,16 +53,24 @@ function devSceneStop(){
    bar stays under the board. TUI: not applicable, `bento chat` already is the whole screen. SUI: the
    same page, nothing here touches the compositor. */
 var DEVCHAT={open:false,read:false};
-function devChatWide(){return !!DEVSCENE.on&&innerWidth>900&&!document.body.classList.contains('dev-mobile')}
+/* The App Hub scene (01i) has the same panel, open unless you fold it there: each scene keeps its
+   own choice, because a board wants the room and a hub wants the chat. */
+function devChatHub(){return typeof APPHUB!=='undefined'&&!!APPHUB.on}
+function devChatKey(){return devChatHub()?'apphub.chat':'devscene.chat'}
+function devChatWide(){return (!!DEVSCENE.on||devChatHub())&&innerWidth>900&&!document.body.classList.contains('dev-mobile')}
 function devChatKeeps(){return devChatWide()}
 function devChatMount(){
-  if(!DEVCHAT.read){DEVCHAT.read=true;
-    try{DEVCHAT.open=localStorage.getItem('devscene.chat')==='open'}catch(e){}}
+  DEVCHAT.read=true;
+  let v=null;try{v=localStorage.getItem(devChatKey())}catch(e){}
+  DEVCHAT.open=v?v==='open':devChatHub();
   let p=document.getElementById('devchat');
   if(!p){const bar=document.getElementById('omnicards');if(!bar)return;
     p=document.createElement('aside');p.id='devchat';
-    p.innerHTML='<p class="dvc-hint">Ask about a machine, an alarm or a reading. Answers stay here until you close them.</p>';
+    p.innerHTML='<p class="dvc-hint"></p>';
     bar.parentNode.insertBefore(p,bar)}
+  const h=p.querySelector('.dvc-hint');
+  if(h)h.textContent=devChatHub()?'Ask anything, or ask for an app or a widget. Answers stay here until you close them.'
+    :'Ask about a machine, an alarm or a reading. Answers stay here until you close them.';
   devChatPaint();
 }
 function devChatPaint(){
@@ -74,7 +82,7 @@ function devChatPaint(){
 }
 function devChatSet(open){
   DEVCHAT.open=open;
-  try{localStorage.setItem('devscene.chat',open?'open':'fold')}catch(e){}
+  try{localStorage.setItem(devChatKey(),open?'open':'fold')}catch(e){}
   devChatPaint();
 }
 function devChatOpen(){if(devChatWide()&&!DEVCHAT.open)devChatSet(true)}
@@ -96,7 +104,9 @@ function devChatNews(){
 async function devSceneLoad(){
   if(!DEVSCENE.on||DEVSCENE.busy)return;
   DEVSCENE.busy=true;
-  try{const r=await fetch('/api/devices/board');const d=await r.json();
+  // a desktop that opens one company shows that company's machines (03 deskCompanyOf)
+  const co=!DEVSCENE.every&&typeof deskCompanyOf==='function'&&typeof deskNow==='function'?deskCompanyOf(deskNow()):'';
+  try{const r=await fetch('/api/devices/board'+(co?'?company='+encodeURIComponent(co):''));const d=await r.json();
     if(!r.ok)throw new Error(d.error||'The board could not be read');DEVSCENE.d=d;DEVSCENE.err=''}
   catch(e){DEVSCENE.err=String(e.message||e)}
   DEVSCENE.busy=false;
@@ -144,7 +154,8 @@ function devScenePaint(){
   const hot={};al.forEach(a=>{if(a.item)hot[a.machine.toLowerCase()+'|'+a.item]=a.state==='active'?a.level:'pending'});
   const mHot={};al.forEach(a=>{if(a.state==='active'){const k=a.machine.toLowerCase();mHot[k]=mHot[k]==='alarm'?'alarm':a.level}});
   const head=`<header class="dvs-head">
-      <div><h1>Devices</h1><p class="dvs-sum">${ms.length} machine${ms.length===1?'':'s'} · ${things} thing${things===1?'':'s'} ·
+      <div><h1>Devices${d.company?` <small class="dvs-for">${esc(((d.companies||[]).find(c=>c.id===d.company)||{}).name||'')}</small>`
+        :DEVSCENE.every?` <button type="button" class="endbtn dvs-for" data-dvs="every" data-v="0">Every company · show this desktop's</button>`:''}</h1><p class="dvs-sum">${ms.length} machine${ms.length===1?'':'s'} · ${things} thing${things===1?'':'s'} ·
         <b class="${loud.length?'bad':raised.length?'warn':'ok'}">${raised.length?`${raised.length} alarm${raised.length===1?'':'s'}`:'all clear'}</b>
         ${DEVSCENE.err?`<span class="bad"> · ${esc(DEVSCENE.err)}</span>`:''}</p></div>
       <div class="dvs-acts">
@@ -163,7 +174,10 @@ function devScenePaint(){
     const st=m.up===false?'down':mHot[ml]||'ok';
     return `<article class="dvs-m ${st}" aria-label="${esc(m.machine)}">
       <h2><i class="dvs-dot" aria-hidden="true"></i>${esc(m.machine)}
-        <span>${m.demo?'warehouse demo · ':''}${m.up===false?'not answering':m.here?'this hub':m.live?'live':'every minute'}</span></h2>
+        <span>${m.demo?'warehouse demo · ':''}${m.up===false?'not answering':m.here?'this hub':m.live?'live':'every minute'}</span>
+        ${(d.companies||[]).length>1&&m.ckey?`<select class="dvs-co" data-ck="${esc(m.ckey)}" aria-label="Company ${esc(m.machine)} is for"
+          title="Which of your companies this machine is for">
+          <option value="">Every company</option>${d.companies.map(c=>`<option value="${esc(c.id)}"${c.id===m.company?' selected':''}>${esc(c.name)}</option>`).join('')}</select>`:''}</h2>
       ${groups.map(g=>`<div class="dvs-g"><h3>${esc(g.name)}</h3>${g.list.map(t=>{
         const h=hot[ml+'|'+t.id]||'';
         return `<button type="button" class="dvs-t${h?' '+h:''}${t.onoff&&t.value?' lit':''}${t.trend?' has-tr':''}" data-dvs="hist"
@@ -173,10 +187,14 @@ function devScenePaint(){
           ${t.trend?`<small class="dvs-tr">${devSceneTrendWords(t)}</small>`:''}</button>`}).join('')}</div>`).join('')
         ||'<p class="mut">Nothing on this machine can be read yet.</p>'}
     </article>`}).join('')
+    :d.company&&d.elsewhere?`<p class="dvs-wait">No machine is for ${esc(((d.companies||[]).find(c=>c.id===d.company)||{}).name||'this company')} yet.
+        ${d.elsewhere} of your machine${d.elsewhere===1?' is':'s are'} for another company.
+        <button type="button" class="endbtn" data-dvs="every">Show every machine</button></p>`
     :`<p class="dvs-wait">No devices yet. Machines this hub sets up, and ESP32 boards it holds, show here. ${pInfo('Set a Raspberry Pi up from Devices, or add ESP32 boards to this hub. The warehouse demo in Devices has three zones to try.')}</p>`;
   el.innerHTML=head+(page==='rules'?devRulesHTML(d)
     :devSceneStatsHTML(d.analytics||{})+alarms+`<div class="dvs-grid">${cards}</div>`);
   el.querySelectorAll('[data-dvs]').forEach(b=>b.onclick=()=>devSceneAct(b.dataset.dvs,b));
+  el.querySelectorAll('select.dvs-co').forEach(sel=>sel.onchange=()=>devSceneCompany(sel));
   if(page==='rules')devRulesWire(el,devScenePaint,devSceneLoad);
 }
 /* ---- the analytics: what the floor did, not only what it reads now ----
@@ -292,8 +310,21 @@ function devAlarmsHTML(d){
     ${gone.length>cap?`<button class="linkbtn" data-dvs="morepast">Show ${gone.length-cap} more</button>`:''}
   </section>`;
 }
+/* Which company a machine is for (devboard.company_map). A view: a board asked for one company
+   leaves the others' machines out. What an agent may read or switch is still the gate's. */
+async function devSceneCompany(sel){
+  sel.disabled=true;
+  try{const r=await fetch('/api/devices/company',{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({machine:sel.dataset.ck,company:sel.value})});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(j.error||'could not be saved');
+    toast(j.company_name?`Saved. It shows on ${j.company_name}'s desktops.`:'Saved. It shows for every company.');
+  }catch(e){toast('Could not change the company: '+(e.message||e),{kind:'err'})}
+  sel.blur();devSceneLoad();
+}
 async function devSceneAct(act,b){
   if(act==='desk')return switchDesk(+b.dataset.n);
+  if(act==='every'){DEVSCENE.every=b.dataset.v!=='0';return devSceneLoad()}
   if(act==='app')return openApp('devices');
   if(act==='view'){DEVSCENE.view=b.dataset.v;return devAlarmsRepaint()}
   if(act==='morepast'){DEVSCENE.allPast=true;return devAlarmsRepaint()}

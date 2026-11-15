@@ -16681,10 +16681,19 @@ async def api_network_hardware(body: dict):
             "events": [t for _e, t in got["events"]], "dropped": got["dropped"]}
 
 
+def _device_companies() -> tuple[dict, dict]:
+    """This person's companies that can be named ({id: name}), and which machine is for which."""
+    from . import company as companymod, devboard
+    cos = {c["id"]: c["name"] for c in companymod.companies(state["cfg"]) if c["id"]}
+    return cos, devboard.company_map(state["cfg"].get("device_companies"), cos)
+
+
 @app.get("/api/devices/board")
-async def api_device_board():
+async def api_device_board(company: str = ""):
     """The Devices scene and Devices → Live: every machine you have, each thing as last heard,
-    and the alarms now (devboard.py). An admin sees the machine's own as well. Asks no machine."""
+    and the alarms now (devboard.py). An admin sees the machine's own as well. Asks no machine.
+    With `company` (one of your company ids) the machines you gave to your other companies are
+    left out, with their alarms and rules; a machine given to none shows on every board."""
     me = usersmod.current() or ""
     whose = sorted({"", me}) if usersmod.is_admin(me) else [me]
     machines, alarms = [], []
@@ -16733,6 +16742,10 @@ async def api_device_board():
                           key=lambda a: a.get("ended") or a.get("since") or 0, reverse=True)
             rule_list += [{**r, "demo": True} for r in d.get("rule_list") or []]
             demo_rules = d.get("rules") or []
+    cos, cmap = _device_companies()
+    hidden = devboard.mark_companies(machines, cmap, cos, only=company)
+    alarms, past, evs = (devboard.without(x, hidden) for x in (alarms, past, evs))
+    rule_list = devboard.without(rule_list, hidden)
     seen, out = set(), []
     for a in alarms:
         if a["id"] not in seen:
@@ -16748,7 +16761,37 @@ async def api_device_board():
     return {"machines": machines, "alarms": out, "history": past, "rule_list": rows,
             "rules": devboard.clean_rules(state["cfg"].get("device_alarms") or [])[0],
             **({"demo_rules": demo_rules} if demo_rules is not None else {}),
+            "companies": [{"id": k, "name": v} for k, v in cos.items()],
+            "company": company if company in cos else "",
+            "elsewhere": len(hidden),          # machines left out because they are another company's
             "analytics": an, "at": time.time()}
+
+
+@app.put("/api/devices/company")
+async def api_device_company(body: dict):
+    """Say which of your companies a machine is for, or none (`company` empty). It changes which
+    boards show the machine; what an agent may read or switch there is still decided by the gate."""
+    from . import devboard
+    b = body or {}
+    key, cid = str(b.get("machine") or "")[:120], str(b.get("company") or "").strip().lower()[:64]
+    me = usersmod.current() or ""
+    mine = [m for o in (sorted({"", me}) if usersmod.is_admin(me) else [me]) for m in _board_machines(o)]
+    hit = next((m for m in mine if devboard.machine_key(m) == key), None)
+    if not hit and not (key.startswith("demo:") and _demo_shows(me)):
+        return JSONResponse({"error": "no machine of yours by that name"}, 404)
+    cos, cmap = _device_companies()
+    if cid and cid not in cos:
+        return JSONResponse({"error": "you keep no company by that id"}, 400)
+    cmap.pop(key, None)
+    if cid:
+        cmap[key] = cid
+    cfg = state["cfg"]
+    cfg["device_companies"] = cmap
+    cfgmod.save_config(cfg)
+    name = hit["machine"] if hit else key[5:]
+    _ledger("device.company", f"device:{name.lower()}", f"{name} is for {cos[cid]}" if cid else f"{name} is for no company")
+    await state["broadcast_user"]({"type": "device_alarm", "phase": "company"}, me)
+    return {"ok": True, "machine": key, "company": cid, "company_name": cos.get(cid, "")}
 
 
 def _demo_shows(me: str) -> bool:

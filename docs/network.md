@@ -904,3 +904,35 @@ both machines; never with its password).
 
 Not tested: a real Raspberry Pi, and Raspberry Pi OS's own `systemctl reload ssh`. The container
 has no systemd, so the reload there came from the `ssh` init script.
+
+## Which company a machine is for
+
+A machine belongs to the account that set it up. It is not tied to a company, and until now
+nothing about a machine named one. If you keep several companies you can say which one each
+machine is for.
+
+On the Devices scene, each machine has a company picker in its header (it appears once you keep
+two companies). **Every company** is the default.
+
+![A machine given to one company, on that company's desktop](screenshots/devices-company.png)
+
+What it changes: a Devices desktop that opens a company shows that company's machines, their
+alarms and their rules, plus the machines given to no company. If none are for that company the
+board says how many are elsewhere and offers to show them all.
+
+![A company with no machines yet](screenshots/devices-company-none.png)
+
+What it does not change: it is a view. What an agent may read or switch on a machine is still
+decided by the permissions in Devices → What agents may use, and every switch is still asked.
+Which department answers a Zero's own chat is a separate setting, Team to agent mapping.
+
+From a terminal:
+
+```
+bento network company                      # every machine and its company
+bento network company zone-cold Borealis   # give it to a company
+bento network company zone-cold none       # back to every company
+```
+
+Each change is a `device.company` row in the ledger. A company you remove frees its machines.
+
