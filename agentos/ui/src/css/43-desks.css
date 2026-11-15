@@ -1,0 +1,90 @@
+/* What a desktop shows, chosen on the desktop (03-virtual-desktops.js): the menu-bar button, its
+   menu, and the App Hub scene (01i-apphub.js). Colours are mixed from the theme's tokens, so it
+   reads on every theme, and nothing here blurs. */
+#deskbtn{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 7px;border-radius:var(--r-sm);
+  font-size:var(--fs-2xs);font-weight:650;color:var(--dim);border:1px solid transparent;white-space:nowrap;flex:none;max-width:210px}
+#deskbtn:hover,#deskbtn[aria-expanded=true]{background:color-mix(in srgb,var(--txt) 10%,transparent);color:var(--txt)}
+#deskbtn:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+#deskbtn .dkb-l{overflow:hidden;text-overflow:ellipsis}
+#deskbtn .dkb-c{opacity:.6;font-size:9px}
+/* A phone's menu bar is shorter than a fingertip, so there the button stands on the desktop,
+   under the bar, at full tap size. A window on a phone is a sheet over everything: it goes. */
+body.dev-mobile #deskbtn{position:fixed;z-index:6;top:calc(var(--mbh) + var(--safe-t,0px) + 6px);right:10px;
+  height:var(--tap);min-width:var(--tap);padding:0 12px;font-size:var(--fs-xs);max-width:62vw;color:var(--txt);
+  background:color-mix(in srgb,var(--bg2) 86%,transparent);border-color:color-mix(in srgb,var(--txt) 16%,transparent);border-radius:999px}
+body.dev-mobile.has-win #deskbtn,body.dev-mobile.deck-full #deskbtn,body.kiosk #deskbtn{display:none}
+body.dev-mobile.imm-devices #devscene{top:calc(var(--mbh) + var(--safe-t,0px) + var(--tap) + 14px)}
+
+
+#deskmenu{position:fixed;z-index:9000;width:min(340px,calc(100vw - 16px));max-height:calc(100vh - 80px);overflow:auto;
+  padding:12px 14px 14px;border-radius:var(--r-lg);background:var(--bg2);color:var(--txt);
+  border:1px solid color-mix(in srgb,var(--txt) 14%,transparent);box-shadow:var(--el-4);font-family:var(--sans)}
+#deskmenu h3{margin:0 0 2px;font-size:var(--fs-md);font-weight:700}
+#deskmenu h4{margin:12px 0 6px;font-size:var(--fs-2xs);font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
+#deskmenu .dkm-main{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+#deskmenu .dkm-more,#deskmenu .dkm-co{display:flex;flex-wrap:wrap;gap:6px}
+#deskmenu .dkm-s,#deskmenu .dkm-c{display:flex;align-items:center;gap:6px;min-height:32px;padding:5px 10px;border-radius:var(--r-md);
+  border:1px solid color-mix(in srgb,var(--txt) 14%,transparent);background:color-mix(in srgb,var(--txt) 5%,transparent);
+  color:var(--txt);font-size:var(--fs-sm);text-align:left}
+#deskmenu .dkm-main .dkm-s{flex-direction:column;justify-content:center;gap:3px;padding:10px 4px;text-align:center}
+#deskmenu .dkm-main .dkm-s i{font-style:normal;font-size:20px;line-height:1}
+#deskmenu .dkm-more .dkm-s i{font-style:normal;opacity:.75}
+#deskmenu .dkm-s:hover,#deskmenu .dkm-c:hover{background:color-mix(in srgb,var(--txt) 11%,transparent)}
+#deskmenu .dkm-s.on,#deskmenu .dkm-c.on{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 18%,transparent);font-weight:650}
+#deskmenu .dkm-s:focus-visible,#deskmenu .dkm-c:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+#deskmenu .dkm-c small{color:var(--dim);font-size:var(--fs-2xs);font-weight:500}
+#deskmenu .dkm-note{margin:8px 0 0;font-size:var(--fs-xs);color:var(--dim);line-height:1.4}
+#deskmenu .dkm-rm{margin-top:14px}
+body.dev-touch #deskmenu .dkm-s,body.dev-touch #deskmenu .dkm-c,body.dev-touch #deskmenu .endbtn{min-height:var(--tap)}
+
+/* ---- the App Hub scene ----
+   Widgets first, as a board; the apps under them; the chat docked on the right (the Devices scene's
+   panel, 39-devscene.css, open by default here). */
+#apphub{position:absolute;z-index:4;left:16px;right:16px;top:calc(var(--mbh,28px) + 14px);bottom:100px;overflow:auto;
+  overscroll-behavior:contain;display:flex;flex-direction:column;gap:22px;color:var(--txt);font-family:var(--sans);
+  scrollbar-width:thin;padding:2px 4px 12px 2px;container-type:inline-size}
+#apphub[hidden],body:not(.imm-apps) #apphub{display:none}
+body.has-win #apphub,body.deck-full #apphub,body.exposing #apphub{opacity:0;pointer-events:none}
+body.imm-apps .hm-greet,body.imm-apps .hm-chips,body.imm-apps .hm-play,body.imm-apps .hm-now,body.imm-apps .hm-links{display:none!important}
+@media (min-width:901px){
+  /* the folded bar sits over the top right corner, so the first heading keeps clear of it */
+  body.imm-apps:not(.dev-mobile) #apphub{transition:right var(--dvc-t) var(--ease-out)}
+  body.imm-apps:not(.dev-mobile) #apphub>section:first-child>header{padding-right:calc(var(--dvc-pill) + 26px);min-height:66px}
+  body.imm-apps.dvc-open:not(.dev-mobile) #apphub{right:calc(var(--dvc-w) + 30px)}
+  body.imm-apps.dvc-open:not(.dev-mobile) #apphub>section:first-child>header{padding-right:0;min-height:34px}
+  body.lite-screen.imm-apps{--dvc-t:0ms}
+}
+@media (max-width:900px){
+  body.imm-apps #apphub{bottom:156px;left:10px;right:10px}
+}
+#apphub section>header{display:flex;align-items:center;gap:10px;margin:0 2px 10px;min-height:34px}
+#apphub h2{margin:0;font-size:var(--fs-lg);font-weight:700}
+#apphub section>header .endbtn{margin-left:auto}
+#apphub section>header .mut{color:var(--dim);font-size:var(--fs-sm)}
+/* the board: every widget a card on one grid, a large one two columns wide */
+#apphub .ah-board{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px;align-items:start;grid-auto-flow:dense}
+#apphub .ah-board .deck-group{width:auto;padding:0;gap:0;overflow:hidden;border-radius:var(--r-lg);
+  background:color-mix(in srgb,var(--bg2) 90%,transparent);border:1px solid color-mix(in srgb,var(--txt) 12%,transparent)}
+#apphub .ah-board .deck-group:has(.db-l){grid-column:span 2}
+#apphub .ah-board .deck-gname{padding:9px 12px;font-size:var(--fs-sm);font-weight:650;letter-spacing:0;text-transform:none;color:var(--txt)}
+#apphub .ah-board .deck-wframe{border-radius:0;border:0;border-top:1px solid color-mix(in srgb,var(--txt) 10%,transparent)}
+@container (max-width:560px){#apphub .ah-board .deck-group:has(.db-l){grid-column:auto}}
+#apphub .deck-empty{grid-column:1/-1;margin:0;display:flex;flex-direction:column;gap:8px;padding:18px;border-radius:var(--r-lg);
+  border:1px dashed color-mix(in srgb,var(--txt) 22%,transparent);background:color-mix(in srgb,var(--bg2) 70%,transparent);
+  color:var(--dim);font-size:var(--fs-sm);line-height:1.45}
+#apphub .deck-empty b{color:var(--txt);font-size:var(--fs-md)}
+#apphub .deck-empty .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+/* the apps: every group on one sheet, side by side while there is room */
+#apphub .ah-groups{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;align-items:start}
+#apphub .ah-g{width:auto;background:color-mix(in srgb,var(--bg2) 82%,transparent)}
+#apphub .deck-tiles{grid-template-rows:none;grid-auto-flow:row;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:6px 4px}
+#apphub .deck-tile{width:auto;min-width:0;padding:10px 4px 8px;gap:7px}
+#apphub .deck-tile span{max-width:100%;font-size:var(--fs-xs)}
+body.dev-mobile #apphub{top:calc(var(--mbh) + var(--safe-t,0px) + var(--tap) + 14px)}
+
+/* the Devices scene: which company a machine is for, and which company a board is for */
+.dvs-m h2 .dvs-co{font-size:var(--fs-xs);max-width:150px;height:24px;padding:0 6px;border-radius:var(--r-sm);
+  border:1px solid color-mix(in srgb,var(--txt) 16%,transparent);background:color-mix(in srgb,var(--txt) 6%,transparent);color:var(--txt)}
+body.dev-touch .dvs-m h2 .dvs-co{height:var(--tap)}
+.dvs-head h1 .dvs-for{font-size:var(--fs-sm);font-weight:600;color:var(--dim);margin-left:6px;vertical-align:middle}
+#pager .pgb[data-scene=apps] .pgs{color:var(--acc)}

@@ -121,13 +121,22 @@ function exposeSpaces(){
     };
   });
   const add=$('#sp-add');
-  if(add)add.onclick=()=>{DESKS++;localStorage.setItem('desks',DESKS);buildPager();exposeSpaces()};
+  if(add)add.onclick=()=>{DESKS++;localStorage.setItem('desks',DESKS);
+    try{localStorage.removeItem('immersive.scene.d'+DESKS);localStorage.removeItem('desk.company.d'+DESKS)}catch(e){}
+    buildPager();exposeSpaces()};
 }
 function removeDesk(n){
   if(DESKS<=1)return;
   deskWins(n).forEach(w=>{w.desk=Math.max(1,n-1)});     // never orphan a window
+  // the desktops after it move down one, and what each showed moves with it
+  WM.wins.forEach(w=>{if((w.desk||1)>n)w.desk=(w.desk||1)-1});
+  if(typeof deskShift==='function')deskShift(n);
   DESKS--;localStorage.setItem('desks',DESKS);
+  if(curDesk>n){curDesk--;localStorage.setItem('curDesk',curDesk)}
   if(curDesk>DESKS)switchDesk(DESKS);
+  // the desktop in front may be another one now: its scene and its company
+  if(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on){applyImmersive();if(typeof loadWallpaper==='function')loadWallpaper()}
+  if(typeof deskCompanySync==='function')deskCompanySync(curDesk);
   applyDeskVisibility();buildPager();exposeSpaces();exposeGrid();
   toast('desktop removed');
 }

@@ -3705,6 +3705,30 @@ device hub instead of the town … the desktops could be used for switching". Fi
 - **Words and numbers, no frame loop**: a 4 s refresh that skips while hidden or covered, values moved in place by
   `device_live`. It is in `LITE_SCENES`, so a Pi's own screen can show it.
 
+**What a desktop shows is chosen on the desktop: its scene, and the company it opens** (`deskMenu`/`deskBtnPaint`/
+`deskAdd`/`deskShift`/`deskCompanySync` in 03-virtual-desktops.js, `#deskbtn` in shell.html, `01i-apphub.js`,
+`43-desks.css`, `devboard.company_map`/`mark_companies`, `/api/devices/company`, `bento network company`;
+`docs/desktop.md`, `docs/network.md`, `tests/test_desktop_scenes.py`). Asked for as "every desktop I add, I can
+change the scene: Town, Device, App Hub (with widgets) … on the desktop itself. Also a different company in
+different desktops. Check if the devices are locked to the company". Six rules:
+- **The menu acts on the desktop in front**, and a new desktop opens it. On a phone the button is fixed under the
+  menu bar: the bar is 33px tall and a fingertip is not. Built with text nodes (a company's name is the person's).
+- **The App Hub is a scene** (`apps`): widgets first as a board, the deck's groups under them, the chat docked on the
+  right. Nothing is a second list (`deckBoardHTML`, `deckShown`), and `buildDeck` is the one seam that repaints it,
+  skipped when nothing changed (`APPHUB.sig`) or every rebuild reloaded the frames. Widgets are mounted only on a bare
+  desktop (`appHubSync` from `immersiveWinChange`). It is NOT in `LITE_SCENES`: nobody measured its frames on a Pi.
+- **The docked chat is one panel for two scenes**: 39-devscene.css names both (`:is(.imm-devices,.imm-apps)`), and
+  each scene keeps its own choice (`devChatKey`): Devices folded by default, the hub open.
+- **A desktop's company is this browser's** (`desk.company.d<n>`), opened on arrival through `/api/companies/active`.
+  No company means "whichever is open", never a switch back. The open company is the account's, so other browsers
+  follow, and the menu says so. A company that is gone is let go.
+- **A machine belongs to an account, never to a company; `device_companies` (a USER_KEY) is a VIEW.** A board asked
+  `?company=` leaves out other companies' machines with their alarms, history and rules; a machine for none stays;
+  an id that is not theirs filters nothing. It writes no grant: reading and switching are still `device.get`/
+  `device.set`. An empty company board says how many machines are elsewhere (`elsewhere`), never "no devices yet".
+- **Removing a desktop moves the later ones down** with windows, scene and company (`deskShift`). Before, a window on
+  a later desktop kept a number that no longer existed.
+
 **A Zero belongs to an account, and is light** (`provision.zero_key(owner)`, `enable(owner=)`,
 `server._zero_for`, `00k-zeroface.js`, `face.buddy`; `tests/test_zero_accounts.py`, live run
 `packaging/dev/provision-e2e/zero_accounts_run.py`). Asked as "integrations per user, each with their

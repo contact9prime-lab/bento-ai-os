@@ -674,7 +674,7 @@ function handle(ev){
       refreshApp('telegram');break;
     case 'knowledge_update': refreshApp('memory'); refreshApp('kg'); refreshApp('profile'); break;
     case 'assets_update': refreshApp('gallery'); refreshApp('timeline'); break;
-    case 'spaces_update': loadSpaces(true).then(paintSpaceChip); refreshApp('spaces'); break;
+    case 'spaces_update': loadSpaces(true).then(paintSpaceChip); refreshApp('spaces'); if(typeof deskCompaniesLoad==='function')deskCompaniesLoad(); break;
     case 'fabric_event':
       // a flow moved: its mark lights on the dial (heartbeats are not movement)
       if(typeof movementPulse==='function'&&ev.event!=='heartbeat')movementPulse('flow',ev.flow||ev.agent||ev.event,ev);

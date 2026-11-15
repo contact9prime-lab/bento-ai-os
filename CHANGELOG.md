@@ -17,6 +17,29 @@ Both are 20,000 now, and a cut is said.
 (its process killed, an error, out of time) handed back only the error, and the finished steps
 stayed on its board unseen. Now it hands back every finished step in full, the notes its lead
 kept, and what did not finish, marked as unfinished and unchecked.
+## 0.9.11 — 2026-11-15
+
+**Each desktop's scene is chosen on the desktop.** A button beside the pager names what the
+desktop in front shows and opens a menu: Town, Devices and the new App Hub at the top, the other
+scenes under them. Adding a desktop takes you there and opens the menu. On a phone the button sits
+under the menu bar at full tap size.
+
+**App Hub, a new scene.** Your widgets as a board, your apps under them, and the chat docked on
+the right. Widgets run only while the desktop is bare. A small machine's own screen is not
+offered it yet: what its widgets cost there has not been measured.
+
+**A company per desktop.** With two or more companies the menu has a Company row; coming to
+that desktop opens that company. The open company is your account's, so another browser signed
+in as you moves with it.
+
+**A machine can be given to a company.** Machines belong to the account that set them up and
+named no company. Now each machine's header on the Devices scene has a company picker, and a
+Devices desktop that opens a company shows that company's machines, alarms and rules. It is a
+view: what an agent may read or switch is still the permissions in Devices. From a terminal,
+`bento network company`.
+
+**Removing a desktop keeps the later ones whole.** They move down by one with their windows,
+scene and company. Before, a window on a later desktop was left on a number that was gone.
 
 ## 0.9.10 — 2026-11-15
 

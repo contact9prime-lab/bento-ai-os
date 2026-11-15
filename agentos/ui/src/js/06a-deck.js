@@ -204,6 +204,8 @@ function buildDeck(fresh){
   if(DECKFULL&&!board)deckFilter(DECKQ,true);   // a rebuild must not drop the query
   if(open&&(fresh||!DECK_LASTOPEN))deckStagger();
   DECK_LASTOPEN=open;
+  // the App Hub scene (01i) draws the same groups and widgets: one seam keeps it current
+  if(typeof appHubPaint==='function')appHubPaint();
 }
 /* ---- the wall's header: two tabs, a search box, and the way out ----
    The count is on the tab rather than beside a title because the tabs are what

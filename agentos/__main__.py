@@ -4975,6 +4975,8 @@ def _network_cli(args):
         return _esp_cli(rest, args)
     if a == "alarms":
         return _alarm_rules_cli(rest, args)
+    if a == "company":
+        return _device_company_cli(rest)
     if a == "board":
         # the Devices scene in a terminal: the running server holds the newest readings
         import json as _json
@@ -5774,6 +5776,60 @@ def _device_rule_problem(cfg: dict, c: dict) -> str:
     if c.get("item") and c["item"] not in items:
         return f"{m} has nothing called {c['item']} on its hardware list (Devices → its row → Hardware)"
     return ""
+
+
+def _device_company_cli(rest):
+    """`bento network company [MACHINE [COMPANY|none]]`: which of your companies each machine is
+    for. The Devices scene's company picker in a terminal; a view, never a permission."""
+    import json as _json
+    import urllib.error
+    import urllib.request
+    from . import config as _cfgmod
+    base = f"http://127.0.0.1:{_cfgmod.load_config().get('port', 8321)}"
+
+    def ask(path, method="GET", body=None):
+        req = urllib.request.Request(base + path, method=method, data=_json.dumps(body).encode() if body else None,
+                                     headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=10) as r:
+                return _json.loads(r.read() or b"{}")
+        except urllib.error.HTTPError as e:
+            if e.code == 401:
+                sys.exit("  this machine has accounts, so this needs a sign-in: it is on the Devices scene on the desktop")
+            try:
+                sys.exit("  " + str(_json.loads(e.read() or b"{}").get("error") or f"the server said {e.code}"))
+            except ValueError:
+                sys.exit(f"  the server said {e.code}")
+        except OSError as e:
+            sys.exit(f"  the running server keeps this, and it isn't answering at {base} ({e})")
+
+    board = ask("/api/devices/board")
+    cos, ms = board.get("companies") or [], board.get("machines") or []
+    if not rest:
+        if not ms:
+            print("  no devices yet")
+        for m in ms:
+            print(f"  {m.get('machine'):<28} {m.get('company_name') or 'every company'}")
+        if len(cos) < 2:
+            print("\n  A machine can be given to a company once you keep two: bento company new NAME")
+        else:
+            print("\n  bento network company MACHINE COMPANY   (or: none)   companies: "
+                  + ", ".join(c["name"] for c in cos))
+        return
+    m = next((x for x in ms if str(x.get("machine") or "").lower() == rest[0].lower()), None)
+    if not m:
+        sys.exit(f"  no machine called '{rest[0]}': " + (", ".join(x["machine"] for x in ms) or "there are none yet"))
+    want = " ".join(rest[1:]).strip().lower()
+    if not want:
+        sys.exit("  bento network company MACHINE COMPANY   (or: none)")
+    cid = ""
+    if want not in ("none", "any", "every"):
+        c = next((x for x in cos if want in (x["id"].lower(), x["name"].lower())), None)
+        if not c:
+            sys.exit(f"  you keep no company called '{want}': " + (", ".join(x["name"] for x in cos) or "none yet"))
+        cid = c["id"]
+    got = ask("/api/devices/company", "PUT", {"machine": m.get("ckey"), "company": cid})
+    print(f"  {m['machine']} is for {got.get('company_name') or 'every company'}")
 
 
 def _alarm_rules_cli(rest, args):
@@ -10076,7 +10132,7 @@ def main():
     p_net.add_argument("action", nargs="?", default="list",
                        choices=["list", "look", "install", "check", "secure", "letin", "disconnect", "label",
                                 "forget", "hide", "show", "rekey", "firewall", "controls", "switch", "remove", "update", "ties",
-                                "events", "map", "talks", "hardware", "readings", "board", "alarms", "get", "set", "permit", "esp"],
+                                "events", "map", "talks", "hardware", "readings", "board", "alarms", "company", "get", "set", "permit", "esp"],
                        metavar="ACTION",
                        help="list | ties [LINK [sessions|memory|knowledge|logs|update]] | events [MACHINE] | map | "
                             "talks [LINK [lead|DEPARTMENT --company ID]] | "
@@ -10091,7 +10147,7 @@ def main():
                             "remove MACHINE --user U (Bento off it, its data kept) | update MACHINE --user U | "
                             "hardware [MACHINE] [--check] (what a Zero has, down to each sensor) | "
                             "readings MACHINE ITEM [--range day|week|month|quarter] (one sensor over time) | "
-                            "board (every device live, with its alarms) | alarms [add MACHINE ITEM WHEN [VALUE] [for S] [warning] | remove N] | "
+                            "board (every device live, with its alarms) | company [MACHINE COMPANY|none] | alarms [add MACHINE ITEM WHEN [VALUE] [for S] [warning] | remove N] | "
                             "get MACHINE [ITEM] (read it now) | set MACHINE ITEM 1|0 | permit MACHINE [ITEM read|set|off] | "
                             "esp MACHINE [find | add NAME ADDRESS [PORT] [--user U] | look | remove NAME] (its ESP32 nodes)")
     p_net.add_argument("args", nargs="*", help="the machine (its address, name or MAC) and a value")
