@@ -1913,7 +1913,7 @@ class Toolbox(usersmod.Scoped):
             # found on Telegram: asked for a blueprint, Claude Code showed a list titled "Blueprint: …"
             out += (" (this is drawn as a " + scene["kind"] + ", not a blueprint. If the person asked for a "
                     "blueprint, show one with kind blueprint, its parts nested so they can open each; "
-                    "a phone gets it as a walk-through and a PDF)")
+                    "a phone gets it as pictures, a video and a PDF)")
         return out
 
     async def request_capability(self, ability: str, who: str = "", why: str = "",
@@ -7664,7 +7664,7 @@ STAGE_TOOL_SCHEMAS = [
             "weather": {"type": "string", "enum": ["none", "petals", "leaves", "snow", "rain",
                                                    "fireflies", "sparks"], "description": "model: what falls or drifts"},
             "ground": {"type": "string", "enum": ["none", "grass", "water", "sand", "snow", "stone", "space"],
-                       "description": "model: what it stands on"}},
+                       "description": "model: what it stands on; blueprint: space when its 3D form (model) is a thing in space"}},
             "required": ["kind", "title"]},
     },
 ]

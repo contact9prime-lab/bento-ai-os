@@ -373,6 +373,23 @@ class BaileysTransport:
             self.store.log("whatsapp", f"→ sent a picture: {(caption or '')[:120]}")
         return "sent via WhatsApp"
 
+    async def send_video(self, mp4: bytes, caption: str, wa_id: str) -> str:
+        """A video that plays in the chat (mp4), base64 in one frame like a picture."""
+        if self.state != "ready":
+            return (f"[error] the WhatsApp link is not connected "
+                    f"({self.state}{': ' + self.error if self.error else ''})")
+        if len(mp4) > LINK_FILE_LIMIT:
+            return "[error] the video is too big for the WhatsApp link"
+        import base64
+        to = self._jids.get(wa_id) or wa_id
+        ok = await self._write({"type": "video", "to": to, "caption": caption or "",
+                                "data": base64.b64encode(mp4).decode()})
+        if not ok:
+            return "[error] the WhatsApp bridge is not running"
+        if self.store:
+            self.store.log("whatsapp", f"→ sent a video: {(caption or '')[:120]}")
+        return "sent via WhatsApp"
+
     async def send_document(self, path: str, caption: str, wa_id: str) -> str:
         """A file, base64 in one frame like a picture. Capped at LINK_FILE_LIMIT, because
         the whole file travels as one line over stdio."""

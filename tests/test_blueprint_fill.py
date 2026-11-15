@@ -28,6 +28,10 @@ PAINTER = (ROOT / "agentos/ui/src/js/24v-blueprint.js").read_text()
 def _outline():
     sc, _ = stage.clean({"kind": "blueprint", "title": "Jet engine", "form": "exploded",
                          "source": "outline",
+                         # it came with its 3D form, so these tests are about the parts only
+                         # (a blueprint with none is asked for one: tests/test_blueprint_video.py)
+                         "model": [{"shape": "cylinder", "at": [0, 0, 0], "size": [3, 2, 3], "part": "Fan"},
+                                   {"shape": "cylinder", "at": [0, 2, 0], "size": [2, 4, 2], "part": "Compressor"}],
                          "facts": [{"label": "thrust", "value": "120", "unit": "kN"}],
                          "parts": [{"name": "Fan", "role": "moves most of the air"},
                                    {"name": "Compressor", "role": "squeezes air"},

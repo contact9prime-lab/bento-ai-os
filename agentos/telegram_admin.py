@@ -182,7 +182,7 @@ class Console:
             t["clips"] = arg.lower() == "on"
             cfgmod.save_config(self.tg.cfg)
         on = t.get("clips", True) is not False
-        return ("▶ When a story builds something in 3D, I'll send a video of it with sound after the pictures."
+        return ("▶ When a story builds something in 3D, or is a blueprint, I'll send a video of it with sound after the pictures."
                 if on else "▶ Pictures only. /clips on brings the videos back.")
 
     # --------------------------------------------------------- companies

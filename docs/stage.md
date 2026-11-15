@@ -182,11 +182,23 @@ the nearer the faster.
 the rise, the light coming on, then a turn round the named things with their notes. It takes as
 long to make as it runs, about half a minute.
 
-In Telegram the same video arrives after the pictures, for up to two scenes of a story. If this
-machine has a voice (Settings → Voice), the story is read over it. `/clips off` in the chat goes
-back to pictures only. It needs a browser on this machine. A browser that can only record webm
-has it turned into mp4 by ffmpeg when ffmpeg is installed, and it's sent as a file otherwise.
-WhatsApp still gets pictures.
+In Telegram and WhatsApp the same video arrives after the pictures, for up to two scenes of a
+story. If this machine has a voice (Settings → Voice), the story is read over it. `/clips off` in
+the chat goes back to pictures only. It needs a browser on this machine. A browser that can only
+record webm has it turned into mp4 by ffmpeg when ffmpeg is installed; Telegram then gets it as a
+file otherwise, and WhatsApp, which plays only mp4, gets none. WhatsApp takes 16 MB, so a bigger
+video is made smaller first, which also needs ffmpeg.
+
+**A blueprint always gets one.** When the agent shows a blueprint of a thing without a 3D form,
+Bento asks for one while the parts fill in, so it opens in 3D on your screen and goes to your
+phone built and toured. Something in space is drawn among the stars.
+
+![A black hole blueprint as a video: built in 3D in space, each part named in turn](screenshots/stage-blueprint-video-3d.png)
+
+A blueprint of a process has no shape. Its video walks through the pictures your phone was sent
+(the parts, how it works, each part opened), with the words under each one.
+
+![A blueprint walked through picture by picture, its words under each](screenshots/stage-blueprint-video-walk.png)
 
 ![Four moments of the video a phone gets: the plan in ink, the model raised on paper, the lit garden, and the tour stopped at the bridge with its note](screenshots/stage-clip-frames.png)
 
