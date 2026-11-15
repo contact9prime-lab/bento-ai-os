@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.17 — 2026-11-15
+
+**A new machine's agent is called Bento.** It was Aria. Setup still asks first: keep it or type
+your own. A machine already set up keeps the name it has.
+
+**Only your voice wakes it.** Each person can record a voice print: say the wake word three
+times in the setup step, or under Settings → Voice → Listening, and the screen then ignores the
+wake word from voices it does not know. It is a filter. It never signs anybody in or approves
+anything, and a recording of you could pass it. The print is kept in your own home on the
+machine and the recordings are thrown away. It needs a speaker model first, about 70 MB,
+Apache-2.0, installed in your home folder when you say yes. From a terminal, `bento face print`.
+
 ## 0.9.16 — 2026-11-15
 
 No release notes were written for this one; the commits since 0.9.15 are what changed (`bento update` lists them).

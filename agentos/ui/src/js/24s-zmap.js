@@ -238,9 +238,9 @@ function zmLogical(tree){
         children:[...zmTieGroup(d.ties,d.name,`t:${ci}:${di}`),...(d.people||[]).map(p=>person(p,`p:${ci}:${di}`))]})),
       ...(c.people||[]).map(p=>person(p,`p:${ci}`)),
       ...(c.auditor?[person({...c.auditor,label:c.auditor.name+' (auditor)'},`a:${ci}`)]:[])]}));
-  return {id:'lead',label:L.name||'Aria',kind:'lead',kindWord:'lead agent',big:true,img:zmAvatar('@agent'),
+  return {id:'lead',label:L.name||'Bento',kind:'lead',kindWord:'lead agent',big:true,img:zmAvatar('@agent'),
     detail:()=>zmPersonDetail({...L,lead:true}),
-    children:[...zmTieGroup(L.ties,L.name||'Aria','tl'),...companies]};
+    children:[...zmTieGroup(L.ties,L.name||'Bento','tl'),...companies]};
 }
 function zmPhysical(v){
   const rows=(v.rows||[]).filter(r=>!r.ignored),ties=(v.ties||[]).filter(t=>!t.stale);

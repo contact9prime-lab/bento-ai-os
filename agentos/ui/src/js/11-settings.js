@@ -312,7 +312,7 @@ function setTab(body,all){
        11e-hands.js draws the list and the map. */
     P.push(`<h2>Agents</h2><p class="lead">Your lead agent and the agents it works with. ${pInfo('Each one gets a brain, an executor, permissions and skills. Everything they do is logged.')}</p>`);
     P.push(pGroup('Lead agent',[
-      pRow('Name',pText('s-name',cfg.agent_name||'Aria'),{desc:'What your agent is called everywhere.',f:'agent name'}),
+      pRow('Name',pText('s-name',cfg.agent_name||'Bento'),{desc:'What your agent is called everywhere.',f:'agent name'}),
       // the character is part of who the agent is, so it is edited HERE as well as in
       // Appearance — looking for it on the agent's own page and not finding it was the report
       pRow('Look',`<button class="endbtn av-set-btn" onclick="avatarEdit('@agent')" title="Change how your agent looks">${avatarImg('@agent','av-set')}Change…</button>`
@@ -911,7 +911,7 @@ async function paintModelPicker(refresh){
         +'</option>').join('')+'</optgroup>';
     };
     const none=cur.executor?'':'<option value="" selected>Nothing set</option>';
-    ex.innerHTML=none+grp('Models, answered by '+((cfg&&cfg.agent_name)||'Aria'),'provider')
+    ex.innerHTML=none+grp('Models, answered by '+((cfg&&cfg.agent_name)||'Bento'),'provider')
                 +grp('Other agents','agent');
   }
   const chosen=list.find(e=>e.id===cur.executor);
@@ -978,7 +978,7 @@ async function saveSettings(){
   const patch={};
   put(patch,'workspace',val('s-workspace'));
   if(val('s-steps')!==undefined)patch.max_steps=+val('s-steps')||25;
-  if(val('s-name')!==undefined)patch.agent_name=(val('s-name')||'').trim()||'Aria';
+  if(val('s-name')!==undefined)patch.agent_name=(val('s-name')||'').trim()||'Bento';
   /* NOT folders: this page no longer edits them, and sending the key at all
      would send an empty list and silently unshare everything. */
   if(on('s-sb-on')!==undefined)patch.sandbox={enabled:on('s-sb-on'),root:(val('s-sb-root')||'').trim()};
@@ -1278,7 +1278,7 @@ function paintEngineSelect(d){
   const rows=((d&&d.roster)||[]);
   if(!rows.length)return;                       // leave "checking…" rather than lie
   sel.innerHTML=rows.map(r=>{
-    const label=r.builtin?((cfg.agent_name||'Aria')+' (the built-in agent)')
+    const label=r.builtin?((cfg.agent_name||'Bento')+' (the built-in agent)')
       :r.installed?(r.title+(r.version?' · '+r.version:''))
       :(r.title+' · '+(r.why_not||'not installed'));
     return `<option value="${esc(r.id)}"${r.id===cur?' selected':''}${

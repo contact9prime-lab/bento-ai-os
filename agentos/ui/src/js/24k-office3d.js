@@ -157,7 +157,7 @@ function of3Seat(){
   O.L.rooms.forEach(r=>{
     if(r.kind==='lead'){
       const at=of3LeadSeat(r);
-      seen['@agent']=officePerson(keep['@agent'],'@agent',(typeof agentName==='function'?agentName():'Aria'),r,at.x,at.y,true);
+      seen['@agent']=officePerson(keep['@agent'],'@agent',(typeof agentName==='function'?agentName():'Bento'),r,at.x,at.y,true);
       Object.assign(seen['@agent'].home,{fx:at.fx,fy:at.fy,boss:1});
       seen['@agent'].bench=false;
     }

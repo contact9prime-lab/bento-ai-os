@@ -97,8 +97,8 @@ def test_a_fresh_machine_has_nothing_done(store):
 
 
 def test_the_shipped_default_name_is_not_evidence_anybody_chose_it(store):
-    assert by_id(ob.state({"agent_name": "Aria"}, store))["name"]["status"] == "todo"
-    assert by_id(ob.state({"agent_name": "Bento"}, store))["name"]["status"] == "done"
+    assert by_id(ob.state({"agent_name": "Bento"}, store))["name"]["status"] == "todo"
+    assert by_id(ob.state({"agent_name": "Aria"}, store))["name"]["status"] == "done"
 
 
 def test_the_seeded_agents_and_flow_do_not_tick_their_steps(store):
@@ -195,7 +195,7 @@ def test_unskipping_offers_it_again(store):
 
 
 def test_everything_answered_counts_as_finished(store):
-    cfg = {"agent_name": "Bento", "default_model": "ollama/x",
+    cfg = {"agent_name": "Juno", "default_model": "ollama/x",
            "telegram": {"enabled": True, "bot_token": "t", "owner_chat_id": 1},
            "desktop": {"theme": "bento"},
            # the crew step: an office somebody created (its characters come with it)

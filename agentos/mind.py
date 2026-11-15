@@ -52,7 +52,7 @@ def snapshot(store, cfg: dict, running: set | None = None, now: float | None = N
     now = now or time.time()
     since = now - WEEK
     running = set(running or ())
-    lead = str(cfg.get("agent_name") or "Aria")
+    lead = str(cfg.get("agent_name") or "Bento")
     agents = [d for d in store.list_subagents()
               if d.get("enabled") is not False and "@" not in d["name"]]
 

@@ -222,7 +222,7 @@ function movementDraw(dt){
   ctx.beginPath();ctx.arc(cx,cy,R*.16,0,Math.PI*2);ctx.strokeStyle=`rgba(${ink.brass},${.14+.22*breath})`;ctx.lineWidth=1;ctx.stroke();
   if(running){ctx.beginPath();ctx.arc(cx,cy,R*.16*(1+.06*breath),0,Math.PI*2);ctx.fillStyle=`rgba(${ink.brass},${.03+.05*breath})`;ctx.fill()}
   ctx.beginPath();ctx.arc(cx,cy,3,0,Math.PI*2);ctx.fillStyle=`rgba(${ink.ruby},${running?.95:.6})`;ctx.fill();
-  const who=(typeof agentName==='function')?agentName():'Aria';
+  const who=(typeof agentName==='function')?agentName():'Bento';
   const brain=(typeof immersiveBrainText==='function'?immersiveBrainText():'').split(' · ')[0];
   movementText(ctx,'SOUL · '+who.toUpperCase(),cx,cy+R*.16+16,10,ink.brass,.5,600);
   if(brain)movementText(ctx,'CAL. '+brain.toUpperCase(),cx,cy+R*.16+31,9,ink.brass,.3,500);

@@ -131,7 +131,7 @@ function micToggle(){
   rec.onerror=e=>toast('mic: '+e.error);
   rec.start();recOn=true;$('#mic')?.classList.add('rec');
 }
-function agentName(){return (cfg&&cfg.agent_name)||'Aria'}
+function agentName(){return (cfg&&cfg.agent_name)||'Bento'}
 
 /* ================= a voice per agent =================
    With voice on, or in Jarvis mode, a huddle, a free talk and one agent asking another
