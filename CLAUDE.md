@@ -2878,6 +2878,11 @@ pins what follows; `docs/mind.md` is the story.
   asked for "neurons in standby sending signals anyway", so `mindGlint` sends pale glints along
   the real fibres at a few a second: scenery like the fibres' drift, small and white, and it
   never flares a cluster or touches `MIND.sparks`. Keep the two apart or a glint reads as news.
+- **The voice moves the core's EDGE, never its size** (`MIND_CORE`, `mindCoreR`). Reported with a screenshot:
+  speaking, the radius went 35 to 74, the halo to 325px at 80% white and the rings to 318px, all additive, so
+  the centre was a white disc about 220px across. Measured after on the same data: 81px. Every reach is a
+  multiple of the radius and a Node test bounds them. `mindTell` adds `body.mind-telling`, which moves the
+  prompt bar aside (the words ran under it); `mindStop` takes it off.
 - **The core speaks with the SOUND.** `mindTap` puts an analyser on `SPEECH.audio` and
   `mindVoice` shapes the soma's edge from its bands and sends a ripple on each syllable. It was
   a timer ("the centre is just beeping"). The tap routes the voice through an AudioContext,

@@ -74,7 +74,7 @@ function mindStop(){
   if(MIND.telling&&typeof speechStop==='function')speechStop();
   document.body.classList.remove('mind-peace');
   if(MIND.host)MIND.host.remove();if(MIND.ui)MIND.ui.remove();
-  MIND.host=MIND.ui=MIND.cv=MIND.ctx=null;MIND.snap=null;MIND.sparks=[];MIND.glints=[];MIND.ripples=[];MIND.layout=null;MIND.bg=null;MIND.open='';MIND.telling=false;
+  document.body.classList.remove('mind-telling');MIND.host=MIND.ui=MIND.cv=MIND.ctx=null;MIND.snap=null;MIND.sparks=[];MIND.glints=[];MIND.ripples=[];MIND.layout=null;MIND.bg=null;MIND.open='';MIND.telling=false;
 }
 /* The picture, once now, again a second or so after things happen, and once a minute
    so a memory saved from a phone shows up without an event of its own. */
@@ -391,31 +391,41 @@ function mindVoice(t,state){
   A.lvl+=(lvl-A.lvl)*(lvl>A.lvl?.55:.18);
   // a syllable's onset sends a ripple out of the core and a few signals down the fibres
   const now=performance.now();
-  if(rise>.14&&now-MIND.lastPk>150&&!MIND.still){MIND.lastPk=now;
-    MIND.ripples.push({at:now,dur:1100,k:A.lvl});if(MIND.ripples.length>8)MIND.ripples.shift();
+  if(rise>.14&&now-MIND.lastPk>260&&!MIND.still){MIND.lastPk=now;
+    MIND.ripples.push({at:now,dur:1100,k:A.lvl});if(MIND.ripples.length>MIND_CORE.rings)MIND.ripples.shift();
     for(let i=0;i<2+Math.round(A.lvl*2);i++)mindGlint(true)}
   return {level:A.lvl,bins:A.bins};
 }
+/* How far the core reaches, in multiples of its radius, and the radius itself: energy (0 to 1)
+   and the voice's level (0 to 1) may add at most 13px to a 30px core. */
+var MIND_CORE={base:30,energy:8,voice:5,halo:3.4,ring:2.85,edge:.32,rings:4};
+function mindCoreR(e,level){return MIND_CORE.base+Math.max(0,Math.min(1,e))*MIND_CORE.energy+Math.max(0,Math.min(1,level))*MIND_CORE.voice}
 function mindCore(g,cx,cy,t,state,v){
   const e=MIND.energy,still=MIND.still,ph=mindPhone()?.8:1,now=performance.now();
-  const R=(30+e*20+v.level*24)*ph,T=still?0:t/1000;
+  // The voice moves the EDGE of the core, never its size. Reported with a screenshot ("the mind
+  // animation is so screwed"): speaking, the radius went from 35 to 74, the halo to 325px at
+  // 80% white and the rings to 318px, all added together, so the middle of the picture was one
+  // white disc with lumpy rings across the clusters. MIND_CORE holds every reach to a bound a
+  // test checks: the core stays under 50px, its glow under 160, a ring under 130.
+  const R=mindCoreR(e,v.level)*ph,T=still?0:t/1000,HR=R*MIND_CORE.halo;
   g.globalCompositeOperation='lighter';
-  const halo=g.createRadialGradient(cx,cy,0,cx,cy,R*4.4);
-  halo.addColorStop(0,`rgba(255,244,230,${.5+e*.3})`);
-  halo.addColorStop(.12,`rgba(255,196,140,${.32+e*.3+v.level*.2})`);
-  halo.addColorStop(.35,`rgba(150,120,255,${.12+e*.12})`);
+  const halo=g.createRadialGradient(cx,cy,0,cx,cy,HR);
+  halo.addColorStop(0,`rgba(255,244,230,${.34+e*.12})`);
+  halo.addColorStop(.12,`rgba(255,196,140,${.2+e*.14+v.level*.1})`);
+  halo.addColorStop(.35,`rgba(150,120,255,${.1+e*.08})`);
   halo.addColorStop(1,'rgba(40,60,160,0)');
-  g.fillStyle=halo;g.beginPath();g.arc(cx,cy,R*4.4,0,Math.PI*2);g.fill();
+  g.fillStyle=halo;g.beginPath();g.arc(cx,cy,HR,0,Math.PI*2);g.fill();
   // ripples: out of the core on a spoken syllable, in towards it while listening
   MIND.ripples=MIND.ripples.filter(r=>now-r.at<r.dur);
   if(state==='listening'&&!still&&(!MIND.ripples.length||now-MIND.ripples[MIND.ripples.length-1].at>700))
     MIND.ripples.push({at:now,dur:1400,k:.5,inward:true});
   MIND.ripples.forEach(r=>{
-    const u=(now-r.at)/r.dur,rr=r.inward?R*(3.4-u*2.2):R*(1.1+u*3.2);
-    g.strokeStyle=`rgba(255,${r.inward?'220,190':'205,160'},${(1-u)*(.18+r.k*.28)})`;g.lineWidth=1+r.k*1.2;
+    const u=(now-r.at)/r.dur,far=MIND_CORE.ring,rr=r.inward?R*(far-u*(far-1.15)):R*(1.15+u*(far-1.15));
+    g.strokeStyle=`rgba(255,${r.inward?'220,190':'205,160'},${(1-u)*(.1+r.k*.16)})`;g.lineWidth=1+r.k*.6;
     g.beginPath();
-    for(let k=0;k<=48;k++){const th=k/48*Math.PI*2,w=1+.05*Math.sin(th*5+u*6+r.at)+.04*Math.sin(th*3-u*4);
-      const x=cx+Math.cos(th)*rr*w,y=cy+Math.sin(th)*rr*w*.92;k?g.lineTo(x,y):g.moveTo(x,y)}
+    // a ring is nearly round: the 9% wobble and the squash read as a lumpy blob at this size
+    for(let k=0;k<=48;k++){const th=k/48*Math.PI*2,w=1+.025*Math.sin(th*5+u*6+r.at)+.02*Math.sin(th*3-u*4);
+      const x=cx+Math.cos(th)*rr*w,y=cy+Math.sin(th)*rr*w;k?g.lineTo(x,y):g.moveTo(x,y)}
     g.stroke();
   });
   // the soma: a cell body, never a perfect circle. Speaking, its edge is the voice
@@ -427,16 +437,16 @@ function mindCore(g,cx,cy,t,state,v){
     // the edge is a curve and not a staircase
     const th=k/72*Math.PI*2,h=k<=36?k/36:(72-k)/36,f=h*(N-1),i0=Math.floor(f),fr=f-i0;
     const bin=(bins[i0]||0)*(1-fr)+(bins[Math.min(N-1,i0+1)]||0)*fr;
-    const r=R*(1+.08*Math.sin(3*th+T*.9)+.06*Math.sin(5*th-T*1.3)+(state==='thinking'?.05*Math.sin(7*th+T*6):0)+bin*.6);
+    const r=R*(1+.08*Math.sin(3*th+T*.9)+.06*Math.sin(5*th-T*1.3)+(state==='thinking'?.05*Math.sin(7*th+T*6):0)+bin*MIND_CORE.edge);
     const x=cx+Math.cos(th)*r,y=cy+Math.sin(th)*r;k?g.lineTo(x,y):g.moveTo(x,y);
   }
   const body=g.createRadialGradient(cx,cy,0,cx,cy,R*1.5);
-  body.addColorStop(0,'rgba(255,250,240,.95)');body.addColorStop(.45,`rgba(255,200,150,${.55+v.level*.3})`);
+  body.addColorStop(0,'rgba(255,250,240,.95)');body.addColorStop(.45,`rgba(255,200,150,${.5+v.level*.2})`);
   body.addColorStop(1,'rgba(160,120,255,.05)');
   g.fillStyle=body;g.fill();
   g.strokeStyle=`rgba(255,220,190,${.12+e*.12+v.level*.2})`;g.lineWidth=1;g.stroke();
   // the nucleus, and a flicker inside it while thinking
-  const nk=still?1:1+(state==='thinking'?.12*Math.sin(t/90):0)+v.level*.25;
+  const nk=still?1:1+(state==='thinking'?.12*Math.sin(t/90):0)+v.level*.1;
   g.drawImage(mindSprite(28,100,70),cx-R*1.3*nk,cy-R*1.3*nk,R*2.6*nk,R*2.6*nk);
   g.drawImage(mindSprite(40,40,90),cx-R*.7*nk,cy-R*.7*nk,R*1.4*nk,R*1.4*nk);
   g.globalCompositeOperation='source-over';
@@ -653,8 +663,12 @@ function mindTell(){
   const S=MIND.snap;if(!S||typeof speakAs!=='function')return;
   const say=MIND.ui.querySelector('.mn-say');
   say.textContent=S.spoken;say.hidden=false;
+  // the prompt bar steps aside while it is said: the words were running under it
+  document.body.classList.add('mind-telling');
+  // a caret the page left in the bar would keep it up; typing brings it back (it is summoned)
+  const oi=document.getElementById('omni-in');if(oi&&document.activeElement===oi)oi.blur();
   MIND.telling=true;mindKick();
-  speakAs('@agent',S.spoken,()=>{MIND.telling=false;if(say)say.hidden=true;mindKick()});
+  speakAs('@agent',S.spoken,()=>{MIND.telling=false;document.body.classList.remove('mind-telling');if(say)say.hidden=true;mindKick()});
 }
 /* Talking to the lead: Jarvis, with this scene's core as its orb (26-mind.css). */
 function mindTalk(){if(typeof jarvisMode==='function')jarvisMode(true);mindKick()}

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.18 — 2026-11-15
+
+**The Mind keeps its shape while it speaks.** With the lead speaking, the core grew to about
+twice its size and its glow and rings were added on top, so the middle of the picture became one
+white disc with lumpy rings over the clusters. Now the voice moves the core's edge and its size
+barely changes; the glow and the rings stay close to it. The spoken line is shown whole, and the
+prompt bar steps aside while it is said. A linked team's chip no longer sits on the ring.
+
 ## 0.9.16 — 2026-11-15
 
 No release notes were written for this one; the commits since 0.9.15 are what changed (`bento update` lists them).
