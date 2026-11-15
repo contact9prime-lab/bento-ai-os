@@ -10,6 +10,11 @@ value and its note (up to twelve), flies from one to the next, and ends on a boa
 them. A chart's video counts its bars the same way. Coastlines are drawn from three times the
 points, so neighbouring countries meet.
 
+**The music holds.** A video's music was loud for two seconds, almost silent by the seventh, loud
+again at a bell and gone by the end, with a scratching noise cut into bursts at the start. It sounded
+broken. It is now one held chord that stays at the same level to the end, with a soft note as each
+place is counted.
+
 **The picture and the sound stay together.** On a machine drawing in software the picture ran about
 ten seconds behind the sound and the ending was cut off. The video is now drawn on the machine's
 graphics card when it has one (about 30 frames a second where it was 9), and in software otherwise.

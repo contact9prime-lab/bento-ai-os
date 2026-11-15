@@ -884,6 +884,8 @@ things rather than presenting the chart". Six rules:
   encoder ran ten seconds behind the sound, cutting every ending; pausing the recorder did not bring it back.
   Vulkan gives 30 frames a second in step with the sound. ANGLE's GL backends are faster too but the copied
   frame was sometimes half drawn (no land, or no pins): do not use them.
+  The music is `mdlPad`, notes that stay until told to go: every note used to fall away from its first second
+  (loudness a second 2790, 557, 30, then a bell), and the pen was noise gated every 90 ms. Reported as "choppy".
 - **Labels never overlap and the panel holds the rest.** Labels compress, then drop their second line; the
   title block, "you are here" and the links of a tower live in the spec panel. Sized from `clientWidth`, a
   ResizeObserver dropped when the drawing leaves; on a phone the scene scrolls and a tap brings a sheet that

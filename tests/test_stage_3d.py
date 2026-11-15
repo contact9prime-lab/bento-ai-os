@@ -320,3 +320,12 @@ def test_the_recorder_draws_on_the_graphics_card_first_and_in_software_when_ther
     tried.clear()
     asyncio.run(stageclip._film("<html>", {}, 5))
     assert tried == ["soft"]
+
+
+def test_a_clips_music_is_held_to_the_end_and_nothing_in_it_is_cut_into_bursts():
+    """Reported as "the audio in the Telegram is choppy". Measured on the recording: loudness a second went
+    2790, 557, 30, 2837 ... 8, because every note fell away from its first second. Now 2900 to 4200 throughout."""
+    assert "function mdlPad(ctx,master,freqs,vol,at)" in JS and JS.count("=mdlPad(ctx,master,") == 2 and JS.count("    mdlPad(ctx,master,") == 1   # the plan, alive, the walk
+    clip = JS[JS.index("async function mdlClip("):JS.index("function mdlPad(")]
+    assert ",true);" not in clip.split("const noise=")[1].split("let speak=0")[0]      # no noise gated on and off
+    assert "tone(f,0,9.2" not in JS and "tone(f,0,total+.5" not in JS                    # no bed that dies away

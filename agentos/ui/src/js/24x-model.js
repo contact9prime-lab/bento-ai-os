@@ -1342,12 +1342,13 @@ async function mdlClip(box,draw,o){
       bp.frequency.setValueAtTime(f0,t0+at);bp.frequency.exponentialRampToValueAtTime(f1,t0+at+dur);
       ga.gain.setValueAtTime(0,t0+at);ga.gain.linearRampToValueAtTime(vol,t0+at+dur*.4);ga.gain.linearRampToValueAtTime(0,t0+at+dur);
       sr.connect(bp);bp.connect(ga);ga.connect(master);sr.start(t0+at)};
-    const holo=M.style==='hologram',quiet=o.narr?.45:1;
-    [110,164.8,220,261.6,329.6].forEach((f,i)=>tone(f,0,9.2,.05*quiet,i<2?'triangle':'sine'));       // the plan: A minor, held
-    if(!holo)noise(.3,3,3000,3800,.05,true);                                                        // the pen
-    noise(3.1,3.6,180,1400,.06*quiet,false);                                                        // it rises
-    [880,1318.5,1760].forEach((f,i)=>tone(f,8.05+i*.07,2.6,.07,'sine'));                             // it stands
-    [130.8,196,261.6,329.6,392,523.3].forEach((f,i)=>tone(f,8.3+i*.12,30,.04*quiet,i<2?'triangle':'sine'));   // it comes to life: C major, to the end
+    const holo=M.style==='hologram',quiet=o.narr?.45:1,B0=(holo?5.2:M.style==='real'?10.8:8.6)-SKIP;   // when it stands
+    const plan=mdlPad(ctx,master,[110,164.8,220,261.6,329.6],.2*quiet,.05);                          // the plan: A minor, held
+    if(!holo&&!SKIP)noise(.3,3,3000,3800,.035,false);                                               // the pen: a steady hiss (cut into bursts it sounded like a fault)
+    noise(Math.max(.2,B0-5.5),3.6,180,1400,.06*quiet,false);                                        // it rises
+    [880,1318.5,1760].forEach((f,i)=>tone(f,B0-.55+i*.07,2.6,.07,'sine'));                           // it stands
+    plan.off(B0-.6,2.4);
+    const alive=mdlPad(ctx,master,[130.8,196,261.6,329.6,392,523.3],.22*quiet,B0-.4);               // it comes to life: C major, held to the end
     let speak=0;
     if(o.narr){try{const buf=await ctx.decodeAudioData(await (await fetch(o.narr)).arrayBuffer());const sr=ctx.createBufferSource(),ga=ctx.createGain();
       sr.buffer=buf;ga.gain.value=1.5;sr.connect(ga);ga.connect(master);sr.start(t0+.9);speak=buf.duration+.9}catch(e){}}
@@ -1360,12 +1361,13 @@ async function mdlClip(box,draw,o){
     const ended=new Promise(r=>{rec.onstop=r});rec.start(500);const began=performance.now();
     // the build, then round its named things, then the whole once more
     const keep=setInterval(()=>{try{M.gl.zoom(1)}catch(e){}},list?400:3000);   // a drawing at rest paints nothing, and the board is painted with it
-    const built=(holo?5.2:M.style==='real'?10.8:8.6)-SKIP;await wait(built*1000);
+    const built=B0;await wait(built*1000);
     const stops=list||M.gl.named.slice(0,o.stops||5);let k=0;
     for(const n of stops){const note=M.note(n.so);cap={name:n.text,note,k:k++};capAt=performance.now();M.gl.focus(n.i);
+      if(list)tone(659.3,ctx.currentTime-t0,.9,.045,'sine');                                         // each one counted, softly
       await wait(list?Math.max(3000,note.length*62+2400):Math.max(2700,(n.text.length+note.length)*68+1300))}
     cap=null;intro=0;M.gl.focus(null);
-    if(list){await wait(1100);board=performance.now();await wait(1200+list.length*110+3200)}
+    if(list){await wait(1100);board=performance.now();[523.3,784,1046.5].forEach((f,i)=>tone(f,ctx.currentTime-t0+i*.09,2.8,.06,'sine'));await wait(1200+list.length*110+3200)}
     await wait(Math.max(list?300:2200,(speak-(performance.now()-began)/1000)*1000+600));
     clearInterval(keep);const secs=(performance.now()-began)/1000;
     master.gain.linearRampToValueAtTime(0,ctx.currentTime+.4);await wait(450);
@@ -1374,6 +1376,19 @@ async function mdlClip(box,draw,o){
     return {blob:new Blob(chunks,{type:mime.split(';')[0]}),mime:mime.split(';')[0],seconds:secs,frames};
   }catch(e){return null}
   finally{done=true;if(window.MDL_ONFRAME===paint)window.MDL_ONFRAME=null;try{if(rec&&rec.state!=='inactive')rec.stop()}catch(e){}try{if(ctx)ctx.close()}catch(e){}}
+}
+/* A clip's music: notes that come in and STAY until told to go. Each note used to die away from its first second
+   (a ramp up, then an exponential fall across its whole length), so a forty second video was loud for two
+   seconds, near silent by the seventh, loud again at the bell and gone by the end: measured 2790, 557, 30, 2837
+   and 8 in loudness a second. Heard on a phone as "the audio is choppy". Returns {to(vol,at,over), off(at,over)}. */
+function mdlPad(ctx,master,freqs,vol,at){
+  const g=ctx.createGain(),t=ctx.currentTime+(at||0);g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(vol,t+1.4);g.connect(master);
+  // a slow breath, so a held chord is not a drone
+  const lfo=ctx.createOscillator(),lg=ctx.createGain();lfo.frequency.value=.13;lg.gain.value=vol*.18;lfo.connect(lg);lg.connect(g.gain);lfo.start(t);
+  freqs.forEach((f,i)=>{const os=ctx.createOscillator(),ga=ctx.createGain();os.type=i<2?'triangle':'sine';os.frequency.value=f;os.detune.value=(i%2?4:-4);
+    ga.gain.value=1/freqs.length*(i<2?1.25:1);os.connect(ga);ga.connect(g);os.start(t)});
+  const move=(v,when,over)=>{const w=ctx.currentTime+(when||0);g.gain.cancelScheduledValues(w);g.gain.setTargetAtTime(v,w,(over||1.2)/3)};
+  return {to:move,off:(when,over)=>move(0,when,over)};
 }
 /* Stopping a recorder drops the pictures it has not encoded yet. On a machine drawing in software the encoder
    ran ten seconds behind a forty second clip (measured: 43 s of sound, 33 s of picture), so every video lost its
@@ -1410,7 +1425,7 @@ async function mdlWalk(slides,o){
       ga.gain.setValueAtTime(0,t0+at);ga.gain.linearRampToValueAtTime(vol,t0+at+Math.min(1.2,dur*.3));ga.gain.exponentialRampToValueAtTime(.0001,t0+at+dur);
       os.connect(ga);ga.connect(master);os.start(t0+at);os.stop(t0+at+dur+.1)};
     const quiet=voiced?.4:1;
-    [110,164.8,220,261.6,329.6].forEach((f,i)=>tone(f,0,total+.5,.045*quiet,i<2?'triangle':'sine'));   // the sheet: A minor, held
+    mdlPad(ctx,master,[110,164.8,220,261.6,329.6],.2*quiet,.05);                                        // the sheet: A minor, held to the end
     const mime=['video/mp4;codecs=avc1.42E01E,mp4a.40.2','video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'].find(m=>{try{return MediaRecorder.isTypeSupported(m)}catch(e){return false}});
     if(!mime)return null;
     let cur=0,curAt=performance.now(),frames=0;
