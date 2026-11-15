@@ -18,6 +18,28 @@ from the same plan as Telegram. WhatsApp takes 16 MB, so a bigger video is made 
 stays outside the one thing it is, its glass is seen through, and a black middle stays black.
 
 No release notes were written for this one; the commits since 0.9.6 are what changed (`bento update` lists them).
+## 0.9.7 — 2026-11-14
+
+**Sign in from the phone you're holding.** When a page needs your password during a Telegram
+or WhatsApp turn, the message now has an **Open on this phone** button. It sends a link into
+your Bento's remote access. You sign in there, then that one page opens in your phone's
+browser, so you type the password into the real page yourself. Passwords still never go
+through the chat.
+
+- It only goes through remote access. With remote access off nothing is offered, and the
+  message says what turns it on. Somebody who only has the link sees the sign-in page.
+- On a machine with accounts, the link opens only for the account the page is waiting for.
+- It shows only the page that is waiting, for 15 minutes at most, and closes by itself when
+  the site lets you in.
+- The message and the page say whether the connection is encrypted (HTTPS, Tailscale) or only
+  as safe as your Wi-Fi.
+- No agent can open a link. Settings → Remote access has the switch, and `bento handoff`
+  shows and closes what is open.
+
+**Typing a password no longer squeezes the page.** In a Web window narrower than 1280 pixels
+(always, on a phone), the picture shrank into a strip as soon as a password was typed. The
+browser's own password pop-up caused it, and it is off now. The shared browser doesn't offer
+to save passwords; sign-ins last as cookies.
 
 ## 0.9.6 — 2026-11-14
 

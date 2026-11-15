@@ -30,7 +30,7 @@ ACCOUNT_ROUTES = (
     "/api/automations", "/api/avatars", "/api/brain", "/api/brief", "/api/chat", "/api/channels",
     "/api/companies", "/api/company", "/api/conversations", "/api/devices/alarms",
     "/api/drama", "/api/evals", "/api/fabric", "/api/files/which", "/api/flows", "/api/freetalk",
-    "/api/grants", "/api/hands", "/api/hooks", "/api/intent", "/api/jobs", "/api/kg", "/api/knowledge",
+    "/api/grants", "/api/handoff", "/api/hands", "/api/hooks", "/api/intent", "/api/jobs", "/api/kg", "/api/knowledge",
     "/api/logs", "/api/mcp", "/api/memories", "/api/office", "/api/onboarding", "/api/plane/llm",
     "/api/policy/trace", "/api/provision/zero", "/api/quarantine", "/api/remote/login",
     "/api/remote/logout", "/api/session", "/api/setup/say", "/api/shared", "/api/shell/result",

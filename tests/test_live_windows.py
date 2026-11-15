@@ -194,6 +194,8 @@ PAGES = {
     "/login": "<title>Sign in</title><form action=/home><input name=u><input type=password name=p>"
               "<button>Sign in</button></form>",
     "/home": "<title>Orders</title><h1>Your orders</h1><a href=/o/1>Order 1</a>",
+    "/pw": "<title>Sign in</title><body style='margin:0'><form><input type=password "
+           "style='position:absolute;left:20px;top:100px;width:300px;height:48px'></form>",
 }
 
 
@@ -237,6 +239,69 @@ def test_a_sign_in_wall_hands_the_window_over_and_the_agent_carries_on(tmp_path)
             clicked = await cdpbrowser.tool_click(b, text="Order 1")
             assert "clicked" in clicked
             assert (await cdpbrowser.tool_open(b, "file:///etc/passwd")).startswith("[refused]")
+        finally:
+            await cdpbrowser.stop_all()
+    asyncio.run(go())
+    srv.shutdown()
+
+
+def _jpeg_size(b: bytes):
+    i = 2
+    while i < len(b):
+        if b[i] != 0xFF:
+            i += 1
+            continue
+        if b[i + 1] in (0xC0, 0xC1, 0xC2):
+            return int.from_bytes(b[i + 7:i + 9], "big"), int.from_bytes(b[i + 5:i + 7], "big")
+        i += 2 + int.from_bytes(b[i + 2:i + 4], "big")
+
+
+def test_the_shared_profile_has_no_password_popups(tmp_path):
+    import json
+    prof = tmp_path / "profile"
+    (prof / "Default").mkdir(parents=True)
+    (prof / "Default" / "Preferences").write_text(json.dumps({"profile": {"name": "Ada"}, "kept": 1}))
+    cdpbrowser.quiet_prefs(prof)
+    d = json.loads((prof / "Default" / "Preferences").read_text())
+    assert d["credentials_enable_service"] is False and d["profile"]["password_manager_enabled"] is False
+    assert d["autofill"] == {"profile_enabled": False, "credit_card_enabled": False}
+    assert d["profile"]["name"] == "Ada" and d["kept"] == 1          # the rest is kept
+    (prof / "Default" / "Preferences").write_text("{not json")
+    cdpbrowser.quiet_prefs(prof)                                       # a broken file is replaced, never fatal
+    assert json.loads((prof / "Default" / "Preferences").read_text())["credentials_enable_service"] is False
+
+
+@pytest.mark.skipif(not cdpbrowser.binary({}), reason="no Chromium here")
+def test_typing_a_password_keeps_the_picture_the_size_of_the_page(tmp_path):
+    """Found by the sign-in link's live run: in a phone-sized window, typing into a password
+    field made every frame the whole browser window squeezed into the view (390x201)."""
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{srv.server_address[1]}"
+    sizes = []
+
+    async def go():
+        b = await cdpbrowser.get("", {}, tmp_path)
+        try:
+            await b.person({"type": "navigate", "url": base + "/pw"})
+            await asyncio.sleep(1.0)
+
+            async def frame(data):
+                sizes.append(_jpeg_size(data))
+
+            async def state(msg):
+                pass
+            await b.add_viewer(frame, state, 390, 735)
+            await asyncio.sleep(1.0)
+            assert sizes[-1] == (390, 735)
+            n = len(sizes)
+            for op in ({"type": "mouse", "kind": "mousePressed", "x": 100, "y": 124, "button": "left", "clicks": 1},
+                       {"type": "mouse", "kind": "mouseReleased", "x": 100, "y": 124, "button": "left", "clicks": 1},
+                       {"type": "text", "text": "hunter2"}):
+                await b.person(op)
+                await asyncio.sleep(0.6)
+            assert await b._eval("document.querySelector('input').value") == "hunter2"     # it was the field
+            assert len(sizes) > n and set(sizes[n:]) == {(390, 735)}, sizes[n:]
         finally:
             await cdpbrowser.stop_all()
     asyncio.run(go())

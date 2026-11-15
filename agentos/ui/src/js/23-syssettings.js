@@ -276,9 +276,14 @@ let REMOTE={};
    tunnel provider, not config. Kept beside REMOTE because the addresses are
    only meaningful once remote access is on. */
 let TUNNEL={};
+/* Sign-in links (agentos/handoff.py): whether a page the browser is stuck on may be offered
+   on the phone the person is chatting from, through remote access. The machine's switch,
+   changed at the machine. */
+var HANDOFF={};
 async function sysRemote(el){
   try{REMOTE=await (await fetch('/api/remote')).json()}catch(e){REMOTE={}}
   try{TUNNEL=await (await fetch('/api/tunnel')).json()}catch(e){TUNNEL={}}
+  try{HANDOFF=await apiJSON('/api/handoff')}catch(e){HANDOFF={}}
   const on=!!REMOTE.enabled, set=!!REMOTE.configured,
         byAccounts=REMOTE.lock==='accounts';   // the accounts ARE the lock — see remote.py
   el.innerHTML=`
@@ -379,6 +384,17 @@ async function sysRemote(el){
         '<p class="mut" style="margin-top:8px;color:var(--warn)">Restart AgentOS for this to take effect — it is still listening on loopback only.</p>'}
     </div>`:''}
 
+    <div class="provbox" id="rm-handoff">
+      <div class="ptitle">Sign-in links for your phone
+        <label class="psw" style="margin-left:auto"><input type="checkbox" id="rm-ho" ${HANDOFF.enabled?'checked':''}
+          onchange="rmHandoff(this.checked)" aria-label="Offer sign-in links"><i></i></label></div>
+      <p class="mut" style="margin-top:8px;line-height:1.6">When a page needs you to sign in, your agent can offer to open it on the phone you're chatting from.
+        ${pInfo('The link goes through remote access. You sign in there first, then that one page opens, and it closes when you finish.')}</p>
+      ${HANDOFF.enabled&&!HANDOFF.remote?'<p class="mut" style="margin-top:6px;color:var(--warn)">Needs remote access, which is off. Nothing is offered until it is on.</p>':''}
+      ${HANDOFF.open?`<div class="rm-lock"><b>Open now:</b> ${esc(HANDOFF.open.site||'a page')}
+        <button class="endbtn" style="margin-left:8px" onclick="rmHandoffClose()">Close it</button></div>`:''}
+    </div>
+
     <div class="provbox">
       <div class="ptitle">Before you open it up</div>
       <ul class="rm-notes">
@@ -390,6 +406,16 @@ async function sysRemote(el){
         <li>Sign-in attempts back off after ${5} failures from one address, and every attempt is written to the Logs app.</li>
       </ul>
     </div>`;
+}
+async function rmHandoff(on){
+  try{await apiJSON('/api/handoff/switch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:!!on})});
+    toast(on?'✓ Sign-in links will be offered':'✓ Sign-in links are off')}
+  catch(e){toast(e.message||'Could not change that',{kind:'err'})}
+  refreshApp('syssettings');
+}
+async function rmHandoffClose(){
+  try{await apiJSON('/api/handoff',{method:'DELETE'});toast('✓ Closed')}catch(e){toast(e.message||'Could not close it',{kind:'err'})}
+  refreshApp('syssettings');
 }
 async function rmPost(body){
   const r=await fetch('/api/remote',{method:'POST',headers:{'Content-Type':'application/json'},

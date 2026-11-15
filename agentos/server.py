@@ -2348,6 +2348,8 @@ async def shutdown():
     with contextlib.suppress(Exception):
         await _standby_flush()
     with contextlib.suppress(Exception):
+        await _handoff.close_all()
+    with contextlib.suppress(Exception):
         await _cdpb.stop_all()
     with contextlib.suppress(Exception):
         from . import ptyhub as _ph
@@ -19659,6 +19661,77 @@ async def _browser_attention(uid: str, payload: dict):
 
 from . import cdpbrowser as _cdpb  # noqa: E402
 _cdpb.bind(attention=_browser_attention, presence=_someone_here)
+
+
+# ---------------------------------------------------------------------------
+# The sign-in link (handoff.py): a page the browser is stuck on, opened on the phone the
+# person is holding. Asked for by their tap in the chat; these routes are what the link
+# reaches. They are NOT in REMOTE_OPEN_PATHS: the owner's rule is that it only goes through
+# remote access, so a phone with no session gets the sign-in page at the link's address
+# (remote_access_gate), and each route and the socket ask who is signed in.
+# ---------------------------------------------------------------------------
+
+from . import handoff as _handoff  # noqa: E402
+
+
+def _handoff_ledger(uid: str, action: str, resource: str, detail: str, surface: str = "api"):
+    with contextlib.suppress(Exception), usersmod.as_user(uid):
+        state["store"].audit_add(uid=uid or "", principal_kind="user", principal_id="", surface=surface,
+                                 action=action, resource=resource,
+                                 effect="deny" if action.endswith(".refused") else "allow",
+                                 rule="person", reason=str(detail)[:400], outcome="ok")
+        state["store"].log("browser", f"sign-in link: {detail}"[:300])
+
+
+async def _handoff_screens(uid: str, ev: dict):
+    await state["broadcast_user"](ev, uid)
+
+
+def _handoff_who(conn) -> str | None:
+    """Who a request or socket on the link's routes is signed in as, by the gates' own rules:
+    `_authed` (a locked screen and a switched-off remote are nobody) and then the account in
+    the signed cookie. '' is the machine's one person where there are no accounts."""
+    if not _authed(conn):
+        return None
+    return _ws_user(conn)
+
+
+async def _handoff_ws_gate(ws) -> bool:
+    return await _ws_reject(ws)
+
+
+# `dict.get`: before the server has started there is no config, and nothing is offered
+_handoff.bind(cfg=lambda: dict.get(state, "cfg"), ledger=_handoff_ledger, screens=_handoff_screens,
+              who=_handoff_who, ws_gate=_handoff_ws_gate)
+app.mount("/handoff", _handoff.app().routes[0].app, name="handoff")
+
+
+@app.get("/api/handoff")
+async def api_handoff():
+    """The switch, how a phone would get here, and the link this person has open."""
+    return _handoff.status(state.machine_cfg(), usersmod.current() or "")
+
+
+@app.post("/api/handoff/switch")
+async def api_handoff_switch(body: dict, request: Request):
+    """Whether sign-in links are offered on this machine. It decides what remote access may
+    show of the shared browser, so the switch is the machine's: its admin, at the machine."""
+    if (no := _local_admin_refusal(request, "sign-in links can only be switched from the machine itself")):
+        return no
+    cfg = state.machine_cfg()
+    on = bool((body or {}).get("enabled"))
+    cfg.setdefault("handoff", {})["enabled"] = on
+    cfgmod.save_config(cfg)
+    _ledger("handoff.write", "handoff", f"sign-in links {'offered' if on else 'switched off'}")
+    if not on:
+        await _handoff.close_all()
+    return _handoff.status(cfg, usersmod.current() or "")
+
+
+@app.delete("/api/handoff")
+async def api_handoff_close():
+    """Close the link this person has open. Theirs only."""
+    return {"ok": True, "closed": await _handoff.close(usersmod.current() or "")}
 
 
 @app.get("/api/browser")

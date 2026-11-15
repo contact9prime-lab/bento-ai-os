@@ -69,6 +69,12 @@ with no browser chrome, its own icon, and its own place in the app switcher. The
 knows it is on a phone — windows open as full-bleed sheets, the dock spans the bottom edge, and
 the launcher and popovers become sheets. See [Phone, tablet, desktop](desktop.md#phone-tablet-desktop).
 
+### A page that needs your password
+
+When your agent meets a sign-in page during a Telegram or WhatsApp chat, it can send you a link
+that opens that one page here, after you sign in as above. It only works while remote access is
+on. See [Signing in from the phone you're holding](live-windows.md#signing-in-from-the-phone-youre-holding).
+
 ---
 
 ## What travels, and what doesn't

@@ -10,6 +10,10 @@
    agent's hand, notices). Input goes back as JSON ops the server maps to the process
    (cdpbrowser.Browser.person, appstream.Stream.person).
 
+   This file's first part (down to the browser window's own shell) is also the client of
+   the sign-in link's page (agentos/handoff.py embeds it), so it must stay free of the
+   desktop's helpers apart from `esc`.
+
    Faces: GUI and SUI are this. On a phone a tap is a click and the ⌨ button opens the
    keyboard. TUI: a terminal cannot draw pixels; the agent's tools reach the same browser
    and apps (`browser_*`), and `bento browser` says what it shows. */
@@ -119,7 +123,8 @@ async function renderBrowser(body,w){
   url.addEventListener('keydown',e=>{if(e.key==='Enter'){sv.send({type:'navigate',url:url.value});view.querySelector('.sv-cv')?.focus()}});
   q('.bw-kb').onclick=()=>sv.keyboard();
   q('.bw-ext').onclick=()=>{const u=w._url||'';if(/^https?:/.test(u))openHost({url:u});else toast('Nothing to open yet')};
-  ask.addEventListener('click',e=>{if(e.target.closest('.bw-done')){sv.send({type:'resume'})}});
+  ask.addEventListener('click',e=>{if(e.target.closest('.bw-done')){sv.send({type:'resume'})}
+    else if(e.target.closest('.bw-hand-x')){sv.send({type:'handoff_close'})}});
 }
 function browserPaint(w,m){
   const body=w.el.querySelector('.wbody');if(!body)return;
@@ -142,6 +147,12 @@ function browserPaint(w,m){
       <div><b>${esc((typeof agentName==='function'&&agentName())||'Your agent')} needs you here</b>
       <span>${esc(a.reason||('This page wants '+(a.why||'a person')+'.'))} Do it in the page below, then press Done.</span></div>
       <button class="pact bw-done">Done, carry on</button>`;
+    // the same page, open on the person's phone through a sign-in link (handoff.py)
+    const h=m.handoff;
+    if(a&&h&&h.state!=='ended')ask.insertAdjacentHTML('beforeend',`<div class="bw-hand" role="status"><span>📱 ${
+      h.state==='live'?'This page is open on your phone, signed in through remote access, until you tap Done there.':
+      'A sign-in link for this page was sent to your phone. It opens after you sign in to remote access.'}</span>
+      <button class="endbtn bw-hand-x">Close it</button></div>`);
   }
   winNeedsYou('browser',!!a,a&&(a.site||''));
   const who=q('.bw-who');if(who)who.textContent=m.title?m.title:'';
