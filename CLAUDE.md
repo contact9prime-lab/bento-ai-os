@@ -698,6 +698,10 @@ server's `_world_org`; none of the three pages asks `/api/company` or decides me
 - **Crew:** one figure per department (its head, in the department's shirt), up to
   `CREW_MAX_ORG`; `crewMatch` answers for any member, so a member's work lights its
   department's figure and `crewWorker` names who.
+- **Mind, other companies:** each PARKED company is one hub too (`co:<id>`, kind `dept` with `company`), its
+  people titled with their department there, and agents in no company share one hub (`free`) past `MAX_OWN`.
+  Reported with a screenshot of 47 clusters; measured on that data, 50 hubs became 12 and no tags overlap. The
+  Team panel is one row per hub (`team[].hub`). A task button is offered only for a department of the open company.
 - **Mind:** a department is ONE hub (`dept:<name>`, `DEPT_HUES` from the room's colour);
   its people are `person` nodes and their runs and skills sit on that hub; `where` maps a
   name to its hub so a spark finds it. Roster and talk links are per hub, and talk inside

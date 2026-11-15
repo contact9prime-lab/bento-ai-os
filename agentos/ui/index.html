@@ -12977,10 +12977,11 @@ function mindStateText(state){
 function mindNum(n){n=+n||0;return n>=1e6?(n/1e6).toFixed(1).replace(/\.0$/,'')+'M':n>=1e4?Math.round(n/1e3)+'k':n>=1e3?(n/1e3).toFixed(1).replace(/\.0$/,'')+'k':String(n)}
 function mindPaintUI(){
   const S=MIND.snap,U=MIND.ui;if(!S||!U)return;
-  const st=S.stats,b=S.brief||{},agents=S.team.length,depts=S.hubs.filter(h=>h.kind==='dept');
+  const st=S.stats,b=S.brief||{},agents=S.team.length,groups=S.hubs.filter(h=>h.kind==='dept'),
+    depts=groups.filter(h=>!h.company&&!h.loose),cos=groups.filter(h=>h.company);
   U.querySelector('.mn-top').innerHTML=
     `<span class="mn-dot"></span><b class="mn-state">Quiet</b><span class="mn-sep">·</span>`+
-    `<span class="mn-sum">${esc(S.lead)} and ${agents} specialist${agents===1?'':'s'}${depts.length?` in ${depts.length} department${depts.length===1?'':'s'}`:''}</span>`+
+    `<span class="mn-sum">${esc(S.lead)} and ${agents} specialist${agents===1?'':'s'}${depts.length?` in ${depts.length} department${depts.length===1?'':'s'}`:''}${cos.length?`, and ${cos.length} other compan${cos.length===1?'y':'ies'}`:''}</span>`+
     `<button class="mn-btn" onclick="mindTell()">Tell me</button>`+
     `<button class="mn-btn" onclick="mindTalk()" aria-label="Talk to ${esc(S.lead)}">🎙 Talk</button>`+
     `<button class="mn-btn mn-peace" onclick="mindPeace()" aria-pressed="${MIND.peace?'true':'false'}" title="${MIND.peace?'Show the panels':'Peace: only the mind'}">${MIND.peace?'Show all':'Peace'}</button>`;
@@ -13002,11 +13003,11 @@ function mindPaintUI(){
   const busyLead=typeof RUNNING!=='undefined'&&RUNNING.size>0;
   U.querySelector('.mn-right').innerHTML=`<section class="mn-panel mn-team"><h3>Team</h3>`+
     `<div class="mn-agent lead${busyLead?' busy':''}"><span class="mn-pip"></span><b>${esc(S.lead)}</b><i>${busyLead?'working':'your lead'}</i></div>`+
-    depts.map(h=>{const ppl=S.team.filter(a=>a.dept===h.label),busy=ppl.filter(a=>a.busy).length,
+    groups.map(h=>{const ppl=S.team.filter(a=>a.hub===h.id),busy=ppl.filter(a=>a.busy).length,
       runs=ppl.reduce((n,a)=>n+(a.runs||0),0);
       return `<button class="mn-agent${busy?' busy':''}" data-hub="${esc(h.id)}"><span class="mn-pip" style="--mh:${h.hue}"></span>`+
-        `<b>${esc(h.label)}</b><i>${busy?busy+' working':runs?runs+' run'+(runs===1?'':'s')+' this week':'idle'} · ${ppl.length} ${ppl.length===1?'person':'people'}</i></button>`}).join('')+
-    (S.team.length?S.team.filter(a=>!a.dept).map(a=>`<button class="mn-agent${a.busy?' busy':''}" data-hub="agent:${esc(a.name)}">`+
+        `<b>${esc(h.label)}</b><i>${h.company?'company · ':''}${busy?busy+' working':runs?runs+' run'+(runs===1?'':'s')+' this week':'idle'} · ${ppl.length} ${ppl.length===1?'person':'people'}</i></button>`}).join('')+
+    (S.team.length?S.team.filter(a=>(a.hub||'').indexOf('agent:')===0).map(a=>`<button class="mn-agent${a.busy?' busy':''}" data-hub="agent:${esc(a.name)}">`+
       `<span class="mn-pip" style="--mh:${(S.hubs.find(h=>h.id==='agent:'+a.name)||{}).hue||200}"></span><b>${esc(a.name)}</b>`+
       `<i>${a.busy?'working':a.runs?a.runs+' run'+(a.runs===1?'':'s')+' this week':'idle'}${a.brain?' · '+esc(a.brain):''}</i></button>`).join('')
       :'<p class="mn-quiet">No specialists yet.</p>')+`</section>`;
@@ -13060,7 +13061,11 @@ function mindCard(id,refresh){
     body=`<p>${busy.length?esc(busy.join(', '))+' working now.':runs.length?`${runs.length} run${runs.length===1?'':'s'} this week.`:'Nothing this week.'}</p>`+
       li(ppl.map(n=>`<li>${n.head?'★ ':''}${esc(n.label)}${n.title?` <i>${esc(n.title)}</i>`:''}</li>`))+
       li(runs.slice(0,4).map(n=>`<li>${esc(n.label)} <i>${esc(n.status||'')}</i></li>`));
-    go=`<button class="endbtn" data-dept="${esc(h.label)}">Give ${esc(h.label)} a task</button>`;
+    // a task goes to a department of the company that is open; another company's people
+    // and the ones on their own are reached from the Office and Missions
+    go=h.company?`<button class="endbtn" onclick="openApp('office')">Open the Office to switch company</button>`
+      :h.loose?`<button class="endbtn" onclick="openApp('jobs')">Open in Missions</button>`
+      :`<button class="endbtn" data-dept="${esc(h.label)}">Give ${esc(h.label)} a task</button>`;
   }else{
     const name=h.label,a=S.team.find(x=>x.name===name)||{},talk=S.links.filter(k=>k.kind==='talk'&&(k.a===id||k.b===id));
     const skills=nodes.filter(n=>n.kind==='skill'),runs=nodes.filter(n=>n.kind==='run');

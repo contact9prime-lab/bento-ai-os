@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.13 — 2026-11-15
+
+**The Mind groups your other companies and unattached agents.** Only the open company's
+departments were clusters; everybody in your other companies, and everybody in no company, stood
+as a cluster of their own. With three companies that was about fifty clusters and their names
+piled up. Now each other company is one cluster, its people titled with their department there,
+and agents in no company stand together once there are more than six. The Team list has one row
+per cluster. On a 47-agent setup: 50 clusters became 12, with no names overlapping.
+
 ## 0.9.12 — 2026-11-15
 
 **What comes back from delegated work arrives whole.** An answer handed back to your agent by a
