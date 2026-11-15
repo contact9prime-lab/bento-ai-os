@@ -4070,6 +4070,34 @@ or a CAPTCHA is handed to the person in the same session the agent then carries 
   code field (`person_code`) and is never in the conversation, the diary or the model's context. Only the
   registered chat answers, a non-code message goes on to the agent, and a password is never taken from a chat
   (history keeps it): "done" after signing in on a screen. WhatsApp has no Done button, so it says reply "done".
+- **A password wall can be opened on the phone itself, by a link the person asks for, and only through remote access**
+  (`agentos/handoff.py`, `cdpbrowser.phone_offer`/`reply_of`, `say_wall` on both bridges, `/handoff/…`,
+  `/api/handoff*`, `bento handoff`, Settings → Remote access; `docs/live-windows.md`, `tests/test_handoff.py`, live run
+  `packaging/dev/handoff-e2e/run.js`). Asked for with Aria giving up on a GitHub sign-in: "give the link to open it on
+  the phone … via permission … only for the session". The first cut opened a listener of its own when remote access
+  was off, with a number confirmed in the chat. The owner's answer: "it needs to come in the remote itself … the user
+  will have to login to the remote … it must only go through remote". Six rules:
+  - **There is no second door.** Nothing is offered while `remote.enabled` is false (`can_offer`'s `needs: remote`,
+    said in the wall message and by `bento handoff`), and `/handoff/` is NOT in `REMOTE_OPEN_PATHS`. Never add a
+    listener, a ticket-as-credential or a path past the gate back.
+  - **The link is an address, never a key.** The remote gate serves `login.html` at the link's own address and the
+    page goes back to it after signing in (`LINK` in login.html, same-origin path only). Each route asks
+    `_HOOKS["who"]` (`_authed` then `_ws_user`) and takes only the hand-off's own uid; the socket passes
+    `_ws_reject` through `_HOOKS["ws_gate"]` first. Unwired, who is nobody and the socket is refused.
+  - **No agent opens one.** There is no tool; the wall message offers it and the person's tap is the permission (a
+    `handoff.open` ledger row). `handoff.enabled` is the machine's switch (not a USER_KEY, not in CONFIG_SAFE_KEYS,
+    changed by `/api/handoff/switch` behind `_local_admin_refusal`).
+  - **The phone gets `handoff.OPS` and nothing else**: never `navigate` or a tab op, and its `state` messages carry
+    the size only. The shared profile holds the person's other sessions.
+  - **It ends by itself** (`_watch`): the wall gone, not opened in `OPEN_S`, `LIVE_S`, or remote access switched
+    off. `end()` tells the page first and gives the desk its size back.
+  - **The link is never in the diary.** Everything the hand-off says goes through the bridge's `say_wall`, as plain
+    text (a formatter eats a token's underscores) and unlogged; `from_phone` answers `handoff.HANDLED`. The road is
+    said in the chat and on the page (`ROAD_WORDS`): plain HTTP on a LAN is not encrypted, and it says so.
+- **The shared browser's own password pop-ups are off** (`cdpbrowser.quiet_prefs`, before every start). Found by the
+  hand-off's live run: in a view narrower than the 1280-wide browser window, typing into a password field made every
+  frame the whole window squeezed into the view (390x201 for a 390x735 page). The pop-up is a surface of its own.
+  `tests/test_live_windows.py` types a password in a real Chromium and checks the frame size.
 
 ## Several tasks at once: a desktop per running task, and Telegram side by side
 

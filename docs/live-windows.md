@@ -47,8 +47,62 @@ from your phone", never the digits.
   it, while that turn runs. A message from anyone else, or anything that isn't a code,
   goes to the agent as usual.
 - **A password is never taken from a chat.** Chat history would keep it. For a password or a
-  CAPTCHA the phone is told to sign in on a screen and tap **Done, carry on** (on WhatsApp,
-  reply "done").
+  CAPTCHA you can open the page on the phone itself (next section), or sign in on a screen
+  and tap **Done, carry on** (on WhatsApp, reply "done").
+
+### Signing in from the phone you're holding
+
+For a password or a CAPTCHA the message has a second button, **Open on this phone** (on
+WhatsApp, reply "open"). It sends you a link into your Bento's remote access. You sign in
+there first, then that one page opens in your phone's browser, and what you type goes
+straight into the real page.
+
+This needs [remote access](remote-access.md) to be on. With it off nothing is offered, and
+the message says so.
+
+![The whole exchange on Telegram: the offer, the link, and the agent carrying on](screenshots/handoff-telegram.png)
+
+*Redrawn from the messages the bot sent in a test run against a stand-in for Telegram.*
+
+1. Tap **Open on this phone**. The message says what that does before you tap.
+2. Open the link. Your Bento's sign-in page appears: the remote passphrase, or your
+   username and password on a machine with accounts. A phone that is already signed in
+   skips this.
+3. The page appears. Sign in on it, including any code it asks for next.
+4. When the site lets you in, the link closes by itself and the agent carries on. You can
+   also tap **Done**.
+
+![The link opens your Bento's own sign-in page first](screenshots/handoff-phone-signin.png)
+![The real sign-in page on the phone, with a password typed](screenshots/handoff-phone-page.png)
+![Somebody with only the link stays on the sign-in page](screenshots/handoff-phone-stranger.png)
+
+How it is kept safe:
+
+- **Only through remote access.** There is no second way in. The link is an address inside
+  your Bento's remote access, behind the same sign-in, back-off and locked screen as the
+  rest of it. Somebody who only has the link sees the sign-in page and nothing of the page.
+- **Only you.** On a machine with accounts, the link opens only for the account the page is
+  waiting for. Another account is refused, and that is written in the ledger.
+- **Only you can ask for it.** No agent can open a link: there is no tool for it. Your tap
+  in your own chat is the permission, and it is written in the ledger.
+- **Only that page.** The phone can tap and type on the page at the wall. It has no address
+  bar and can't reach the browser's other tabs.
+- **Only for that long.** The link has to be opened within 5 minutes and lasts 15 at most.
+  It ends when you finish, when the site lets you in, when you say "close", or when remote
+  access is switched off.
+- **It says how the connection is protected.** Over HTTPS or Tailscale it is encrypted. On
+  the same Wi-Fi with neither, it isn't encrypted beyond your Wi-Fi's own lock, and both the
+  chat and the page say so. Use Tailscale or HTTPS if you sign in away from home.
+- **Nothing is kept.** The password goes into the page. The link is never written to the log.
+
+On the desktop, the Web window says the page is open on your phone and has **Close it**.
+Settings → Remote access has the switch (**Sign-in links for your phone**), which only the
+machine's admin can change, at the machine. In a terminal, `bento handoff` shows whether
+links are offered and what is open, `bento handoff close` closes it, and
+`bento handoff on|off` is the switch.
+
+![The Web window while a link is out, with Close it](screenshots/handoff-web-window.png)
+![The switch in Settings → Remote access](screenshots/handoff-settings.png)
 
 Things to know:
 
@@ -65,6 +119,9 @@ Things to know:
   phone, the agent stops and tells you what is needed instead of waiting.
 - The browser keeps its own profile in your home (`browser/profile`), apart from any
   browser you use yourself. It closes after 20 idle minutes and opens again on use.
+- **It doesn't offer to save passwords.** Sign-ins last as cookies. The browser's own
+  password and autofill pop-ups are off, because a pop-up can't be shown in a window like
+  this one.
 
 ## Terminal sessions that stay
 
