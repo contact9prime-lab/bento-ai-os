@@ -59,7 +59,7 @@ def test_the_owner_is_asked_about_somebody_new(tmp_path):
     assert asyncio.run(tb.decide_newcomer(222, True)) == "allowed"
     assert any(c[0] == "send" and c[1]["chat_id"] == 222 and "You're in" in c[1]["text"] for c in calls)
     src = (ROOT / "agentos/telegram.py").read_text()
-    cb = src[src.index("async def _handle_callback("):][:1600]
+    cb = src[src.index("async def _handle_callback("):][:4000]
     assert 'data.startswith("who:")' in cb and "decide_newcomer" in cb
     assert cb.index("owner_chat_id") < cb.index('"who:"'), "only the owner's buttons count"
     srv = (ROOT / "agentos/server.py").read_text()
@@ -71,8 +71,10 @@ def test_phone_chats_have_their_own_tab():
     # its own tab now (chattabs.py): Chat → Channels
     assert "c.tabs||[c.tab]" in chat
     assert 'return "channels"' in (ROOT / "agentos/chattabs.py").read_text()
-    assert 'origin="telegram"' in (ROOT / "agentos/telegram.py").read_text()
-    assert 'origin="whatsapp"' in (ROOT / "agentos/whatsapp.py").read_text()
+    # a phone chat's conversation is made by phonesessions, which stamps the channel as its origin
+    assert 'phonesessions.start(self.store, "telegram"' in (ROOT / "agentos/telegram.py").read_text()
+    assert 'phonesessions.start(self.store, "whatsapp"' in (ROOT / "agentos/whatsapp.py").read_text()
+    assert "origin=channel" in (ROOT / "agentos/phonesessions.py").read_text()
     ws = (ROOT / "agentos/ui/src/js/09-websocket.js").read_text()
     assert "case 'telegram_request':" in ws and "tgAllow(ev.chat_id,1)" in ws
     st = (ROOT / "agentos/ui/src/js/11-settings.js").read_text()

@@ -103,6 +103,24 @@ def next_for(cfg: dict, tried: list[str]) -> dict | None:
     return None
 
 
+def after(cfg: dict, tried: list, engine: str, model: str, errors: list, said: str,
+          skip: list | None = None) -> dict | None:
+    """The brain to ask next, for a turn that just ended; None when this one answered, or
+    stopped for a reason that is not the brain's (a stop, a refusal), or nothing is left.
+
+    One reading for every surface that runs the lead's turn: the desktop's chat, Telegram,
+    WhatsApp and a schedule. It lived in the chat runner alone, so a usage limit or a lapsed
+    sign-in simply failed everywhere nobody was watching. Adds the brain that failed to
+    `tried`; `skip` names brains this caller may not use at all."""
+    said = (said or "").strip()
+    if said and not said.startswith("[error]"):
+        return None
+    if not unavailable(list(errors or []) + [said]):
+        return None
+    tried.append(key(engine or "aria", "" if (engine or "aria") != "aria" else model))
+    return next_for(cfg, tried + list(skip or []))
+
+
 def request(fb: dict) -> str:
     """What the chat runner is handed as the turn's model: a CLI by its id, a provider's model
     by its full id (resolve_engine reads both)."""

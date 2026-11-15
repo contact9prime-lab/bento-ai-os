@@ -10,6 +10,7 @@ Two kinds of task share one table and one execution path:
 """
 
 import asyncio
+import contextlib
 import datetime
 import json
 import os
@@ -269,30 +270,48 @@ class Scheduler(usersmod.Scoped):
         result_text = ""
         tokens = {"input": 0, "output": 0}
         steps = 0
-        try:
-            from . import config as _cfgmod
-            from . import executors as execmod
-            engine = execmod.resolve_engine(self.cfg)
-            if engine != "aria":
-                # Scheduled and proactive turns are work this machine was asked to
-                # do, so a forwarder forwards them too — otherwise "forward
-                # everything" would quietly exclude everything that runs unattended.
-                result_text, _run = await execmod.forward(
-                    engine, prompt, self.cfg, execmod.default_workspace(self.cfg),
-                    app={"toolbox": self.toolbox, "app_id": app_id,
-                         "approver": approver} if app_id else None)
-                result_text = result_text or "(no output)"
-                steps = 1
-            else:
-                agent = Agent(self.cfg, self.toolbox, model, emit, approver,
-                              surface="task", space_id=space_id)
-                agent.app_id = app_id
-                result = await agent.run([{"role": "user", "content": prompt}])
-                result_text = result["content"] or "(no output)"
-                tokens = result.get("tokens") or tokens
-                steps = len(result.get("steps") or [])
-        except Exception as e:
-            result_text = f"[error] {type(e).__name__}: {e}"
+        from . import executors as execmod
+        from . import fallback as fallbackmod
+        engine, exec_model, cost_usd = execmod.resolve_engine(self.cfg), "", None
+        tried: list = []
+        while True:
+            errors: list = []
+            try:
+                if engine != "aria":
+                    # Scheduled and proactive turns are work this machine was asked to
+                    # do, so a forwarder forwards them too — otherwise "forward
+                    # everything" would quietly exclude everything that runs unattended.
+                    result_text, _run = await execmod.forward(
+                        engine, prompt, self.cfg, execmod.default_workspace(self.cfg),
+                        app={"toolbox": self.toolbox, "app_id": app_id,
+                             "approver": approver} if app_id else None, model=exec_model)
+                    if _run is not None:
+                        tokens = {"input": _run.tokens_in, "output": _run.tokens_out}
+                        cost_usd = _run.cost_usd or None
+                    steps = 1
+                else:
+                    agent = Agent(self.cfg, self.toolbox, model, emit, approver,
+                                  surface="task", space_id=space_id)
+                    agent.app_id = app_id
+                    result = await agent.run([{"role": "user", "content": prompt}])
+                    result_text = result["content"]
+                    tokens = result.get("tokens") or tokens
+                    steps = len(result.get("steps") or [])
+            except Exception as e:
+                result_text = f"[error] {type(e).__name__}: {e}"
+                errors.append(str(e))
+            # The brain isn't available (a usage limit, a lapsed sign-in): the next one on
+            # the person's list runs the job. A schedule is the turn nobody is watching, and
+            # it was the one place a limit simply failed (fallback.after).
+            nxt = fallbackmod.after(self.cfg, tried, engine, model, errors, result_text or "")
+            if not nxt:
+                break
+            with contextlib.suppress(Exception):
+                self.store.log("turn", f"{tried[-1]} wasn't available for a scheduled job; "
+                                       f"asked {fallbackmod.words(nxt)}", {"origin": origin})
+            engine = nxt["executor"]
+            model, exec_model = (nxt["model"], "") if engine == "aria" else (model, nxt.get("model") or "")
+        result_text = result_text or "(no output)"
 
         # log the run as a conversation so it shows up in the UI — tagged with its
         # origin, which is what "% of turns initiated by the OS" counts
@@ -300,6 +319,11 @@ class Scheduler(usersmod.Scoped):
                                              space_id=space_id)
         self.store.add_message(cid, "user", f"[{origin}] {prompt}")
         self.store.add_message(cid, "assistant", result_text)
+        with contextlib.suppress(Exception):
+            # what the job spent is in Usage, as a chat's is: it was counted nowhere
+            from . import usage as _usage
+            _usage.record(self.store, self.cfg, engine if engine != "aria" else model, tokens,
+                          surface="task", conversation_id=cid, space_id=space_id, cost_usd=cost_usd)
         try:
             self.store.log("turn", prompt[:200],
                            {"conversation_id": cid, "model": model, "origin": origin,

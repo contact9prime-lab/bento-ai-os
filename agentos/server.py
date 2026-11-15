@@ -20400,6 +20400,14 @@ async def _run_chat(cid: str, data: dict):
         # other, each on its own brain, and every turn lands as that agent's bubble
         huddle_hit = fabricmod.parse_huddle(store, text)
         mention = None if huddle_hit else fabricmod.parse_mention(store, text)
+        # Whoever is addressed by name reads the thread they were addressed in, and where
+        # on the Stage it was asked: they ran with the task alone, so "@researcher
+        # summarise it" had no "it" (executors.thread_note).
+        thread = ""          # read only when somebody is addressed (below)
+        place = _stage_words(data)
+
+        def _asked(task: str) -> str:
+            return place + task + (("\n\n" + thread) if thread else "")
         # '@Sales find ten clinics' gives the task to a DEPARTMENT: a run of its desk,
         # led by its head, signed off and checked like any department task. A specialist
         # addressed by name was checked first and answers itself.
@@ -20418,6 +20426,9 @@ async def _run_chat(cid: str, data: dict):
                 flow_hit = flowsmod.match_message(store, text, surface="gui")
             except Exception:
                 flow_hit = None
+        if mention or huddle_hit or dept_hit:
+            with contextlib.suppress(Exception):
+                thread = execmod.thread_note(store.get_messages(cid)[:-1], cfg.get("agent_name") or "Aria")
         # An explicit address wins over the brain: `@toolsmith …`, `@a @b …` and a message
         # trigger go to the specialist / the huddle / the flow even when the machine's
         # brain is Claude Code. Checked in the wrong order, every `@toolsmith build a
@@ -20540,9 +20551,12 @@ async def _run_chat(cid: str, data: dict):
             # who does what (execmod.team_note). Closed in `finally` below.
             from . import spaces as _spacemod
             _surface = data.get("surface") if data.get("surface") in CLIENT_SURFACES else "gui"
+            _space = _spacemod.active_for(cfg, _surface, store, cid)
             team_token = execmod.open_team_door(
                 env, cfg, toolbox, store, evsend, approver, conversation_id=cid, surface=_surface,
-                space_id=_spacemod.active_for(cfg, _surface, store, cid), text=text)
+                space_id=_space, text=text,
+                # what the built-in lead's prompt carries: memory, graph, skills, servers
+                mind=await execmod.mind_note(cfg, toolbox, store, _space, cid, text))
             run = execmod.Run(engine=model)
             turns[cid] = {"agent": None, "task": asyncio.current_task(),
                           "model": model, "executor": run, "uid": owner}
@@ -20580,12 +20594,29 @@ async def _run_chat(cid: str, data: dict):
             # a message typed while it works reaches it at its next step (Run.steer)
             env.steerable = model == "claude-code"
             env.person = True     # a person's own chat: the CLI reads their user-level settings
+            env.images = tuple(images)     # what was attached reaches the brain that answers
+
+            def _exec_result() -> dict:
+                return {"content": "".join(collected),
+                        "steps": [{"type": "executor", "name": model, "read_outside": read_outside[0],
+                                   "cost_usd": run.cost_usd, "turns": run.turns,
+                                   "denials": run.denials, "envelope": env.describe()}],
+                        # who actually answered, so a reloaded conversation still
+                        # attributes it correctly rather than crediting the built-in agent
+                        "engine": model, "engine_model": run.model,
+                        # what it spent, for Usage: the CLI reports both on its last line
+                        "cost_usd": run.cost_usd or None,
+                        "tokens": {"input": run.tokens_in, "output": run.tokens_out}}
             try:
                 await execmod.run_task(_stage_words(data) + text, env, _relay, run)
                 turn_done = True
                 await _chat_app_fix(model, env, run, (checkout, chat_app), toolbox, evsend, _relay)
             finally:
                 execmod.stop(run)          # a cancelled turn must not leave it running
+                # What it had said so far is the reply, whatever ended the turn. It was built
+                # only after a clean finish, so a turn stopped or failed half-way saved an
+                # empty bubble while the session it ran in was stamped as having seen it.
+                result = _exec_result()
                 # Write the app back here, in `finally`: a turn stopped after the app
                 # was written (it was busy with a README) used to install nothing, and
                 # the file sat in builds/ where nothing ever looks again. commit_app
@@ -20618,14 +20649,7 @@ async def _run_chat(cid: str, data: dict):
             if any(ok for ok, _ in commits):
                 await state["broadcast"]({"type": "apps"})
             header = ""
-            result = {"content": "".join(collected),
-                      "steps": [{"type": "executor", "name": model, "read_outside": read_outside[0],
-                                 "cost_usd": run.cost_usd, "turns": run.turns,
-                                 "denials": run.denials, "envelope": env.describe()}],
-                      # who actually answered, so a reloaded conversation still
-                      # attributes it correctly rather than crediting the built-in agent
-                      "engine": model, "engine_model": run.model,
-                      "tokens": {"input": 0, "output": 0}}
+            result = _exec_result()
         elif flow_hit:
             trig, flow = flow_hit
             model = state["fabric"].resolve_model({"name": flow["name"],
@@ -20666,7 +20690,7 @@ async def _run_chat(cid: str, data: dict):
                           + (f": {head} leads" if head else "")})
             try:
                 got = await state["fabric"].department_task(
-                    dept["name"], task, conversation_id=cid, approver=approver,
+                    dept["name"], _asked(task), conversation_id=cid, approver=approver,
                     surface="gui", ui_emit=evsend, agent_slot=turns[cid])
             except PermissionError as e:
                 raise RuntimeError(str(e))
@@ -20690,7 +20714,7 @@ async def _run_chat(cid: str, data: dict):
 
             async def _say(e):
                 await evsend({"type": "agent_say", **e})
-            res = await state["fabric"].huddle(names, topic, conversation_id=cid,
+            res = await state["fabric"].huddle(names, _asked(topic), conversation_id=cid,
                                                say=_say, approver=approver)
             result = {"content": res["text"], "steps": [], "huddle": res["agents"],
                       "tokens": {"input": 0, "output": 0}}
@@ -20703,7 +20727,7 @@ async def _run_chat(cid: str, data: dict):
             started = True
             await evsend({"type": "turn_start", "model": model, "speaker": defn["name"]})
             res = await state["fabric"].run_subagent(
-                defn, task, conversation_id=cid, ui_emit=evsend,
+                defn, place + task, context=thread, conversation_id=cid, ui_emit=evsend,
                 approver=approver, agent_slot=turns[cid])
             content = res["content"] or (f"({res['status']}: {res['fault']})" if res["fault"]
                                          else f"({res['status']})")
@@ -20746,6 +20770,9 @@ async def _run_chat(cid: str, data: dict):
         if agent is not None:
             result = {"content": agent.partial_text, "steps": agent.partial_steps,
                       "tokens": result["tokens"]}
+        if not (result.get("content") or "").strip():
+            # stopped before a word: a line, so a reloaded chat does not show a blank reply
+            result["content"] = "(stopped before it answered)"
         with contextlib.suppress(Exception):
             await evsend({"type": "error", "message": "turn stopped"})
     except Exception as e:
@@ -20760,8 +20787,13 @@ async def _run_chat(cid: str, data: dict):
         # A turn that failed must still leave a message saying so. An empty
         # assistant bubble is the worst outcome: reloading the conversation shows
         # nothing at all, and the reason lives only in a log nobody opened.
+        if agent is not None and not (result.get("content") or "").strip():
+            result = {**result, "content": agent.partial_text or "", "steps": agent.partial_steps or []}
         if not (result.get("content") or "").strip():
             result["content"] = f"[error] {why['message']}"
+        else:
+            # it had started answering: keep that, and say under it why it ended
+            result["content"] = result["content"].rstrip() + f"\n\n[error] {why['message']}"
     finally:
         if started:
             knowledge.turn_ended()
@@ -20771,12 +20803,9 @@ async def _run_chat(cid: str, data: dict):
         fb_next, fb_tried = None, list(data.get("_fallback_tried") or [])
         try:
             said = (result.get("content") or "").strip()
-            if (not said or said.startswith("[error]")) and fallbackmod.unavailable(turn_errors + [said]):
-                fb_tried.append(fallbackmod.key(engine if engine != "aria" else "aria",
-                                                "" if engine != "aria" else model))
-                fb_next = fallbackmod.next_for(cfg, fb_tried + [
-                    fallbackmod.key(f["executor"], f["model"]) for f in fallbackmod.chain(cfg)
-                    if _agent_cli_refused(f["executor"])])
+            fb_next = fallbackmod.after(cfg, fb_tried, engine, model, turn_errors, said, skip=[
+                fallbackmod.key(f["executor"], f["model"]) for f in fallbackmod.chain(cfg)
+                if _agent_cli_refused(f["executor"])])
         except Exception:
             fb_next = None
         # Saving the reply comes first and alone. Everything after it is
@@ -20815,7 +20844,8 @@ async def _run_chat(cid: str, data: dict):
             from . import spaces as _spacemod
             _surface = data.get("surface") if data.get("surface") in CLIENT_SURFACES else "gui"
             usagemod.record(store, cfg, model, tk, surface=_surface, conversation_id=cid,
-                            space_id=_spacemod.active_for(cfg, _surface, store, cid))
+                            space_id=_spacemod.active_for(cfg, _surface, store, cid),
+                            cost_usd=result.get("cost_usd"))
             knowledge.schedule_extraction(cfg, store, cid, text, result["content"],
                                           state.get("broadcast"))
         except _FallingBack:

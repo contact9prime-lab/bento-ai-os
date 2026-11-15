@@ -546,7 +546,9 @@ class TelegramBridge(usersmod.Scoped):
     async def _handle(self, msg: dict):
         chat_info = msg.get("chat", {})
         chat_id = chat_info.get("id")
-        text = (msg.get("text") or "").strip()
+        text = (msg.get("text") or msg.get("caption") or "").strip()
+        if not text and msg.get("photo"):
+            text = "(a picture, with no words)"
         if not chat_id or not text:
             return
         # A sign-in wall this chat is being asked about (cdpbrowser.reach): a code goes into
@@ -705,19 +707,14 @@ class TelegramBridge(usersmod.Scoped):
             # minutes looking queued while a newer chat was answered (measured on the owner's
             # machine: 2 min 45 s). And it runs only for the built-in loop, which reads it: a
             # forwarded brain resumes its own session.
-            self.store.add_message(cid, "user", text)
-            exec_meta: dict = {}      # the executor session a forwarded reply was given in
+            # A photo comes with the message: fetched only now, for a chat that is let in,
+            # and handed to whichever brain answers. It was ignored without a word.
+            images = await self._photos(msg)
+            self.store.add_message(cid, "user", text, {"images": images} if images else None)
             await self.broadcast({"type": "telegram_in", "conversation_id": cid, "text": text[:160]})
             note = ("[Message arriving via Telegram — the user is away from the machine. "
                     "Reply in plain text (no markdown tables). No one can click approval "
                     "dialogs, so risky actions only run in full autonomy.]\n\n")
-
-            async def built_history():
-                from . import history as _history
-                h, _info = await _history.build(self.store, cid, self.cfg, self.cfg.get("default_model", ""))
-                if h and h[-1].get("role") == "user" and str(h[-1].get("content") or "").strip() == text:
-                    h = h[:-1]          # the message just saved goes in once, with its note
-                return h + [{"role": "user", "content": note + text}]
 
             # The turn is the screen's too: the Office lights the lead's desk, a step shows
             # as a burst and a hand-over as a walk, and Chat streams it when this thread is
@@ -754,67 +751,20 @@ class TelegramBridge(usersmod.Scoped):
             from . import executors as _ex
             _engine = _ex.resolve_engine(self.cfg)
             await emit({"type": "turn_start", "model": _engine if _engine != "aria" else model})
-            mention = fabricmod.parse_mention(self.store, text) if self.toolbox.fabric else None
-            dept_hit = None
-            if not mention and self.toolbox.fabric:
-                from . import company as _companymod
-                dept_hit = _companymod.parse_department(self.cfg, self.store, text)
-            if dept_hit:  # '@Sales …' from the phone is a task for that department
-                dept, task = dept_hit
-                reply = await fabricmod.department_reply(self.toolbox.fabric, dept["name"], task,
-                                                         cid, approver, "telegram")
-                result = {"steps": []}
-            elif mention:  # '@researcher …' from the phone goes straight to that subagent
-                defn, task = mention
-                res = await self.toolbox.fabric.run_subagent(defn, task, conversation_id=cid,
-                                                             approver=approver)
-                reply = (f"@{defn['name']} · {res['status']}\n\n"
-                         + (res["content"] or res["fault"] or "(no output)"))
-                result = {"steps": res["steps"]}
-            else:
-                from . import executors as execmod
-                engine = execmod.resolve_engine(self.cfg)
-                if engine != "aria":
-                    # A machine set to forward forwards what arrives from OUTSIDE
-                    # too — a Telegram message is exactly the case the setting is
-                    # for. There is no event stream here, so take the text back.
-                    from . import config as _cfgmod
-                    _k.turn_started()
-                    try:
-                        self._runs[chat_id] = execmod.Run(engine=engine)
-                        reply, _run = await execmod.forward(
-                            engine, text, self.cfg,
-                            execmod.default_workspace(self.cfg), emit=emit,
-                            session_id=self.store.exec_session(cid),
-                            prior=self.store.get_messages(cid)[:-1],
-                            # the team door: "build me a tool" from the phone reaches
-                            # the toolsmith as it does at the desk
-                            team={"toolbox": self.toolbox, "store": self.store, "approver": approver,
-                                  "conversation_id": cid, "surface": "telegram"},
-                            run=self._runs[chat_id], steerable=True)
-                        if _run and _run.session_id:
-                            # kept in the conversation row, so a restart does not make every
-                            # phone thread a stranger (an in-memory dict did)
-                            self.store.set_exec_session(cid, _run.session_id)
-                            exec_meta = {"engine": engine, "exec_session": _run.session_id}
-                    finally:
-                        _k.turn_ended()
-                    reply = reply or "(done — no text output)"
-                    result = {"steps": [{"type": "executor", "name": engine}]}
-                else:
-                    agent = Agent(self.cfg, self.toolbox, model, emit, approver,
-                                  conversation_id=cid, surface="telegram")
-                    _k.turn_started()
-                    try:
-                        result = await agent.run(await built_history())
-                    finally:
-                        _k.turn_ended()
-                    reply = result["content"] or "(done — no text output)"
-            self.store.add_message(cid, "assistant", reply, {"steps": result["steps"], **exec_meta})
+            # Who answers is one function for both phones (phoneturn.py): a department, a
+            # huddle or a specialist addressed by name, else the lead on this machine's
+            # brain, and the next brain on the person's list when that one isn't available.
+            from . import phoneturn
+
+            async def tell(line):
+                await self.send("↪ " + line, chat_id)
+            out = await phoneturn.answer(
+                self.store, self.cfg, self.toolbox, cid=cid, text=text, surface="telegram",
+                emit=emit, approver=approver, note=note, images=tuple(images),
+                on_run=lambda run: self._runs.__setitem__(chat_id, run), steerable=True, tell=tell)
+            reply = out["reply"]
+            self.store.add_message(cid, "assistant", reply, {"steps": out["steps"], **out["meta"]})
             self.store.touch_conversation(cid)
-            from . import usage as _usage
-            _usage.record(self.store, self.cfg, model, result.get("tokens") or {},
-                          surface="telegram", conversation_id=cid)
             # The story first, then the words: the Stage is what the answer looks like, and
             # a long text above it pushed the pictures off the screen ("it is not giving an
             # impression of the Stage")
@@ -844,6 +794,35 @@ class TelegramBridge(usersmod.Scoped):
                 asyncio.create_task(self._handle(nxt))
             if "tap" in locals():
                 _pg.close(cid, tap)          # idempotent: a failed turn must not leak a tap
+
+    PHOTO_MAX = 5_000_000      # under the chat's own cap for one picture, as base64
+
+    async def _photos(self, msg: dict) -> list:
+        """The photo on a message, as the data URL the chat's own pictures are. Telegram
+        sends several sizes; the largest that fits is taken. [] when there is none or it
+        could not be fetched: the turn still runs on the words."""
+        sizes = [p for p in (msg.get("photo") or []) if isinstance(p, dict) and p.get("file_id")]
+        if not sizes:
+            return []
+        import base64
+        try:
+            fits = [p for p in sizes if int(p.get("file_size") or 0) <= self.PHOTO_MAX] or sizes[:1]
+            info = await self._api("getFile", file_id=fits[-1]["file_id"])
+            path = str(info.get("file_path") or "")
+            if not path or ".." in path:
+                return []
+            token = self._t().get("bot_token", "")
+            base = os.environ.get("AGENTOS_TELEGRAM_API", "").rstrip("/") or "https://api.telegram.org"
+            async with httpx.AsyncClient(timeout=40) as client:
+                r = await client.get(f"{base}/file/bot{token}/{path}")
+            if r.status_code != 200 or len(r.content) > self.PHOTO_MAX:
+                return []
+            kind = "image/png" if r.content[:4] == b"\x89PNG" else "image/webp" if r.content[8:12] == b"WEBP" \
+                else "image/jpeg"
+            return [f"data:{kind};base64," + base64.b64encode(r.content).decode()]
+        except Exception as e:
+            self.store.log("telegram", f"a photo could not be fetched: {type(e).__name__}")
+            return []
 
     async def ask_wall(self, chat_id: int, att: dict, png: bytes) -> None:
         """The shared browser met a page only a person can get past, during this chat's turn:

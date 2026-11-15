@@ -153,9 +153,12 @@ def test_every_surface_that_forwards_a_thread_carries_it():
     assert "set_exec_session" in fin
     for f in ("telegram.py", "whatsapp.py"):
         src = (ROOT / "agentos" / f).read_text()
-        assert "_exec_sessions" not in src
-        assert "prior=self.store.get_messages(cid)[:-1]" in src
-        assert re.search(r'"exec_session": \w*run\.session_id', src)
+        assert "_exec_sessions" not in src and "phoneturn.answer(" in src
+    # both phones answer through one function (phoneturn.py), which carries the thread
+    turn = (ROOT / "agentos/phoneturn.py").read_text()
+    assert "prior = store.get_messages(cid)[:-1]" in turn and "prior=prior" in turn
+    assert "store.set_exec_session(cid, got.session_id)" in turn
+    assert re.search(r'"exec_session": \w*got\.session_id', turn)
 
 
 def test_a_stored_reply_keeps_the_break_where_a_tool_ran():
