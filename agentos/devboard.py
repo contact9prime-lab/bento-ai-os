@@ -340,6 +340,58 @@ def rule_rows(rules: list[dict], names: dict | None = None, alarms=()) -> list[d
     return out
 
 
+# ---- a machine may belong to one of the person's companies ----
+# Asked for as "check if the devices are locked to the company, or that data can be mapped to
+# the company". They were neither: a machine belongs to the ACCOUNT that set it up, and nothing
+# about it named a company. This is the mapping: `device_companies` (a USER_KEY) says which of
+# the person's companies a machine is for, and a board asked for one company leaves out the
+# machines of the others. It is a view. What an agent may read or switch is still the gate's
+# device.get / device.set grants; nothing here widens or narrows them.
+
+def machine_key(m: dict) -> str:
+    """The name a machine is mapped under: stable across a rename of its link."""
+    if m.get("here"):
+        return "here"
+    if m.get("demo"):
+        return "demo:" + str(m.get("machine") or "").lower()
+    return str(m.get("tkey") or "")
+
+
+def company_map(raw, companies: dict | None = None) -> dict:
+    """The stored mapping, read entry by entry. A company the person no longer keeps is dropped,
+    so its machines go back to showing everywhere."""
+    out = {}
+    for k, v in (raw.items() if isinstance(raw, dict) else []):
+        k, v = str(k or "")[:120], str(v or "").strip().lower()[:64]
+        if k and v and (companies is None or v in companies):
+            out[k] = v
+    return out
+
+
+def mark_companies(machines: list[dict], cmap: dict, companies: dict, only: str = "") -> set:
+    """Say on each machine which company it is for. With `only` (one of the person's company
+    ids) the machines of OTHER companies are taken off the list, and their names (lower case)
+    are returned so their alarms and rules can go with them. A machine with no company stays."""
+    only = str(only or "").strip().lower()
+    if only not in companies:
+        only = ""
+    hidden, keep = set(), []
+    for m in machines:
+        m["ckey"] = machine_key(m)
+        cid = cmap.get(m["ckey"], "")
+        m["company"], m["company_name"] = cid, companies.get(cid, "")
+        if only and cid and cid != only:
+            hidden.add(str(m.get("machine") or "").lower())
+        else:
+            keep.append(m)
+    machines[:] = keep
+    return hidden
+
+
+def without(rows: list[dict], hidden: set) -> list[dict]:
+    return [r for r in rows if str(r.get("machine") or "").lower() not in hidden] if hidden else rows
+
+
 def _val(t: dict) -> str:
     v = t.get("value")
     if v is None:
@@ -377,6 +429,7 @@ def text(board: dict) -> str:
         lines.append("")
     for m in ms:
         st = "not answering" if m.get("up") is False else ("this hub" if m.get("here") else "")
+        st = ", ".join(x for x in (st, m.get("company_name") or "") if x)
         lines.append(f"  {m.get('machine')}" + (f"  ({st})" if st else ""))
         group = None
         for t in m.get("things") or []:

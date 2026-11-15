@@ -99,6 +99,49 @@ A pager in the taskbar (`1 2 +`) gives you multiple desktops:
 - **Ctrl+1…6** switches desktops.
 - Widgets are **per-desktop**, so each desktop is its own workspace.
 
+#### What a desktop shows
+
+Each desktop has a scene of its own, and you choose it on the desktop. The button beside the
+pager names the scene of the desktop in front ("Town", "Devices", "App Hub"); press it for the
+menu. Adding a desktop with **+** takes you there and opens the menu. On a phone the button sits
+under the menu bar, where it is big enough to tap.
+
+![The desktop's menu: its scene and the company it opens](screenshots/desk-menu.png)
+
+![The same menu on a phone, under the button below the menu bar](screenshots/desk-menu-phone.png)
+
+The three at the top are the ones most people switch between:
+
+- **Town** is your agents and departments as a place.
+- **Devices** is every machine and its alarms, live.
+- **App Hub** is your widgets as a board, your apps under them, and the chat docked on the right.
+  Fold the chat with the arrow on the bar and the board takes the whole width. Widgets run only
+  while the desktop is bare, so a window over the hub costs nothing.
+
+![The App Hub: widgets as a board, apps under them, the chat on the right](screenshots/app-hub.png)
+
+On a phone the board is one column and the prompt bar stays at the bottom.
+
+![The App Hub on a phone: the widget board in one column](screenshots/app-hub-phone.png)
+
+The other scenes are under **More scenes**. A small machine's own screen is offered only the
+scenes it can draw; the App Hub is not one of them yet, because what its widgets cost there has
+not been measured.
+
+#### A company per desktop
+
+If you keep two or more companies, the menu has a **Company** row. Pick one and coming to that
+desktop opens that company. Leave it on **Whichever is open** and the desktop keeps the company
+you were in. The open company belongs to your account, so another browser signed in as you
+moves with it.
+
+A Devices desktop that opens a company shows that company's machines. See
+[Which company a machine is for](network.md#which-company-a-machine-is-for).
+
+Removing a desktop moves the ones after it down by one, with their windows, scene and company.
+
+A terminal has no desktops or scenes. `bento company open NAME` switches companies there.
+
 ### Command palette
 Press **Alt+Space** or **Ctrl+Space** anywhere for a fast launcher: fuzzy-search to open any app, run
 an action (new chat, clear session, toggle voice, reset wallpaper), or choose **"Ask …"** to send

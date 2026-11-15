@@ -152,7 +152,7 @@ thing with its current reading filled in.
 
 On any hub with devices it's the same: the Pis it set up and the ESP32 boards it holds. A desktop
 you never gave a scene shows the one you picked in Settings → Appearance; on a hub, desktop 2 shows
-Devices. Pick a scene on each desktop there. From a terminal, `bento network board` prints the
+Devices. Pick a scene on each desktop with the button beside the pager. From a terminal, `bento network board` prints the
 board.
 
 From a terminal, `bento demo warehouse floor` lists every reading and

@@ -738,7 +738,10 @@ USER_KEYS = ("channels", "telegram", "whatsapp", "mcp_servers", "credentials", "
              "stage",
              # the alarms I watch my devices for (devboard.py): what I want to see is mine;
              # switching anything is still device_set, asked every time
-             "device_alarms")
+             "device_alarms",
+             # which of MY companies each of my machines is for (devboard.py). Companies are
+             # mine, so the mapping is; it changes what a board shows and reaches nothing.
+             "device_companies")
 
 
 def machine_view(cfg: dict) -> dict:
