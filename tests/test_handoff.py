@@ -1,24 +1,30 @@
-"""The sign-in link: a page the browser is stuck on, opened on the phone you're holding.
+"""The sign-in link: a page the browser is stuck on, opened on the phone you're holding,
+through remote access and nothing else.
 
 Asked for with a screenshot of Aria giving up on a GitHub sign-in ("it can only be done at the
 machine, not from Telegram"), then: "bento should give the link to open it on the phone directly
-… prompted about and via permission … if granted open it only for the session to key in".
+… prompted about and via permission … if granted open it only for the session to key in". The
+first cut opened a door of its own, and the owner's answer was: "it needs to come in the remote
+itself … the user will have to login to the remote … it must only go through remote".
 
 Pinned here, each one a way this could go wrong:
 
-- it is offered in words that say what opening it does, and only where the machine allows it;
+- it is offered only while remote access is on, in words that say you sign in there first; with
+  remote access off nothing is offered and the message says what is missing;
 - no agent can open one: there is no tool, and the switch is not the agent's to change;
-- reading the link opens nothing (a chat app's preview is a GET); the page's own POST binds it
-  to one device, and a second device is refused and reported;
-- the page stays shut until the CHAT says the device is theirs, and "no" closes it;
-- a phone already signed in to this Bento as the same person skips that question;
+- the routes are behind the remote gate (not in REMOTE_OPEN_PATHS): a phone with no session gets
+  the sign-in page at the link's own address, and comes back to the link after signing in;
+- every route and the socket ask who is signed in: nobody, and another account, are refused;
 - the phone can type and tap, and can't navigate or touch another tab;
-- it ends on Done, when the wall is gone, when nobody opened it in time, and the temporary door
-  goes with it;
+- it ends on Done, when the wall is gone, when nobody opened it in time, and when remote access
+  is switched off;
 - the link is never written to the diary, and goes to Telegram as plain text.
 """
 import asyncio
+import contextlib
+import json
 import os
+import socket
 import sys
 import tempfile
 from pathlib import Path
@@ -33,7 +39,15 @@ os.environ.setdefault("AGENTOS_VAULT_KEYRING", "0")
 
 from agentos import cdpbrowser, handoff   # noqa: E402
 
-CFG = {"agent_name": "Aria", "port": 8321, "handoff": {"enabled": True, "port": 18327}}
+
+def _cfg(remote=True, on=True) -> dict:
+    return {"agent_name": "Aria", "port": 8321, "handoff": {"enabled": on},
+            "remote": {"enabled": remote, "pass_hash": "x" if remote else "", "pass_salt": "s"}}
+
+
+# who a cookie is, in these tests: the machine's one person, another account, or nobody
+PEOPLE = {"ada": "", "bob": "u-bob"}
+ADA, BOB = {"Cookie": "sess=ada"}, {"Cookie": "sess=bob"}
 
 
 class _FakeBrowser:
@@ -73,27 +87,48 @@ class _FakeBrowser:
 
 @pytest.fixture
 def world(monkeypatch):
-    """A machine with remote access off, a browser at a wall, a chat, and a ledger to read."""
+    """A machine with remote access on, a browser at a wall, a chat, and a ledger to read."""
     b = _FakeBrowser()
-    rows, said = [], []
+    rows, said, cfg = [], [], _cfg()
     monkeypatch.setitem(cdpbrowser._BROWSERS, "", b)
     monkeypatch.setenv("AGENTOS_HANDOFF_BASE", "http://127.0.0.1")
-    monkeypatch.setenv("AGENTOS_HANDOFF_BIND", "127.0.0.1")
-    monkeypatch.setattr(handoff, "DOOR_LINGER", 0.0)
     old = dict(handoff._HOOKS)
-    handoff.bind(cfg=lambda: CFG, ledger=lambda uid, a, r, d, surface: rows.append((a, d, surface)),
-                 screens=None, session=lambda request, uid: False)
+
+    async def gate(ws):
+        return False
+    handoff.bind(cfg=lambda: cfg, ledger=lambda uid, a, r, d, surface: rows.append((a, d, surface)),
+                 who=lambda conn: PEOPLE.get(conn.cookies.get("sess")), ws_gate=gate)
 
     async def say(text, buttons):
         said.append((text, buttons))
-    yield type("W", (), {"b": b, "rows": rows, "said": said, "say": staticmethod(say)})
+    yield type("W", (), {"b": b, "rows": rows, "said": said, "say": staticmethod(say), "cfg": cfg})
     handoff._HOOKS.clear()
     handoff._HOOKS.update(old)
     handoff._T.clear()
-    handoff._DOOR.update(server=None, task=None, port=0)     # its loop ended with the test
-    handoff._GUESS.clear()
     cdpbrowser._REACH.clear()
     cdpbrowser._SAY.clear()
+
+
+@contextlib.asynccontextmanager
+async def served(w):
+    """The link's routes on a real port, as this server mounts them (the remote gate is the
+    server's, and has its own test below)."""
+    import uvicorn
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    w.cfg["port"] = port
+    server = uvicorn.Server(uvicorn.Config(handoff.app(), log_level="warning", lifespan="off"))
+    server.install_signal_handlers = lambda: None
+    task = asyncio.create_task(server.serve(sockets=[sock]))
+    while not server.started:
+        await asyncio.sleep(0.02)
+    try:
+        yield port
+    finally:
+        server.should_exit = True
+        with contextlib.suppress(Exception):
+            await asyncio.wait_for(task, 5)
 
 
 def _link(said) -> str:
@@ -101,30 +136,43 @@ def _link(said) -> str:
 
 
 async def _open(w) -> str:
-    assert await handoff.from_chat(CFG, "", "tg:5", "open", w.say) == handoff.HANDLED
+    assert await handoff.from_chat(w.cfg, "", "tg:5", "open", w.say) == handoff.HANDLED
     return _link(w.said)
 
 
-# ---- offered in words, and only by a person ---------------------------------------------------
+# ---- offered in words, only through remote access, and only by a person -----------------------
 
-def test_the_offer_says_what_opening_it_does(world):
+def test_it_is_offered_only_while_remote_access_is_on(world):
     att = world.b.attention
     offer = cdpbrowser.phone_offer(att)
-    assert offer == {"ok": True, "how": "door"}
+    assert offer == {"ok": True}
     words = cdpbrowser.phone_words(att, "Aria", offer=offer)
-    assert "Open on this phone" in words and "opens a door on your network for this one page" in words
+    assert "Open on this phone" in words and "sign in to your Bento's remote access" in words
     assert "Passwords don't go through chat" in words
-    # with remote access on there is no door to open, and the sentence doesn't claim one
-    words = cdpbrowser.phone_words(att, "Aria", offer={"ok": True, "how": "remote"})
-    assert "Open on this phone" in words and "door" not in words
     # WhatsApp has no buttons: a word to reply with
     assert "Reply “open”" in cdpbrowser.phone_words(att, "Aria", button=False, offer=offer)
     # a code is typed in the chat: no page is offered for it
     assert cdpbrowser.phone_offer({"kind": "code"}) == {"ok": False}
+    # remote access off: nothing is offered, and the message says what is missing
+    handoff.bind(cfg=lambda: _cfg(remote=False))
+    off = cdpbrowser.phone_offer(att)
+    assert not off["ok"] and off["needs"] == "remote" and "bento remote --on" in off["why"]
+    words = cdpbrowser.phone_words(att, "Aria", offer=off)
+    assert "Open on this phone" not in words and "remote access has to be on first" in words
     # switched off on the machine: the old words, unchanged
-    handoff.bind(cfg=lambda: {"handoff": {"enabled": False}})
-    assert not cdpbrowser.phone_offer(att)["ok"]
-    assert "Open" not in cdpbrowser.phone_words(att, "Aria", offer=cdpbrowser.phone_offer(att))
+    handoff.bind(cfg=lambda: _cfg(on=False))
+    off = cdpbrowser.phone_offer(att)
+    assert not off["ok"] and "needs" not in off
+    words = cdpbrowser.phone_words(att, "Aria", offer=off)
+    assert "Open" not in words and "remote access" not in words
+
+
+def test_asking_with_remote_access_off_opens_nothing(world):
+    world.cfg["remote"]["enabled"] = False
+    cdpbrowser.reach("", "tg:5", lambda att, png: None, say=world.say)
+    assert asyncio.run(cdpbrowser.from_phone("", "tg:5", "open")) == handoff.HANDLED
+    assert "Remote access is off" in world.said[-1][0] and not world.said[-1][1]
+    assert not handoff._T and not world.rows
 
 
 def test_an_unwired_embedding_offers_nothing(world):
@@ -133,6 +181,9 @@ def test_an_unwired_embedding_offers_nothing(world):
     cdpbrowser.reach("", "tg:5", lambda att, png: None, say=world.say)
     assert asyncio.run(cdpbrowser.from_phone("", "tg:5", "open")) == ""      # it goes on to the agent
     assert not handoff._T
+    # and with nothing wired, nobody is anybody and the socket gate is shut
+    handoff._HOOKS.update(who=None, ws_gate=None)
+    assert handoff._who(object()) is None
 
 
 def test_no_agent_can_open_one():
@@ -144,101 +195,100 @@ def test_no_agent_can_open_one():
     assert "handoff" not in users.USER_KEYS                  # it is the machine's
 
 
-# ---- the whole road, over a real door ----------------------------------------------------------
+def test_there_is_no_second_door():
+    """The first cut started a listener of its own when remote access was off. It is gone."""
+    src = Path(handoff.__file__).read_text(encoding="utf-8")
+    for gone in ("uvicorn", "_door_open", "set_cookie", "randbelow"):
+        assert gone not in src
+    from agentos import config
+    assert config.DEFAULTS["handoff"] == {"enabled": True}
 
-def test_the_link_opens_nothing_until_the_person_says_whose_screen_it_is(world):
+
+# ---- the whole road ----------------------------------------------------------------------------
+
+def test_only_its_own_person_signed_in_gets_the_page(world):
     async def run():
-        url = await _open(world)
-        assert url.startswith("http://127.0.0.1:18327/handoff/")
-        text = world.said[-1][0]
-        assert url in text and "isn't encrypted" not in text          # loopback is "on this machine"
-        e = handoff.for_user("")
-        assert e["state"] == "sent" and e["how"] == "door" and handoff._DOOR["port"] == 18327
-        async with httpx.AsyncClient() as phone, httpx.AsyncClient() as thief:
-            # a preview fetch is a GET: it gets a page with a button and binds nothing
-            r = await phone.get(url)
-            assert r.status_code == 200 and "Show the page" in r.text
-            assert r.headers["cache-control"] == "no-store" and "frame-ancestors 'none'" in r.headers["content-security-policy"]
-            assert e["state"] == "sent" and not e["device"]
-            # the page's own POST binds this device, and shows a number
-            r = await phone.post(url + "/join")
-            j = r.json()
-            assert j["state"] == "joined" and len(j["code"]) == 4 and e["code"] == j["code"]
-            ask, buttons = world.said[-1]
-            assert j["code"] in ask and ("Yes, that's my screen", "yes") in buttons and ("No, close it", "no") in buttons
-            # a second device is refused, and the chat hears it once
-            assert (await thief.post(url + "/join")).status_code == 409
-            assert (await thief.post(url + "/join")).status_code == 409
-            assert (await thief.get(url + "/state")).status_code == 409
-            assert sum("second device" in t for t, _b in world.said) == 1
-            # nothing is drawn before the chat confirms
-            with pytest.raises(Exception):
-                async with websockets.connect(url.replace("http", "ws") + "/ws",
-                                              additional_headers={"Cookie": r.headers["set-cookie"].split(";")[0]}):
-                    pass
-            assert not world.b.viewers
-            # another chat can't confirm it; this one can
-            assert await handoff.from_chat(CFG, "", "tg:9", "yes", world.say) == ""
-            assert await handoff.from_chat(CFG, "", "tg:5", "yes", world.say) == handoff.HANDLED
-            assert e["state"] == "live" and (await phone.get(url + "/state")).json()["state"] == "live"
-            cookie = r.headers["set-cookie"].split(";")[0]
-            assert "HttpOnly" in r.headers["set-cookie"] and "SameSite=strict" in r.headers["set-cookie"]
-            async with websockets.connect(url.replace("http", "ws") + "/ws",
-                                          additional_headers={"Cookie": cookie}) as ws:
-                await ws.send('{"type":"hello","w":390,"h":700}')
-                state = __import__("json").loads(await ws.recv())
-                # the phone hears this page's size, never the other tabs or addresses
-                assert state == {"type": "state", "size": [390, 700], "url": ""}
-                assert await ws.recv() == b"\xff\xd8frame"
-                for op in ({"type": "text", "text": "hunter2"}, {"type": "navigate", "url": "https://bank.example"},
-                           {"type": "tab_switch", "id": "T1"}, {"type": "tab_new"}, {"type": "handoff_close"},
-                           {"type": "key", "key": "Enter"}):
-                    await ws.send(__import__("json").dumps(op))
-                await asyncio.sleep(0.2)
-                assert [o["type"] for o in world.b.did] == ["text", "key"]      # typed and tapped, nothing else
-                # Done on the page: the agent carries on, the page hears it, the door goes
-                r = await phone.post(url + "/done")
-                assert r.json() == {"ok": True}
-                assert __import__("json").loads(await ws.recv()) == {"type": "ended", "done": True}
+        async with served(world) as port:
+            url = await _open(world)
+            assert url.startswith(f"http://127.0.0.1:{port}/handoff/")
+            text = world.said[-1][0]
+            assert url in text and "You sign in to your Bento first" in text
+            e = handoff.for_user("")
+            assert e["state"] == "sent"
+            ws_url = url.replace("http", "ws") + "/ws"
+            async with httpx.AsyncClient() as c:
+                # nobody signed in, and another account: every route says no and nothing changes
+                for who in ({}, BOB):
+                    r = await c.get(url, headers=who)
+                    assert r.status_code == 403 and "isn't yours to open" in r.text and "BOOT={" not in r.text
+                    assert (await c.post(url + "/join", headers=who)).status_code == 403
+                    assert (await c.get(url + "/state", headers=who)).status_code == 403
+                    assert (await c.post(url + "/done", headers=who)).status_code == 403
+                assert e["state"] == "sent" and not world.b.did
+                assert [r[0] for r in world.rows].count("handoff.refused") == 1      # one row an incident
+                # its person, signed in: the page, and its own POST opens it
+                r = await c.get(url, headers=ADA)
+                assert r.status_code == 200 and "BOOT={" in r.text and "github.com" in r.text
+                assert r.headers["cache-control"] == "no-store"
+                assert "frame-ancestors 'none'" in r.headers["content-security-policy"]
+                assert e["state"] == "sent"                   # reading it changed nothing
+                # a page elsewhere can't drive it
+                r = await c.post(url + "/join", headers={**ADA, "Origin": "https://evil.example"})
+                assert r.status_code == 403 and e["state"] == "sent"
+                assert (await c.post(url + "/join", headers=ADA)).json() == {"state": "live", "site": "github.com"}
+                assert "open on your phone" in world.said[-1][0] and not world.said[-1][1]
+                # the socket asks too: nobody and another account never see a frame
+                for who in ({}, BOB):
+                    with pytest.raises(Exception):
+                        async with websockets.connect(ws_url, additional_headers=who):
+                            pass
+                assert not world.b.viewers
+                async with websockets.connect(ws_url, additional_headers=ADA) as ws:
+                    await ws.send('{"type":"hello","w":390,"h":700}')
+                    # the phone hears this page's size, never the other tabs or addresses
+                    assert json.loads(await ws.recv()) == {"type": "state", "size": [390, 700], "url": ""}
+                    assert await ws.recv() == b"\xff\xd8frame"
+                    for op in ({"type": "text", "text": "hunter2"}, {"type": "navigate", "url": "https://bank.example"},
+                               {"type": "tab_switch", "id": "T1"}, {"type": "tab_new"}, {"type": "handoff_close"},
+                               {"type": "key", "key": "Enter"}):
+                        await ws.send(json.dumps(op))
+                    await asyncio.sleep(0.2)
+                    assert [o["type"] for o in world.b.did] == ["text", "key"]      # typed and tapped, nothing else
+                    # Done on the page: the agent carries on and the page hears it
+                    assert (await c.post(url + "/done", headers=ADA)).json() == {"ok": True}
+                    assert json.loads(await ws.recv()) == {"type": "ended", "done": True}
+                assert (await c.post(url + "/join", headers=ADA)).status_code == 410
         assert world.b.did[-1] == {"type": "resume"} and world.b.attention is None
         assert world.b.size == (1280, 800)                   # the desk got its size back
-        assert e["state"] == "ended"
-        await asyncio.sleep(0.3)
-        assert handoff._DOOR["server"] is None               # a door that exists only while it is used
-        with pytest.raises(httpx.ConnectError):
-            async with httpx.AsyncClient() as c:
-                await c.get(url)
-        assert [r[0] for r in world.rows] == ["handoff.open", "handoff.join", "handoff.refused",
-                                             "handoff.confirm", "handoff.end"]
+        assert [r[0] for r in world.rows] == ["handoff.open", "handoff.refused", "handoff.join", "handoff.end"]
         assert {r[2] for r in world.rows} == {"telegram"}       # on the channel it was asked from
-        assert "door on port 18327" in world.rows[0][1]
+        assert "through remote access" in world.rows[0][1]
         assert "Done on your phone" in world.said[-1][0]
     asyncio.run(run())
 
 
-def test_no_closes_it_and_nobody_got_in(world):
+def test_the_gate_is_shut_when_nothing_wired_the_socket(world):
+    handoff._HOOKS["ws_gate"] = None
+
     async def run():
-        url = await _open(world)
-        async with httpx.AsyncClient() as c:
-            await c.post(url + "/join")
-            assert await handoff.from_chat(CFG, "", "tg:5", "no", world.say) == handoff.HANDLED
-            assert "Nobody got in" in world.said[-1][0]
-            assert (await c.get(url + "/state")).json()["state"] == "ended"
-            assert (await c.post(url + "/join")).status_code == 410
-        assert not world.b.did and world.b.attention            # the wall still waits for a screen
+        async with served(world):
+            url = await _open(world)
+            async with httpx.AsyncClient() as c:
+                await c.post(url + "/join", headers=ADA)
+            with pytest.raises(Exception):
+                async with websockets.connect(url.replace("http", "ws") + "/ws", additional_headers=ADA):
+                    pass
+        assert not world.b.viewers
     asyncio.run(run())
 
 
-def test_a_signed_in_phone_skips_the_question(world):
-    handoff.bind(session=lambda request, uid: True)
-
+def test_close_in_the_chat_closes_it(world):
     async def run():
-        url = await _open(world)
-        async with httpx.AsyncClient() as c:
-            j = (await c.post(url + "/join")).json()
-        assert j == {"state": "live", "site": "github.com"}
-        assert "signed-in phone" in world.said[-1][0] and not world.said[-1][1]
-        await handoff.close("", "closed by you")
+        await _open(world)
+        assert await handoff.from_chat(world.cfg, "", "tg:9", "close", world.say) == ""     # another chat can't
+        assert await handoff.from_chat(world.cfg, "", "tg:5", "close", world.say) == handoff.HANDLED
+        assert "closed" in world.said[-1][0] and handoff.for_user("") is None
+        assert not world.b.did and world.b.attention            # the wall still waits for a screen
     asyncio.run(run())
 
 
@@ -246,37 +296,40 @@ def test_it_ends_by_itself(world, monkeypatch):
     async def run():
         # nobody opened it in time
         monkeypatch.setattr(handoff, "OPEN_S", 0)
-        url = await _open(world)
+        await _open(world)
         e = handoff.for_user("")
         await asyncio.sleep(1.3)
         assert e["state"] == "ended" and e["why"] == "not opened in time"
         assert "wasn't opened in time" in world.said[-1][0]
-        # the wall went away (they signed in at the desk): the link closes with it
         monkeypatch.setattr(handoff, "OPEN_S", 300)
-        url = await _open(world)
+        # remote access is switched off while it is out: the link goes with it
+        await _open(world)
+        e = handoff.for_user("")
+        world.cfg["remote"]["enabled"] = False
+        await asyncio.sleep(1.3)
+        assert e["state"] == "ended" and e["why"] == "remote access was turned off"
+        assert "remote access was turned off" in world.said[-1][0]
+        world.cfg["remote"]["enabled"] = True
+        # the wall went away (they signed in at the desk): the link closes with it
+        await _open(world)
         e = handoff.for_user("")
         world.b.attention = None
         await asyncio.sleep(1.3)
         assert e["state"] == "ended" and e["why"] == "the page moved on"
-        async with httpx.AsyncClient() as c:
-            with pytest.raises(httpx.ConnectError):
-                await c.get(url)
     asyncio.run(run())
 
 
-def test_a_new_link_replaces_the_old_and_wrong_links_are_counted(world):
+def test_a_new_link_replaces_the_old(world):
     async def run():
-        first = await _open(world)
-        second = await _open(world)
-        assert first != second
-        async with httpx.AsyncClient() as c:
-            assert (await c.post(first + "/join")).status_code == 410
-            base = second.rsplit("/", 1)[0]
-            for _ in range(handoff.GUESS_LIMIT):
-                assert (await c.get(base + "/" + "x" * 32)).status_code == 404
-            assert (await c.get(base + "/" + "x" * 32)).status_code == 429
-            assert (await c.get(second)).status_code == 429          # the same address waits too
-        await handoff.close("")
+        async with served(world):
+            first = await _open(world)
+            second = await _open(world)
+            assert first != second
+            async with httpx.AsyncClient() as c:
+                assert (await c.post(first + "/join", headers=ADA)).status_code == 410
+                assert (await c.get(second.rsplit("/", 1)[0] + "/" + "x" * 32, headers=ADA)).status_code == 404
+                assert (await c.post(second + "/join", headers=ADA)).json()["state"] == "live"
+            await handoff.close("")
     asyncio.run(run())
 
 
@@ -284,8 +337,9 @@ def test_the_desk_can_see_it_and_close_it(world):
     async def run():
         await _open(world)
         v = handoff.view(handoff.for_user(""))
-        assert v["state"] == "sent" and v["site"] == "github.com" and "h" not in v and "code" not in v
-        assert handoff.status(CFG)["open"]["id"] == v["id"]
+        assert v["state"] == "sent" and v["site"] == "github.com" and "h" not in v
+        st = handoff.status(world.cfg)
+        assert st["open"]["id"] == v["id"] and st["remote"] is True and st["can"] == {"ok": True}
         assert await handoff.close("") is True and handoff.for_user("") is None
         assert "closed" in world.said[-1][0]
     asyncio.run(run())
@@ -299,8 +353,12 @@ def test_the_page_escapes_what_came_from_elsewhere():
     assert "</script><img" not in page and "<b>Aria</b>" not in page
     assert "not encrypted beyond" in page.replace("isn't", "not")          # the road is said on the page
     assert "innerHTML" not in handoff._PAGE_JS                              # the page draws with text nodes
+    assert "t" * 32 not in page                                             # the address is the page's own
     closed = handoff.page_html(None, "t" * 32, "plain")
     assert "This link has closed" in closed
+    # somebody else gets a card with nothing of the page in it
+    other = handoff.page_html(e, "t" * 32, "plain", "Aria", theirs=False)
+    assert "isn't yours to open" in other and "onerror" not in other and "BOOT=null" in other
 
 
 def test_the_live_window_client_is_the_desktops_own():
@@ -313,8 +371,8 @@ def test_the_live_window_client_is_the_desktops_own():
 
 def test_roads_are_named_honestly():
     assert handoff._kind_of("https://bento.example") == "https"
-    assert handoff._kind_of("http://100.101.102.103:8327") == "tailscale"
-    assert handoff._kind_of("http://192.168.1.20:8327") == "plain"
+    assert handoff._kind_of("http://100.101.102.103:8321") == "tailscale"
+    assert handoff._kind_of("http://192.168.1.20:8321") == "plain"
     assert "isn't encrypted" in handoff.ROAD_WORDS["plain"]
 
 
@@ -330,19 +388,17 @@ def test_telegram_sends_the_link_plain_and_keeps_it_out_of_the_diary():
             raise RuntimeError("BUTTON_URL_INVALID")
         return {}
     tg._api = api
-    link = "http://192.168.1.20:8327/handoff/abc_DEF-ghi_jkl"
+    link = "http://192.168.1.20:8321/handoff/abc_DEF-ghi_jkl"
     asyncio.run(tg.say_wall(5, "🔗 Open this:\n" + link, [("Open the page", "url:" + link)]))
     # refused with the button, sent again without: the address is in the words
     assert len(calls) == 2 and "reply_markup" not in calls[1][1]
     assert all(link in kw["text"] and "parse_mode" not in kw for _m, kw in calls)
     assert not any("handoff/" in t for t in logs)
-    calls.clear()
-    asyncio.run(tg.say_wall(5, "Is that your screen?", [("Yes, that's my screen", "yes"), ("No, close it", "no")]))
-    kb = calls[0][1]["reply_markup"]["inline_keyboard"]
-    assert [b[0]["callback_data"] for b in kb] == ["bw:yes", "bw:no"]
+    src = Path(sys.modules["agentos.telegram"].__file__).read_text(encoding="utf-8")
+    assert '"bw:open", "bw:close"' in src and "bw:yes" not in src
 
 
-def test_whatsapp_asks_in_words_and_keeps_the_link_out_of_the_diary():
+def test_whatsapp_keeps_the_link_out_of_the_diary():
     from agentos.whatsapp import WhatsAppBridge
     sent = []
     wa = WhatsAppBridge.__new__(WhatsAppBridge)
@@ -350,24 +406,63 @@ def test_whatsapp_asks_in_words_and_keeps_the_link_out_of_the_diary():
     async def send(text, wa_id=None, quiet=False):
         sent.append((text, quiet))
     wa.send = send
-    asyncio.run(wa.say_wall("447", "Is that your screen?", [("Yes, that's my screen", "yes"), ("No, close it", "no")]))
-    assert sent == [("Is that your screen?\nReply “yes” or “no”.", True)]
+    link = "http://192.168.1.20:8321/handoff/abc_DEF-ghi_jkl"
+    asyncio.run(wa.say_wall("447", "Open this:\n" + link, [("Open the page", "url:" + link)]))
+    assert sent == [("Open this:\n" + link, True)]
     src = Path(sys.modules["agentos.whatsapp"].__file__).read_text(encoding="utf-8")
     assert '"→ said something about a sign-in link" if quiet' in src
 
 
-# ---- this server's own routes ------------------------------------------------------------------
+# ---- this server: behind the remote gate -------------------------------------------------------
 
-def test_the_server_serves_it_past_the_remote_gate_and_guards_the_switch():
+def test_the_server_keeps_it_behind_the_remote_gate():
+    import inspect
+
+    from fastapi.testclient import TestClient
+
     from agentos import machineroutes as mr
+    from agentos import remote as remotemod
     from agentos import server as servermod
-    assert "/handoff/" in servermod.REMOTE_OPEN_PATHS
+    assert not any(p.startswith("/handoff") for p in servermod.REMOTE_OPEN_PATHS)
     assert any(getattr(r, "path", "") == "/handoff" for r in servermod.app.routes)
     assert mr.machine_only("POST", "/api/handoff/switch")
-    import inspect
     assert "_local_admin_refusal(" in inspect.getsource(servermod.api_handoff_switch)
     # the config route can't change it (its keys are an allow-list)
     assert '"handoff"' not in inspect.getsource(servermod.api_put_config)
+    login = (Path(servermod.__file__).parent / "ui" / "login.html").read_text(encoding="utf-8")
+    with TestClient(servermod.app, client=("192.168.1.50", 50000)) as c:
+        live = servermod.state["cfg"]
+        before = dict(live.get("remote") or {})
+        try:
+            live.setdefault("remote", {}).update({"enabled": True, "bind": "0.0.0.0", "session_days": 30})
+            live["remote"]["pass_hash"], live["remote"]["pass_salt"] = remotemod.hash_passphrase("a good long phrase")
+            remotemod.reset_failures()
+            path = "/handoff/" + "t" * 32
+            # a phone with no session: the sign-in page, at the link's own address
+            r = c.get(path)
+            assert r.status_code == 200 and r.text == login and "BOOT" not in r.text
+            assert c.post(path + "/join").text == login
+            with pytest.raises(Exception):
+                with c.websocket_connect(path + "/ws"):
+                    pass
+            # signed in to remote access: the request reaches the link's own routes
+            c.cookies.set(remotemod.COOKIE, remotemod.issue_session(live, ""))
+            r = c.get(path)
+            assert r.status_code == 404 and "This link has closed" in r.text
+            assert c.post(path + "/join").status_code == 410
+            # remote access off: a session from before is nobody
+            live["remote"]["enabled"] = False
+            assert c.get(path).text == login
+        finally:
+            live["remote"] = before
+            c.cookies.clear()
+
+
+def test_the_sign_in_page_comes_back_to_the_link():
+    login = (Path(handoff.__file__).parent / "ui" / "login.html").read_text(encoding="utf-8")
+    assert "const LINK=location.pathname.indexOf('/handoff/')===0;" in login
+    assert "location.replace(LINK?location.pathname:'/')" in login           # back to the link, same origin
+    assert "Sign in to open the page your agent is waiting on." in login
 
 
 def test_the_web_window_hears_about_it(world):
@@ -382,5 +477,5 @@ def test_the_web_window_hears_about_it(world):
         assert b.snapshot_state()["handoff"] is None
     asyncio.run(run())
     js = (Path(handoff.__file__).parent / "ui" / "src" / "js" / "04f-streams.js").read_text(encoding="utf-8")
-    assert "m.handoff" in js and "handoff_close" in js
+    assert "m.handoff" in js and "handoff_close" in js and "joined" not in js[js.index("m.handoff"):][:700]
     assert 'k == "handoff_close"' in Path(cdpbrowser.__file__).read_text(encoding="utf-8")

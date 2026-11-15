@@ -279,7 +279,7 @@ class WhatsAppBridge(usersmod.Scoped):
 
     async def say_wall(self, wa_id: str, text: str, buttons: list) -> None:
         """A line about a sign-in link (handoff.py). No buttons here: an address is in the
-        words already, and a question is answered by replying with one of its words."""
+        words already, and anything else is answered by replying with its word."""
         asks = [word for _label, word in buttons or [] if not word.startswith("url:")]
         if asks:
             text += "\nReply " + " or ".join(f"“{w}”" for w in asks) + "."

@@ -3322,7 +3322,7 @@ def _handoff_cli(args):
                 print(f"✗ {got['error']}")
                 print("  Sign in on this machine as its admin and use Settings → Remote access.")
                 sys.exit(1)
-        print("✓ Sign-in links will be offered when a page needs you." if on else
+        print("✓ Sign-in links will be offered when a page needs you and remote access is on." if on else
               "✓ Sign-in links are off. A page that needs you waits for a screen.")
         return
     if act == "close":
@@ -3338,16 +3338,12 @@ def _handoff_cli(args):
         can = st.get("can") or {}
         if not can.get("ok"):
             print(f"  Can't be offered now: {can.get('why') or 'no reason given'}")
-        elif st.get("how") == "door":
-            print(f"  Remote access is off, so each link opens a door on port {st.get('port')} "
-                  "for that one page and closes it when you finish.")
         else:
-            print("  Remote access is on, so a link opens on this Bento's own address.")
+            print("  A link goes through remote access: you sign in there, then the page opens.")
     o = st.get("open")
     if o:
         left = max(0, int((o.get("until") or 0) - time.time()))
-        words = {"sent": "sent, not opened yet", "joined": "opened, waiting for you to confirm the device",
-                 "live": "open on a phone"}.get(o.get("state"), o.get("state"))
+        words = {"sent": "sent, not opened yet", "live": "open on a phone"}.get(o.get("state"), o.get("state"))
         print(f"  Open now: {o.get('site')} · {words} · closes by itself in {left // 60} min")
         print("  bento handoff close   closes it")
     elif live is None:

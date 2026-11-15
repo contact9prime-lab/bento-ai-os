@@ -98,8 +98,8 @@ _SAY: dict[tuple, object] = {}       # (uid, chat) -> how to send that chat a li
 def reach(uid: str, key: str, ask, say=None) -> None:
     """While a phone turn runs, a wall is asked of that phone. `ask(attention, png)` sends
     the picture and the question; `key` names the chat (`unreach` takes it out).
-    `say(text, buttons)` sends a line with answers under it: the sign-in link's questions
-    (handoff.py) go through it."""
+    `say(text, buttons)` sends a line with buttons under it: what the sign-in link says
+    (handoff.py) goes through it."""
     _REACH.setdefault(uid or "", {})[key] = ask
     if say is not None:
         _SAY[(uid or "", key)] = say
@@ -144,17 +144,16 @@ def phone_words(att: dict, agent: str = "Aria", button: bool = True, offer: dict
     to do. One function for every channel, so Telegram and WhatsApp say the same thing.
     `button` is False where the message carries no buttons: the person replies "done" or
     "open". `offer` is `phone_offer`'s answer: when it is ok the page can be opened on this
-    phone, and the sentence says what opening it does before anybody taps."""
+    phone through remote access, and the sentence says so before anybody taps. When all that
+    is missing is remote access, the message says that too."""
     site = att.get("site") or "a page"
     tap = "tap Done" if button else "reply “done”"
     kind = att.get("kind") or "ask"
     head = f"🔐 {agent} needs you on {site}."
     here = ""
     if offer and offer.get("ok"):
-        here = ("Tap “Open on this phone”" if button else "Reply “open”") + " to do it here"
-        if offer.get("how") == "door":
-            here += (". That opens a door on your network for this one page, "
-                     "until you're done or 15 minutes pass")
+        here = (("Tap “Open on this phone”" if button else "Reply “open”")
+                + " to do it here: you sign in to your Bento's remote access, then the page opens")
     if kind == "code":
         do = "Reply here with the code and I'll type it into the page."
     elif kind == "login":
@@ -166,6 +165,8 @@ def phone_words(att: dict, agent: str = "Aria", button: bool = True, offer: dict
               + f" on a screen in the Web window, then {tap}.")
     else:
         do = (f"{here}. Or do it" if here else "Do it") + f" on a screen in the Web window, then {tap}."
+    if kind != "code" and offer and offer.get("needs") == "remote":
+        do += " To do it from this phone, remote access has to be on first."
     said = str(att.get("reason") or "").strip()
     return head + ("\n“" + said[:300] + "”" if said else "") + "\n" + do
 
@@ -174,9 +175,9 @@ async def from_phone(uid: str, key: str, text: str) -> str:
     """A message from the phone while the browser waits on a wall. Returns what to tell the
     phone, or '' when the message is not an answer to the wall (it goes to the agent).
 
-    "open" asks for the page on this phone, and "yes"/"no" answer whether the device that
-    opened it is theirs (handoff.py). Those answers come back as `handoff.HANDLED`: the chat
-    was told through its own sender, and `reply_of` gives a channel what is left to send.
+    "open" asks for the page on this phone and "close" closes that link (handoff.py). Those
+    answers come back as `handoff.HANDLED`: the chat was told through its own sender, and
+    `reply_of` gives a channel what is left to send.
 
     A code page takes the code: it is typed into the code field and submitted by the person,
     not by the agent, and it is never written to the conversation. "done" carries on, as the

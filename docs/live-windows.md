@@ -53,41 +53,43 @@ from your phone", never the digits.
 ### Signing in from the phone you're holding
 
 For a password or a CAPTCHA the message has a second button, **Open on this phone** (on
-WhatsApp, reply "open"). It sends you a link. The link opens that one page from your Bento
-in your phone's browser, and what you type goes straight into the real page.
+WhatsApp, reply "open"). It sends you a link into your Bento's remote access. You sign in
+there first, then that one page opens in your phone's browser, and what you type goes
+straight into the real page.
 
-![The whole exchange on Telegram: the offer, the link, the question about your screen, and the agent carrying on](screenshots/handoff-telegram.png)
+This needs [remote access](remote-access.md) to be on. With it off nothing is offered, and
+the message says so.
+
+![The whole exchange on Telegram: the offer, the link, and the agent carrying on](screenshots/handoff-telegram.png)
 
 *Redrawn from the messages the bot sent in a test run against a stand-in for Telegram.*
 
 1. Tap **Open on this phone**. The message says what that does before you tap.
-2. Open the link and tap **Show the page**. Your phone shows a four-digit number.
-3. The chat asks "is that your screen?" with the same number. Tap **Yes, that's my screen**.
-4. The page appears. Sign in, including any code it asks for next.
-5. When the site lets you in, the link closes by itself and the agent carries on. You can
+2. Open the link. Your Bento's sign-in page appears: the remote passphrase, or your
+   username and password on a machine with accounts. A phone that is already signed in
+   skips this.
+3. The page appears. Sign in on it, including any code it asks for next.
+4. When the site lets you in, the link closes by itself and the agent carries on. You can
    also tap **Done**.
 
-![The link's first page: what it is, and how the connection is protected](screenshots/handoff-phone-landing.png)
-![The number your phone shows, to confirm in the chat](screenshots/handoff-phone-code.png)
+![The link opens your Bento's own sign-in page first](screenshots/handoff-phone-signin.png)
 ![The real sign-in page on the phone, with a password typed](screenshots/handoff-phone-page.png)
+![Somebody with only the link stays on the sign-in page](screenshots/handoff-phone-stranger.png)
 
 How it is kept safe:
 
+- **Only through remote access.** There is no second way in. The link is an address inside
+  your Bento's remote access, behind the same sign-in, back-off and locked screen as the
+  rest of it. Somebody who only has the link sees the sign-in page and nothing of the page.
+- **Only you.** On a machine with accounts, the link opens only for the account the page is
+  waiting for. Another account is refused, and that is written in the ledger.
 - **Only you can ask for it.** No agent can open a link: there is no tool for it. Your tap
   in your own chat is the permission, and it is written in the ledger.
-- **The link alone opens nothing.** Reading the link (a chat app fetching a preview) gets a
-  page with a button. Tapping the button ties the link to that one device, and any other
-  device is refused and reported in the chat.
-- **You say which device it is.** The page stays shut until you confirm the number in the
-  chat. Somebody who only saw the link gets a number nobody confirms. A phone that is
-  already signed in to your Bento skips the question.
 - **Only that page.** The phone can tap and type on the page at the wall. It has no address
   bar and can't reach the browser's other tabs.
 - **Only for that long.** The link has to be opened within 5 minutes and lasts 15 at most.
-  It ends when you finish, when the site lets you in, or when you say "no".
-- **A door only while it is used.** If remote access is off, Bento opens a door on your
-  network for this one page (port 8327 by default) and closes it when the link ends. If
-  remote access is on, the link uses Bento's own address.
+  It ends when you finish, when the site lets you in, when you say "close", or when remote
+  access is switched off.
 - **It says how the connection is protected.** Over HTTPS or Tailscale it is encrypted. On
   the same Wi-Fi with neither, it isn't encrypted beyond your Wi-Fi's own lock, and both the
   chat and the page say so. Use Tailscale or HTTPS if you sign in away from home.

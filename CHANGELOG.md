@@ -3,16 +3,16 @@
 ## 0.9.7 — 2026-11-14
 
 **Sign in from the phone you're holding.** When a page needs your password during a Telegram
-or WhatsApp turn, the message now has an **Open on this phone** button. It sends a link that
-opens that one page from your Bento in your phone's browser, so you type the password into
-the real page yourself. Passwords still never go through the chat.
+or WhatsApp turn, the message now has an **Open on this phone** button. It sends a link into
+your Bento's remote access. You sign in there, then that one page opens in your phone's
+browser, so you type the password into the real page yourself. Passwords still never go
+through the chat.
 
-- The link only works after you confirm, in the chat, the number your phone shows. Another
-  device that opens it is refused and you're told.
+- It only goes through remote access. With remote access off nothing is offered, and the
+  message says what turns it on. Somebody who only has the link sees the sign-in page.
+- On a machine with accounts, the link opens only for the account the page is waiting for.
 - It shows only the page that is waiting, for 15 minutes at most, and closes by itself when
   the site lets you in.
-- With remote access off, Bento opens a door on your network for that one page and closes it
-  afterwards. The message says so before you tap.
 - The message and the page say whether the connection is encrypted (HTTPS, Tailscale) or only
   as safe as your Wi-Fi.
 - No agent can open a link. Settings → Remote access has the switch, and `bento handoff`

@@ -805,7 +805,8 @@ class TelegramBridge(usersmod.Scoped):
         text = _cdpb.phone_words(att, self.cfg.get("agent_name") or "Aria", offer=offer)
         rows = [[{"text": "Done, carry on", "callback_data": "bw:done"}]]
         if offer.get("ok"):
-            # the page itself, on this phone (handoff.py): the tap is the permission
+            # the page itself, on this phone, through remote access (handoff.py): the tap
+            # is the permission
             rows.insert(0, [{"text": "Open on this phone", "callback_data": "bw:open"}])
         kb = {"inline_keyboard": rows}
         token = self._t().get("bot_token", "")
@@ -825,7 +826,7 @@ class TelegramBridge(usersmod.Scoped):
             await self._api("sendMessage", chat_id=chat_id, text=text, reply_markup=kb)
 
     async def say_wall(self, chat_id: int, text: str, buttons: list) -> None:
-        """A line about a sign-in link (handoff.py), with its answers under it. Sent as plain
+        """A line about a sign-in link (handoff.py), with its buttons under it. Sent as plain
         text and never written to the diary: the words may hold the link. A button whose
         word starts `url:` opens that address; any other answers through `bw:<word>`."""
         rows = [[({"text": label, "url": word[4:]} if word.startswith("url:")
@@ -991,8 +992,8 @@ class TelegramBridge(usersmod.Scoped):
                     await self._api("editMessageText", chat_id=msg["chat"]["id"], message_id=msg["message_id"],
                                     text=(msg.get("text") or "")[:3900] + f"\n\n→ {said}")
             return
-        if data in ("bw:open", "bw:yes", "bw:no"):
-            # the sign-in link (handoff.py): ask for it, or say whose screen opened it
+        if data in ("bw:open", "bw:close"):
+            # the sign-in link (handoff.py): the tap that asks for it, or closes it
             from . import cdpbrowser as _cdpb
             msg = cq.get("message", {})
             chat_id = (msg.get("chat") or {}).get("id") or cq.get("from", {}).get("id")

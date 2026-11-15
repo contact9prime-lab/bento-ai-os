@@ -86,6 +86,9 @@ const f=document.getElementById('f'),pw=document.getElementById('pw'),
 // Asked of the server rather than guessed: /api/users/who is deliberately outside
 // the gate so the locked page can find out what kind of door it is standing at.
 let mode='pass';                 // 'lock' | 'accounts' | 'pass'
+// A sign-in link (handoff.py) lands here first: say what signing in opens.
+const LINK=location.pathname.indexOf('/handoff/')===0;
+if(LINK)sub.textContent='Sign in to open the page your agent is waiting on.';
 fetch('/api/users/who').then(r=>r.json()).then(d=>{
   if(!d)return;
   // a door this browser can't open with a password (Bento itself started it): say so, ask nothing
@@ -110,7 +113,7 @@ fetch('/api/users/who').then(r=>r.json()).then(d=>{
   if(!d.any)return;
   mode='accounts';who.hidden=false;who.focus();
   pw.placeholder='Password';
-  sub.textContent='Sign in to your desktop.';
+  sub.textContent=LINK?'Sign in to open the page your agent is waiting on.':'Sign in to your desktop.';
 }).catch(()=>{});
 
 f.addEventListener('submit',async e=>{
@@ -126,7 +129,8 @@ f.addEventListener('submit',async e=>{
         ? await post('/api/users/login',{name:who.value,password:pw.value})
         : await post('/api/remote/login',{passphrase:pw.value});
     const d=await r.json().catch(()=>({}));
-    if(r.ok)return location.replace('/');
+    // a sign-in link (handoff.py) is served this page at its own address: go back to it
+    if(r.ok)return location.replace(LINK?location.pathname:'/');
     // The lock expired, or the account behind it is gone: the server says so by
     // pointing at /login, and reloading turns this back into a sign-in page.
     if(d.login&&mode==='lock')return location.replace('/login');

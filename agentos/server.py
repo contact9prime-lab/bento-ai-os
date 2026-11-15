@@ -9619,11 +9619,6 @@ REMOTE_OPEN_PATHS = ("/login", "/api/remote/login", "/api/users/login",
                      # is the defence, and the identity completed is the one
                      # recorded at start — see api_signin_callback.
                      "/api/accounts/oauth/callback/",
-                     # The sign-in link (handoff.py): the phone that opens it may hold no
-                     # session. Its defence is the single-use ticket, the one device the
-                     # first POST binds it to, and the number the person confirms in the
-                     # chat; it reaches one browser tab, for minutes.
-                     "/handoff/",
                      # The cloud standby's machine-to-machine door (standby.py). The
                      # caller is the paired machine, with no cookie; every route under
                      # it checks the pairing's Bearer token in constant time behind a
@@ -19671,8 +19666,9 @@ _cdpb.bind(attention=_browser_attention, presence=_someone_here)
 # ---------------------------------------------------------------------------
 # The sign-in link (handoff.py): a page the browser is stuck on, opened on the phone the
 # person is holding. Asked for by their tap in the chat; these routes are what the link
-# reaches. They are open to the remote gate because that phone may hold no session: the
-# ticket, the one device it binds to and the number confirmed in the chat are the defence.
+# reaches. They are NOT in REMOTE_OPEN_PATHS: the owner's rule is that it only goes through
+# remote access, so a phone with no session gets the sign-in page at the link's address
+# (remote_access_gate), and each route and the socket ask who is signed in.
 # ---------------------------------------------------------------------------
 
 from . import handoff as _handoff  # noqa: E402
@@ -19691,15 +19687,22 @@ async def _handoff_screens(uid: str, ev: dict):
     await state["broadcast_user"](ev, uid)
 
 
-def _handoff_session(request, uid: str) -> bool:
-    """Is this phone signed in to this Bento as the same person, with its screen unlocked?"""
-    d = remotemod.session_claims(state.machine_cfg(), request.cookies.get(remotemod.COOKIE) or "")
-    return bool(d is not None and not d.get("lk") and str(d.get("uid") or "") == (uid or ""))
+def _handoff_who(conn) -> str | None:
+    """Who a request or socket on the link's routes is signed in as, by the gates' own rules:
+    `_authed` (a locked screen and a switched-off remote are nobody) and then the account in
+    the signed cookie. '' is the machine's one person where there are no accounts."""
+    if not _authed(conn):
+        return None
+    return _ws_user(conn)
+
+
+async def _handoff_ws_gate(ws) -> bool:
+    return await _ws_reject(ws)
 
 
 # `dict.get`: before the server has started there is no config, and nothing is offered
 _handoff.bind(cfg=lambda: dict.get(state, "cfg"), ledger=_handoff_ledger, screens=_handoff_screens,
-              session=_handoff_session)
+              who=_handoff_who, ws_gate=_handoff_ws_gate)
 app.mount("/handoff", _handoff.app().routes[0].app, name="handoff")
 
 
@@ -19711,8 +19714,8 @@ async def api_handoff():
 
 @app.post("/api/handoff/switch")
 async def api_handoff_switch(body: dict, request: Request):
-    """Whether sign-in links are offered on this machine. A link can open a door on the
-    network, so the switch is the machine's: its admin, at the machine."""
+    """Whether sign-in links are offered on this machine. It decides what remote access may
+    show of the shared browser, so the switch is the machine's: its admin, at the machine."""
     if (no := _local_admin_refusal(request, "sign-in links can only be switched from the machine itself")):
         return no
     cfg = state.machine_cfg()

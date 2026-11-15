@@ -150,9 +150,8 @@ function browserPaint(w,m){
     // the same page, open on the person's phone through a sign-in link (handoff.py)
     const h=m.handoff;
     if(a&&h&&h.state!=='ended')ask.insertAdjacentHTML('beforeend',`<div class="bw-hand" role="status"><span>📱 ${
-      h.state==='live'?'This page is open on your phone until you tap Done there.':
-      h.state==='joined'?'A device opened the sign-in link. Say in the chat whether it is yours.':
-      'A sign-in link for this page was sent to your phone.'}</span>
+      h.state==='live'?'This page is open on your phone, signed in through remote access, until you tap Done there.':
+      'A sign-in link for this page was sent to your phone. It opens after you sign in to remote access.'}</span>
       <button class="endbtn bw-hand-x">Close it</button></div>`);
   }
   winNeedsYou('browser',!!a,a&&(a.site||''));

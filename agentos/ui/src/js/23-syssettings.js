@@ -277,7 +277,8 @@ let REMOTE={};
    only meaningful once remote access is on. */
 let TUNNEL={};
 /* Sign-in links (agentos/handoff.py): whether a page the browser is stuck on may be offered
-   on the phone the person is chatting from. The machine's switch, changed at the machine. */
+   on the phone the person is chatting from, through remote access. The machine's switch,
+   changed at the machine. */
 var HANDOFF={};
 async function sysRemote(el){
   try{REMOTE=await (await fetch('/api/remote')).json()}catch(e){REMOTE={}}
@@ -388,9 +389,8 @@ async function sysRemote(el){
         <label class="psw" style="margin-left:auto"><input type="checkbox" id="rm-ho" ${HANDOFF.enabled?'checked':''}
           onchange="rmHandoff(this.checked)" aria-label="Offer sign-in links"><i></i></label></div>
       <p class="mut" style="margin-top:8px;line-height:1.6">When a page needs you to sign in, your agent can offer to open it on the phone you're chatting from.
-        ${pInfo(HANDOFF.how==='door'
-          ?'Remote access is off, so each link opens a door on your network for that one page, on port '+esc(String(HANDOFF.port||''))+', and closes it when you finish. You confirm the device in the chat first.'
-          :'The link works on one device and closes when you finish. A phone that isn\'t signed in here confirms itself in the chat first.')}</p>
+        ${pInfo('The link goes through remote access. You sign in there first, then that one page opens, and it closes when you finish.')}</p>
+      ${HANDOFF.enabled&&!HANDOFF.remote?'<p class="mut" style="margin-top:6px;color:var(--warn)">Needs remote access, which is off. Nothing is offered until it is on.</p>':''}
       ${HANDOFF.open?`<div class="rm-lock"><b>Open now:</b> ${esc(HANDOFF.open.site||'a page')}
         <button class="endbtn" style="margin-left:8px" onclick="rmHandoffClose()">Close it</button></div>`:''}
     </div>
