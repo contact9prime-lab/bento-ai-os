@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.9.17 — 2026-11-15
+
+**The chat turn is stitched.** One chat turn was read end to end and measured with real Claude Code.
+
+- **A lead on Claude Code, Gemini CLI or Codex knows what Bento remembers.** It used to get your soul
+  and nothing else. It now reads your memory, the conversation's notes, the knowledge graph, your
+  skills and your connected servers, and saves what you tell it with `remember` and `kg_add`, each
+  through the permission check and into the ledger.
+- **It finishes the job.** Both leads are told to do the next step instead of offering it, and to
+  set up a schedule instead of asking you to message again. On one machine, 21 of the last 133
+  replies had ended on such an offer.
+- **Pictures reach the brain that answers**, from Chat and as a photo on Telegram.
+- **A turn you stop keeps what it had written.** It used to save an empty reply.
+- **`@name`, `@Department` and a huddle read the conversation** they were asked in. A huddle can be
+  called from Telegram and WhatsApp.
+- **The next brain answers when one is not available**, on Telegram, WhatsApp and scheduled jobs as
+  well as in Chat.
+- **Usage counts turns answered by an agent CLI**, with the cost it reported.
+
 ## 0.9.16 — 2026-11-15
 
 No release notes were written for this one; the commits since 0.9.15 are what changed (`bento update` lists them).

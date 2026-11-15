@@ -1410,6 +1410,36 @@ Three things that will bite whoever touches this next:
   tried); it reached `tools/list` before failing on a dummy key. A CLI with no door (none
   today) still gets `team_hint()`.
 
+**One chat turn, read end to end, had six seams; each is one function now** (`tests/test_chat_stitch.py`).
+Found by reading `server._run_chat` and both phone bridges, then measured live with real Claude Code:
+- **What the built-in lead's prompt carries, a forwarded lead carries** (`agent.memory_text`/`skills_text`/
+  `mcp_text`, read by `Agent._system` and `executors.mind_note`). On a Claude Code brain the lead had its
+  soul and no memory, graph, skill list or server list, and no tool to keep anything: the owner's record
+  has a reply saying it "recorded these rules in memory", which was the CLI's own files.
+  `MIND_DOOR_TOOLS` (remember, recall, forget, kg_add, kg_query) are on the team door, so each is the
+  gate's decision and a ledger row. `mind_rule` is short and near the top; the memory itself goes last
+  (data needs no priority, and `MAX_CONTEXT` cuts from the end). A linked team's or a Zero's task
+  (`taint`/`only`) is given none of it; a schedule reads it and has no tool.
+- **Both leads are told to finish** (`executors.finish_line`, in `SYSTEM_PROMPT` and the door's context
+  after the identity). Measured on the owner's record: 21 of 133 Claude Code replies ended on an offer
+  ("message me at 9:45 and I'll…") with `schedule_task` in reach. The WhatsApp note said "keep it short".
+- **Pictures reach a CLI** (`Envelope.images`, `image_blocks`, `_attach`). Claude Code takes image blocks
+  in its stream input's first message (measured: a red square came back "Red"), so a turn with pictures
+  uses the stream input even when it was not steerable. Gemini CLI and Codex get files under
+  `<workspace>/.attachments` named in the prompt: not measured, neither is installed here.
+  `sanitized()` must carry the field (the `steerable` lesson).
+- **A CLI turn's reply is whatever it had said** (`_exec_result`, built in the inner `finally`): a stop
+  or a failure used to save `""` while the session was stamped as having seen the turn.
+- **Whoever is addressed by name reads the thread** (`executors.thread_note`: `context=` for a
+  specialist, appended to a department's task and a huddle's topic).
+- **Telegram and WhatsApp answer through `phoneturn.answer`**, never their own copy: fallback
+  (`fallback.after`, also the chat's and the scheduler's), huddles, the thread, usage, a Telegram photo.
+  A test that patches the Agent for a phone turn patches `agentos.agent.Agent`.
+- **A CLI's bill is recorded as it reported it** (`usage.record(cost_usd=)`, tokens from `Run`): chat,
+  phones and schedules. This OS has no price list for a CLI's models and never works one out.
+Still open: `/api/chat` forwards with no team door and no session; WhatsApp answers a photo with a
+sentence; a specialist addressed by name does not see pictures.
+
 ## The run bridge: an executor's model, this OS's hands
 
 A chat turn forwarded to Claude Code is fenced by an ENVELOPE — which directory, which of

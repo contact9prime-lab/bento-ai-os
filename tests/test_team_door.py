@@ -159,8 +159,9 @@ def test_an_address_wins_over_the_brain():
     assert "execmod.open_team_door(" in src
     assert 'startswith(f"mcp__{execmod.BRIDGE_SERVER}__")' in src, "one card per hand-over"
     for f in ("telegram.py", "whatsapp.py"):
-        assert '"toolbox": self.toolbox' in (ROOT / "agentos" / f).read_text(), f"{f} opens the door too"
-    assert "fabricmod.parse_mention(self.store, text)" in (ROOT / "agentos/whatsapp.py").read_text()
+        assert "phoneturn.answer(" in (ROOT / "agentos" / f).read_text(), f"{f} opens the door too"
+    assert 'team={"toolbox": toolbox' in (ROOT / "agentos/phoneturn.py").read_text()
+    assert "fabricmod.parse_mention(store, text)" in (ROOT / "agentos/phoneturn.py").read_text()
 
 
 def test_an_agents_look_is_changed_from_its_card():

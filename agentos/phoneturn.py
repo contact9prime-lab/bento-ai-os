@@ -117,7 +117,7 @@ async def _on_cli(store, cfg, toolbox, engine, exec_model, cid, text, surface, s
         # the team door: "build me a tool" from the phone reaches the toolsmith
         team={"toolbox": toolbox, "store": store, "approver": approver,
               "conversation_id": cid, "surface": surface},
-        run=run, steerable=steerable, images=tuple(images or ()), model=exec_model)
+        run=run, steerable=steerable, images=tuple(images), model=exec_model)
     got = _run or run
     meta = {}
     if getattr(got, "session_id", ""):
