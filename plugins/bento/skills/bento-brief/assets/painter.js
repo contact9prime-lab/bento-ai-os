@@ -2933,7 +2933,7 @@ async function mdlGL(host,model,style,opts){
     // the eye: over the sheet while it is drawn, then down and round it
     const k=holo?1:ease((t-RISE0+.5)/3.2);
     const EL=model.el||.46,AZ=model.az||1.95;
-    const elA=holo?Math.max(.4,EL*.8):1.44+(EL-1.44)*k,azA=(holo?AZ-.05:AZ-.55+.55*k)+(st.user?0:Math.max(0,t-END)*.04)+(holo&&!st.user?t*.1:0);
+    const elA=holo?Math.max(.4,EL*.8):1.44+(EL-1.44)*k,azA=model.map?AZ:(holo?AZ-.05:AZ-.55+.55*k)+(st.user?0:Math.max(0,t-END)*.04)+(holo&&!st.user?t*.1:0);
     const el=Math.max(.06,Math.min(1.5,elA+st.elU)),az=azA+st.azU;
     const cy=(holo?B.H*.45-lift*.3:B.H*.42*k)+(tall?B.H*.25*st.explode:0);
     // far enough that every corner of its box is on the sheet, and no farther
@@ -2947,10 +2947,14 @@ async function mdlGL(host,model,style,opts){
     st.fit+=(fit-st.fit)*(st.fit>1?.12:1);
     // a tour, or a tapped name, brings the eye to one thing and back
     const goal=st.focus?1:0;st.fk+=(goal-st.fk)*.07;if(Math.abs(goal-st.fk)>.003)moving=true;else st.fk=goal;
-    if(st.focus)st.fp=st.focus;
+    // from one thing to the next the eye travels, and pulls back on a long way: a cut from Thailand to Portugal says nothing of where either is
+    let hop=0;
+    if(st.focus){const f=st.focus,q=st.fp&&st.fk>.05?st.fp:(st.fp={x:f.x,y:f.y,z:f.z,r:f.r});
+      hop=Math.hypot(f.x-q.x,f.z-q.z);const e=hop>.02?.11:1;
+      q.x+=(f.x-q.x)*e;q.y+=(f.y-q.y)*e;q.z+=(f.z-q.z)*e;q.r+=(f.r-q.r)*e;if(hop>.02)moving=true}
     const fp=st.fp||{x:0,y:cy,z:0,r:B.R},fk=ease(st.fk);
     const tx=fp.x*fk,ty=cy+(fp.y-cy)*fk,tz=fp.z*fk;
-    const dist=(st.fit+(Math.max(fp.r/tv/.46,2)-st.fit)*fk)*st.zoom*(holo?.88:1);
+    const dist=Math.min(st.fit*1.02,(st.fit+(Math.max(fp.r/tv/.46,2)-st.fit)*fk+hop*.9*fk))*st.zoom*(holo?.88:1);
     cam.position.set(tx+dx*dist,ty+dy*dist,tz+dz*dist);cam.lookAt(tx,ty,tz);
     if(walls.length&&life>=1){walls.forEach(o=>{const wl=o.wall;o.away=(cam.position.x*wl[0]+cam.position.z*wl[1])>wl[2]&&(dx*wl[0]+dz*wl[1])>.12});
       solids.forEach(o=>{const gone=o.wall?o.away:o.hung?o.hung.away:false;if(gone){o.real.visible=false;o.lines.visible=false;if(o.asset)o.asset.visible=false}else if(o.wall||o.hung)o.lines.visible=!o.asset})}
@@ -3025,7 +3029,8 @@ async function mdlGL(host,model,style,opts){
       const cl=(x,m)=>Math.max(-m,Math.min(m,x));
       st.focus=o?{x:cl(o.grp.position.x,B.W*.6),y:Math.min((o.s.lo[1]+o.s.hi[1])/2,B.H),z:cl(o.grp.position.z,B.D*.6),
         // a river or a range of hills is wider than the sheet: the eye comes in to a part of it, never out
-        r:Math.min(Math.max(Math.max(o.s.hi[0]-o.s.lo[0],o.s.hi[1]-o.s.lo[1],o.s.hi[2]-o.s.lo[2])/2,B.R*(model.whole?.3:.1)),B.R*(model.whole?.5:.34))}:null;st.sel=o?i:-1;wake()},
+        // on a map the eye stops at a region: closer, the coast is the few points it was drawn from
+        r:model.map?B.R*.14:Math.min(Math.max(Math.max(o.s.hi[0]-o.s.lo[0],o.s.hi[1]-o.s.lo[1],o.s.hi[2]-o.s.lo[2])/2,B.R*(model.whole?.3:.1)),B.R*(model.whole?.5:.34))}:null;st.sel=o?i:-1;wake()},
     named:tags.filter(tg=>!tg.o.s.so._quiet).map(tg=>({i:tg.o.s.i,text:tg.text,so:tg.o.s.so})),
     dispose,state:st};
 }
@@ -3226,7 +3231,7 @@ function mdlOfChart(sc){
         :rk===0?'The highest of '+all.length+'.':mdlOrd(rk+1)+' of '+all.length+', '+Math.round((1-Math.abs(v)/top)*100)+'% below '+first+'.';
       solids.push({shape:'box',at:[-W/2+slot*(i+.5),0,D/2-bd/2-r*gap],size:[bw,Math.max(Math.abs(v)*ky,Hh*.004),bd],
         color:signed?(v<0?'red':'green'):rows>1?MDL_SERIES[r%8]:rk===0?'gold':'blue',
-        label:label.has(p)?who+' '+(signed&&v<0?'▼ ':signed&&v>0?'▲ ':'')+stageFmtS(v,unit,signed):'',note})}));
+        label:label.has(p)?who+' '+(signed&&v<0?'▼ ':signed&&v>0?'▲ ':'')+stageFmtS(v,unit,signed):'',note,_name:who,_val:stageFmtS(v,unit,signed),_v:v})}));
     if(!signed)yOf=v=>v*ky;
   }else{
     const Hh=7.5;let lo=Math.min(...vals),hi=Math.max(...vals);
@@ -3271,7 +3276,7 @@ function mdlOfMap(sc,world){
   else{const nw=bh*asp/kx,mid=(lo0+lo1)/2;lo0=mid-nw/2;lo1=mid+nw/2}
   const Wm=60,S=Wm/((lo1-lo0)*kx),mx=(lo0+lo1)/2,mz=(la0+la1)/2,Dm=(la1-la0)*S,th=.14;
   const X=lon=>(Math.max(lo0,Math.min(lo1,lon))-mx)*kx*S,Z=lat=>-(Math.max(la0,Math.min(la1,lat))-mz)*S;
-  const span=lo1-lo0,cap=span>150?48:span>60?90:160;
+  const span=lo1-lo0,cap=span>150?150:span>60?240:360;   // a country cut to 48 points left gaps between neighbours, seen in a phone's video
   // an outline is cut at the sheet's edge (never pulled to it: that drew a wedge of land across the sea)
   const cut=P=>{[[0,lo0,1],[0,lo1,-1],[1,la0,1],[1,la1,-1]].forEach(e=>{const ax=e[0],lim=e[1],sg=e[2],inn=q=>(q[ax]-lim)*sg>=0,o=[];
     for(let i=0;i<P.length;i++){const a=P[i],b=P[(i+1)%P.length],ia=inn(a),ib=inn(b);
@@ -3305,14 +3310,15 @@ function mdlOfMap(sc,world){
   pts.forEach(p=>{const t=p.value!=null&&pv.length>1?(pm(p.value)-p0)/((p1-p0)||1):.5,h=pv.length?2.4+t*7.5:3.4;
     const x=X(p.lon),z=Z(p.lat),col=ps&&p.value?(p.value<0?'red':'green'):'red',n=noted.indexOf(p);
     solids.push({shape:'cylinder',at:[x,th,z],size:[.26,h,.26],color:'black',_tp:1.6});
-    solids.push({shape:'sphere',at:[x,th+h-.15,z],size:[1.15,1.15,1.15],color:col,note:p.note||'',
+    solids.push({shape:'sphere',at:[x,th+h-.15,z],size:[1.15,1.15,1.15],color:col,note:p.note||'',_name:String(p.label||'').split(',')[0].trim(),_val:p.value!=null?stageFmtS(p.value,sc.unit,ps):'',_v:p.value!=null?p.value:null,
       label:(n>=0?(n+1)+' · ':'')+String(p.label||'').split(',')[0].trim()+(p.value!=null?' '+stageFmtS(p.value,sc.unit,ps):'')});
     tops.push([x,th+h+.4,z])});
   // a journey: an arc in the air from each place to the next
   if(sc.route&&tops.length>=2&&tops.length<=12)for(let i=1;i<tops.length;i++){const a=tops[i-1],b=tops[i],d=Math.hypot(b[0]-a[0],b[2]-a[2]),arc=[];
     for(let k=0;k<=24;k++){const u=k/24;arc.push([a[0]+(b[0]-a[0])*u,a[1]+(b[1]-a[1])*u+Math.sin(u*Math.PI)*d*.22,a[2]+(b[2]-a[2])*u])}
     lines.push({late:1,p:arc})}
-  return {solids,lines,ground:'water',style:sc.style,el:.8,az:1.7,sun:[-.5,.62,.4]};
+  // north is up and stays up: a map turned 40 degrees (az drifted as the clip ran) is a map nobody recognises
+  return {solids,lines,ground:'water',style:sc.style,el:.95,az:Math.PI/2,map:true,sun:[-.5,.62,.4]};
 }
 /* Whether this screen builds charts and maps in 3D, and the person's choice to keep them flat. */
 function stageD3ok(){return !(window.STAGE_REPORT&&!window.MDL_THREE)&&!window.STAGE_STILL&&!stageReduced()&&!mdlLite()&&mdlGLok()}
@@ -3336,13 +3342,17 @@ function stageD3(art,sc,model,redraw,before){
    names over it and the tour's caption, and that canvas is recorded with a soundtrack made
    here (a held chord, the pen, a swell as it rises, a bell when it stands) and, when the caller
    has one, the story read aloud. Real time: a clip of N seconds takes N seconds to make.
-   o: {title, say, narr (a URL of audio), w, h, stops, style}. Resolves {blob, mime, seconds}. */
+   o: {title, say, narr (a URL of audio), w, h, stops, style, kind, line}. Resolves {blob, mime, seconds}.
+   A map or a chart (o.kind) is told as a count: its line first, then EVERY place or bar in turn with its
+   number, and all of them on one board at the end. Reported from a phone as "there are 10 of these places,
+   it has only sneak-peeked these": the tour stopped at five and never showed the whole. */
 async function mdlClip(box,draw,o){
   o=o||{};const W=o.w||720,H=o.h||1280,TOP=150,BOT=190;
   box.style.cssText='position:fixed;left:-9999px;top:0;width:'+W+'px;height:'+(H-TOP-BOT)+'px;contain:strict';
   const art=sEl('div','stg-art');art.style.cssText='position:absolute;inset:0;display:flex;flex-direction:column';box.append(art);
   const cv=document.createElement('canvas');cv.width=W;cv.height=H;const g=cv.getContext('2d');
-  let cap=null,capAt=0,done=false,frames=0;
+  let cap=null,capAt=0,done=false,frames=0,list=null,board=0,intro=0;
+  const count=o.kind==='map'||o.kind==='chart',bare=x=>String(x||'').replace(/^\d+ · /,'');
   const wrap=(text,maxW,font)=>{g.font=font;const out=[];let line='';String(text||'').split(/\s+/).forEach(w=>{const t=line?line+' '+w:w;
     if(g.measureText(t).width>maxW&&line){out.push(line);line=w}else line=t});if(line)out.push(line);return out};
   const paint=(src,tags,host)=>{
@@ -3353,7 +3363,18 @@ async function mdlClip(box,draw,o){
     g.textBaseline='middle';g.textAlign='center';
     // the names over it
     g.font='600 19px ui-monospace,Menlo,monospace';
-    tags.forEach(t=>{if(!t.on)return;const w=g.measureText(t.text).width+22,x=Math.max(w/2+4,Math.min(W-w/2-4,t.x)),y=TOP+t.y-16;
+    // counted: each thing wears its number, and only the one being told wears its name
+    if(count&&list){const cur=cap?cap.k:-1;let curT=null;
+      tags.forEach(t=>{const k=list.findIndex(n=>n.text===t.text);if(k<0||!(t.x>8&&t.x<W-8))return;const y=TOP+t.y+(t.lead||9)-9-14;if(y<TOP+12||y>H-BOT-6)return;
+        if(k===cur){curT={t,y};return}
+        g.fillStyle=dark?'rgba(6,24,46,.92)':'rgba(32,24,15,.88)';g.beginPath();g.arc(t.x,y,13,0,7);g.fill();
+        g.fillStyle='#f4ead6';g.font='700 15px ui-monospace,Menlo,monospace';g.fillText(String(k+1),t.x,y+1)});
+      if(curT){const t=curT.t,tx=(cur+1)+'  '+list[cur].name+(list[cur].val?'  '+list[cur].val:'');g.font='700 22px system-ui,sans-serif';
+        const w=g.measureText(tx).width+30,x=Math.max(w/2+6,Math.min(W-w/2-6,t.x)),y=curT.y-8;
+        g.fillStyle='#ffd98a';g.beginPath();g.roundRect(x-w/2,y-19,w,38,8);g.fill();
+        g.beginPath();g.moveTo(t.x-7,y+18);g.lineTo(t.x+7,y+18);g.lineTo(t.x,y+28);g.fill();
+        g.fillStyle='#20180f';g.fillText(tx,x,y+1)}}
+    else tags.forEach(t=>{if(!t.on)return;const w=g.measureText(t.text).width+22,x=Math.max(w/2+4,Math.min(W-w/2-4,t.x)),y=TOP+t.y-16;
       g.fillStyle=dark?'rgba(6,24,46,.9)':'rgba(248,238,216,.94)';g.beginPath();g.roundRect(x-w/2,y-15,w,30,6);g.fill();
       g.strokeStyle=dark?'rgba(200,235,255,.5)':'rgba(32,24,15,.4)';g.lineWidth=1;g.stroke();
       g.beginPath();g.moveTo(t.x,y+15);g.lineTo(t.x,y+15+(t.lead||9));g.stroke();
@@ -3361,7 +3382,30 @@ async function mdlClip(box,draw,o){
     // the title above, the caption below
     g.fillStyle='#f4ead6';const tl=wrap(o.title,W-70,'700 34px system-ui,sans-serif').slice(0,2);
     tl.forEach((l,i)=>g.fillText(l,W/2,TOP/2+(i-(tl.length-1)/2)*42));
-    if(cap){const a=Math.min(1,(performance.now()-capAt)/350);g.globalAlpha=a;
+    if(count&&list){const now=performance.now(),n=list.length,gap=5,sw=(W-36-gap*(n-1))/n;
+      // where it is in the count
+      list.forEach((u,i)=>{const sx=18+i*(sw+gap);g.fillStyle='rgba(244,234,214,.2)';g.beginPath();g.roundRect(sx,14,sw,5,2.5);g.fill();
+        if(board||(cap&&i<=cap.k)){g.fillStyle='#ffd98a';g.beginPath();g.roundRect(sx,14,sw,5,2.5);g.fill()}});
+      const vmax=Math.max(0,...list.map(u=>u.v==null?0:Math.abs(u.v)));
+      if(board){   // every one of them, on one sheet: the frame worth keeping
+        const rh=Math.min(44,Math.floor(400/n)),hl=wrap(o.line,W-96,'500 20px system-ui,sans-serif').slice(0,2),hh=hl.length?hl.length*26+18:8,bh=hh+n*rh+18,by=H-34-bh,a=Math.min(1,(now-board)/400);
+        g.globalAlpha=a;g.fillStyle='rgba(20,15,10,.9)';g.beginPath();g.roundRect(18,by,W-36,bh,14);g.fill();
+        g.fillStyle='rgba(244,234,214,.78)';g.font='500 20px system-ui,sans-serif';hl.forEach((l,i)=>g.fillText(l,W/2,by+22+i*26));
+        list.forEach((u,i)=>{const ra=Math.max(0,Math.min(1,(now-board-250-i*110)/300));if(!ra)return;g.globalAlpha=a*ra;const y=by+hh+i*rh+rh/2;
+          if(vmax&&u.v!=null){g.fillStyle='rgba(255,217,138,.16)';g.beginPath();g.roundRect(72,y-rh/2+4,(W-72-40)*Math.abs(u.v)/vmax,rh-8,5);g.fill()}
+          g.fillStyle='#ffd98a';g.font='700 17px ui-monospace,Menlo,monospace';g.textAlign='center';g.fillText(String(i+1),50,y+1);
+          g.fillStyle='#f4ead6';g.font='600 '+(rh>36?23:19)+'px system-ui,sans-serif';g.textAlign='left';g.fillText(u.name.slice(0,30),84,y+1);
+          g.textAlign='right';g.font='700 '+(rh>36?23:19)+'px ui-monospace,Menlo,monospace';g.fillText(u.val,W-52,y+1);g.textAlign='center'});
+        g.globalAlpha=1}
+      else if(cap){const a=Math.min(1,(now-capAt)/300),u=list[cap.k];g.globalAlpha=a;
+        g.fillStyle='#ffd98a';g.font='700 19px ui-monospace,Menlo,monospace';g.fillText((cap.k+1)+' OF '+n,W/2,H-BOT+26);
+        g.fillStyle='#f4ead6';g.font='700 34px system-ui,sans-serif';g.fillText((u.name+(u.val?'   '+u.val:'')).slice(0,36),W/2,H-BOT+66);
+        if(vmax&&u.v!=null){const bw=W-200,f=Math.abs(u.v)/vmax*Math.min(1,(now-capAt)/700);g.fillStyle='rgba(244,234,214,.18)';g.beginPath();g.roundRect(100,H-BOT+92,bw,7,3.5);g.fill();
+          g.fillStyle='#ffd98a';g.beginPath();g.roundRect(100,H-BOT+92,Math.max(7,bw*f),7,3.5);g.fill()}
+        const ls=wrap(u.note,W-80,'500 25px system-ui,sans-serif').slice(0,2);ls.forEach((l,i)=>g.fillText(l,W/2,H-BOT+126+i*31));g.globalAlpha=1}
+      else if(intro&&o.line){const a=Math.min(1,(now-intro)/500);g.globalAlpha=a;g.fillStyle='#f4ead6';   // what the numbers are, before any of them
+        const ls=wrap(o.line,W-80,'500 27px system-ui,sans-serif').slice(0,3);ls.forEach((l,i)=>g.fillText(l,W/2,H-BOT+52+i*34));g.globalAlpha=1}}
+    else if(cap){const a=Math.min(1,(performance.now()-capAt)/350);g.globalAlpha=a;
       g.fillStyle='#ffd98a';g.font='700 22px ui-monospace,Menlo,monospace';g.fillText(cap.name.toUpperCase().slice(0,44),W/2,H-BOT+38);
       g.fillStyle='#f4ead6';const ls=wrap(cap.note,W-80,'500 27px system-ui,sans-serif').slice(0,3);
       ls.forEach((l,i)=>g.fillText(l,W/2,H-BOT+76+i*33));g.globalAlpha=1}
@@ -3375,7 +3419,15 @@ async function mdlClip(box,draw,o){
     // the drawing mounts at once or after its data arrives (a map waits for the world)
     let M=null;for(let i=0;i<80&&!(M&&M.gl);i++){await wait(100);const h=box.querySelector('.mdl');M=h&&h._mdl}
     if(!M||!M.gl)return null;
+    // the drawing takes the whole frame: a map's notes and source line shared it, and the picture was stretched back to fit, its names off their pins
+    {const h=box.querySelector('.mdl'),f=h.closest('.stg-d3,.stg-model')||h;f.style.cssText+=';position:absolute;inset:0;width:auto;height:auto;min-height:0;flex:none;z-index:5';
+      if(f!==h)h.style.height='100%';await wait(120)}
     if(o.style&&MDL_LOOK[o.style]&&M.style!==o.style){M.style=o.style;M.gl.style(o.style)}else M.gl.replay();
+    // a counted clip opens on the thing standing, not on eight seconds of it being drawn
+    const SKIP=count&&M.style!=='hologram'?4.2:0;if(SKIP)M.gl.state.t0-=SKIP*1000;
+    if(count){list=M.gl.named.slice(0,o.stops||12).map(n=>({i:n.i,text:n.text,so:n.so,name:n.so._name||bare(n.text),val:n.so._val||'',v:n.so._v==null?null:n.so._v,note:M.note(n.so)}));
+      if(list.length<2)list=null}
+    intro=performance.now();
     // the sound
     const AC=window.AudioContext||window.webkitAudioContext;ctx=new AC();try{await ctx.resume()}catch(e){}
     const out=ctx.createMediaStreamDestination(),t0=ctx.currentTime+.05,master=ctx.createGain();master.gain.value=1.7;master.connect(out);
@@ -3405,19 +3457,30 @@ async function mdlClip(box,draw,o){
     rec.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};
     const ended=new Promise(r=>{rec.onstop=r});rec.start(500);const began=performance.now();
     // the build, then round its named things, then the whole once more
-    const keep=setInterval(()=>{try{M.gl.zoom(1)}catch(e){}},3000);
-    const built=holo?5.2:M.style==='real'?10.8:8.6;await wait(built*1000);
-    const stops=M.gl.named.slice(0,o.stops||5);
-    for(const n of stops){const note=M.note(n.so);cap={name:n.text,note};capAt=performance.now();M.gl.focus(n.i);
-      await wait(Math.max(2700,(n.text.length+note.length)*68+1300))}
-    cap=null;M.gl.focus(null);
-    await wait(Math.max(2200,(speak-(performance.now()-began)/1000)*1000+600));
+    const keep=setInterval(()=>{try{M.gl.zoom(1)}catch(e){}},list?400:3000);   // a drawing at rest paints nothing, and the board is painted with it
+    const built=(holo?5.2:M.style==='real'?10.8:8.6)-SKIP;await wait(built*1000);
+    const stops=list||M.gl.named.slice(0,o.stops||5);let k=0;
+    for(const n of stops){const note=M.note(n.so);cap={name:n.text,note,k:k++};capAt=performance.now();M.gl.focus(n.i);
+      await wait(list?Math.max(3000,note.length*62+2400):Math.max(2700,(n.text.length+note.length)*68+1300))}
+    cap=null;intro=0;M.gl.focus(null);
+    if(list){await wait(1100);board=performance.now();await wait(1200+list.length*110+3200)}
+    await wait(Math.max(list?300:2200,(speak-(performance.now()-began)/1000)*1000+600));
     clearInterval(keep);const secs=(performance.now()-began)/1000;
     master.gain.linearRampToValueAtTime(0,ctx.currentTime+.4);await wait(450);
+    await mdlClipDrain(rec,chunks);
     rec.stop();await ended;done=true;
     return {blob:new Blob(chunks,{type:mime.split(';')[0]}),mime:mime.split(';')[0],seconds:secs,frames};
   }catch(e){return null}
   finally{done=true;if(window.MDL_ONFRAME===paint)window.MDL_ONFRAME=null;try{if(rec&&rec.state!=='inactive')rec.stop()}catch(e){}try{if(ctx)ctx.close()}catch(e){}}
+}
+/* Stopping a recorder drops the pictures it has not encoded yet. On a machine drawing in software the encoder
+   ran ten seconds behind a forty second clip (measured: 43 s of sound, 33 s of picture), so every video lost its
+   ending. The recorder is paused, which takes no new pictures, and stopped once nothing more comes out of it. */
+async function mdlClipDrain(rec,chunks){
+  try{rec.pause()}catch(e){return}
+  const size=()=>chunks.reduce((a,c)=>a+c.size,0);let last=size(),still=0;
+  for(let i=0;i<60&&still<3;i++){await new Promise(r=>setTimeout(r,500));try{rec.requestData()}catch(e){}
+    await new Promise(r=>setTimeout(r,60));const n=size();still=n-last<600?still+1:0;last=n}
 }
 /* A blueprint's walk-through as a video (stage.walk_html): its pictures one after another on the sheet, each
    moved through from top to bottom, its words under it and read over it. slides: [{img, head, text, narr}].
@@ -3489,7 +3552,7 @@ async function mdlWalk(slides,o){
       await wait(x.dur*1000)}
     const secs=(performance.now()-began)/1000;
     master.gain.linearRampToValueAtTime(0,ctx.currentTime+.4);await wait(450);
-    clearInterval(tick);rec.stop();await ended;
+    clearInterval(tick);await mdlClipDrain(rec,chunks);rec.stop();await ended;
     return {blob:new Blob(chunks,{type:mime.split(';')[0]}),mime:mime.split(';')[0],seconds:secs,frames};
   }catch(e){return null}
   finally{clearInterval(tick);try{if(rec&&rec.state!=='inactive')rec.stop()}catch(e){}try{if(ctx)ctx.close()}catch(e){}}
@@ -3503,5 +3566,5 @@ function stageWalk(slides,o){return mdlWalk(slides,o).then(stageClipLeave)}
 /* A scene's clip, for the page a phone's video is made on (stage.clip_html): the answer is left on window. */
 function stageClip(sc,o){
   const box=sEl('div','mdl-clipbox');document.body.append(box);
-  return mdlClip(box,art=>stageDraw(art,sc),Object.assign({title:sc.title||sc.subject||''},o||{})).then(stageClipLeave);
+  return mdlClip(box,art=>stageDraw(art,sc),Object.assign({title:sc.title||sc.subject||'',kind:sc.kind,line:sc.caption||sc.say||''},o||{})).then(stageClipLeave);
 }

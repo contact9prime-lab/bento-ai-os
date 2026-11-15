@@ -1605,6 +1605,9 @@ def builds_3d(sc: dict) -> bool:
     return False
 
 
+CLIP_COUNT = 12     # how many places or bars a counted video visits: mdlClip's `o.stops||12`
+
+
 def clip_words(sc: dict, stops: int = 5) -> str:
     """What is read aloud over a scene's clip: its line, then each named thing the tour stops at
     with its note, in the order the page visits them. Only the scene's own words."""
@@ -1613,9 +1616,14 @@ def clip_words(sc: dict, stops: int = 5) -> str:
     for so in (sc.get("solids") or sc.get("model") or []):
         if so.get("label") and so.get("note"):
             named.append(f"{so['label']}. {so['note']}")
+    # a map's video stops at every place (24x-model.js mdlClip), so every place is said, with its number
     for pt in sc.get("points") or []:
-        if isinstance(pt, dict) and pt.get("label") and pt.get("note"):
-            named.append(f"{str(pt['label']).split(',')[0]}. {pt['note']}")
+        if isinstance(pt, dict) and pt.get("label"):
+            val = pt.get("value")
+            num = "" if val is None else f", {val:,.0f}" if float(val).is_integer() else f", {val:,}"
+            named.append(f"{str(pt['label']).split(',')[0]}{num}. {pt.get('note') or ''}".strip())
+    if sc.get("kind") == "map":
+        stops = max(stops, CLIP_COUNT)
     out += named[:stops]
     return " ".join(x if x.endswith((".", "!", "?")) else x + "." for x in out if x)
 

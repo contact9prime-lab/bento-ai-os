@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.9.9 — 2026-11-15
+
+**A map's video shows the map, and every place on it.** A map sent to Telegram or WhatsApp was
+turned about forty degrees by the time it reached the second place, stopped at five places however
+many there were, and never showed them together. Now north stays up, the video opens on the whole
+map with the line that says what the numbers are, visits every place in turn with its number, its
+value and its note (up to twelve), flies from one to the next, and ends on a board listing all of
+them. A chart's video counts its bars the same way. Coastlines are drawn from three times the
+points, so neighbouring countries meet.
+
+**The picture and the sound stay together.** On a machine drawing in software the picture ran about
+ten seconds behind the sound and the ending was cut off. The video is now drawn on the machine's
+graphics card when it has one (about 30 frames a second where it was 9), and in software otherwise.
+
 ## 0.9.8 — 2026-11-15
 
 No release notes were written for this one; the commits since 0.9.7 are what changed (`bento update` lists them).
