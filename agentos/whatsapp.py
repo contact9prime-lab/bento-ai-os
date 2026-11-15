@@ -65,6 +65,7 @@ GRAPH = "https://graph.facebook.com/v21.0"
 CHUNK = 3900              # WhatsApp's body limit is 4096
 CAPTION = 1024           # an image caption's limit on both transports
 WA_FILE_LIMIT = 100 * 1024 * 1024   # the Cloud API's document limit
+WA_VIDEO_LIMIT = 15 * 1024 * 1024   # a video is 16 MB on WhatsApp; a little under, for the container
 WINDOW_SECS = 24 * 3600   # Meta's customer-service window
 
 # Reply-button titles. Twenty characters, hard limit — see the module docstring.
@@ -316,6 +317,72 @@ class WhatsAppBridge(usersmod.Scoped):
         self.store.log("whatsapp", f"→ sent a picture: {caption[:120]}")
         return "sent via WhatsApp"
 
+    async def send_video(self, data: bytes, mime: str, caption: str = "", wa_id: str | None = None) -> str:
+        """A video that plays in the chat. WhatsApp plays only mp4 and takes 16 MB, so anything
+        bigger is made smaller first (stageclip.fit) and what cannot be is said, never cut.
+        The same refusals as text: on the Cloud API a video is not a template either."""
+        from . import stageclip
+        c = self._c()
+        wa_id = wa_id or c.get("owner_wa_id") or ""
+        no = self._refusal(c, wa_id)
+        if no:
+            return no
+        if "mp4" not in (mime or ""):
+            return "[error] this machine recorded a video WhatsApp cannot play (no mp4, and no ffmpeg to make one)"
+        got = await stageclip.fit(data, mime, WA_VIDEO_LIMIT)
+        if not got:
+            return f"[error] the video is over WhatsApp's {WA_VIDEO_LIMIT // (1024 * 1024)} MB and could not be made smaller here"
+        data, mime = got
+        caption = (caption or "")[:CAPTION]
+        if c.get("mode") == "baileys":
+            return await self.link.send_video(data, caption, wa_id)
+        try:
+            async with httpx.AsyncClient(timeout=180) as client:
+                r = await client.post(
+                    f"{GRAPH}/{c['phone_number_id']}/media",
+                    data={"messaging_product": "whatsapp", "type": "video/mp4"},
+                    files={"file": ("story.mp4", data, "video/mp4")},
+                    headers={"Authorization": f"Bearer {c.get('access_token', '')}"})
+            up = r.json() if r.content else {}
+            if r.status_code >= 400 or not up.get("id"):
+                raise RuntimeError((up.get("error") or {}).get("message") or f"HTTP {r.status_code}")
+            await self._api(f"{c['phone_number_id']}/messages", {
+                "messaging_product": "whatsapp", "to": wa_id, "type": "video",
+                "video": {"id": up["id"], "caption": caption}})
+        except Exception as e:
+            return f"[error] whatsapp video failed: {e}"
+        self.store.log("whatsapp", f"→ sent a video: {caption[:120]}")
+        return "sent via WhatsApp"
+
+    async def send_clips(self, scenes: list, wa_id: str, items: list | None = None,
+                         pngs: list | None = None) -> int:
+        """The story's videos after its pictures, as Telegram sends them: what is built in 3D
+        raised and toured, a blueprint with no 3D form walked through, with sound. One plan
+        for both channels (stageclip.plan). `/clips off` is `whatsapp.clips: false`. Never
+        fatal: the pictures already went, and the diary says why there was no video."""
+        from . import stageclip
+        if self._c().get("clips") is False or not stageclip.available(self.cfg):
+            return 0
+        sent = 0
+        for job in stageclip.plan(scenes, items, pngs):
+            sc = job["scene"]
+            got = None
+            try:
+                got = await stageclip.make(job, self.cfg, voice=self._c().get("narrate") is not False,
+                                           agent=self.cfg.get("agent_name") or "",
+                                           log=lambda m: self.store.log("whatsapp", m))
+            except Exception:
+                got = None
+            if not got:
+                self.store.log("whatsapp", f"no video for '{sc.get('title') or sc.get('kind')}': it could not be recorded here")
+                continue
+            res = await self.send_video(got[0], got[1], stageclip.caption(job), wa_id)
+            if str(res).startswith("[error]"):
+                self.store.log("whatsapp", f"could not send the video: {res}")
+            else:
+                sent += 1
+        return sent
+
     async def send_document(self, path: str, caption: str = "", wa_id: str | None = None) -> str:
         """A file a reply named, as a WhatsApp document. The same refusals as text (the
         24-hour window applies on the Cloud API). Cloud API uploads the bytes first and
@@ -399,6 +466,7 @@ class WhatsAppBridge(usersmod.Scoped):
                     res = await self.send_photo(png, cap, wa_id)
                     ok = ok and not str(res).startswith("[error]")
                 if ok:
+                    await self.send_clips(scenes, wa_id, items, pngs)
                     await self.send_blueprint_docs(rows, ans, wa_id)
                     return
             p = stagemod.write_report(self.store, _ex.default_workspace(self.cfg), cid, ans,
@@ -591,6 +659,16 @@ class WhatsAppBridge(usersmod.Scoped):
             out = await self.send_office(wa_id)
             if out.startswith("[error]"):
                 await self.send(out, wa_id)
+            return
+        if low.startswith("/clips"):
+            arg = low[6:].strip()
+            if arg in ("on", "off"):
+                self.cfg.setdefault("whatsapp", {})["clips"] = arg == "on"
+                cfgmod.save_config(self.cfg)
+            on = self._c().get("clips", True) is not False
+            await self.send("▶ When a story builds something in 3D, or is a blueprint, I'll send a video "
+                            "of it with sound after the pictures." if on
+                            else "▶ Pictures only. /clips on brings the videos back.", wa_id)
             return
         if low.startswith("/status"):
             await self.send(f"▲ online · model {self.cfg.get('default_model') or '(none)'} "

@@ -200,6 +200,15 @@ Both transports carry pictures. Over the Cloud API the picture is uploaded to Me
 and sent by its media id, and the 24-hour window applies to it exactly as to text. Over a
 linked device it goes over the same bridge as your messages, with no window.
 
+## Videos: a story that builds something
+
+When an answer builds something in 3D, or is a blueprint, WhatsApp gets a video of it with sound
+after the pictures, as Telegram does (see [the Stage](stage.md)). `/clips off` goes back to
+pictures only, and `/clips on` brings them back.
+
+WhatsApp plays only mp4 and takes 16 MB. A bigger video is made smaller first, which needs
+ffmpeg on this machine. The same refusals apply as to text and pictures.
+
 ## What it is allowed to do
 
 `whatsapp` is a real IO gate, like `gui` and `telegram`, so permissions can be scoped

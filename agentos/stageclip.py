@@ -31,6 +31,7 @@ from pathlib import Path
 
 WIDTH, HEIGHT = 720, 1280     # 9:16, for a phone held upright
 TIMEOUT = 110                 # seconds for one clip, build and tour and all
+WALK_TIMEOUT = 170            # a walk-through: seven pictures, each read aloud
 CLIPS = 2                     # per story
 FFMPEG_S = 120
 
@@ -41,19 +42,107 @@ def available(cfg: dict | None = None) -> bool:
 
 
 async def render(scene: dict, cfg: dict | None = None, narration: tuple | None = None) -> tuple | None:
-    """(bytes, mime, seconds) for one scene, or None. `narration` is (audio bytes, mime)."""
-    from . import cdpbrowser, stage
+    """(bytes, mime, seconds) for one scene built in 3D, or None. `narration` is (audio bytes, mime)."""
+    from . import stage
+    if not stage.builds_3d(scene):
+        return None
+    return await _film(stage.clip_html(scene, _data_url(narration)), cfg, TIMEOUT)
+
+
+async def walk(title: str, slides: list, cfg: dict | None = None) -> tuple | None:
+    """(bytes, mime, seconds) for a blueprint walked through picture by picture, or None.
+    `slides` is [{png, head, text, narration}], narration (audio bytes, mime) or None."""
+    from . import stage
+    page = [{"img": "data:image/png;base64," + base64.b64encode(sl["png"]).decode(),
+             "head": sl.get("head") or "", "text": sl.get("text") or "",
+             "narr": _data_url(sl.get("narration"))} for sl in slides if sl.get("png")]
+    if not page:
+        return None
+    return await _film(stage.walk_html(title, page), cfg, WALK_TIMEOUT)
+
+
+def _data_url(narration) -> str:
+    if not narration or not narration[0]:
+        return ""
+    return f"data:{narration[1] or 'audio/mpeg'};base64," + base64.b64encode(narration[0]).decode()
+
+
+def plan(scenes: list, items: list | None = None, pngs: list | None = None) -> list:
+    """The videos a story gets, at most CLIPS, in the story's order: {how: "3d", scene} for what
+    the page builds in 3D, {how: "walk", scene, slides: [(view, png)]} for a blueprint with no
+    3D form, made from the pictures the phone was already sent. Telegram and WhatsApp both
+    send what this says, so they cannot come apart."""
+    from . import stage
+    out = []
+    pairs = list(zip(items or [], pngs or [])) if items and pngs and len(items) == len(pngs) else []
+    for sc in scenes:
+        if stage.builds_3d(sc):
+            out.append({"how": "3d", "scene": sc})
+        elif sc.get("kind") == "blueprint":
+            mine = [(v, png) for (s2, v), png in pairs if s2 is sc][:stage.WALK_SLIDES]
+            if len(mine) >= 2:
+                out.append({"how": "walk", "scene": sc, "slides": mine})
+    return out[:CLIPS]
+
+
+def caption(job: dict) -> str:
+    sc = job["scene"]
+    name = sc.get("title") or sc.get("subject") or "Watch it built"
+    return (f"▶ {name}: the walk-through" if job["how"] == "walk" else f"▶ {name}")[:1024]
+
+
+async def make(job: dict, cfg: dict | None = None, voice: bool = True, agent: str = "",
+               log=None) -> tuple | None:
+    """One planned video: (bytes, mime, seconds) or None. Read aloud when this machine has a
+    server voice and `voice`; a line that could not be spoken is shown and not said."""
+    from . import speech, stage
+    sc = job["scene"]
+    speaks = voice and speech.conf(cfg or {}).get("engine") not in ("", "browser", None)
+
+    async def say(text: str):
+        if not speaks or not text:
+            return None
+        try:
+            audio, mime, _i = await speech.speak(cfg, text, agent=agent, lead=True)
+            return (audio, mime)
+        except Exception as e:
+            if log:
+                log(f"a clip without a voice: {e}")
+            return None
+    if job["how"] == "3d":
+        return await render(sc, cfg, await say(stage.clip_words(sc)))
+    slides = []
+    for view, png in job["slides"]:
+        head, text = stage.walk_text(sc, view)
+        slides.append({"png": png, "head": head, "text": text,
+                       "narration": await say(f"{head}. {text}" if view and view.get("path") else text)})
+    return await walk(sc.get("title") or sc.get("subject") or "", slides, cfg)
+
+
+async def fit(data: bytes, mime: str, limit: int) -> tuple | None:
+    """The same video under `limit` bytes (WhatsApp takes 16 MB), re-encoded smaller with ffmpeg
+    when it is over and ffmpeg is here; None when it cannot be made to fit."""
+    if len(data) <= limit:
+        return data, mime
+    tmp = Path(tempfile.mkdtemp(prefix="bento-clip-"))
+    try:
+        small = await _to_mp4(data, tmp, crf=31, src_name="in.mp4" if "mp4" in mime else "in.webm")
+        return (small, "video/mp4") if small and len(small) <= limit else None
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+async def _film(html: str, cfg: dict | None, timeout: float) -> tuple | None:
+    """Open `html` in a throwaway headless browser, wait for its recording, and bring it back."""
+    from . import cdpbrowser
     binary = cdpbrowser.binary(cfg)
-    if not binary or not stage.builds_3d(scene):
+    if not binary:
         return None
     tmp = Path(tempfile.mkdtemp(prefix="bento-clip-"))
     proc = None
     try:
-        narr = ""
-        if narration and narration[0]:
-            narr = f"data:{narration[1] or 'audio/mpeg'};base64," + base64.b64encode(narration[0]).decode()
         page = tmp / "clip.html"
-        page.write_text(stage.clip_html(scene, narr), encoding="utf-8")
+        page.write_text(html, encoding="utf-8")
         args = [binary, "--headless=new", "--remote-debugging-pipe", f"--user-data-dir={tmp / 'p'}",
                 "--no-first-run", "--no-default-browser-check", "--disable-background-networking",
                 "--disable-sync", "--hide-scrollbars", "--force-color-profile=srgb",
@@ -67,7 +156,7 @@ async def render(scene: dict, cfg: dict | None = None, narration: tuple | None =
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL, limit=256 * 1024 * 1024)
         cdp = cdpbrowser.CDP(proc)
-        got = await asyncio.wait_for(_record(cdp, page.as_uri()), TIMEOUT)
+        got = await asyncio.wait_for(_record(cdp, page.as_uri()), timeout)
         if not got:
             return None
         data, mime, secs = got
@@ -115,17 +204,17 @@ async def _record(cdp, url: str):
     return (data, mime, secs) if len(data) > 2000 else None
 
 
-async def _to_mp4(data: bytes, tmp: Path) -> bytes | None:
+async def _to_mp4(data: bytes, tmp: Path, crf: int = 23, src_name: str = "in.webm") -> bytes | None:
     """webm → mp4 (H.264 and AAC, the pair every phone plays), when ffmpeg is here."""
     ff = shutil.which("ffmpeg")
     if not ff:
         return None
-    src, dst = tmp / "in.webm", tmp / "out.mp4"
+    src, dst = tmp / src_name, tmp / "out.mp4"
     src.write_bytes(data)
     try:
         p = await asyncio.create_subprocess_exec(
             ff, "-y", "-loglevel", "error", "-i", str(src), "-c:v", "libx264", "-pix_fmt", "yuv420p",
-            "-preset", "veryfast", "-crf", "23", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
+            "-preset", "veryfast", "-crf", str(crf), "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
             str(dst), stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL)
         await asyncio.wait_for(p.wait(), FFMPEG_S)

@@ -862,6 +862,16 @@ things rather than presenting the chart". Six rules:
   asked for six models unprompted and all six were found; "floor lamp" got a wall lamp (the noun matched, the
   kind did not). The sky lights the lit look (PMREM of the dome). A wall on the eye's side is not drawn (`o.wall`,
   `o.hung`), found when the tour showed the back of one.
+- **Every blueprint is a video on a phone, and the two channels send one plan** (`stage.wants_shape`/`SHAPE_LINE`/
+  `shape_into`/`walk_text`/`walk_html`, bpfill's `shape`, `stageclip.plan`/`make`/`walk`/`fit`, `mdlWalk`,
+  `WhatsAppBridge.send_video`/`send_clips`; `tests/test_blueprint_video.py`). Reported as "Telegram is not giving the
+  blueprint as video, just PDF; same in WhatsApp". Read from the owner's record: the agent sent a black hole with no
+  `model`, `builds_3d` was false, nothing was recorded, and asked why it said the Stage could not. So the second stage
+  asks for the 3D form too (one ask, about 20 s on Claude Code, through `_solids`; `shape_failed` names a miss), a
+  phone waits for it like the parts, and a blueprint still without one (a process) is walked through from the
+  pictures already photographed. `PHONE_LINE` says a blueprint is a video. A blueprint's form may stand in `space`;
+  mounted `whole`, the eye stays outside it and glass is seen through (measured: the tour went inside the horizon, a
+  glass ergosphere hid it, and the middle sphere glowed like a sun). WhatsApp plays only mp4 and takes 16 MB.
 - **Labels never overlap and the panel holds the rest.** Labels compress, then drop their second line; the
   title block, "you are here" and the links of a tower live in the spec panel. Sized from `clientWidth`, a
   ResizeObserver dropped when the drawing leaves; on a phone the scene scrolls and a tap brings a sheet that

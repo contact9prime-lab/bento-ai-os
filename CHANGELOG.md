@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.9.7 — 2026-11-15
+
+**Every blueprint reaches your phone as a video.** A blueprint asked for on Telegram came as
+pictures and a PDF, and the agent said a blueprint could not be a video. The video step only
+knew blueprints that arrived with a 3D form, and the agent had sent this one without. Now a
+blueprint of a thing that comes without one is given one by Bento, so it opens in 3D on the
+desktop and goes to the phone as a video of it built and toured. A blueprint of a process, which
+has no shape, is walked through picture by picture with its words under each and read aloud when
+this machine has a voice.
+
+**WhatsApp gets the videos too.** On a linked device and on the Cloud API, after the pictures,
+from the same plan as Telegram. WhatsApp takes 16 MB, so a bigger video is made smaller first
+(this needs ffmpeg) and the diary says so when it can't be. `/clips off` works there as well.
+
+**A thing in space is drawn in space.** A blueprint's 3D form can hang among the stars, the eye
+stays outside the one thing it is, its glass is seen through, and a black middle stays black.
+
+No release notes were written for this one; the commits since 0.9.6 are what changed (`bento update` lists them).
 ## 0.9.7 — 2026-11-14
 
 **Sign in from the phone you're holding.** When a page needs your password during a Telegram

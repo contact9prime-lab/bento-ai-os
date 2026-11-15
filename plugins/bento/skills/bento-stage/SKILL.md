@@ -57,7 +57,7 @@ Anything worth seeing is shown: three to six scenes, in story order. Tell a stor
 - `image`: `url`, `asset`, `alt`, `credit`
 - `video`: `url`, `start`
 - `film`: `shots`, `look`
-- `blueprint`: `subject`, `form`, `unit`, `parts`, `links`, `unknowns`, `facts`, `look_for`, `model`, `style`
+- `blueprint`: `subject`, `form`, `unit`, `parts`, `links`, `unknowns`, `facts`, `look_for`, `model`, `style`, `ground`
 - `model`: `solids`, `style`, `weather`, `ground`
 
 Shapes, field by field:

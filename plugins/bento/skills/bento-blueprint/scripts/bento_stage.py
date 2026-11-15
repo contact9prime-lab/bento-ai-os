@@ -64,7 +64,7 @@ FIELDS = {
     "video": ("url", "start"),
     "film": ("shots", "look"),
     "blueprint": ("subject", "form", "unit", "parts", "links", "unknowns", "facts", "look_for",
-                  "model", "style"),
+                  "model", "style", "ground"),
     "model": ("solids", "style", "weather", "ground"),
 }
 
@@ -437,6 +437,10 @@ class _KIND:
                 sc["model"] = solids
         if spec.get("style"):
             sc["style"] = _one_of(spec.get("style"), MODEL_STYLES, "real", "style", dropped)
+        if spec.get("ground") and sc.get("model"):       # where its 3D form stands: space, water…
+            g = _one_of(spec.get("ground"), MODEL_GROUND, "none", "ground", dropped)
+            if g != "none":
+                sc["ground"] = g
 
     @staticmethod
     def model(spec, sc, dropped):
@@ -1320,9 +1324,12 @@ ASKED_LINE = ("show_scene puts a chart, a map, key numbers, a timeline, steps, a
 PHONE_LINE = ("This person is on their phone ({surface}). They do not see the Stage live: right after "
               "your reply, every scene you show is sent to them as pictures with a caption each, so "
               "show it exactly as you would at the desk; it is how they see charts, maps, pictures "
-              "and videos there. A blueprint works on a phone too: it arrives as a walk-through (the "
-              "drawing, the parts, how it works, each main part opened) and as a PDF of drawing "
-              "sheets. So asked for a blueprint there, show a blueprint scene, never a list of steps "
+              "and videos there. A blueprint works on a phone too: it arrives as pictures (the "
+              "drawing, the parts, how it works, each main part opened), as a video with sound, and "
+              "as a PDF of drawing sheets. The video shows the thing built in 3D and goes round its "
+              "named parts when the blueprint has a 3D form (yours in model, or one the Stage adds), "
+              "and walks through its pictures otherwise; never tell them a blueprint cannot be a "
+              "video. So asked for a blueprint there, show a blueprint scene, never a list of steps "
               "called a blueprint.")
 
 
@@ -1634,6 +1641,85 @@ window.MDL_THREE=URL.createObjectURL(new Blob([document.getElementById('three').
 {js}
 (function(){{var W={world_in};if(W)stageWorldIndex(W);
   stageClip({scene_in},{{narr:{narr_in}}}).catch(function(){{window.STAGE_CLIP_DONE='none'}})}})();
+</script></body></html>"""
+
+
+def wants_shape(sc: dict) -> bool:
+    """A blueprint of a thing (not a process) that came with no 3D form: bpfill asks for one."""
+    return (sc.get("kind") == "blueprint" and sc.get("form") != "flow" and not has_model(sc)
+            and bool(sc.get("parts")))
+
+
+SHAPE_LINE = ("Give what the thing looks like in 3D as solids: each {shape, at: [x, y, z] (x right, z "
+              "towards the viewer, y the height of its base, 0 on the ground), size: [width, height, "
+              "depth], color, label, note, part}. Shapes: " + ", ".join(MODEL_PRIMS) + ". turn is "
+              "degrees round the vertical, tilt lays it over (90 is on its side along x, so a pipe or "
+              "a jet is a cylinder with tilt 90; y is still its lowest point); move is one of "
+              + ", ".join(MODEL_MOVES) + " for what turns or goes round. color is one of "
+              + ", ".join(MODEL_COLORS) + " or #rrggbb. Build its real shape and proportions from "
+              "the simple shapes, about 20 units across, 8 to 30 solids, never a row of boxes with "
+              "names on. part is the name of the blueprint part the solid draws; every top-level "
+              "part should be drawn by at least one solid. Give label and note (one sentence: what "
+              "it is and why it matters) to one solid of each part, five to eight in all. ground is "
+              "space for a thing in space (a star, a planet, a black hole, a satellite): it then "
+              "hangs among the stars with nothing under it, so build it round y 10; otherwise leave "
+              "ground out and stand it on y 0.")
+
+
+def shape_into(sc: dict, raw) -> list:
+    """Lay the solids a brain answered with onto a blueprint as its model, through the model's
+    own cleaner. Returns what was dropped; raises ValueError when nothing usable came."""
+    dropped: list = []
+    ids = {p["id"] for p, _ in bp_walk(sc.get("parts") or [])}
+    ground = ""
+    if isinstance(raw, dict):
+        ground, raw = str(raw.get("ground") or "").strip().lower(), raw.get("solids") or raw.get("model")
+    solids = _solids(raw, "model", dropped, ids)
+    for so in solids:
+        so.pop("look_for", None)
+    if len(solids) < 3:
+        raise ValueError("no 3D form came back")
+    sc["model"] = solids
+    if ground in MODEL_GROUND[1:]:
+        sc["ground"] = ground
+    return dropped
+
+
+def walk_text(sc: dict, view) -> tuple[str, str]:
+    """(heading, words) for one picture of a blueprint's walk-through video. The words are
+    written under the picture and read over it, so they are the same: whole sentences, no
+    symbols, no source line, cut at a sentence so a picture lasts about ten seconds."""
+    lines = [x for x in still_caption_for(sc, view, 0, 1).split("\n") if x.strip()]
+    first, rest = (lines[0] if lines else sc.get("title") or ""), lines[1:]
+    mode, path = (view or {}).get("mode"), (view or {}).get("path")
+    head = (first.split(" › ")[-1] if path else "How it works" if mode == "flows"
+            else "Built in 3D" if mode == "model" else "The drawing" if mode == "look" else "The parts")
+    keep = [re.sub(r"\s*\((?:%s)\)$" % "|".join(BP_FLOWS), "", x.removeprefix("≈ "))
+            for x in rest if not x.startswith(("Source:", "Inside:")) and not re.match(r"^\d+\. ", x)]
+    out = " ".join(x if x.endswith((".", "!", "?")) else x + "." for x in keep)
+    out = out.replace("→", "to").replace("›", ",")
+    if len(out) > WALK_SAY:
+        cut = out[:WALK_SAY]
+        out = cut[:cut.rfind(". ") + 1] or cut.rsplit(" ", 1)[0] + "…"
+    return head, out.strip()
+
+
+WALK_SAY = 230          # characters written under one picture, and read over it
+WALK_SLIDES = 7
+
+
+def walk_html(title: str, slides: list, paint: tuple | None = None) -> str:
+    """The page a blueprint's walk-through video is recorded on (stageclip.walk): its pictures
+    one after another on the sheet, their words under them and read aloud. `slides` is
+    [{img, head, text, narr}], img and narr as data: URLs. Only the page's own recorder runs."""
+    js, css, _world = paint or painter()
+    data = json.dumps({"title": title, "slides": slides}).replace("</", "<\\/")
+    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><title>clip</title>
+<style>{REPORT_TOKENS}
+{css}html,body{{margin:0;background:#111}}</style></head><body>
+<script>window.STAGE_CLIP=true;
+{js}
+(function(){{var D={data};stageWalk(D.slides,{{title:D.title}}).catch(function(){{window.STAGE_CLIP_DONE='none'}})}})();
 </script></body></html>"""
 
 

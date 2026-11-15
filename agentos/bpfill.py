@@ -99,6 +99,18 @@ def prompt_for(scene: dict, part: dict, budget: int, web: bool) -> str:
             + f"\n\nThe shape:\n{SHAPE}")
 
 
+SHAPE_S = 150            # the one ask for a 3D form
+
+
+def shape_prompt(scene: dict) -> str:
+    parts = "\n".join(f"- {p['name']}" + (f": {p['role']}" if p.get("role") else "")
+                      for p in scene.get("parts") or [])
+    return (f"The blueprint is of: {scene.get('subject') or scene.get('title')}\n"
+            f"Its parts:\n{parts}\n\n"
+            f"The blueprint has no 3D form yet. {stagemod.SHAPE_LINE}\n\n"
+            'Answer with {"solids": [ ... ], "ground": "space" or ""} and nothing else. Do not look anything up.')
+
+
 def _json_of(text: str):
     t = (text or "").strip()
     t = re.sub(r"^```(?:json)?\s*|\s*```$", "", t)
@@ -215,6 +227,11 @@ def begin(store, row: dict, brain: bool = True) -> list[str]:
     if scene.get("kind") == "blueprint" and not scene.get("picture"):
         scene["looking"] = round(time.time() + LOOK_S * (2 + len(ids)))
         _save(store, row["id"], scene)
+    if brain and stagemod.wants_shape(scene):
+        # it came with no 3D form: one more ask gives it one, so it can be turned round on a
+        # screen and sent to a phone as a video of the thing, not only of its pictures
+        scene["shaping"] = round(time.time() + SHAPE_S + 30)
+        _save(store, row["id"], scene)
     if not ids:
         return []
     scene["filling"] = {"ids": ids, "until": round(time.time() + PART_S * (1 + len(ids) // PARALLEL) + 30)}
@@ -314,7 +331,36 @@ async def fill(store, cfg: dict, row: dict, send=None, asker=None, finder=None) 
         if got and not why:
             await picture(pid)
 
-    await asyncio.gather(picture(""), *(one(pid) for pid in ids))
+    async def shape():
+        """The thing's 3D form, when the outline came without one (stage.wants_shape)."""
+        cur = _load(store, sid)
+        if cur is None or "shaping" not in cur:
+            return
+        got, why = None, ""
+        try:
+            async with _sem():
+                text, _who, _n = await asyncio.wait_for(asker(cfg, shape_prompt(cur)), SHAPE_S)
+            got = _json_of(text)
+        except asyncio.TimeoutError:
+            why = f"took longer than {SHAPE_S}s"
+        except Exception as e:
+            why = str(e) or type(e).__name__
+        async with lock:
+            cur = _load(store, sid)
+            if cur is None:
+                return
+            cur.pop("shaping", None)
+            if got is not None and not stagemod.has_model(cur):
+                try:
+                    stagemod.shape_into(cur, got)
+                except ValueError as e:
+                    why = str(e)
+            if why:
+                cur["shape_failed"] = stagemod._s(why, 160)
+            _save(store, sid, cur)
+            await tell(cur)
+
+    await asyncio.gather(picture(""), shape(), *(one(pid) for pid in ids))
     _LOCKS.pop(sid, None)
     return _load(store, sid) or scene
 
@@ -324,7 +370,7 @@ def start(store, cfg: dict, row: dict, send=None, brain: bool = True) -> list[st
     the scene is sent, so the row the page gets already says which parts are filling. With no
     brain only the drawing is looked for."""
     ids = begin(store, row, brain)
-    if not ids and "looking" not in row["scene"]:
+    if not ids and "looking" not in row["scene"] and "shaping" not in row["scene"]:
         return []
     task = asyncio.create_task(fill(store, cfg, row, send))
     _TASKS[row["id"]] = task

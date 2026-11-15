@@ -2720,7 +2720,7 @@ async function mdlGL(host,model,style,opts){
     const out=new T.Mesh(g,mk(MDL_VS_HULL,MDL_FS_HULL,own,{side:T.BackSide}));
     // the same faces as a lit surface, for when the drawing comes to life
     g.setAttribute('color',new T.Float32BufferAttribute(col.map((x,i)=>Math.pow(x<0?[.9,.87,.8][i%3]:x,2.2)),3));
-    const wet=s.move==='flow'||s.so.color==='glass';
+    const wet=s.move==='flow'||s.so.color==='glass',clear=s.so.color==='glass'&&!!model.whole;   // one thing taken apart: glass is seen through
     const real=new T.Mesh(g,mdlLive(new T.MeshStandardMaterial({vertexColors:true,roughness:wet?.16:.82,metalness:wet?.15:0,transparent:true,opacity:0,
       polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1}),U,own));mats.push(real.material);
     real.customDepthMaterial=mdlLive(new T.MeshDepthMaterial({depthPacking:T.RGBADepthPacking}),U,own);mats.push(real.customDepthMaterial);
@@ -2734,7 +2734,8 @@ async function mdlGL(host,model,style,opts){
       shade.frustumCulled=false;shade.renderOrder=-1;grp.add(shade)}
     fill.userData.si=si;fill.userData.real=real;picks.push(fill);
     const span=walks?(s.so.shape==='person'?Math.max((s.hi[1]-s.lo[1])*1.4,.5):MDL_FIT*.11):0;
-    solids.push({s,grp,fill,out,lines,shade,real,span,own,pen,nseg:segs.length,base:[cx,0,cz],r:Math.hypot(cx,cz),a0:Math.atan2(cz,cx),
+    if(clear){real.material.depthWrite=false;real.castShadow=false;real.renderOrder=2}
+    solids.push({s,grp,fill,out,lines,shade,real,clear,span,own,pen,nseg:segs.length,base:[cx,0,cz],r:Math.hypot(cx,cz),a0:Math.atan2(cz,cx),
       rank:rank[si],h:Math.max(s.hi[1],.01),tall:s.hi[1]-s.lo[1],wide:Math.max(s.hi[0]-s.lo[0],s.hi[1]-s.lo[1],s.hi[2]-s.lo[2])});
   });
   // the world a drawing comes to life in: a sky, a sun that casts, the ground it stands on, haze far off
@@ -2757,9 +2758,11 @@ async function mdlGL(host,model,style,opts){
       :'uniform float uK;varying vec3 vD;void main(){float h=clamp(vD.y,0.,1.);vec3 c=mix(vec3(.918,.875,.796),vec3(.33,.58,.86),pow(h,.6));gl_FragColor=vec4(c,uK);}'}));
   // among the stars: the sphere in the middle is the light, and nothing lies under anything
   const star=space?new T.PointLight(0xfff2dc,3.2,0,0):null;if(star){star.visible=false;S.add(star);SKY.set('#03050c')}
-  const core=space?solids.filter(o=>o.r<B.R*.1&&o.s.so.shape==='sphere').sort((a,b)=>b.tall-a.tall)[0]:null;
+  const mids=space?solids.filter(o=>o.r<B.R*.1&&o.s.so.shape==='sphere').sort((a,b)=>b.tall-a.tall):[];
+  const core=mids.find(o=>o.s.so.color==='black')||mids.find(o=>!o.clear)||null;   // a black middle is the middle, whatever glass is round it
   if(star&&core)star.position.set(core.base[0],(core.s.lo[1]+core.s.hi[1])/2,core.base[2]);
-  if(core){core.real.material.emissive.set(1,.6,.16);core.real.material.emissiveIntensity=1.15;core.real.castShadow=false}
+  if(core&&core.s.so.color==='black')core.real.material.color.setScalar(.012);   // a black hole lights nothing: it stays black
+  else if(core){core.real.material.emissive.set(1,.6,.16);core.real.material.emissiveIntensity=1.15;core.real.castShadow=false}
   // Things that go round a middle go as planets do: each at its own distance, the nearer the faster, and
   // spread round their paths (told in a row, their names piled up and the inner ones could not be told apart).
   // Found with a blueprint of the solar system: a floor meant for circling birds had put Mercury, Venus,
@@ -2901,10 +2904,10 @@ async function mdlGL(host,model,style,opts){
       const shown=holo||t>r0;o.fill.visible=shown;o.out.visible=shown&&!holo&&up>.2;
       o.own.uWash.value=ease((t-r0-RISED*.55)/1.1);o.own.uShade.value=holo?0:ease((t-r0)/RISED);
       o.own.uGo.value=o.span*ease((t-END)/3);
-      o.real.visible=life>0&&shown&&!(o.asset&&life>=1);o.real.material.opacity=life;o.real.material.transparent=life<1;
+      o.real.visible=life>0&&shown&&!(o.asset&&life>=1);o.real.material.opacity=life*(o.clear?.3:1);o.real.material.transparent=life<1||o.clear;
       if(o.asset){o.asset.visible=life>=1;o.lines.visible=life<1;if(o.shade)o.shade.visible=o.shade.visible&&life<1;const k2=ease((t-END-2.1-o.rank*.5)/.9);o.asset.scale.setScalar(.6+.4*k2)}
       if(life>=1)o.fill.visible=o.out.visible=false;
-      if(life>0){o.own.uShade.value*=1-life;o.own.uLW.value=L.lw*px*o.pen*(1-.4*life);if(o!==core)o.real.material.emissive.setScalar(o.own.uSel.value*.1)}
+      if(life>0){o.own.uShade.value*=1-life;o.own.uLW.value=L.lw*px*o.pen*(1-.4*life);if(o!==core||core.s.so.color==='black')o.real.material.emissive.setScalar(o.own.uSel.value*.1)}
       // pulled apart: up a tower, outward from the middle of anything else
       const e=st.explode;let x=o.base[0],y=0,z=o.base[2];
       if(e>0){if(tall)y+=o.yr*B.H*.55*e;else{x*=1+.7*e;z*=1+.7*e}}     // along its own layout, so a row of parts stays a row
@@ -3022,7 +3025,7 @@ async function mdlGL(host,model,style,opts){
       const cl=(x,m)=>Math.max(-m,Math.min(m,x));
       st.focus=o?{x:cl(o.grp.position.x,B.W*.6),y:Math.min((o.s.lo[1]+o.s.hi[1])/2,B.H),z:cl(o.grp.position.z,B.D*.6),
         // a river or a range of hills is wider than the sheet: the eye comes in to a part of it, never out
-        r:Math.min(Math.max(Math.max(o.s.hi[0]-o.s.lo[0],o.s.hi[1]-o.s.lo[1],o.s.hi[2]-o.s.lo[2])/2,B.R*.1),B.R*.34)}:null;st.sel=o?i:-1;wake()},
+        r:Math.min(Math.max(Math.max(o.s.hi[0]-o.s.lo[0],o.s.hi[1]-o.s.lo[1],o.s.hi[2]-o.s.lo[2])/2,B.R*(model.whole?.3:.1)),B.R*(model.whole?.5:.34))}:null;st.sel=o?i:-1;wake()},
     named:tags.filter(tg=>!tg.o.s.so._quiet).map(tg=>({i:tg.o.s.i,text:tg.text,so:tg.o.s.so})),
     dispose,state:st};
 }
@@ -3147,7 +3150,7 @@ function stageModelMs(){return 9500}
 /* What the thing looks like, for the blueprint's 3D view: the solids the agent gave, or, for a
    tower with heights, its parts stacked to scale (each a storey of the outline). */
 function bpModelOf(sc){
-  if(sc.model&&sc.model.length)return {solids:sc.model,style:sc.style,auto:false};
+  if(sc.model&&sc.model.length)return {solids:sc.model,style:sc.style,ground:sc.ground,auto:false};
   if(sc.form!=='tower')return null;
   const ps=(sc.parts||[]).filter(p=>p.from!=null&&p.to!=null&&p.to>p.from);
   if(ps.length<2)return null;
@@ -3174,7 +3177,8 @@ function bpModelView(st){
   const box=sEl('div','bp-look bp-model');draw.append(box);
   const name={};(function walk(ps){(ps||[]).forEach(p=>{name[p.id]=p;walk(p.parts)})})(st.sc.parts);
   const top={};(st.sc.parts||[]).forEach(t=>{(function walk(ps){(ps||[]).forEach(p=>{top[p.id]=t.id;walk(p.parts)})})([t])});
-  mdlMount(box,{solids:mdl.solids,style:mdl.style,title:st.sc.subject||st.sc.title},{key:st.sid,unit:mdl.unit||'',
+  // whole: the eye stays outside the one thing this is, and its glass is seen through
+  mdlMount(box,{solids:mdl.solids,style:mdl.style,ground:mdl.ground,whole:true,el:mdl.ground==='space'?.5:0,title:st.sc.subject||st.sc.title},{key:st.sid,unit:mdl.unit||'',
     note:so=>{const p=so.part&&name[so.part];return so.note||(p?p.role||'':'')},
     tag:so=>so.label||(so.part&&name[so.part]?name[so.part].name:''),
     pick:so=>{if(!so.part||!top[so.part])return;
@@ -3360,7 +3364,7 @@ async function mdlClip(box,draw,o){
     if(cap){const a=Math.min(1,(performance.now()-capAt)/350);g.globalAlpha=a;
       g.fillStyle='#ffd98a';g.font='700 22px ui-monospace,Menlo,monospace';g.fillText(cap.name.toUpperCase().slice(0,44),W/2,H-BOT+38);
       g.fillStyle='#f4ead6';const ls=wrap(cap.note,W-80,'500 27px system-ui,sans-serif').slice(0,3);
-      ls.forEach((l,i)=>g.fillText(l,W/2,H-BOT+82+i*35));g.globalAlpha=1}
+      ls.forEach((l,i)=>g.fillText(l,W/2,H-BOT+76+i*33));g.globalAlpha=1}
     g.fillStyle='rgba(244,234,214,.5)';g.font='600 16px ui-monospace,Menlo,monospace';g.fillText('BENTO BOX AI',W/2,H-18);
   };
   window.MDL_ONFRAME=paint;
@@ -3415,11 +3419,89 @@ async function mdlClip(box,draw,o){
   }catch(e){return null}
   finally{done=true;if(window.MDL_ONFRAME===paint)window.MDL_ONFRAME=null;try{if(rec&&rec.state!=='inactive')rec.stop()}catch(e){}try{if(ctx)ctx.close()}catch(e){}}
 }
+/* A blueprint's walk-through as a video (stage.walk_html): its pictures one after another on the sheet, each
+   moved through from top to bottom, its words under it and read over it. slides: [{img, head, text, narr}].
+   The 3D clip's recorder and frame, with pictures in place of a model. Not for a screen: a screen opens the
+   blueprint itself. */
+async function mdlWalk(slides,o){
+  o=o||{};const W=o.w||720,H=o.h||1280,TOP=176,BOT=292,PX=18,PW=W-PX*2,AV=H-TOP-BOT;
+  const cv=document.createElement('canvas');cv.width=W;cv.height=H;const g=cv.getContext('2d');
+  const wait=ms=>new Promise(r=>setTimeout(r,ms));
+  const wrap=(text,maxW,font)=>{g.font=font;const out=[];let line='';String(text||'').split(/\s+/).forEach(w=>{const t=line?line+' '+w:w;
+    if(g.measureText(t).width>maxW&&line){out.push(line);line=w}else line=t});if(line)out.push(line);return out};
+  let rec=null,ctx=null,tick=0;
+  try{
+    const pics=await Promise.all(slides.map(sl=>new Promise(r=>{const im=new Image();im.onload=()=>r(im);im.onerror=()=>r(null);im.src=sl.img})));
+    const use=slides.map((sl,i)=>({sl,im:pics[i]})).filter(x=>x.im&&x.im.width);if(!use.length)return null;
+    const AC=window.AudioContext||window.webkitAudioContext;ctx=new AC();try{await ctx.resume()}catch(e){}
+    const out=ctx.createMediaStreamDestination(),master=ctx.createGain();master.gain.value=1.6;master.connect(out);
+    for(const x of use){x.buf=null;
+      if(x.sl.narr){try{x.buf=await ctx.decodeAudioData(await (await fetch(x.sl.narr)).arrayBuffer())}catch(e){}}
+      const words=String(x.sl.text||'').split(/\s+/).length;
+      x.dur=x.buf?Math.max(4,x.buf.duration+1.1):Math.max(4.6,Math.min(9.5,words*.27+2.4));
+      x.sc=PW/x.im.width;x.h=x.im.height*x.sc;x.lines=wrap(x.sl.text,W-84,'500 25px system-ui,sans-serif')}
+    const total=use.reduce((a,x)=>a+x.dur,0)+1,voiced=use.some(x=>x.buf),t0=ctx.currentTime+.05;
+    const tone=(f,at,dur,vol,type)=>{const os=ctx.createOscillator(),ga=ctx.createGain();os.type=type||'sine';os.frequency.value=f;
+      ga.gain.setValueAtTime(0,t0+at);ga.gain.linearRampToValueAtTime(vol,t0+at+Math.min(1.2,dur*.3));ga.gain.exponentialRampToValueAtTime(.0001,t0+at+dur);
+      os.connect(ga);ga.connect(master);os.start(t0+at);os.stop(t0+at+dur+.1)};
+    const quiet=voiced?.4:1;
+    [110,164.8,220,261.6,329.6].forEach((f,i)=>tone(f,0,total+.5,.045*quiet,i<2?'triangle':'sine'));   // the sheet: A minor, held
+    const mime=['video/mp4;codecs=avc1.42E01E,mp4a.40.2','video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'].find(m=>{try{return MediaRecorder.isTypeSupported(m)}catch(e){return false}});
+    if(!mime)return null;
+    let cur=0,curAt=performance.now(),frames=0;
+    const ease=p=>p<.5?2*p*p:1-Math.pow(-2*p+2,2)/2;
+    const pic=(x,t,a)=>{                                    // one picture, at t seconds into its turn
+      g.save();g.globalAlpha=a;g.beginPath();g.roundRect(PX,TOP,PW,AV,14);g.clip();
+      g.fillStyle='#0b0d1a';g.fillRect(PX,TOP,PW,AV);
+      if(x.h<=AV)g.drawImage(x.im,PX,TOP+(AV-x.h)/2,PW,x.h);
+      else{const p=ease(Math.max(0,Math.min(1,(t-1)/Math.max(1,x.dur-2.2))));
+        g.drawImage(x.im,0,(x.h-AV)*p/x.sc,x.im.width,AV/x.sc,PX,TOP,PW,AV)}
+      g.restore();g.save();g.globalAlpha=a;g.strokeStyle='rgba(160,214,255,.35)';g.lineWidth=1.5;g.beginPath();g.roundRect(PX,TOP,PW,AV,14);g.stroke();g.restore()};
+    const frame=()=>{frames++;const x=use[cur],t=(performance.now()-curAt)/1000,a=Math.min(1,t/.5);
+      g.fillStyle='#0a2444';g.fillRect(0,0,W,H);
+      g.strokeStyle='rgba(160,214,255,.055)';g.lineWidth=1;g.beginPath();
+      for(let i=40;i<W;i+=40){g.moveTo(i+.5,0);g.lineTo(i+.5,H)}for(let j=40;j<H;j+=40){g.moveTo(0,j+.5);g.lineTo(W,j+.5)}g.stroke();
+      // where it is in the walk
+      const n=use.length,gap=6,sw=(W-36-gap*(n-1))/n;
+      use.forEach((u,i)=>{const sx=18+i*(sw+gap);g.fillStyle='rgba(223,244,255,.22)';g.beginPath();g.roundRect(sx,22,sw,5,2.5);g.fill();
+        const f=i<cur?1:i===cur?Math.min(1,t/u.dur):0;if(f>0){g.fillStyle='#ffd98a';g.beginPath();g.roundRect(sx,22,sw*f,5,2.5);g.fill()}});
+      g.textAlign='center';g.textBaseline='middle';
+      g.fillStyle='#f4ead6';const tl=wrap(o.title,W-70,'700 33px system-ui,sans-serif').slice(0,2);
+      tl.forEach((l,i)=>g.fillText(l,W/2,100+(i-(tl.length-1)/2)*42));
+      if(cur>0&&a<1)pic(use[cur-1],use[cur-1].dur,1);
+      pic(x,t,a);
+      g.globalAlpha=a;g.fillStyle='#ffd98a';g.font='700 21px ui-monospace,Menlo,monospace';
+      g.fillText(String(x.sl.head||'').toUpperCase().slice(0,46),W/2,H-BOT+40);
+      g.fillStyle='#f4ead6';g.font='500 25px system-ui,sans-serif';
+      // more words than fit are shown a few lines at a time, as they are read
+      const per=5,pages=Math.max(1,Math.ceil(x.lines.length/per)),pg=Math.min(pages-1,Math.floor(t/x.dur*pages));
+      x.lines.slice(pg*per,pg*per+per).forEach((l,i)=>g.fillText(l,W/2,H-BOT+86+i*34));g.globalAlpha=1;
+      g.fillStyle='rgba(244,234,214,.5)';g.font='600 16px ui-monospace,Menlo,monospace';g.fillText('BENTO BOX AI',W/2,H-18)};
+    frame();
+    const stream=new MediaStream(cv.captureStream(30).getVideoTracks().concat(out.stream.getAudioTracks())),chunks=[];
+    rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:o.bits||1.3e6,audioBitsPerSecond:96000});
+    rec.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};
+    const ended=new Promise(r=>{rec.onstop=r});rec.start(500);const began=performance.now();
+    tick=setInterval(frame,33);
+    for(let i=0;i<use.length;i++){const x=use[i];cur=i;curAt=performance.now();
+      const at=ctx.currentTime-t0;[880,1318.5].forEach((f,k)=>tone(f,at+k*.06,1.6,.035,'sine'));             // a page turns
+      if(x.buf){const sr=ctx.createBufferSource(),ga=ctx.createGain();sr.buffer=x.buf;ga.gain.value=1.5;sr.connect(ga);ga.connect(master);sr.start(ctx.currentTime+.45)}
+      await wait(x.dur*1000)}
+    const secs=(performance.now()-began)/1000;
+    master.gain.linearRampToValueAtTime(0,ctx.currentTime+.4);await wait(450);
+    clearInterval(tick);rec.stop();await ended;
+    return {blob:new Blob(chunks,{type:mime.split(';')[0]}),mime:mime.split(';')[0],seconds:secs,frames};
+  }catch(e){return null}
+  finally{clearInterval(tick);try{if(rec&&rec.state!=='inactive')rec.stop()}catch(e){}try{if(ctx)ctx.close()}catch(e){}}
+}
+function stageClipLeave(r){
+  if(!r){window.STAGE_CLIP_DONE='none';return null}
+  return new Promise(done=>{const fr=new FileReader();fr.onload=()=>{window.STAGE_CLIP_DATA={mime:r.mime,seconds:r.seconds,frames:r.frames,b64:String(fr.result).split(',')[1]};
+    window.STAGE_CLIP_DONE='ok';done(r)};fr.readAsDataURL(r.blob)});
+}
+function stageWalk(slides,o){return mdlWalk(slides,o).then(stageClipLeave)}
 /* A scene's clip, for the page a phone's video is made on (stage.clip_html): the answer is left on window. */
 function stageClip(sc,o){
   const box=sEl('div','mdl-clipbox');document.body.append(box);
-  return mdlClip(box,art=>stageDraw(art,sc),Object.assign({title:sc.title||sc.subject||''},o||{})).then(r=>{
-    if(!r){window.STAGE_CLIP_DONE='none';return null}
-    return new Promise(done=>{const fr=new FileReader();fr.onload=()=>{window.STAGE_CLIP_DATA={mime:r.mime,seconds:r.seconds,frames:r.frames,b64:String(fr.result).split(',')[1]};
-      window.STAGE_CLIP_DONE='ok';done(r)};fr.readAsDataURL(r.blob)})});
+  return mdlClip(box,art=>stageDraw(art,sc),Object.assign({title:sc.title||sc.subject||''},o||{})).then(stageClipLeave);
 }
