@@ -321,12 +321,31 @@ function stageNow(main){
   if(!STAGE.cur.xray){const keep=sEl('button','stg-b','★');keep.append(sEl('span','stg-long',' Keep'));
     keep.title='Keep this story as a board, and refresh it if you like';keep.setAttribute('aria-label','Keep');
     keep.onclick=()=>stageKeepMenu(keep);bar.append(keep)}
+  if(!STAGE.cur.xray&&STAGE.cur.cid)bar.append(stageSaveMenu('conv='+encodeURIComponent(STAGE.cur.cid)+'&answer='+encodeURIComponent(STAGE.cur.answer_to||'')));
   if(STAGE.cur.cid){const chat=sEl('button','stg-b','Chat');chat.title='Open the conversation';
     chat.onclick=()=>{if(typeof openConv==='function'){openApp('chat');openConv(STAGE.cur.cid)}};
     bar.append(chat)}
   th.append(bar);
   if(STAGE.awaiting)th.append(stageWaiting());
   stageMusicMood(sc.kind);
+}
+/* The story as a file to keep or pass on (stagedoc.py): a deck, a document, a PDF. Plain links with
+   `download`, so the browser saves them and a remote browser gets the file where the person is.
+   `which` names the story: conv=…&answer=…, or sid=… for one of its scenes. */
+var STAGE_FILES=[['pptx','PowerPoint','A slide for each scene'],['docx','Word','A document with each picture and its words'],['pdf','PDF','Pages ready to print or send']];
+function stageSaveMenu(which,cls){
+  const b=sEl('button',cls||'stg-b','⤓');b.append(sEl('span','stg-long',' Save as'));b.type='button';
+  b.title='Save this story as a PowerPoint, a Word document or a PDF';b.setAttribute('aria-label','Save as');b.setAttribute('aria-haspopup','true');
+  // the list is put in the Stage itself, as Keep's is: inside the bar it was cut off by the bar's own scrolling
+  b.onclick=()=>{const host=b.closest('.stg')||b.closest('.st-main');if(!host)return;
+    const old=host.querySelector('.st-savebox');if(old){old.remove();return}
+    host.querySelectorAll('.st-keepbox').forEach(x=>x.remove());
+    const box=sEl('div','st-keepbox st-savebox');box.append(sEl('div','st-keep-h','Save this story as'));
+    STAGE_FILES.forEach(f=>{const a=document.createElement('a');a.className='stg-save-a';a.href='/api/stage/story/file?format='+f[0]+'&'+which;
+      a.setAttribute('download','');a.append(sEl('b','',f[1]),sEl('span','',f[2]));
+      a.onclick=()=>{box.remove();if(typeof toast==='function')toast('Making the '+f[1]+' file… it downloads in a moment')};box.append(a)});
+    const no=sEl('button','endbtn','Cancel');no.onclick=()=>box.remove();box.append(no);host.append(box)};
+  return b;
 }
 /* Every story a chat showed, outside the deeper ones, is a version of its Stage: asking
    "add Japan to the map" in the chat shows the story again with the change, and the one

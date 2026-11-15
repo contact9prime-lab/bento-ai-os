@@ -176,6 +176,27 @@ the nearer the faster.
 
 ![The solar system: a glowing sun, eight planets on their orbits lit from the middle, Saturn with its ring, stars behind](screenshots/stage-model-solar.png)
 
+### As a file: PowerPoint, Word or PDF
+
+**Save as** on the Stage saves the story you are looking at as a PowerPoint deck, a Word document or
+a PDF. Each scene is a slide or a page with its picture, its words and where its numbers came from.
+A blueprint's **Export** menu offers Word and PowerPoint beside its drawing sheets.
+
+![Save as on the Stage, on a desktop and on a phone](screenshots/stage-save-as.png)
+
+You can also ask for it. "Give me that as a deck" or "send it as a Word file" makes your agent save the
+story and name the file, which shows as a file chip in the chat and is sent to you on Telegram or
+WhatsApp. From a terminal, `bento stage export --as pptx` (or `docx`, `pdf`) saves the newest story
+into the workspace's `stage` folder.
+
+![The first pages of a story saved as a PDF](screenshots/stage-story-pdf.png)
+
+The pictures are the ones a phone gets, so they are tall. One that is much taller than it is wide is
+shown over several slides or pages. The text beside a picture can be edited in PowerPoint and Word; the
+charts are pictures, not editable charts. The files need a browser on this machine to draw the
+pictures. Without one, the deck and the document carry the scenes in words and say so, and a PDF
+can't be made.
+
 ### As a video
 
 **Clip** records the build as a video with sound and saves it as a file: the plan being inked,

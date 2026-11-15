@@ -634,6 +634,10 @@ function bpCrumbs(st){
       const a=document.createElement('a');a.className='bp-exp-a';a.href='/api/stage/scene/'+encodeURIComponent(st.sid)+'/export?format='+f;
       a.setAttribute('download','');a.title=t;a.append(sEl('b','',w),sEl('span','',t));
       a.onclick=()=>{d.open=false;if(typeof toast==='function')toast(f==='pdf'?'Printing the blueprint… it downloads in a moment':'Downloading the blueprint')};m.append(a)});
+    // and as a deck or a Word document, with the pictures a phone gets (stagedoc.py)
+    if(typeof STAGE_FILES!=='undefined')STAGE_FILES.filter(f=>f[0]!=='pdf').forEach(f=>{const a=document.createElement('a');a.className='bp-exp-a';
+      a.href='/api/stage/story/file?format='+f[0]+'&sid='+encodeURIComponent(st.sid);a.setAttribute('download','');a.title=f[2];
+      a.append(sEl('b','',f[1]),sEl('span','',f[2]));a.onclick=()=>{d.open=false;if(typeof toast==='function')toast('Making the '+f[1]+' file… it downloads in a moment')};m.append(a)});
     d.append(m);c.append(d)}
   if(st.path.length){const up=sEl('button','bp-up','↥ Up');up.title='Back up one level (Esc)';up.onclick=()=>bpGo(st,st.path.slice(0,-1),'back');c.append(up)}
   // the legend: what a dashed or dotted line means
