@@ -32,7 +32,12 @@ CREATE TABLE IF NOT EXISTS conversations (
     -- quietly become a stranger; it is in the per-user database, so it is
     -- isolated like everything else; and it is deleted with the conversation
     -- instead of leaking.
-    exec_session TEXT DEFAULT ''
+    exec_session TEXT DEFAULT '',
+    -- The phone chat this is a session of ('telegram:<chat id>', 'whatsapp:<number>'),
+    -- and the name the person gave it. A chat lists and reopens only its own
+    -- (phonesessions.py); matched on this, never on the title.
+    channel_ref TEXT DEFAULT '',
+    channel_name TEXT DEFAULT ''
 );
 -- The Brief: what the missions produced, as ITEMS a person acts on — not prose.
 -- One living page per day. A mission's next run updates an item (keyed by
@@ -943,7 +948,9 @@ class Store:
         for col, ddl in (("summary", "TEXT DEFAULT ''"),
                          ("summary_upto", "TEXT DEFAULT ''"),   # last message id it covers
                          ("summary_msgs", "INTEGER DEFAULT 0"),
-                         ("exec_session", "TEXT DEFAULT ''")):
+                         ("exec_session", "TEXT DEFAULT ''"),
+                         ("channel_ref", "TEXT DEFAULT ''"),    # phonesessions.py
+                         ("channel_name", "TEXT DEFAULT ''")):
             if col not in ccols:
                 self.db.execute(f"ALTER TABLE conversations ADD COLUMN {col} {ddl}")
         tcols = {r["name"] for r in self.db.execute("PRAGMA table_info(tasks)").fetchall()}
@@ -1108,6 +1115,28 @@ class Store:
             "UPDATE memories SET space_id=? WHERE scope='session' AND conversation_id=?",
             (space_id or "", cid))
         self.db.commit()
+
+    def claim_conversation(self, cid: str, ref: str, name: str | None = None) -> None:
+        """Mark a conversation as a session of one phone chat (phonesessions.py). A
+        conversation that already belongs to a chat is never moved to another."""
+        self.db.execute("UPDATE conversations SET channel_ref=? WHERE id=? AND "
+                        "COALESCE(channel_ref,'') IN ('', ?)", (ref, cid, ref))
+        if name is not None:
+            self.db.execute("UPDATE conversations SET channel_name=? WHERE id=? AND channel_ref=?",
+                            (name, cid, ref))
+        self.db.commit()
+
+    def channel_conversations(self, ref: str, limit: int = 10) -> list[dict]:
+        """One phone chat's sessions, newest first, with how much is in each."""
+        if not ref:
+            return []
+        rows = self.db.execute(
+            "SELECT c.*, (SELECT COUNT(*) FROM messages m WHERE m.conversation_id=c.id) AS msgs, "
+            "(SELECT m.content FROM messages m WHERE m.conversation_id=c.id AND m.role='user' "
+            " ORDER BY m.created_at LIMIT 1) AS first "
+            "FROM conversations c WHERE c.channel_ref=? ORDER BY c.updated_at DESC LIMIT ?",
+            (ref, int(limit))).fetchall()
+        return [dict(r) for r in rows]
 
     def list_conversations(self, limit: int = 100, space: str = "") -> list[dict]:
         sql, params = "SELECT * FROM conversations WHERE 1=1", []

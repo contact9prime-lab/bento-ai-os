@@ -34,7 +34,10 @@ commands; every other enabled chat can only converse.
 | `/tools [search]` | what the agent can do |
 | `/logs [n\|search]` | the operator diary, plus what was recently denied or asked about |
 | `/perms` | who has been granted what |
-| `/clear` | wipe this conversation and start fresh |
+| `/new [name]` | start a new session. The one before is kept |
+| `/sessions` | your sessions in this chat, newest first, with a button to go back to each |
+| `/resume <number\|name>` | go back to an earlier session, with everything that was said in it |
+| `/clear` | wipe this session's messages |
 | `/updown [on\|off]` | a message when the agent goes offline or comes back |
 | `/companies` | your companies, with a button to open each |
 | `/company [name]` | the open company and its departments; with a name, open that one |
@@ -45,7 +48,8 @@ commands; every other enabled chat can only converse.
 The commands appear as Telegram's **Menu** button and `/` autocomplete — AgentOS registers them
 itself (`setMyCommands`) when the bridge starts and again when a chat becomes the owner, so there
 is nothing to type into BotFather and no hand-kept copy to go stale. The menu is scoped: the
-owner's chat sees the console, every other enabled chat sees only `/help`, `/status` and `/clear`,
+owner's chat sees the console, every other enabled chat sees only `/help`, `/status`, `/clear` and the
+session commands (`/new`, `/sessions`, `/resume`),
 because offering somebody a command they will then be refused is worse than not offering it. If
 the menu ever looks out of date, restart the bridge from the Telegram app — publishing happens on
 start. (Telegram clients cache the list briefly; it can take a minute to appear.)
