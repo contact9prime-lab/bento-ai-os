@@ -33,7 +33,7 @@ def test_every_provider_has_a_dated_sourced_default_among_its_models():
 
 def test_retired_names_are_not_suggested():
     every = [m for e in mc.CATALOGUE.values() for m in e["models"]]
-    for gone in ("gemini-2.0-flash", "kimi-k2-0711-preview", "deepseek-chat", "gpt-4o"):
+    for gone in ("gemini-2.0-flash", "gemini-3.5-flash", "kimi-k2-0711-preview", "deepseek-chat", "gpt-4o"):   # 3.5 Flash left Google's list by 2026-11
         assert not any(m.endswith(gone) for m in every), gone
 
 
@@ -71,7 +71,7 @@ def test_the_picker_offers_suggestions_after_your_own_only_when_the_provider_can
     # Anthropic cannot list: the person's pin first, then this release's suggestions
     ant = [i for i in ids if i.startswith("anthropic/")]
     assert ant[0] == "anthropic/claude-opus-4-8"
-    assert "anthropic/claude-sonnet-5" in ant
+    assert f"anthropic/{mc.default('anthropic')}" in ant
     # OpenAI listed its models: that list is the truth, no suggestions are invented
     oai = [i for i in ids if i.startswith("openai/")]
     assert oai == ["openai/gpt-4o", "openai/gpt-live-model"]
@@ -92,3 +92,14 @@ def test_the_release_step_says_when_the_catalogue_is_old():
     assert mc.stale_note(checked) == ""
     note = mc.stale_note(checked + dt.timedelta(days=mc.STALE_DAYS + 1))
     assert "modelcatalog.py" in note and mc.CHECKED in note
+
+
+def test_the_newest_models_have_a_shipped_price_and_the_older_ones_keep_theirs():
+    from agentos import usage
+    price = lambda m: next(v for pat, v in usage.DEFAULT_PRICING if __import__("fnmatch").fnmatch(m, pat))
+    assert price("anthropic/claude-fable-5-2") == (8.0, 40.0) and price("anthropic/claude-fable-5-1") == (10.0, 50.0)
+    assert price("anthropic/claude-opus-5-5") == (4.0, 20.0) and price("openrouter/anthropic/claude-opus-5.5") == (4.0, 20.0)
+    assert price("anthropic/claude-opus-5") == (5.0, 25.0) and price("anthropic/claude-haiku-5-5") == (0.10, 0.50)
+    assert price("anthropic/claude-haiku-4-5") == (1.0, 5.0)
+    assert price("openai/gpt-6-astra") == (10.0, 50.0) and price("openai/gpt-6.1-sol") == (2.0, 10.0)
+    assert price("deepseek/deepseek-flash") == (0.30, 1.20) and price("deepseek/deepseek-v4-pro") == (1.32, 3.96)

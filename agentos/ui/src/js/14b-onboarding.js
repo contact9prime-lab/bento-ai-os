@@ -447,13 +447,13 @@ var OB_APP_IDEAS=[
 /* each provider's first model mirrors modelcatalog.default() — the release's checked
    catalogue; tests/test_modelcatalog.py keeps the two equal */
 var OB_CLOUD=[
-  {id:'anthropic',label:'Anthropic (Claude)',model:'claude-sonnet-5',
+  {id:'anthropic',label:'Anthropic (Claude)',model:'claude-sonnet-5-5',
    where:'console.anthropic.com'},
   {id:'google',label:'Google (Gemini)',model:'gemini-3.8-flash',
    where:'aistudio.google.com'},
-  {id:'openai',label:'OpenAI',model:'gpt-6-sol',where:'platform.openai.com'},
+  {id:'openai',label:'OpenAI',model:'gpt-6.1-sol',where:'platform.openai.com'},
   {id:'deepseek',label:'DeepSeek',model:'deepseek-flash',where:'platform.deepseek.com'},
-  {id:'moonshot',label:'Moonshot (Kimi)',model:'kimi-k3',
+  {id:'moonshot',label:'Moonshot (Kimi)',model:'kimi-k3.1-pro',
    where:'platform.moonshot.ai'},
   {id:'openrouter',label:'OpenRouter — many models, one key',
    model:'google/gemini-3.8-flash',where:'openrouter.ai/keys'},

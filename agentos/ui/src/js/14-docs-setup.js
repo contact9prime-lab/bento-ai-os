@@ -151,7 +151,7 @@ function wizRender(){
     <div id="wz-cloud" style="display:none">
       <div class="row"><select id="wz-prov"><option value="anthropic">Anthropic (Claude)</option><option value="openai">OpenAI</option><option value="openrouter">OpenRouter</option></select>
       <input id="wz-key" placeholder="API key"></div>
-      <input id="wz-cmodel" placeholder="model, e.g. claude-sonnet-5" style="margin-top:6px;width:100%">
+      <input id="wz-cmodel" placeholder="model, e.g. claude-sonnet-5-5" style="margin-top:6px;width:100%">
     </div>
     <button class="wiz-next" onclick="wizGo(3)">Continue →</button>
     <button class="wiz-back" onclick="wizGo(1)">← Back</button>
