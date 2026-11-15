@@ -698,6 +698,10 @@ server's `_world_org`; none of the three pages asks `/api/company` or decides me
 - **Crew:** one figure per department (its head, in the department's shirt), up to
   `CREW_MAX_ORG`; `crewMatch` answers for any member, so a member's work lights its
   department's figure and `crewWorker` names who.
+- **Mind, other companies:** each PARKED company is one hub too (`co:<id>`, kind `dept` with `company`), its
+  people titled with their department there, and agents in no company share one hub (`free`) past `MAX_OWN`.
+  Reported with a screenshot of 47 clusters; measured on that data, 50 hubs became 12 and no tags overlap. The
+  Team panel is one row per hub (`team[].hub`). A task button is offered only for a department of the open company.
 - **Mind:** a department is ONE hub (`dept:<name>`, `DEPT_HUES` from the room's colour);
   its people are `person` nodes and their runs and skills sit on that hub; `where` maps a
   name to its hub so a spark finds it. Roster and talk links are per hub, and talk inside
@@ -1982,6 +1986,16 @@ it. A session is a conversation row, so going back brings its messages and the C
 A chat lists and reopens only rows carrying its own `channel_ref` (never matched on the title; a button's id is
 checked by `reopen`), the `ss:` callback is decided by the chat it sits in, before the owner-only buttons, and no
 switch happens under a running turn. One implementation for both channels; WhatsApp has no buttons for it.
+
+**A group is answered only when the owner switched group chats on AND picked it** (`TelegramBridge.groups_on`/
+`set_groups`/`groups`, `telegram.groups`, `/groups [on|off]`, the Telegram app's switch; `tests/test_telegram_groups.py`).
+Off, nothing is said in a group (the bot can be added to groups nobody asked about) and the allow-list written ahead
+does not pass one; the owner hears of each new group once, with Allow this group / Block. Allowing a group turns the
+switch on, or it would read enabled and never answer. Unset, the switch is on only where a group was already enabled.
+
+**A story whose question is gone gets no chip** (`stageAttach`). /clear deletes messages and keeps scenes, and the
+chip of a story with no message in the feed was appended at the END: on the owner's thread the 18 Oct Bengaluru
+story sat under the newest answer about the market. It stays in the Stage's library.
 
 **A phone turn is saved first and shown like a desk turn** (`TelegramBridge._handle` `built_history`/`emit`,
 `WhatsAppBridge._turn_in`; `tests/test_telegram_turns.py`). The history rebuild (which can compact with a model

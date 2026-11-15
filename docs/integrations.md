@@ -42,6 +42,7 @@ commands; every other enabled chat can only converse.
 | `/companies` | your companies, with a button to open each |
 | `/company [name]` | the open company and its departments; with a name, open that one |
 | `/people` | who may talk to the agent here, and who wrote and is waiting |
+| `/groups [on\|off]` | whether the agent answers in group chats, and the groups a message came in from, each with a button |
 | `/allow <@name\|chat id>` | let somebody in. Somebody who hasn't written yet is let in on their first message |
 | `/block <@name\|chat id>` | stop somebody talking to the agent |
 
@@ -82,6 +83,15 @@ bot, with the owner badged and an enable/disable toggle for each. Only enabled c
 agent. Connect more channels by adding the bot to a group (as a member) or to a broadcast channel (as
 an admin) — new arrivals start blocked until you permit them in the app. (In groups, a bot only sees
 messages that mention it unless you disable privacy mode via BotFather.)
+
+**Group chats are off until you turn them on.** A bot can be added to any group, so a group is
+answered only when two things are true: **Answer in group chats** is on (the Telegram app, or
+`/groups on` from your phone), and you enabled that group. While it is off the agent says nothing
+in any group. The first message from a new group reaches you on your own chat with **Allow this
+group** and **Block**; allowing one turns group chats on. `/groups` lists every group a message
+came in from with a button for each, and `/groups off` stops all of them while keeping your picks.
+Everybody in an enabled group can talk to the agent. A machine that already had a group enabled
+keeps answering it.
 
 **Letting somebody in before they write.** That toggle only exists once there is a row, and there is
 no row until somebody has messaged you — so on its own it means a colleague has to be turned away
