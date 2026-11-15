@@ -499,9 +499,43 @@ class TelegramBridge(usersmod.Scoped):
         cid = chat.get("conversation_id")
         if cid and any(c["id"] == cid for c in self.store.list_conversations(limit=500)):
             return cid
-        cid = self.store.create_conversation(f"Telegram · {chat.get('title') or chat['chat_id']}", origin="telegram")
+        from . import phonesessions
+        cid = phonesessions.start(self.store, "telegram", chat["chat_id"],
+                                  chat.get("title") or chat["chat_id"])
         self.store.tg_set_conversation(chat["chat_id"], cid)
+        chat["conversation_id"] = cid
         return cid
+
+    async def _sessions(self, chat: dict, text: str = "", tapped: str = "") -> bool:
+        """/new, /sessions, /resume and the buttons under the list (phonesessions.py).
+        True when it was one of them and has been answered."""
+        from . import phonesessions
+        chat_id = chat["chat_id"]
+        title = chat.get("title") or chat_id
+        cur, busy = self._conversation(chat), chat_id in self._busy_chats
+        res = (phonesessions.tapped(self.store, "telegram", chat_id, title, cur, tapped, busy) if tapped
+               else phonesessions.handle(self.store, "telegram", chat_id, title, cur, text, busy))
+        if res is None:
+            return False
+        if res.get("cid"):
+            self.store.tg_set_conversation(chat_id, res["cid"])
+            chat["conversation_id"] = res["cid"]
+            self.store.log("telegram", f"session {'started' if res.get('new') else 'reopened'} "
+                                       f"for {title}", {"chat_id": chat_id, "conversation_id": res["cid"]})
+        rows = res.get("rows") or []
+        if rows:
+            # one tap per session, and one for a new one; typing the number works too
+            kb = [[{"text": f"{r['n']}. {r['label']}"[:40], "callback_data": f"ss:{r['id']}"}]
+                  for r in rows if not r["current"]]
+            kb.append([{"text": "＋ New session", "callback_data": "ss:new"}])
+            try:
+                await self._api("sendMessage", chat_id=chat_id, text=res["say"][:4000],
+                                reply_markup={"inline_keyboard": kb})
+                return True
+            except Exception:
+                pass
+        await self.send(res["say"], chat_id)
+        return True
 
     def _conversation_for_chat(self, chat_id: int) -> str:
         """Same persistent conversation, reached by id — the admin console has the
@@ -546,7 +580,7 @@ class TelegramBridge(usersmod.Scoped):
             await self.publish_commands()   # the console menu is owner-scoped
             await self.send(f"▲ Linked! Hi {frm.get('first_name', 'there')} — I'm {name}, "
                             f"the agent on your machine. This chat is now the owner. "
-                            f"Send me anything; /clear resets our session.", chat_id)
+                            f"Send me anything; /new starts a new session.", chat_id)
             if text.startswith("/start"):
                 return  # welcome is enough for /start
 
@@ -582,13 +616,15 @@ class TelegramBridge(usersmod.Scoped):
         await self.broadcast({"type": "telegram_chats"})
 
         if text.startswith("/start"):
-            await self.send("▲ Already linked. Send me anything; /clear resets the session.", chat_id)
+            await self.send("▲ Already linked. Send me anything; /new starts a new session.", chat_id)
             return
         if text.startswith("/clear"):
             cid = self._conversation(chat)
             self.store.clear_messages(cid)
             self.store.log("telegram", f"session cleared for {title}")
             await self.send("🧹 Session cleared — starting fresh.", chat_id)
+            return
+        if await self._sessions(chat, text):
             return
         # The admin console. Placed after the allow-list (only known chats reach it)
         # and before the busy lock (reading the logs must work WHILE a turn runs —
@@ -952,12 +988,23 @@ class TelegramBridge(usersmod.Scoped):
                        {"chat_id": chat_id, "allowed": allow})
         if allow:
             name = self.cfg.get("agent_name") or "Aria"
-            await self.send(f"▲ You're in. I'm {name}. Send me anything; /clear resets our session.", chat_id)
+            await self.send(f"▲ You're in. I'm {name}. Send me anything; /new starts a new session.", chat_id)
         with contextlib.suppress(Exception):
             await self.broadcast({"type": "telegram_chats"})
         return "allowed" if allow else "blocked"
 
     async def _handle_callback(self, cq: dict):
+        if (cq.get("data") or "").startswith("ss:"):
+            # A session button (/sessions). Any enabled chat has sessions, so this is
+            # decided by the chat the button sits in, before the owner-only buttons.
+            with contextlib.suppress(Exception):
+                await self._api("answerCallbackQuery", callback_query_id=cq["id"])
+            chat_id = ((cq.get("message") or {}).get("chat") or {}).get("id")
+            chat = next((c for c in self.store.tg_list_chats() if c["chat_id"] == chat_id), None)
+            owner = chat_id == (self._t().get("owner_chat_id") or 0)
+            if chat and (chat.get("allowed") or owner):
+                await self._sessions(chat, tapped=cq["data"][3:])
+            return
         if cq.get("from", {}).get("id") != (self._t().get("owner_chat_id") or 0):
             return
         data = cq.get("data", "")

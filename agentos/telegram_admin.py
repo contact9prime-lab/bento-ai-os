@@ -46,7 +46,10 @@ COMMANDS = [
     ("/tools", "[search]", "what the agent can do"),
     ("/logs", "[n|search]", "the operator diary, newest last"),
     ("/perms", "", "who has been granted what"),
-    ("/clear", "", "wipe this conversation and start fresh"),
+    ("/new", "[name]", "start a new session; the one before is kept"),
+    ("/sessions", "", "your sessions in this chat, with a button to go back to each"),
+    ("/resume", "<number|name>", "go back to an earlier session"),
+    ("/clear", "", "wipe this session's messages"),
     ("/updown", "[on|off]", "a message when I go offline or come back"),
     ("/clips", "[on|off]", "a video with sound when a story builds something in 3D"),
     ("/companies", "", "your companies, with a button to open each"),
@@ -64,11 +67,11 @@ def office_name_of(cfg: dict) -> str:
 
 # What every enabled chat may use. Administration is not in here: a command the
 # client offers and the bot then refuses is worse than one that was never shown.
-_EVERYONE = {"/help", "/status", "/clear"}
+_EVERYONE = {"/help", "/status", "/clear", "/new", "/sessions", "/resume"}
 
 
 #: Handled by the bridge itself, before the console ever sees them.
-_BRIDGE_OWNED = {"start", "clear"}
+_BRIDGE_OWNED = {"start", "clear", "new", "sessions", "resume"}
 #: "/word" or "/word@thisbot" and nothing else — a command being tried, not prose.
 _BARE_COMMAND = re.compile(r"^/[A-Za-z0-9_]{1,32}(@[A-Za-z0-9_]+)?$")
 

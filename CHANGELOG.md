@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.9.10 — 2026-11-15
+
+**Telegram and WhatsApp keep several sessions.** A chat had one conversation, and the only way to
+start over was `/clear`, which deletes it. Now `/new` starts a new session and keeps the one
+before (`/new invoices` names it), `/sessions` lists this chat's sessions newest first, and
+`/resume 2` or `/resume invoices` goes back to one with everything that was said in it. On Claude
+Code the earlier session is the one Claude Code itself remembers. Telegram puts a button under the
+list for each session and one for a new one. A chat sees and reopens only its own sessions, every
+enabled chat has the three commands, and a session is not switched while an answer is being
+written. `/clear` still wipes the open session's messages.
+
+WhatsApp's `/status` says what answers (Claude Code and its model when that is the brain), as
+Telegram's does.
+
 ## 0.9.9 — 2026-11-15
 
 **A map's video shows the map, and every place on it.** A map sent to Telegram or WhatsApp was

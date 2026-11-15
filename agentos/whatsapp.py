@@ -617,7 +617,7 @@ class WhatsAppBridge(usersmod.Scoped):
             self.store.log("whatsapp", f"paired: owner = {name} ({wa_id})")
             await self.send(f"▲ Linked. I'm {agent}, the agent on your machine — same "
                             f"memory and the same tools as at the desk. Send me "
-                            f"anything; /clear starts a fresh session.", wa_id)
+                            f"anything; /new starts a new session.", wa_id)
             await self.broadcast({"type": "whatsapp_chats"})
             return
 
@@ -655,6 +655,20 @@ class WhatsAppBridge(usersmod.Scoped):
             self.store.clear_messages(self._conversation(chat))
             await self.send("🧹 Session cleared — starting fresh.", wa_id)
             return
+        from . import phonesessions
+        res = phonesessions.handle(self.store, "whatsapp", wa_id, chat.get("name") or wa_id,
+                                   self._conversation(chat), text, self._busy)
+        if res is not None:
+            # /new, /sessions, /resume: the same answers Telegram gives, without buttons
+            # (a reply button is three at most, and a list of sessions is longer)
+            if res.get("cid"):
+                self.store.wa_set_conversation(wa_id, res["cid"])
+                chat["conversation_id"] = res["cid"]
+                self.store.log("whatsapp", f"session {'started' if res.get('new') else 'reopened'} "
+                                           f"for {chat.get('name') or wa_id}",
+                               {"wa_id": wa_id, "conversation_id": res["cid"]})
+            await self.send(res["say"], wa_id)
+            return
         if low.startswith("/office"):
             out = await self.send_office(wa_id)
             if out.startswith("[error]"):
@@ -671,8 +685,14 @@ class WhatsAppBridge(usersmod.Scoped):
                             else "▶ Pictures only. /clips on brings the videos back.", wa_id)
             return
         if low.startswith("/status"):
-            await self.send(f"▲ online · model {self.cfg.get('default_model') or '(none)'} "
-                            f"· autonomy {self.cfg.get('autonomy')}", wa_id)
+            # what answers, as Telegram's /status says it: an agent CLI and its model when
+            # one is the engine, since the saved provider model is not in use then
+            from . import executors as execmod
+            eng = execmod.resolve_engine(self.cfg)
+            what = (self.cfg.get("default_model") or "(none)") if eng == "aria" else \
+                eng + (" · " + execmod.executor_model(self.cfg, eng)
+                       if execmod.executor_model(self.cfg, eng) else "")
+            await self.send(f"▲ online · model {what} · autonomy {self.cfg.get('autonomy')}", wa_id)
             return
 
         # A message trigger starts a flow, checked before the busy lock — a flow runs
@@ -728,8 +748,11 @@ class WhatsAppBridge(usersmod.Scoped):
         cid = chat.get("conversation_id")
         if cid and any(c["id"] == cid for c in self.store.list_conversations(limit=500)):
             return cid
-        cid = self.store.create_conversation(f"WhatsApp · {chat.get('name') or chat['wa_id']}", origin="whatsapp")
+        from . import phonesessions
+        cid = phonesessions.start(self.store, "whatsapp", chat["wa_id"],
+                                  chat.get("name") or chat["wa_id"])
         self.store.wa_set_conversation(chat["wa_id"], cid)
+        chat["conversation_id"] = cid
         return cid
 
     async def _turn(self, chat: dict, wa_id: str, text: str):

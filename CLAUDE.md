@@ -1949,6 +1949,14 @@ after a boot with nobody signed in no account's bot polled. One poller per token
 `/allow` on a chat that never wrote goes on the channel's allow-list (`channels.save`), because
 `tg_set_allowed` only updates a row that exists.
 
+**A phone chat keeps several sessions** (`agentos/phonesessions.py`, `conversations.channel_ref`/`channel_name`,
+`/new [name]`, `/sessions`, `/resume <n|name>`, Telegram's `ss:` buttons; `tests/test_phone_sessions.py`). Asked for as
+"an option of starting new session or reverting to existing sessions": a chat had one conversation and /clear deleted
+it. A session is a conversation row, so going back brings its messages and the CLI's own session (`exec_session`).
+A chat lists and reopens only rows carrying its own `channel_ref` (never matched on the title; a button's id is
+checked by `reopen`), the `ss:` callback is decided by the chat it sits in, before the owner-only buttons, and no
+switch happens under a running turn. One implementation for both channels; WhatsApp has no buttons for it.
+
 **A phone turn is saved first and shown like a desk turn** (`TelegramBridge._handle` `built_history`/`emit`,
 `WhatsAppBridge._turn_in`; `tests/test_telegram_turns.py`). The history rebuild (which can compact with a model
 call) ran before the message was saved, on every engine: measured 2 min 45 s on the owner's long thread, which
