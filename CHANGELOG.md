@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.16 — 2026-11-15
+
+No release notes were written for this one; the commits since 0.9.15 are what changed (`bento update` lists them).
+
 ## 0.9.15 — 2026-11-15
 
 **The suggested models are current again.** The list the model pickers and setup offer was 49 days
