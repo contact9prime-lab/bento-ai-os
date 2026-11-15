@@ -132,8 +132,26 @@ async def fit(data: bytes, mime: str, limit: int) -> tuple | None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+# How the recording browser draws. This machine's graphics card first, through Vulkan: drawn in software the
+# picture came at about 9 frames a second and the encoder fell behind the sound (measured on a 12-core desktop:
+# 43 s of sound, 33 s of picture, the ending lost). ANGLE's GL backends were tried and are not used: the frame
+# copied for the video was sometimes half drawn (the land or the pins missing for a frame). Software is the
+# fallback, for a machine with no card. AGENTOS_CLIP_GL names the order to try.
+GL_FLAGS = {"vulkan": ("--use-angle=vulkan", "--enable-gpu", "--enable-features=Vulkan"),
+            "soft": ("--use-angle=swiftshader", "--enable-unsafe-swiftshader")}
+
+
 async def _film(html: str, cfg: dict | None, timeout: float) -> tuple | None:
     """Open `html` in a throwaway headless browser, wait for its recording, and bring it back."""
+    for gl in (os.environ.get("AGENTOS_CLIP_GL") or "vulkan,soft").split(","):
+        if gl in GL_FLAGS:
+            got = await _film_with(html, cfg, timeout, gl)
+            if got:
+                return got
+    return None
+
+
+async def _film_with(html: str, cfg: dict | None, timeout: float, gl: str) -> tuple | None:
     from . import cdpbrowser
     binary = cdpbrowser.binary(cfg)
     if not binary:
@@ -146,7 +164,7 @@ async def _film(html: str, cfg: dict | None, timeout: float) -> tuple | None:
         args = [binary, "--headless=new", "--remote-debugging-pipe", f"--user-data-dir={tmp / 'p'}",
                 "--no-first-run", "--no-default-browser-check", "--disable-background-networking",
                 "--disable-sync", "--hide-scrollbars", "--force-color-profile=srgb",
-                "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist",
+                *GL_FLAGS[gl], "--ignore-gpu-blocklist",
                 "--autoplay-policy=no-user-gesture-required",
                 f"--window-size={WIDTH},{HEIGHT}", "about:blank"]
         if hasattr(os, "geteuid") and os.geteuid() == 0:

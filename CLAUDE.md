@@ -872,6 +872,18 @@ things rather than presenting the chart". Six rules:
   pictures already photographed. `PHONE_LINE` says a blueprint is a video. A blueprint's form may stand in `space`;
   mounted `whole`, the eye stays outside it and glass is seen through (measured: the tour went inside the horizon, a
   glass ergosphere hid it, and the middle sphere glowed like a sun). WhatsApp plays only mp4 and takes 16 MB.
+- **A map's or a chart's video is a count, north up, on the graphics card** (`mdlClip`'s `count`/`list`/`board`,
+  `model.map`, `mdlClipDrain`, `stage.CLIP_COUNT`, `stageclip.GL_FLAGS`; `tests/test_stage_3d.py`). Reported from
+  Telegram with the owner's eight-place map, "5 on 10": the azimuth drifted .04 rad a second so the map was turned
+  40 degrees by the second place, the tour stopped at five, the map's notes list shared the clip's frame so the
+  picture was stretched back tall with its names off their pins, and nothing showed all of them. Now the map's eye
+  is due south and never turns, the drawing is given the whole frame, the clip opens on the line that says what the
+  numbers are, visits every place (twelve at most) with its number, flies between them (`st.fp` travels, pulled
+  back by the distance left), and ends on a board of all of them. The board is painted from the drawing's frames,
+  so the clip keeps the drawing awake. Measured: drawn in software the picture was 9 frames a second and the
+  encoder ran ten seconds behind the sound, cutting every ending; pausing the recorder did not bring it back.
+  Vulkan gives 30 frames a second in step with the sound. ANGLE's GL backends are faster too but the copied
+  frame was sometimes half drawn (no land, or no pins): do not use them.
 - **Labels never overlap and the panel holds the rest.** Labels compress, then drop their second line; the
   title block, "you are here" and the links of a tower live in the spec panel. Sized from `clientWidth`, a
   ResizeObserver dropped when the drawing leaves; on a phone the scene scrolls and a tap brings a sheet that

@@ -189,6 +189,15 @@ record webm has it turned into mp4 by ffmpeg when ffmpeg is installed; Telegram 
 file otherwise, and WhatsApp, which plays only mp4, gets none. WhatsApp takes 16 MB, so a bigger
 video is made smaller first, which also needs ffmpeg.
 
+**A map and a chart are counted.** Their video opens on the whole thing with the line that says
+what the numbers are, then goes to every place or bar in turn (up to twelve) with its number, value
+and note, and ends on a board that lists them all. A map keeps north up.
+
+![A map's video: the fourth place of eight, then the board that lists them all](screenshots/stage-map-video.png)
+
+The video is drawn on this machine's graphics card when it has one. Without one it is drawn in
+software, which is slower: the picture can fall behind the sound and lose its last seconds.
+
 **A blueprint always gets one.** When the agent shows a blueprint of a thing without a 3D form,
 Bento asks for one while the parts fill in, so it opens in 3D on your screen and goes to your
 phone built and toured. Something in space is drawn among the stars.

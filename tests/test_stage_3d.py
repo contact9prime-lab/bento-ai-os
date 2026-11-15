@@ -128,7 +128,7 @@ def test_what_builds_in_3d_is_one_rule_and_the_clip_says_only_the_scenes_own_wor
     nums = stage.clean({"kind": "numbers", "title": "n", "source": "s", "items": [{"label": "a", "value": 1}]})[0]
     assert all(stage.builds_3d(s) for s in yes) and not stage.builds_3d(pie) and not stage.builds_3d(nums)
     assert stage.clip_words(yes[2]) == "A garden in spring. Pagoda. Five storeys."
-    assert stage.clip_words(yes[1]).endswith("Furnace Creek. The record, 1913.")
+    assert stage.clip_words(yes[1]).endswith("Furnace Creek, 56.7. The record, 1913. Kebili, 55.")   # every place, with its number
 
 
 def test_the_clip_page_carries_the_painter_and_three_and_a_story_page_only_when_given_it():
@@ -270,3 +270,53 @@ def test_things_that_go_round_keep_their_own_distance_and_every_name_is_shown():
         assert needle in JS, needle
     assert "opts.stack&&on" not in JS
     assert ".mdl-tag.tiny::before" in CSS
+
+
+LIFE = {"kind": "map", "title": "Where the best-value lifestyles are", "illustrative": True, "view": "world",
+        "caption": "Rough monthly budget for one person, in US dollars.",
+        "points": [{"label": "Thailand", "lat": 13.75, "lon": 100.5, "value": 1500, "note": "Best-rated cost of living"},
+                   {"label": "Malaysia", "lat": 3.14, "lon": 101.69, "value": 1450},
+                   {"label": "Portugal", "lat": 38.72, "lon": -9.14, "value": 2400},
+                   {"label": "Panama", "lat": 8.98, "lon": -79.52, "value": 2150, "note": "#1 expat-rated"},
+                   {"label": "Georgia", "lat": 41.72, "lon": 44.78, "value": 1350},
+                   {"label": "UAE", "lat": 25.2, "lon": 55.27, "value": 4250, "note": "Tax-free"}]}
+
+
+def test_a_maps_video_keeps_north_up_and_counts_every_place():
+    """Reported from Telegram with two frames of this map: turned 40 degrees, "10 of these places and it
+    has only sneak-peeked these", and nothing that showed them all. Recorded again from the owner's scene."""
+    world = {"countries": [{"n": "Squareland", "a3": "SQL", "r": [[-1200, 300, -1000, 300, -1000, 450, -1100, 380, -1200, 450]]}]}
+    got = _node("""
+const world=%s;world.idx={};const m=mdlOfMap(%s,world),pins=m.solids.filter(s=>s.shape==='sphere');
+console.log(JSON.stringify({az:m.az,map:m.map,pins:pins.map(s=>[s._name,s._val,s._v])}));""" % (json.dumps(world), json.dumps(stage.clean(LIFE)[0])))
+    assert got["map"] is True and abs(got["az"] - 1.5707963) < 1e-6          # the eye is due south: north is up
+    assert got["pins"][0] == ["Thailand", "1500", 1500] and len(got["pins"]) == 6
+    for needle in ("azA=model.map?AZ:",                      # and it never drifts round as the clip runs
+                   "const count=o.kind==='map'||o.kind==='chart'",
+                   "M.gl.named.slice(0,o.stops||12)",        # every place, where the tour took five
+                   "' OF '+n", "if(board){", "board=performance.now()",
+                   "kind:sc.kind,line:sc.caption||sc.say||''",
+                   "hop*.9*fk",                              # a long way between two places is flown, pulled back
+                   "position:absolute;inset:0;width:auto;height:auto",   # the drawing has the whole frame
+                   "list?400:3000"):                         # the board is painted while the drawing rests
+        assert needle in JS, needle
+    assert stage.CLIP_COUNT == 12
+    said = stage.clip_words(stage.clean(LIFE)[0])
+    assert said.startswith("Rough monthly budget") and "Malaysia, 1,450." in said and said.endswith("UAE, 4,250. Tax-free.")
+
+
+def test_the_recorder_draws_on_the_graphics_card_first_and_in_software_when_there_is_none(monkeypatch):
+    from agentos import stageclip
+    assert list(stageclip.GL_FLAGS) == ["vulkan", "soft"] and "--use-angle=swiftshader" in stageclip.GL_FLAGS["soft"]
+    tried = []
+
+    async def once(html, cfg, timeout, gl):
+        tried.append(gl)
+        return (b"v", "video/mp4", 3.0) if gl == "soft" else None
+    monkeypatch.setattr(stageclip, "_film_with", once)
+    monkeypatch.delenv("AGENTOS_CLIP_GL", raising=False)
+    assert asyncio.run(stageclip._film("<html>", {}, 5)) == (b"v", "video/mp4", 3.0) and tried == ["vulkan", "soft"]
+    monkeypatch.setenv("AGENTOS_CLIP_GL", "soft")
+    tried.clear()
+    asyncio.run(stageclip._film("<html>", {}, 5))
+    assert tried == ["soft"]
