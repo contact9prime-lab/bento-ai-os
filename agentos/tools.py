@@ -6119,7 +6119,7 @@ TOOL_SCHEMAS = [
     {
         "name": "set_agent_brain",
         "description": "Choose which AI model one specialist agent answers on — any provider this "
-                       "machine has, as 'provider/model' (e.g. 'anthropic/claude-sonnet-5', "
+                       "machine has, as 'provider/model' (e.g. 'anthropic/claude-sonnet-5-5', "
                        "'openai/gpt-4o', 'ollama/qwen3.5:9b'), or '' for this machine's brain. "
                        "It changes who is billed for that agent's work.",
         "parameters": {

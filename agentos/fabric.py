@@ -3927,7 +3927,9 @@ def seed_builtins(cfg: dict, store):
     if zeromod.runs_on_hub(cfg):
         return          # a Zero keeps no agents of its own: its work runs on the hub
     anthropic_on = (cfg.get("providers", {}).get("anthropic") or {}).get("enabled")
-    validator_model = "anthropic/claude-sonnet-5" if anthropic_on else ""
+    # this release's suggested Claude (modelcatalog.py), so a new machine's validator is never seeded on an old one
+    from . import modelcatalog
+    validator_model = f"anthropic/{modelcatalog.default('anthropic')}" if anthropic_on else ""
     store.save_subagent({
         "name": "researcher", "builtin": 1,
         "soul": "You research. Gather real information with your tools, verify it, and return "

@@ -22,39 +22,42 @@ from __future__ import annotations
 import datetime as _dt
 
 #: When these lists were last checked against the providers' own pages.
-CHECKED = "2026-09-27"
+CHECKED = "2026-11-15"
 #: `bento version bump` warns when the catalogue is older than this.
 STALE_DAYS = 45
 
 CATALOGUE: dict[str, dict] = {
     "anthropic": {
-        "default": "claude-sonnet-5",
-        "models": ["claude-opus-5-5", "claude-sonnet-5", "claude-haiku-4-5", "claude-fable-5-1"],
+        "default": "claude-sonnet-5-5",
+        "models": ["claude-fable-5-2", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"],
         "source": "https://platform.claude.com/docs/en/about-claude/models/overview",
     },
     "openai": {
-        "default": "gpt-6-sol",
-        "models": ["gpt-6-sol", "gpt-6-luna", "gpt-5.6-terra"],
-        "source": "https://techcrunch.com/2026/09/22/openai-launches-gpt-6-sol-and-luna/",
+        "default": "gpt-6.1-sol",
+        "models": ["gpt-6-astra", "gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-luna"],
+        "source": "https://developers.openai.com/api/docs/models",
     },
     "google": {
+        # Gemini 4 is listed with its ids but the page does not say who may use it yet, so only
+        # the one described as "for everyone" is offered; carbon and argon wait for the next check
         "default": "gemini-3.8-flash",
-        "models": ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"],
-        "source": "https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash",
+        "models": ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-4-hydrogen"],
+        "source": "https://aistudio.google.com/docs/models",
     },
     "openrouter": {
         "default": "google/gemini-3.8-flash",
-        "models": ["anthropic/claude-opus-5.5", "google/gemini-3.8-flash", "openai/gpt-6-luna"],
-        "source": "https://openrouter.ai/anthropic/claude-opus-5.5",
+        "models": ["anthropic/claude-opus-5.5", "anthropic/claude-sonnet-5.5", "google/gemini-3.8-flash",
+                   "openai/gpt-6.1-sol", "openai/gpt-6-luna"],
+        "source": "https://openrouter.ai/api/v1/models",
     },
     "deepseek": {
         "default": "deepseek-flash",
-        "models": ["deepseek-flash"],
+        "models": ["deepseek-flash", "deepseek-v4-pro"],
         "source": "https://api-docs.deepseek.com/quick_start/pricing/",
     },
     "moonshot": {
-        "default": "kimi-k3",
-        "models": ["kimi-k3"],
+        "default": "kimi-k3.1-pro",
+        "models": ["kimi-k3.1-pro", "kimi-k3.1-pro-highspeed", "kimi-k3"],
         "source": "https://platform.kimi.ai/docs/models",
     },
 }

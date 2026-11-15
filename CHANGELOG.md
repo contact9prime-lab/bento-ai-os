@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.9.15 — 2026-11-15
+
+**The suggested models are current again.** The list the model pickers and setup offer was 49 days
+old. Checked against each provider's own page on 15 November 2026:
+
+- Anthropic: Claude Fable 5.2, Opus 5.5, Sonnet 5.5 and Haiku 5.5. Sonnet 5.5 is offered first.
+- OpenAI: GPT-6 Astra, GPT-6.1 Sol, GPT-6.1 Terra and GPT-6 Luna. GPT-6.1 Sol is offered first.
+- Google: Gemini 3.8 Flash, 3.6 Flash, 3.5 Flash-Lite and Gemini 4 Hydrogen. Gemini 3.5 Flash is no longer on Google's list.
+- DeepSeek: `deepseek-v4-pro` joins `deepseek-flash`.
+- Moonshot: Kimi K3.1 Pro and its high-speed version, ahead of K3.
+- OpenRouter: the same newer Claude and GPT models.
+
+The prices Usage estimates with were updated for the new models, and DeepSeek's are now its peak
+rate. Models you already chose are left exactly as they are.
+
 ## 0.9.14 — 2026-11-15
 
 No release notes were written for this one; the commits since 0.9.13 are what changed (`bento update` lists them).
