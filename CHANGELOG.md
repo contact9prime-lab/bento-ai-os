@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.9.12 — 2026-11-15
+
+**What comes back from delegated work arrives whole.** An answer handed back to your agent by a
+specialist, a mission, a department or a colleague was cut at 3,500 characters, with nothing
+saying so. Your agent then answered from the part it had. Now the whole answer goes back, up to
+20,000 characters; past that it is cut at a paragraph and says how much is missing and where the
+rest is. Measured with Claude Code as the lead, asking a specialist for 60 numbered items: 21
+and 27 of them arrived before, all 60 after.
+
+**A boss reads all of what it signs.** The heads who review a department's work and the
+auditor read 6,000 characters of it, and a send-back showed the desk 4,000 of its own answer.
+Both are 20,000 now, and a cut is said.
+
+**A task that stops keeps what it finished.** A department task that ended without finishing
+(its process killed, an error, out of time) handed back only the error, and the finished steps
+stayed on its board unseen. Now it hands back every finished step in full, the notes its lead
+kept, and what did not finish, marked as unfinished and unchecked.
+
 ## 0.9.10 — 2026-11-15
 
 **Telegram and WhatsApp keep several sessions.** A chat had one conversation, and the only way to

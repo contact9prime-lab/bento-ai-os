@@ -1340,6 +1340,20 @@ def audit_task(dept: dict, task: str, deliverable: str, status: str, fault: str,
     return "\n\n".join(parts)
 
 
+# How much of a deliverable a boss or the auditor reads. It was 6,000 characters, cut with no
+# mark: a boss signed off, or sent back, work it had read the first part of.
+REVIEW_CHARS = 20000
+
+
+def _shown(deliverable: str, limit: int = 0) -> str:
+    text, limit = str(deliverable or "").strip(), limit or REVIEW_CHARS
+    if len(text) <= limit:
+        return text
+    return (text[:limit].rstrip()
+            + f"\n[… {len(text) - limit:,} more characters of it are not shown to you: judge what "
+              f"you can see, and say that you did not see the rest]")
+
+
 def _work_parts(task: str, deliverable: str, status: str, fault: str, board: list[dict],
                 briefed: list[dict] | None) -> list[str]:
     """The task, the deliverable, the board and what was filed in the Brief: what the
@@ -1349,7 +1363,7 @@ def _work_parts(task: str, deliverable: str, status: str, fault: str, board: lis
                                                or "(no task was given: the desk ran on its own)"),
              f"=== what they handed back (the run ended {status}"
              + (f": {fault}" if fault else "") + ") ===\n"
-             + (str(deliverable or "").strip()[:6000] or "(nothing)")]
+             + (_shown(deliverable) or "(nothing)")]
     left = AUDIT_BOARD_CHARS
     rows = []
     for b in board:
