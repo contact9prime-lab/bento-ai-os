@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.19 — 2026-11-16
+
+No release notes were written for this one; the commits since 0.9.18 are what changed (`bento update` lists them).
+
 ## 0.9.17 — 2026-11-15
 
 **The chat turn is stitched.** One chat turn was read end to end and measured with real Claude Code.
