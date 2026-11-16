@@ -27,7 +27,7 @@ async function waPanel(){
   if(!d){box.innerHTML='';return}
   // Two transports, one card. Which one is showing is decided by cfg, not by
   // guessing from which fields happen to be filled in.
-  if((d.mode||'cloud')==='baileys'){box.innerHTML=waLinkPanel(d);return}
+  if((d.mode||'cloud')==='baileys'){box.innerHTML=waLinkPanel(d)+((d.chats||[]).length?waPeopleTable(d):'');return}
   const reach=d.reach||{};
   const hook=reach.reachable
     ? `<div class="wa-hook"><b>Callback URL</b>
@@ -46,14 +46,7 @@ async function waPanel(){
         ? `<div class="wa-line ok">The ${d.window_hours}-hour window is open, so it can message you now.</div>`
         : `<div class="wa-line warn">The ${d.window_hours}-hour window has closed. Send the number anything to reopen it. ${pInfo('WhatsApp only lets a business message you first within a day of your last message.')}</div>`)
     : '';
-  const chats=(d.chats||[]).filter(c=>c.wa_id!==d.owner_wa_id);
-  const others=chats.length
-    ? `<div class="wa-line"><b>Other numbers that wrote in</b></div>`
-      +chats.map(c=>`<div class="item wa-row"><div class="grow">
-          <code>+${esc(c.wa_id)}</code> ${esc(c.name||'')}</div>
-        <button class="endbtn" onclick="waAllow('${jsq(c.wa_id)}',${c.allowed?0:1})">
-          ${c.allowed?'Block':'Allow'}</button></div>`).join('')
-    : '';
+  const others=(d.chats||[]).length?waPeopleTable(d):'';
   // The way back. Without it, choosing the Business API once is a one-way door:
   // the four fields are the only thing on screen and nothing offers the QR again.
   const modeSwitch=`<div class="wa-line mut" style="margin-top:10px">
