@@ -2,6 +2,17 @@
 
 ## 0.9.20 — 2026-11-16
 
+**Who may talk to your agent is a table now, with when and who decided.** The Telegram app shows
+People and Groups in two tables: whether each is answered, when that was decided and by whom, how
+many messages, and when they last wrote. Under each group is everybody who wrote to the agent
+there. A group answers everybody in it or only the people you pick, and you can block one person
+either way. From your phone, `/people` and `/groups` say the same, and `/members <group>` lists a
+group's people with a button for each. WhatsApp's card has the same people table.
+
+**A request to let somebody in reaches the account that owns the channel.** It is asked on that
+account's owner chat and on its desktop. A new WhatsApp number used to be told to find Settings
+while you heard nothing; now you are asked on WhatsApp (`/allow <number>`, `/block <number>`,
+`/people`), on your Telegram with buttons when it is paired, and on the desktop.
 **A company is addressed by name, and your agent decides who does the work.**
 
 - **`@Company` opens a company.** Start a message with `@` and one of your companies' names, in Chat,

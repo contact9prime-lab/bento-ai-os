@@ -43,6 +43,7 @@ commands; every other enabled chat can only converse.
 | `/company [name]` | the open company and its departments; with a name, open that one |
 | `/people` | who may talk to the agent here, and who wrote and is waiting |
 | `/groups [on\|off]` | whether the agent answers in group chats, and the groups a message came in from, each with a button |
+| `/members <group>` | who wrote in a group and whether each is answered, with a button to allow or block each, and one to answer only the people you pick |
 | `/allow <@name\|chat id>` | let somebody in. Somebody who hasn't written yet is let in on their first message |
 | `/block <@name\|chat id>` | stop somebody talking to the agent |
 
@@ -92,6 +93,19 @@ group** and **Block**; allowing one turns group chats on. `/groups` lists every 
 came in from with a button for each, and `/groups off` stops all of them while keeping your picks.
 Everybody in an enabled group can talk to the agent. A machine that already had a group enabled
 keeps answering it.
+
+**Who may talk, as tables.** The Telegram app lists **People** and **Groups and channels** in two
+tables: who, whether they are answered, when that was decided and by whom (you on Telegram, an
+account at the desktop, the allow-list, or pairing), how many messages, and when they last wrote.
+Under each group is everybody who wrote to the agent there. A group answers **everybody in it** or
+**only the people you pick**, and either way you can block one person. You are always answered.
+Decisions made before this was recorded read "not recorded". WhatsApp's card has the same people
+table.
+
+**A request to let somebody in goes to the account that owns the channel.** It is asked on that
+account's owner chat (Telegram buttons, or `/allow <number>` on WhatsApp), and on its desktop. A
+new WhatsApp number is also asked on the account's Telegram when that is paired. WhatsApp groups
+are not read at all: the Business API does not carry them and the linked device skips them.
 
 **Letting somebody in before they write.** That toggle only exists once there is a row, and there is
 no row until somebody has messaged you — so on its own it means a colleague has to be turned away

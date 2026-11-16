@@ -248,7 +248,7 @@ async function renderTelegram(body){
     <div class="provbox">
       <div class="ptitle">Pairing</div>
       <p class="mut" style="margin-top:6px">${d.owner_chat_id
-        ?`Owner chat: <b>${d.owner_chat_id}</b>. Commands: <code>/clear</code> resets a session, <code>/status</code> pings.`
+        ?`Owner chat: <b>${d.owner_chat_id}</b>. From that chat, <code>/people</code>, <code>/groups</code> and <code>/members</code> show these lists.`
         :(d.bot_username?`Not paired yet — send any message to <a href="https://t.me/${esc(d.bot_username)}" target="_blank" style="color:var(--acc2)">@${esc(d.bot_username)}</a>; the first private chat becomes the owner.`:'Not paired yet — save a token first.')}</p>
       <div class="row" style="margin-top:10px">
         <button class="save" style="margin:0" onclick="tgTest()">Send test message</button>
@@ -257,22 +257,16 @@ async function renderTelegram(body){
     </div>
     <div class="provbox">
       <div class="ptitle">Chats, groups &amp; channels</div>
-      <p class="mut" style="margin:6px 0 10px">Every user, group or channel that reaches the bot registers here — connect more by adding the bot
-        to a group (as a member) or a channel (as an admin). New arrivals start <b>blocked</b>; only chats you enable can talk to the agent.
-        Telegram is an IO gate of the permission framework: scope any grant to the <code>telegram</code> surface in the Permissions app
-        and it applies (only) here — blocked IO is denied and logged.</p>
+      <p class="mut" style="margin:6px 0 10px">Everybody who wrote to the bot, and when each was let in. New arrivals start blocked.
+        ${pInfo('Add the bot to a group to connect it. In a group you can answer everybody, or only the people you pick.')}</p>
       <label class="tg-groups" style="display:flex;align-items:center;gap:8px;margin:0 0 10px">
         <input type="checkbox" id="tg-groups" style="width:auto" ${d.groups?'checked':''} onchange="tgGroups(this.checked)">
         Answer in group chats ${pInfo('Off, the agent answers in no group or channel. On, it answers only in the ones you enable below. Everybody in an enabled group can talk to it.')}
       </label>
-      ${(d.chats||[]).map(c=>`<div class="item">
-        <span class="lbadge">${c.type==='private'?'user':c.type==='channel'?'channel':'group'}</span>
-        <div class="grow"><b>${esc(c.title||c.chat_id)}</b>${c.username?` <span class="mut">@${esc(c.username)}</span>`:''}${c.chat_id===d.owner_chat_id?' <span class="badge ok">owner</span>':''}
-          <div class="sub">${esc(c.type)} · ${c.msg_count} msg · last ${new Date(c.last_seen*1000).toLocaleString()}</div></div>
-        <span class="badge ${c.allowed&&(c.type==='private'||d.groups)?'ok':'err'}">${c.allowed?(c.type==='private'||d.groups?'enabled':'groups are off'):'blocked'}</span>
-        <button title="${c.allowed?'disable':'enable'}" onclick="tgAllow(${+c.chat_id},${c.allowed?0:1})">${c.allowed?'⏸':'▶'}</button>
-        <button onclick="tgDelChat(${+c.chat_id})">✕</button>
-      </div>`).join('')||'<p class="mut">No chats registered yet.</p>'}
+      <div class="tg-head">People</div>
+      ${tgPeopleTable(d)}
+      <div class="tg-head">Groups and channels</div>
+      ${tgGroupsTable(d)}
     </div>
   </div>`;
   $('#tg-token').addEventListener('input',e=>{if(e.target.value.trim())$('#tg-on').checked=true});

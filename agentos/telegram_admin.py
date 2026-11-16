@@ -56,6 +56,7 @@ COMMANDS = [
     ("/company", "[name]", "the open company and its departments; with a name, open that one"),
     ("/people", "", "who may talk to me here, and who is waiting"),
     ("/groups", "[on|off]", "whether I answer in group chats, and which groups"),
+    ("/members", "<group>", "who talks to me in a group; allow or block each, or answer only picked people"),
     ("/allow", "<@name|chat id>", "let somebody talk to me"),
     ("/block", "<@name|chat id>", "stop somebody talking to me"),
 ]
@@ -99,6 +100,16 @@ def menu(owner: bool) -> list[dict]:
         out.append({"command": cmd[1:],
                     "description": (f"{arg} — {desc}" if arg else desc)[:256]})
     return out
+
+
+def decided(row: dict) -> str:
+    """When a chat or a person was let in or blocked, and by whom. One wording for the
+    phone and the terminal; the desktop's tables show the same two fields."""
+    at = row.get("decided_at")
+    if not at:
+        return "not recorded"
+    day = time.strftime("%d %b %Y %H:%M", time.localtime(at))
+    return day + (f", {row['decided_by']}" if row.get("decided_by") else "")
 
 
 def _fmt_age(ts: float) -> str:
@@ -275,7 +286,10 @@ class Console:
         ok, waiting = [], []
         for c in self.tg.store.tg_list_chats():
             name = (c.get("title") or str(c["chat_id"])) + (f" @{c['username']}" if c.get("username") else "")
-            line = f"• {name} ({c['chat_id']})" + (" — owner" if c["chat_id"] == owner else "")
+            if (c.get("type") or "private") != "private":
+                continue                      # groups have their own list: /groups
+            line = (f"• {name} ({c['chat_id']})" + (" · owner" if c["chat_id"] == owner else "")
+                    + (f"\n   {'let in' if c['allowed'] else 'blocked'} {decided(c)}" if c.get("decided_at") else ""))
             (ok if c["allowed"] else waiting).append(line)
         ahead = chanmod.allow_list(chanmod.conf_of(self.tg.cfg, "telegram"))
         out = _lines("▲ Can talk to me", ok, "only you")
@@ -284,7 +298,7 @@ class Console:
         if ahead:
             out += "\n\nLet in when they first write: " + ", ".join(
                 x if x.isdigit() else "@" + x for x in ahead)
-        return out + "\n\n/allow @name or /allow <chat id> adds somebody."
+        return out + "\n\n/allow @name or /allow <chat id> adds somebody. /groups lists the groups."
 
     async def _cmd_groups(self, chat_id: int, arg: str) -> str:
         """The owner's switch for group chats, and the groups a message came in from, each
@@ -298,13 +312,22 @@ class Console:
             return "▲ /groups on or /groups off. /groups alone shows the groups."
         on = self.tg.groups_on()
         rows = self.tg.groups()
-        lines = [f"{'✓' if c['allowed'] else '•'} {c.get('title') or c['chat_id']} ({c['chat_id']}) · "
-                 + (("answered" if on else "picked, not answered while group chats are off")
-                    if c["allowed"] else "not allowed") for c in rows]
+        lines = []
+        for c in rows:
+            ms = self.tg.store.members("telegram", c["chat_id"])
+            who = (f"only picked people ({sum(1 for m in ms if m['state'] == 'allowed')})"
+                   if c.get("members_only") else f"everybody ({len(ms)} wrote)")
+            lines.append(f"{'✓' if c['allowed'] else '•'} {c.get('title') or c['chat_id']} ({c['chat_id']}) · "
+                         + (("answered" if on else "picked, not answered while group chats are off")
+                            if c["allowed"] else "not allowed")
+                         + (f" · {who}" if c["allowed"] else "")
+                         + (f"\n   {'let in' if c['allowed'] else 'blocked'} {decided(c)}" if c.get("decided_at") else ""))
         head = ("▲ Group chats are on. I answer only in the groups you allowed."
                 if on else "▲ Group chats are off. I answer in no group. /groups on turns them on.")
         text = head + "\n\n" + _lines("Groups a message came in from", lines,
                                       "none yet. Add me to a group and write there")
+        if rows:
+            text += "\n\n/members <group> shows who talks to me there." 
         buttons = [[{"text": (f"Stop {c.get('title') or c['chat_id']}" if c["allowed"]
                               else f"Allow {c.get('title') or c['chat_id']}")[:40],
                      "callback_data": f"who:{c['chat_id']}:{0 if c['allowed'] else 1}"}] for c in rows[:12]]
@@ -313,6 +336,42 @@ class Console:
                 await self.tg._api("sendMessage", chat_id=chat_id, text=text[:4000],
                                    reply_markup={"inline_keyboard": buttons})
                 return ""
+        return text
+
+    async def _cmd_members(self, chat_id: int, arg: str) -> str:
+        """Who wrote in a group, whether each is answered, and since when. A button per
+        person, and one for the group's rule."""
+        rows = self.tg.groups()
+        low = arg.strip().lower()
+        hits = [c for c in rows if low and (low == str(c["chat_id"]) or low in (c.get("title") or "").lower())]
+        if not low and len(rows) == 1:
+            hits = rows
+        if len(hits) != 1:
+            names = ", ".join(f"{c.get('title') or c['chat_id']} ({c['chat_id']})" for c in rows) or "none yet"
+            return "▲ Which group? /members <name or id>. Groups: " + names
+        g = hits[0]
+        ms = self.tg.store.members("telegram", g["chat_id"])
+        only = bool(g.get("members_only"))
+        lines = []
+        for m in ms:
+            ok = self.tg.member_rule(g, m, m["member_id"])
+            name = (m.get("name") or m["member_id"]) + (f" @{m['username']}" if m.get("username") else "")
+            lines.append(f"{'✓' if ok else '✗'} {name} · {m['msg_count']} msg"
+                         + (f" · {m['state']} {decided(m)}" if m.get("state") else ""))
+        text = (f"▲ {g.get('title') or g['chat_id']}: "
+                + ("only the people you pick are answered." if only else "everybody in it is answered.")
+                + "\n\n" + _lines("Who wrote there", lines, "nobody yet"))
+        buttons = [[{"text": ("Everybody may talk" if only else "Only people I pick"),
+                     "callback_data": f"gm:{g['chat_id']}:{0 if only else 1}"}]]
+        for m in ms[:10]:
+            ok = self.tg.member_rule(g, m, m["member_id"])
+            buttons.append([{"text": (f"Block {m.get('name') or m['member_id']}" if ok
+                                      else f"Allow {m.get('name') or m['member_id']}")[:40],
+                             "callback_data": f"mem:{g['chat_id']}:{m['member_id']}:{0 if ok else 1}"}])
+        with contextlib.suppress(Exception):
+            await self.tg._api("sendMessage", chat_id=chat_id, text=text[:4000],
+                               reply_markup={"inline_keyboard": buttons})
+            return ""
         return text
 
     async def _cmd_allow(self, chat_id: int, arg: str) -> str:
@@ -341,7 +400,7 @@ class Console:
             for h in (str(c["chat_id"]), c.get("username") or ""):
                 if h:
                     self._allow_list(h, False)      # however they were written down
-            self.tg.store.tg_set_allowed(int(c["chat_id"]), 0)
+            self.tg.store.tg_set_allowed(int(c["chat_id"]), 0, "the owner, on Telegram")
             self.tg.store.log("telegram", f"blocked chat {c['chat_id']} (owner's /block)")
             return f"▲ {c.get('title') or c['chat_id']} can no longer talk to me."
         return f"▲ {who} is off the list."
