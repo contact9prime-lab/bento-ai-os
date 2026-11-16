@@ -120,7 +120,7 @@ class TelegramBridge(usersmod.Scoped):
         self._alive_write(up_at=time.time(), seen=time.time(), version=version, clean=False)
         if not self._says_status():
             return
-        name = self.cfg.get("agent_name") or "Aria"
+        name = self.cfg.get("agent_name") or "Bento"
         msg = f"▲ {name} is back online"
         if before.get("version") and version and before["version"] != version:
             msg += f", updated {before['version']} → {version}"
@@ -140,7 +140,7 @@ class TelegramBridge(usersmod.Scoped):
         self._alive_write(seen=time.time(), clean=True)
         if not self._says_status():
             return
-        name = self.cfg.get("agent_name") or "Aria"
+        name = self.cfg.get("agent_name") or "Bento"
         with contextlib.suppress(Exception):
             await self.send(f"▼ {name} is going offline{(' ' + reason) if reason else ''}. "
                             f"I'll message you when I'm back.")
@@ -436,7 +436,7 @@ class TelegramBridge(usersmod.Scoped):
             async with httpx.AsyncClient(timeout=120) as client:
                 r = await client.post(api_url(token, "sendAudio"),
                                       data={"chat_id": str(chat_id), "title": "The story, told",
-                                            "performer": self.cfg.get("agent_name") or "Aria"},
+                                            "performer": self.cfg.get("agent_name") or "Bento"},
                                       files={"audio": (f"story.{ext}", audio, mime or "audio/mpeg")})
             if not r.json().get("ok"):
                 raise RuntimeError(r.json().get("description", f"HTTP {r.status_code}"))
@@ -577,7 +577,7 @@ class TelegramBridge(usersmod.Scoped):
             cfgmod.save_config(self.cfg)
             self.store.tg_set_allowed(chat_id, 1)
             chat["allowed"] = 1
-            name = self.cfg.get("agent_name") or "Aria"
+            name = self.cfg.get("agent_name") or "Bento"
             self.store.log("telegram", f"paired: owner = {title} ({chat_id})")
             await self.publish_commands()   # the console menu is owner-scoped
             await self.send(f"▲ Linked! Hi {frm.get('first_name', 'there')} — I'm {name}, "
@@ -829,7 +829,7 @@ class TelegramBridge(usersmod.Scoped):
         a picture of the page and one question, with Done under it (cdpbrowser.tool_wait)."""
         from . import cdpbrowser as _cdpb
         offer = _cdpb.phone_offer(att)
-        text = _cdpb.phone_words(att, self.cfg.get("agent_name") or "Aria", offer=offer)
+        text = _cdpb.phone_words(att, self.cfg.get("agent_name") or "Bento", offer=offer)
         rows = [[{"text": "Done, carry on", "callback_data": "bw:done"}]]
         if offer.get("ok"):
             # the page itself, on this phone, through remote access (handoff.py): the tap
@@ -976,7 +976,7 @@ class TelegramBridge(usersmod.Scoped):
         app", and the owner was told nothing."""
         owner = self._t().get("owner_chat_id") or 0
         who = f"{title}" + (f" (@{username})" if username else "")
-        name = self.cfg.get("agent_name") or "Aria"
+        name = self.cfg.get("agent_name") or "Bento"
         if owner and owner != chat_id:
             if group:
                 off = not self.groups_on()
@@ -1012,7 +1012,7 @@ class TelegramBridge(usersmod.Scoped):
         self.store.log("telegram", f"{'allowed' if allow else 'blocked'} chat {chat_id} (asked the owner)",
                        {"chat_id": chat_id, "allowed": allow})
         if allow:
-            name = self.cfg.get("agent_name") or "Aria"
+            name = self.cfg.get("agent_name") or "Bento"
             await self.send(f"▲ You're in. I'm {name}. Send me anything; /new starts a new session.", chat_id)
         with contextlib.suppress(Exception):
             await self.broadcast({"type": "telegram_chats"})

@@ -1848,7 +1848,7 @@ class ControlPlane(usersmod.Scoped):
             # ONLY the agents this link may ask. Listing everybody — names and the
             # provider each runs on — was the one thing a link granted without a cell.
             allowed = set(link_access(self.store, lk["label"])["theirs_may_ask"])
-            lead = ([{"name": self.cfg.get("agent_name") or "Aria", "lead": True, "provider": ""}]
+            lead = ([{"name": self.cfg.get("agent_name") or "Bento", "lead": True, "provider": ""}]
                     if LEAD in allowed else [])
             return {"ok": True, "agents": lead + [
                 {"name": sa["name"], "provider": agent_brain(self.cfg, sa)["provider_name"]}
@@ -2087,7 +2087,7 @@ class ControlPlane(usersmod.Scoped):
         from . import teamlink
         from . import executors as execmod
         from . import zero as zeromod
-        name = self.cfg.get("agent_name") or "Aria"
+        name = self.cfg.get("agent_name") or "Bento"
         who = f"{frm}@{lk['label']}"
         question = teamlink.plain(req.get("question"), 4000, newlines=True)
         key = f"link:{lk.get('id')}:{req.get('root') or ''}"
@@ -2205,7 +2205,7 @@ class ControlPlane(usersmod.Scoped):
         if not text:
             return {"ok": False, "error": "nothing was said"}
         job = bool(req.get("_job"))      # a schedule made at its screen, firing (scheduler.zero_job)
-        name = self.cfg.get("agent_name") or "Aria"
+        name = self.cfg.get("agent_name") or "Bento"
         label = lk["label"]
         space = zeromind.section(self.store, lk)
         # one conversation here per conversation on the Zero, found again by its id

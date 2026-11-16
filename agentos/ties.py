@@ -445,7 +445,7 @@ def set_target(owner: str, label: str, target: dict, cfg: dict, store) -> dict:
 def target_words(cfg: dict, t: dict) -> str:
     from . import company as companymod
     if t.get("to") != "department":
-        return (cfg or {}).get("agent_name") or "Aria"
+        return (cfg or {}).get("agent_name") or "Bento"
     c = companymod.cfg_of(cfg, t.get("company") or "")
     name = companymod.profile(c).get("name") if c is not None else ""
     return f"{t['department']}" + (f" at {name}" if name else "")

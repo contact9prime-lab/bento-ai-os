@@ -13,8 +13,12 @@ our agents and their data and how that is interconnected"). What these defend:
   pasted into an onclick;
 - the terminal gets the same snapshot (`bento mind`).
 """
+import json
+import re
 import sys
 from pathlib import Path
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -241,3 +245,28 @@ def test_the_page_groups_its_team_list_by_cluster():
     assert "S.team.filter(a=>a.hub===h.id)" in js, "one row per cluster, not one per person"
     assert "(a.hub||'').indexOf('agent:')===0" in js
     assert "h.company?" in js and ":h.loose?" in js, "a task goes only to a department of the open company"
+
+
+def test_speaking_moves_the_cores_edge_and_never_floods_the_picture():
+    """Reported with a screenshot, "the mind animation is so screwed": speaking, the core was a
+    white disc some 220px across with lumpy rings 318px out, over the clusters. Every reach is
+    a multiple of the radius in MIND_CORE, and the radius itself is bounded."""
+    import shutil
+    import subprocess
+    if not shutil.which("node"):
+        pytest.skip("node is not installed")
+    src = (ROOT / "agentos/ui/src/js/01g-mind.js").read_text()
+    decl = re.search(r"^var MIND_CORE=.*?;$", src, re.M).group(0)
+    fn = re.search(r"^function mindCoreR\(.*$", src, re.M).group(0)
+    js = decl + fn + ("const r=mindCoreR(1,1),q=mindCoreR(.25,0);"
+                      "console.log(JSON.stringify({r,q,over:mindCoreR(9,9),halo:r*MIND_CORE.halo,ring:r*MIND_CORE.ring,"
+                      "edge:r*(1+.14+MIND_CORE.edge),rings:MIND_CORE.rings}))")
+    d = json.loads(subprocess.run(["node", "-e", js], capture_output=True, text=True, check=True).stdout)
+    assert d["r"] <= 45 and d["r"] - d["q"] <= 12, "speaking adds a few pixels to the core, it does not double it"
+    assert d["over"] == d["r"], "a level past 1 changes nothing"
+    assert d["edge"] <= 70 and d["halo"] <= 160 and d["ring"] <= 130 and d["rings"] <= 4
+    core = src.split("function mindCore(", 1)[1].split("\n}", 1)[0]
+    assert "R*4.4" not in core and "u*3.2" not in core and "*.92" not in core
+    css = (ROOT / "agentos/ui/src/css/26-mind.css").read_text()
+    assert "body.mind-telling:not(.has-win) #omnibar" in css, "the spoken line is not written under the prompt bar"
+    assert "classList.remove('mind-telling')" in src

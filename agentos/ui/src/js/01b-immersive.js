@@ -278,7 +278,7 @@ function homeRender(){
       inp.value=chips[i];inp.dispatchEvent(new Event('input'));inp.focus();
       const n=inp.value.length;try{inp.setSelectionRange(n,n)}catch(e){}});}
   const n=(typeof RUNNING!=='undefined')?RUNNING.size:0;
-  const who=(typeof agentName==='function')?agentName():'Aria';
+  const who=(typeof agentName==='function')?agentName():'Bento';
   const brain=immersiveBrainText();
   const line=h.querySelector('.hm-now');
   const br=(typeof BRIEF!=='undefined'&&BRIEF.page&&BRIEF.page.open)?BRIEF.page.headline:'';

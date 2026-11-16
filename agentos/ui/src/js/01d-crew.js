@@ -426,7 +426,7 @@ function crewDraw(dt){
   const W=C.W,H=C.H,ink=crewInk(),now=performance.now();
   ctx.setTransform(C.dpr,0,0,C.dpr,0,0);ctx.clearRect(0,0,W,H);
   const running=(typeof RUNNING!=='undefined'&&RUNNING.size)>0||!!C.busy['@agent'];
-  const who=(typeof agentName==='function')?agentName():'Aria';
+  const who=(typeof agentName==='function')?agentName():'Bento';
   const portrait=H>W;
   // the stage: a shallow line across the lower third, with the work line above it
   const ground=portrait?H*.80:H*.76;

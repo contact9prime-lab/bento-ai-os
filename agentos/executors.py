@@ -718,7 +718,7 @@ def identity_note(cfg: dict, store=None, company: bool = True, space_id: str = "
     and `context_for` only said what it cannot do: on Claude Code, Aria answered chat and
     schedules without her name, her soul or the company's objective."""
     from . import config as _cfgmod
-    name = (cfg or {}).get("agent_name") or "Aria"
+    name = (cfg or {}).get("agent_name") or "Bento"
     try:
         from . import zeromind
         # a Zero's soul is on its hub: the hub's last word, or the copy here while it is away

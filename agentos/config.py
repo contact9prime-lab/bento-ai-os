@@ -178,7 +178,7 @@ DEFAULTS = {
     "retention": {"enabled": True, "logs_days": 30, "events_days": 30,
                   "usage_days": 365},
     "engine": "aria",
-    "agent_name": "Aria",         # what the agent calls itself; change it in Settings
+    "agent_name": "Bento",        # what the agent calls itself; change it in Settings
     "default_model": "",
     "brain_fallbacks": [],        # brains asked next when this one isn't available (fallback.py)          # e.g. "ollama/qwen3.5:9b" — picked automatically if empty
     "autonomy": "balanced",       # paranoid | balanced | full
@@ -236,6 +236,8 @@ DEFAULTS = {
     "stage": {"big": True, "app": ""},
     # the alarms this person watches their devices for (devboard.py), shown on the Devices scene
     "device_alarms": [],
+    # only MY voice wakes the screen (voiceprint.py). The print itself is a file in my home.
+    "voiceprint": {"only": False},
     # which of MY companies each machine is for (devboard.company_map): a view, not a permission
     "device_companies": {},
     "brief": {"times": ["08:00"], "days": "daily", "summary": "plain", "telegram": True},
@@ -393,11 +395,20 @@ def home_id(home=None) -> str:
     return hashlib.sha256(h.encode()).hexdigest()[:16]
 
 
+OLD_DEFAULT_NAME = "Aria"
+
+
 def load_config() -> dict:
     cfg = copy.deepcopy(DEFAULTS)
     if CONFIG_PATH.exists():
         try:
-            cfg = _deep_merge(cfg, json.loads(CONFIG_PATH.read_text()))
+            saved = json.loads(CONFIG_PATH.read_text())
+            cfg = _deep_merge(cfg, saved)
+            # The shipped name was "Aria" until 0.9.16. A machine set up before that which
+            # never saved a name has been answering to Aria, and keeps it: a default that
+            # changes must not rename somebody's agent under them.
+            if isinstance(saved, dict) and "agent_name" not in saved:
+                cfg["agent_name"] = OLD_DEFAULT_NAME
         except Exception:
             pass
     # env vars fill empty keys, never overwrite explicit config

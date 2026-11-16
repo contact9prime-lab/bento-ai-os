@@ -4694,6 +4694,74 @@ def _faces_cli(cfg, rest):
     print("  bento face faces use ID · add NAME LAYOUT W1,W2 · remove ID")
 
 
+def _voiceprint_cli(cfg, rest):
+    """`bento face print`: a voice print from a terminal (voiceprint.py). It is the print of
+    whoever owns this home: on a machine with accounts each person records theirs on the
+    screen, signed in, because a terminal has no sign-in and a print must not be made for
+    somebody else."""
+    from . import config as _cfgmod
+    from . import hearing, users as _users, voiceprint
+    if _users.enabled():
+        sys.exit("  This machine has accounts, and a voice print is each person's own. Record it on the "
+                 "screen while signed in: Settings → Voice → Listening.")
+    home = _cfgmod.AGENTOS_HOME
+    a = (rest[0].lower() if rest else "status")
+
+    def show():
+        st = voiceprint.status(cfg, home)
+        print(f"  {st['line']}")
+        print(f"  recordings: {st['samples']} of {st['need']}" + ("   only your voice wakes it" if st["only"] and st["enrolled"] else ""))
+    if a == "status":
+        return show()
+    if a == "install":
+        from . import setup_tui
+        setup_tui._offer_component(voiceprint.COMPONENT)
+        return show()
+    if a == "forget":
+        print("  deleted" if voiceprint.forget(home) else "  there was no voice print")
+        cfg["voiceprint"] = {"only": False}
+        return _cfgmod.save_config(cfg)
+    if a == "only":
+        on = (rest[1].lower() if len(rest) > 1 else "") in ("on", "yes", "true", "1")
+        if on and not voiceprint.enrolled(home):
+            sys.exit("  Record your voice first: bento face print record")
+        cfg["voiceprint"] = {"only": on}
+        _cfgmod.save_config(cfg)
+        return show()
+    if a != "record":
+        sys.exit("  bento face print [install | record [FILE.wav] | only on|off | forget]")
+    if not voiceprint.ready():
+        sys.exit("  " + voiceprint.why_not())
+    files = rest[1:]
+    try:
+        if files:
+            for f in files:
+                got = voiceprint.enroll(home, Path(f).expanduser().read_bytes())
+                print(f"  ✓ {f}: {got['samples']} of {got['need']}")
+        else:
+            if not hearing.recorder():
+                sys.exit("  There is no recorder here (arecord, rec or parecord). Give recordings instead: "
+                         "bento face print record one.wav two.wav three.wav")
+            word = (cfg.get("agent_name") or "Bento")
+            while not voiceprint.enrolled(home):
+                input(f"  Press Enter, then say “{word}, good morning.” ")
+                print("  ● listening for 4 seconds…")
+                try:
+                    got = voiceprint.enroll(home, hearing.record(4))
+                except (voiceprint.PrintError, hearing.HearError) as e:
+                    print(f"  {e}")
+                    continue
+                print(f"  ✓ {got['samples']} of {got['need']}")
+    except voiceprint.PrintError as e:
+        sys.exit(f"  {e}")
+    except OSError as e:
+        sys.exit(f"  could not read that file ({e})")
+    if voiceprint.enrolled(home):
+        cfg["voiceprint"] = {"only": True}
+        _cfgmod.save_config(cfg)
+    show()
+
+
 def _face_cli(args):
     """`bento face` — this machine's own screen: one agent drawn, and the kiosk face.
 
@@ -4707,6 +4775,8 @@ def _face_cli(args):
     cfg = _cfgmod.load_config()
     if args.action == "faces":
         return _faces_cli(cfg, list(args.args or []))
+    if args.action == "print":
+        return _voiceprint_cli(cfg, list(args.args or []))
     a, rest = args.action, [x.lower() for x in (args.args or [])]
     val = rest[0] if rest else ""
     if a in ("show", "status"):
@@ -10227,10 +10297,11 @@ def main():
     p_pool.add_argument("--wifi-country", default="", help="sdcard: two letters, like GB or IN")
     p_face = verb("face", help="this machine's screen: one agent drawn, and the kiosk that listens")
     p_face.add_argument("action", nargs="?", default="show",
-                        choices=["show", "status", "buddy", "kiosk", "wake", "word", "test", "hear", "faces"],
+                        choices=["show", "status", "buddy", "kiosk", "wake", "word", "test", "hear", "faces", "print"],
                         metavar="ACTION",
                         help="show | buddy auto|on|off | kiosk on|off | wake name|always | "
-                             "word [WAKE WORD] | test | hear ENGINE | faces [use ID | add NAME LAYOUT W1,W2 | remove ID]")
+                             "word [WAKE WORD] | test | hear ENGINE | faces [use ID | add NAME LAYOUT W1,W2 | remove ID] | "
+                             "print [install | record [FILE.wav] | only on|off | forget]")
     p_face.add_argument("args", nargs="*", help="the value")
     p_hw = verb("hardware", help="what this machine has: the board, cameras, sensors, pins, buses and ports")
     p_hw.add_argument("--json", action="store_true", help="the whole answer as JSON")

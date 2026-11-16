@@ -2908,6 +2908,11 @@ pins what follows; `docs/mind.md` is the story.
   asked for "neurons in standby sending signals anyway", so `mindGlint` sends pale glints along
   the real fibres at a few a second: scenery like the fibres' drift, small and white, and it
   never flares a cluster or touches `MIND.sparks`. Keep the two apart or a glint reads as news.
+- **The voice moves the core's EDGE, never its size** (`MIND_CORE`, `mindCoreR`). Reported with a screenshot:
+  speaking, the radius went 35 to 74, the halo to 325px at 80% white and the rings to 318px, all additive, so
+  the centre was a white disc about 220px across. Measured after on the same data: 81px. Every reach is a
+  multiple of the radius and a Node test bounds them. `mindTell` adds `body.mind-telling`, which moves the
+  prompt bar aside (the words ran under it); `mindStop` takes it off.
 - **The core speaks with the SOUND.** `mindTap` puts an analyser on `SPEECH.audio` and
   `mindVoice` shapes the soma's edge from its bands and sends a ripple on each syllable. It was
   a timer ("the centre is just beeping"). The tap routes the voice through an AudioContext,
@@ -4075,6 +4080,32 @@ be on and agents would be working in the office". Five rules:
   list). The wizard, Settings' Test it and `bento face test` (arecord) all use that one route
   or `_step_voice`. A wake word of the person's own (`face.wake_word`) never replaces the
   agent's name.
+
+**A voice print filters who can wake the screen, per signed-in person, and the agent is named Bento**
+(`agentos/voiceprint.py`, components `voice-print`, `/api/voiceprint*`, the `voice` verdict on `/api/speech/hear`,
+`voicePrintHTML`/`voicePrintWire` in 24h-kiosk.js, `bento face print`, `setup_tui._voice_print`,
+`config.OLD_DEFAULT_NAME`; `docs/small-screens.md`, `tests/test_voiceprint.py`). Asked for as "when onboarding change
+the name from Aria to Bento, also ask the user to record the recognition word for waking, by getting the signature
+voice print, done by the system for the user signed in". The owner chose: only an enrolled voice wakes it, and the
+speaker model is an install. Seven rules:
+- **A filter, never a key.** A match signs nobody in, enters no account and writes no grant (the test greps the
+  routes). `users.current()` is still the cookie's. A recording of the person passes it, and every face says so.
+- **The print is the person's**: `voiceprint.json`, 0600, in `users.home_for(current)`; numbers only, the recordings
+  are thrown away; no route, verb or tool returns it, and an agent can't read it (the home is closed by allow-list,
+  so `protected.py` needed no edit). `voiceprint` is a USER_KEY holding only the switch.
+- **Asked for, never shipped.** sherpa-onnx and the CAM++ model (both Apache-2.0) go into
+  `~/.local/share/bento/voiceprint` with `--target`, never into Bento's environment (`uv sync` would empty it) and
+  never into pyproject. Until then `status()` says so and offers the install; a filter that is on but cannot run is
+  `idle` and said.
+- **Measured**: same speaker 0.67 to 0.91, different speakers at most 0.46, `THRESHOLD` 0.55, 40 to 90 ms a
+  recording, about 100 MB loaded (`release()` when nothing filters). Not measured on a Pi's microphone.
+- **A recording unlike the others is refused at enrolment** (`OUTLIER`), never averaged in, and one that can't be
+  judged (under `MIN_S`, silent) is `match: None` with the reason: the kiosk says "say a little more".
+- **One recording does both** when the machine understands speech: it must contain a wake word, and an admin's
+  also marks `face.heard`. The third switches the filter on. A non-admin's saved print completes the voice step.
+- **Bento is the default name for a NEW machine.** A config file that exists without `agent_name` keeps "Aria"
+  (`load_config`): a default that changes must never rename somebody's agent. `onboarding.DEFAULT_NAME` moved with it,
+  so "Aria" now reads as a chosen name.
 
 **Opening on its screen at start is a separate thing from the kiosk face** (`agentos/screen.py`,
 `bento screen`, `/api/screen`, Appearance → Open at start, install.sh `--screen`, the Install form's

@@ -139,7 +139,7 @@ def reply_of(said: str) -> str:
     return said if not said[:1].isalnum() else "✓ " + said
 
 
-def phone_words(att: dict, agent: str = "Aria", button: bool = True, offer: dict | None = None) -> str:
+def phone_words(att: dict, agent: str = "Bento", button: bool = True, offer: dict | None = None) -> str:
     """What the phone is told about a wall: who needs what, on which site, and the one thing
     to do. One function for every channel, so Telegram and WhatsApp say the same thing.
     `button` is False where the message carries no buttons: the person replies "done" or
