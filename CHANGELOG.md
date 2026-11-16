@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.23 — 2026-11-16
+
+- **The menu bar fits a smaller screen.** At 1366 wide the space chip lay over Window and Help, and the
+  brand and the clock wrapped. Nothing in the bar wraps or shrinks now; when it runs out of room it
+  hides things in one order (the date, the brand's words, the ADMIN tag and model, a shorter space name,
+  battery percent, your name, the app's name) and last folds the app's menus into one ☰ list.
+- **The network is on the menu bar.** Wi-Fi with its signal, wired, or Offline in amber, read from
+  NetworkManager. Click for the networks in range and join one (admin only). From another device it says
+  it's the machine's network and asks before switching. When the network comes back, one toast says so.
+
 ## 0.9.22 — 2026-11-16
 
 No release notes were written for this one; the commits since 0.9.21 are what changed (`bento update` lists them).

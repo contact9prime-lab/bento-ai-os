@@ -160,6 +160,29 @@ searching, so the wall itself stays a wall of apps.
 Press **F11** (or use the Settings button) to toggle fullscreen. Launched via `agentos app`, the
 desktop opens fullscreen automatically, hiding the host taskbar.
 
+### The menu bar on a smaller screen
+Nothing in the menu bar wraps or slides under its neighbour. When the screen is too narrow
+for all of it, it lets go of things in one order, least useful first: the date beside the
+clock, the words "Bento Box AI", the ADMIN tag and the model name, then the space name gets
+shorter, then the battery percent and your name (your initial stays), then the app's name.
+Last of all, File, Edit, View, Window and Help fold into one ☰ menu with the same items.
+Everything it hides is still a tooltip or a click away. On a phone the brain chip becomes its
+dot, then the space chip and your own chip go (the power menu still says who you are).
+
+### The network
+Where the machine runs NetworkManager, the menu bar shows its network beside the sound and
+battery: Wi-Fi with its signal, wired, or **Offline** in amber. Click it to see the networks in
+range and join one. Joining is for an admin. Offline also says what it costs (a cloud brain
+can't answer until the machine is back), and when the network returns you get one toast naming
+it. It's the network of the machine Bento runs on: from a phone or another computer the panel
+says so, and asks before switching, because that device may lose the page if the new network is
+a different one. Without NetworkManager (a Mac, a container) the button isn't shown. In a
+terminal it's `bento wifi`.
+
+![The menu bar at 1366 wide with the network panel open, listing Wi-Fi networks in range](screenshots/menubar-network-1366.png)
+
+![The network button reading Offline in amber, its panel saying cloud brains can't answer until it's back](screenshots/menubar-offline-1440.png)
+
 ### Power & session
 The **⏻ button** at the right of the menu bar carries real session controls — lock screen,
 restart AgentOS, suspend, log out, restart and power off the machine (via

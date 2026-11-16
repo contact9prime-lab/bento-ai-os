@@ -1,0 +1,65 @@
+/* ---- the menu bar fits its screen (04g-menubar-fit.js) ----
+   Nothing in the bar shrinks or wraps: a squeezed item slid under its neighbour (the
+   space chip over Window and Help at 1366 wide) and a wrapped one changed the band's
+   height. The spacer is the only thing that gives; past that, menubarFit hides in order. */
+#menubar>*,#tray>*{flex-shrink:0;white-space:nowrap}
+#menubar>#mb-spacer{flex:1 1 0;min-width:0}
+#menubar #mbmenus{min-width:auto}
+.spchip .spname{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#mbmenus .mbm-all{display:none;font-size:var(--fs-md)}
+#menubar.f1 #tbclock .dt{display:none}
+#menubar.f2 #mb-name{display:none}
+#menubar.f3 #mb-user .badge,#menubar.f3 #fwdchip .fwdmdl{display:none}
+#menubar.f4 .spchip .spname{max-width:150px}
+#menubar.f5 #tray-ctl .pct,#menubar.f5 #mb-user .nm{display:none}
+#menubar.f5 #mb-user{padding-right:3px}
+#menubar.f6 .spchip .spname{max-width:72px}
+#menubar.f7 #mbapp{display:none}
+#menubar.f8 #mbmenus button:not(.mbm-all){display:none}
+#menubar.f8 #mbmenus .mbm-all{display:inline-block}
+/* past here only a phone-sized bar: the brain becomes its dot (a tap still opens it), the
+   space chip goes (the Spaces app has it), then your own chip (the power menu says who) */
+#menubar.f9 #fwdchip{font-size:0;gap:0;padding:4px 7px}
+#menubar.f9 #fwdchip::before{margin:0}
+body:not(.immersive) #menubar.f9 #fwdchip::after{content:'';width:7px;height:7px;border-radius:50%;background:currentColor}
+#menubar.f10 #mbspace{display:none}
+#menubar.f11 #mb-user{display:none}
+/* a heading inside one list (the folded menus) */
+#ctxmenu .mh{padding:6px 10px 2px;font-size:var(--fs-2xs);font-weight:700;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--dim2)}
+
+/* ---- the network button and its panel (22b-traynet.js) ---- */
+#tray-net{display:flex;align-items:center;gap:5px;padding:2px 6px;border-radius:var(--r-sm);color:var(--txt)}
+#tray-net[hidden]{display:none}
+#tray-net:hover{background:rgba(255,255,255,.1)}
+#tray-net.off{color:var(--warn,#f5a524)}
+#tray-net .tn-off{font-size:var(--fs-2xs);font-weight:700}
+#netpop{position:fixed;z-index:9600;display:none;width:300px;max-height:70vh;overflow:auto;right:8px;
+  top:calc(var(--mbh) + 4px);background:var(--glass);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+  border:1px solid var(--line);border-radius:var(--r-md);padding:8px;box-shadow:var(--el-4)}
+#netpop.show{display:block}
+#netpop .tn-head{display:flex;align-items:center;gap:8px;padding:2px 4px 6px;font-size:var(--fs-sm)}
+#netpop .tn-head b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#netpop .tn-scan{font-size:var(--fs-xs);color:var(--dim);padding:3px 8px;border-radius:var(--r-sm)}
+#netpop .tn-scan:hover{background:var(--bg4);color:var(--txt)}
+#netpop .tn-note{font-size:var(--fs-xs);color:var(--dim);margin:4px 4px 6px}
+#netpop .tn-warn{font-size:var(--fs-xs);margin:2px 4px 8px;padding:7px 9px;border-radius:var(--r-sm);
+  color:var(--txt);background:color-mix(in srgb,var(--warn,#f5a524) 16%,transparent);
+  border:1px solid color-mix(in srgb,var(--warn,#f5a524) 40%,transparent)}
+#netpop .tn-list{display:flex;flex-direction:column;gap:2px}
+#netpop .tn-n{display:flex;align-items:center;gap:9px;width:100%;min-height:34px;padding:6px 8px;
+  border-radius:var(--r-sm);text-align:left;color:var(--txt);font-size:var(--fs-sm)}
+#netpop .tn-n:not([disabled]):hover{background:var(--bg4)}
+#netpop .tn-n[disabled]{cursor:default}
+#netpop .tn-n.on{background:color-mix(in srgb,var(--acc) 14%,transparent)}
+#netpop .tn-n:not(.on)[disabled]{opacity:.6}
+#netpop .tn-s{display:flex;color:var(--dim)}
+#netpop .tn-nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#netpop .tn-n small{color:var(--dim);font-size:var(--fs-2xs)}
+#netpop .tn-join{display:flex;flex-direction:column;gap:8px;padding:4px}
+#netpop .tn-name{font-weight:600}
+#netpop .tn-pw{width:100%}
+#netpop .tn-row{display:flex;gap:8px;justify-content:flex-end}
+#netpop .tn-err{color:var(--err);font-size:var(--fs-xs);margin:0}
+body.dev-mobile #netpop{left:8px;right:8px;width:auto}
+body.dev-mobile #tray-net{min-width:var(--tap,40px);min-height:var(--tap,40px);justify-content:center}

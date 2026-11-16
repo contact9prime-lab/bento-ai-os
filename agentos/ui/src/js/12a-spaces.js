@@ -30,8 +30,10 @@ async function loadSpaces(force){
 function spaceChipHTML(){
   const id=activeSpace(),s=spaceById(id);
   const dot=s&&s.colour?`<span class="spdot" style="background:${esc(s.colour)}"></span>`:'';
-  return `<button class="spchip" onclick="spaceMenu(event)" title="Which project you are working in. Memory and facts you save belong to it; what is true everywhere stays shared.">
-    ${dot}${esc(s?((s.icon?s.icon+' ':'')+s.name):'Everywhere')}</button>`;
+  const name=s?((s.icon?s.icon+' ':'')+s.name):'Everywhere';
+  // the name is its own span: on a narrow bar it is shortened with an ellipsis (menubarFit)
+  return `<button class="spchip" onclick="spaceMenu(event)" title="${esc(name)}: the project you are working in. Memory and facts you save belong to it; what is true everywhere stays shared.">
+    ${dot}<span class="spname">${esc(name)}</span></button>`;
 }
 
 async function paintSpaceChip(){
