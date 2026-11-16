@@ -434,17 +434,17 @@ class WhatsAppBridge(usersmod.Scoped):
             except Exception as e:
                 self.store.log("whatsapp", f"could not send the blueprint document: {e}")
 
-    async def send_stage(self, cid: str, reply: str, wa_id: str) -> None:
+    async def send_stage(self, cid: str, reply: str, wa_id: str, ans: str = "") -> str:
         """The answer's story after the reply, as Telegram sends it: a picture per scene
         (stagestill.py), or the page when this machine has no browser to draw them.
         Never fatal: the reply has already gone."""
         try:
             from . import stage as stagemod, stagestill, executors as _ex
-            ans = stagemod.last_question(self.store, cid)
+            ans = ans or stagemod.last_question(self.store, cid)   # one named story (sent from the desktop), else the last
             scenes = [s["scene"] for s in stagemod.story(self.store, cid, ans)] if ans else []
             n = len(scenes)
             if not n:
-                return
+                return ""
             # a blueprint fills itself in after the reply (bpfill.py): a phone gets its pictures,
             # so wait a while for the parts to land rather than photograph the outline
             from . import bpfill
@@ -468,7 +468,7 @@ class WhatsAppBridge(usersmod.Scoped):
                 if ok:
                     await self.send_clips(scenes, wa_id, items, pngs)
                     await self.send_blueprint_docs(rows, ans, wa_id)
-                    return
+                    return "sent"
             p = stagemod.write_report(self.store, _ex.default_workspace(self.cfg), cid, ans,
                                       answer=reply, agent=self.cfg.get("agent_name") or "")
             if p:
@@ -476,8 +476,12 @@ class WhatsAppBridge(usersmod.Scoped):
                                                        f"Open it to watch.", wa_id)
                 if str(res).startswith("[error]"):
                     self.store.log("whatsapp", f"could not send the story: {res}")
+                    return str(res)
+                return "sent"
+            return "[error] the story could not be drawn or written on this machine"
         except Exception as e:
             self.store.log("whatsapp", f"could not send the story: {e}")
+            return f"[error] {e}"
 
     async def send_files(self, reply: str, wa_id: str) -> None:
         """The files a reply names, after it, as Telegram does (whatsapp.files = false

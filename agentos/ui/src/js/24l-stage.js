@@ -327,6 +327,9 @@ function stageNow(main){
     keep.title='Keep this story as a board, and refresh it if you like';keep.setAttribute('aria-label','Keep');
     keep.onclick=()=>stageKeepMenu(keep);bar.append(keep)}
   if(!STAGE.cur.xray&&STAGE.cur.cid)bar.append(stageSaveMenu('conv='+encodeURIComponent(STAGE.cur.cid)+'&answer='+encodeURIComponent(STAGE.cur.answer_to||'')));
+  if(!STAGE.cur.xray&&STAGE.cur.cid&&typeof phoneSend==='function'){const ph=sEl('button','stg-b','➤');ph.append(sEl('span','stg-long',' Phone'));
+    ph.title='Send this story to Telegram or WhatsApp';ph.setAttribute('aria-label','Send to your phone');
+    ph.onclick=()=>phoneSend({cid:STAGE.cur.cid,what:'stage',answer_to:STAGE.cur.answer_to||''});bar.append(ph)}
   if(STAGE.cur.cid){const chat=sEl('button','stg-b','Chat');chat.title='Open the conversation';
     chat.onclick=()=>{if(typeof openConv==='function'){openApp('chat');openConv(STAGE.cur.cid)}};
     bar.append(chat)}

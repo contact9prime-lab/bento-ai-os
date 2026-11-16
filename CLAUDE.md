@@ -2069,6 +2069,22 @@ Its owner chat on that channel, its desktop (`_owner_send`), and for a WhatsApp 
 is polling. WhatsApp told the newcomer to find Settings and told the owner nothing. WhatsApp groups are not read
 (bridge.js drops `@g.us`; a linked device would see every group the person is in).
 
+**A chat, an answer or a story is sent to a phone by a person, to a chat of their own** (`agentos/phoneforward.py`,
+`/api/phone/options|send|session`, `10e-phonesend.js`, Chat's ➤ Phone and the Stage's ➤, `send_stage(ans=)`;
+`tests/test_phone_forward.py`). Asked for as "a chat response to continue in the Telegram, send the stage to Telegram or
+WhatsApp … only users' chats to their own accounts, the user decides which chat". Five rules:
+- **No agent tool.** A forwarded chat is outward-facing; a page an agent read must never be able to ask for it.
+- **The chat is looked up again** (`targets`: the owner's chat, a person let in, an answered group, from the caller's
+  own bridges and store). An id from the page is a caller's word. WhatsApp's closed 24-hour window is shown as the
+  reason on a greyed row.
+- **Carry on is a session move** (`claim_conversation` + `tg_set_conversation`/`wa_set_conversation`): the chat becomes
+  that phone chat's session and the phone is pointed at it, after the message got there and never while that chat
+  is being answered. A session of one chat is never moved to another; its answer or story can still be sent.
+- **Every send is a `phone.send` ledger row.**
+- **Channels lists every session under its chat** (`phoneforward.mark` → `phone` on each conversation: chat, label,
+  `open`), with ＋ to start one at the desk (the phone stays where it is). A desktop chat that was carried on is
+  under Desktop and Channels (`chattabs.tag`). TUI: not built; the phone's `/sessions` reaches a carried-on chat.
+
 **A phone turn is saved first and shown like a desk turn** (`TelegramBridge._handle` `built_history`/`emit`,
 `WhatsAppBridge._turn_in`; `tests/test_telegram_turns.py`). The history rebuild (which can compact with a model
 call) ran before the message was saved, on every engine: measured 2 min 45 s on the owner's long thread, which

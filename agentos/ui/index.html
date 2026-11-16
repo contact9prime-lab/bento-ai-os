@@ -2676,7 +2676,8 @@ body.dev-mobile.has-win #omnibar,body.dev-mobile.has-win #omnicards{display:none
 #tb-more{display:none}
 body.dev-mobile #tb-more{display:inline-flex;flex:none;min-width:var(--tap)}
 body.dev-mobile #topbar:not(.more) #autosel,body.dev-mobile #topbar:not(.more) #ttsbtn,
-body.dev-mobile #topbar:not(.more) #clearses{display:none}
+body.dev-mobile #topbar:not(.more) #clearses,body.dev-mobile #topbar:not(.more) #phonebtn,
+body.dev-mobile #topbar:not(.more) #tracebtn{display:none}
 /* list → detail: one pane at a time, with a way back */
 .tp-back{display:none}
 body.dev-mobile .two-pane{flex-direction:column}
@@ -7772,6 +7773,30 @@ body.dev-touch .vp-only{min-height:var(--tap)}
   .whotab tr.ct-sub>td{display:block;padding:0 0 8px 10px;text-align:left}
   .ct-act{width:100%}
 }
+/* Send to your phone (10e-phonesend.js) and a phone chat's sessions in Chat's list */
+.dlg.psend{width:440px;max-width:calc(100vw - 32px);max-height:calc(100dvh - 32px);overflow:auto;text-align:left;padding:20px 18px 16px}
+.psend .dlg-m{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.psend-h{font-size:var(--fs-2xs);font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--dim2);margin:10px 2px 6px}
+.psend-list{display:flex;flex-direction:column;gap:6px}
+.psend-row{display:flex;flex-direction:column;gap:2px;text-align:left;width:100%;min-height:var(--tap,40px);padding:8px 12px;
+  border-radius:var(--r-md);border:1px solid var(--line);background:var(--bg3);color:var(--txt)}
+.psend-row b{font-size:var(--fs-sm);font-weight:600;overflow-wrap:anywhere}
+.psend-row span{font-size:var(--fs-xs);color:var(--dim);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.psend-row.on{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 14%,var(--bg3))}
+.psend-row:disabled{opacity:.55;cursor:default}
+.psend-none{font-size:var(--fs-sm);color:var(--dim);margin:0;line-height:1.5}
+.psend-link{color:var(--acc);text-decoration:underline;min-height:var(--tap,32px)}
+.psend-said{min-height:1.4em;font-size:var(--fs-xs);color:var(--dim);margin:10px 2px}
+.psend-said.err{color:var(--err)}
+.psend .dlg-b{justify-content:flex-end}
+.psend .dlg-b .dlg-ok{max-width:none;flex:0 1 auto;padding:8px 16px;color:var(--on-acc,#fff)}
+.psend .dlg-b .dlg-ok:disabled{opacity:.5}
+.convgrp.phone{display:flex;align-items:center;gap:6px}
+.convgrp.phone span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.convgrp.phone button{flex:none;min-width:var(--tap,26px);min-height:var(--tap,26px);border-radius:var(--r-sm);color:var(--dim);font-size:var(--fs-base);line-height:1}
+.convgrp.phone button:hover{color:var(--txt);background:var(--bg4)}
+.conv .onphone{flex:none;font-size:var(--fs-2xs);color:var(--acc);border:1px solid color-mix(in srgb,var(--acc) 50%,transparent);border-radius:var(--r-full);padding:1px 6px}
+.psend .dlg-b button{min-height:var(--tap,36px)}
 </style>
 </head>
 <body>
@@ -19913,6 +19938,7 @@ function renderChat(body){
           <option value="full">Full autonomy</option>
         </select>
         <button id="ttsbtn" class="endbtn" title="Speak replies aloud"></button>
+        <button id="phonebtn" class="endbtn" title="Carry this chat on in Telegram or WhatsApp, or send its last answer or its story there" onclick="phoneSend()">➤ Phone</button>
         <button id="tracebtn" class="endbtn" title="Download everything this chat did as one JSON file: messages, every run, the gate's decisions, the office and who had which tools (secrets masked). Give it to an AI to find what went wrong." onclick="chatTrace()">⤓ JSON</button>
         <button id="clearses" class="endbtn" title="Wipe this conversation's messages and start fresh">Clear session</button>
         ${/* phone only: the three controls past the brain go behind one button —
@@ -20120,7 +20146,11 @@ async function loadConvs(){
   const row=c=>{
     const el=document.createElement('div');el.className='conv'+(c.id===currentConv?' active':'');
     el.innerHTML=`<span class="t"></span><button class="del">✕</button>`;
-    el.querySelector('.t').textContent=(RUNNING.has(c.id)?'● ':'')+(c.title||'untitled');
+    // a phone chat's session is named for the session: its chat is the group's heading
+    const ph=CONVTAB==='channels'&&c.phone;
+    el.querySelector('.t').textContent=(RUNNING.has(c.id)?'● ':'')+(ph?(c.phone.label||c.title||'untitled'):(c.title||'untitled'));
+    if(ph&&c.phone.open){const o=document.createElement('span');o.className='onphone';o.textContent='on the phone';
+      o.title='The session that chat is in now';el.insertBefore(o,el.querySelector('.del'))}
     if(chatFromMachine(c))el.classList.add('conv-machine',c.origin==='zero'?'zero':'team');
     if(RUNNING.has(c.id))el.querySelector('.t').style.color='var(--acc,#5eead4)';
     el.onclick=e=>{if(!e.target.classList.contains('del'))openConv(c.id)};
@@ -20139,7 +20169,19 @@ async function loadConvs(){
     :[['',()=>true]];
   if(CONVTAB==='huddles'){const nb=document.createElement('button');nb.className='endbtn conv-new-huddle';
     nb.textContent='＋ New huddle';nb.onclick=chatNewHuddle;box.appendChild(nb)}
-  groups.forEach(([label,test])=>{
+  // Channels: every session of one phone chat under that chat, with a way to start another here
+  if(CONVTAB==='channels'){
+    const seen=new Map();
+    items.forEach(c=>{const k=c.phone?c.phone.channel+':'+c.phone.to:'';if(!seen.has(k))seen.set(k,[]);seen.get(k).push(c)});
+    seen.forEach((its,k)=>{
+      if(k){const p=its[0].phone,h=document.createElement('div');h.className='convgrp phone';
+        const s=document.createElement('span');s.textContent=(p.channel==='telegram'?'Telegram':'WhatsApp')+' · '+p.chat+(its.length>1?' · '+its.length+' sessions':'');
+        const nb=document.createElement('button');nb.textContent='＋';nb.title='Start another session for this chat';nb.setAttribute('aria-label','New session for '+p.chat);
+        nb.onclick=()=>phoneNewSession(p.channel,p.to);h.append(s,nb);box.appendChild(h)}
+      else if(seen.size>1){const h=document.createElement('div');h.className='convgrp';h.textContent='Other';box.appendChild(h)}
+      its.forEach(c=>box.appendChild(row(c)))});
+  }
+  else groups.forEach(([label,test])=>{
     const its=items.filter(test);
     if(!its.length)return;
     if(label){const h=document.createElement('div');h.className='convgrp';h.textContent=label;box.appendChild(h)}
@@ -20983,6 +21025,93 @@ document.addEventListener('keydown',e=>{
 },true);
 document.addEventListener('focusout',e=>{if(e.target===ATS.el)setTimeout(()=>{if(document.activeElement!==ATS.el)atsClose()},120)},true);
 addEventListener('resize',()=>{if(ATS.box)atsPaint()});
+/* Send to your phone (phoneforward.py): carry a chat on in Telegram or WhatsApp, or send one
+   answer or one story there. Asked for as "a chat response to continue in the Telegram, send the
+   stage to Telegram or WhatsApp … the user can decide which chat".
+   The list is this account's own chats, from the server; the page never names a chat itself.
+   Names are other people's words, so everything here is text nodes.
+   GUI and SUI: this dialog (a page, nothing native). TUI: nothing here; the phone's own
+   /sessions and /resume reach a carried-on chat, and sending from a terminal is not built. */
+var PHONE_SEND={what:'',to:''};
+function psEl(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=String(text);return e}
+async function phoneSend(o){
+  o=o||{};
+  const cid=o.cid||(typeof currentConv!=='undefined'?currentConv:'');
+  if(!cid){toast('Open a chat first.');return}
+  let d;
+  try{d=await apiJSON('/api/phone/options?conversation='+encodeURIComponent(cid))}
+  catch(e){toast('Could not load your phone chats: '+(e.message||e));return}
+  document.querySelectorAll('.dlg-scrim.psend-scrim').forEach(x=>x.remove());
+  const scr=psEl('div','dlg-scrim psend-scrim'),dlg=psEl('div','dlg psend');
+  dlg.setAttribute('role','dialog');dlg.setAttribute('aria-modal','true');dlg.setAttribute('aria-label','Send to your phone');
+  dlg.append(psEl('div','dlg-t','Send to your phone'));
+  dlg.append(psEl('div','dlg-m',d.title?('From “'+d.title+'”'):'From this chat'));
+  const stories=d.stories||[];
+  const story=o.answer_to?stories.find(s=>s.answer_to===o.answer_to):stories[stories.length-1];
+  const whats=[
+    ['continue','Carry the chat on there','The phone picks up here, with everything said so far.',true],
+    ['reply','The last answer',d.reply||'No answer in this chat yet.',!!d.reply],
+    ['stage','The story',story?((story.scenes+' scene'+(story.scenes===1?'':'s'))+(story.question?' · '+story.question:'')):'This chat has shown no story.',!!story]];
+  let what=o.what||PHONE_SEND.what||'continue';
+  if(!(whats.find(w=>w[0]===what)||[])[3])what='continue';
+  try{const last=JSON.parse(localStorage.getItem('phone.send')||'{}');if(!PHONE_SEND.to&&last.to)PHONE_SEND.to=last.channel+':'+last.to}catch(e){}
+  const ts=d.targets||[];
+  let to=(ts.find(t=>t.ready&&t.channel+':'+t.to===PHONE_SEND.to)||ts.find(t=>t.ready)||{});
+  to=to.channel?to.channel+':'+to.to:'';
+  dlg.append(psEl('div','psend-h','What'));
+  const wbox=psEl('div','psend-list');wbox.setAttribute('role','radiogroup');wbox.setAttribute('aria-label','What to send');
+  whats.forEach(w=>{const b=psEl('button','psend-row');b.type='button';b.dataset.w=w[0];b.setAttribute('role','radio');
+    b.append(psEl('b','',w[1]),psEl('span','',w[2]));if(!w[3])b.disabled=true;wbox.append(b)});
+  dlg.append(wbox);
+  dlg.append(psEl('div','psend-h','Where'));
+  const tbox=psEl('div','psend-list');tbox.setAttribute('role','radiogroup');tbox.setAttribute('aria-label','Which chat');
+  if(!ts.length){const p=psEl('p','psend-none','Telegram and WhatsApp are not set up for your account yet. ');
+    const a=psEl('button','psend-link','Open Channels');a.type='button';
+    a.onclick=()=>{scr.remove();if(typeof placeSettings==='function')placeSettings('channels')()};p.append(a);tbox.append(p)}
+  ts.forEach(t=>{const b=psEl('button','psend-row');b.type='button';b.dataset.t=t.channel+':'+t.to;b.setAttribute('role','radio');
+    const kind=t.kind==='you'?'you':t.kind==='group'?'group, everyone in it sees it':'someone you let in';
+    b.append(psEl('b','',(t.channel==='telegram'?'Telegram':'WhatsApp')+' · '+t.name),psEl('span','',t.ready?kind:(t.why||'cannot be reached right now')));
+    if(!t.ready)b.disabled=true;tbox.append(b)});
+  dlg.append(tbox);
+  const said=psEl('div','psend-said');said.setAttribute('aria-live','polite');dlg.append(said);
+  const bar=psEl('div','dlg-b'),no=psEl('button','','Cancel'),ok=psEl('button','dlg-ok','Send');
+  no.type=ok.type='button';bar.append(no,ok);dlg.append(bar);scr.append(dlg);document.body.append(scr);
+  const paint=()=>{
+    wbox.querySelectorAll('.psend-row').forEach(b=>{const on=b.dataset.w===what;b.classList.toggle('on',on);b.setAttribute('aria-checked',on)});
+    tbox.querySelectorAll('.psend-row').forEach(b=>{const on=b.dataset.t===to;b.classList.toggle('on',on);b.setAttribute('aria-checked',on)});
+    ok.disabled=!to;ok.textContent=what==='continue'?'Carry on there':'Send'};
+  wbox.querySelectorAll('.psend-row').forEach(b=>b.onclick=()=>{what=b.dataset.w;paint()});
+  tbox.querySelectorAll('.psend-row').forEach(b=>b.onclick=()=>{to=b.dataset.t;paint()});
+  const close=()=>{scr.remove();document.removeEventListener('keydown',key)};
+  const key=e=>{if(e.key==='Escape')close()};
+  document.addEventListener('keydown',key);
+  no.onclick=close;scr.onclick=e=>{if(e.target===scr)close()};
+  ok.onclick=async()=>{
+    if(!to)return;
+    const i=to.indexOf(':'),channel=to.slice(0,i),chat=to.slice(i+1);
+    ok.disabled=true;said.className='psend-said';
+    said.textContent=what==='stage'?'Drawing the story and sending it… this can take a minute.':'Sending…';
+    let r;
+    try{r=await apiJSON('/api/phone/send',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({channel,to:chat,what,conversation_id:cid,answer_to:what==='stage'&&story?story.answer_to:''})})}
+    catch(e){r={ok:false,message:e.message||String(e)}}
+    if(!r.ok){said.className='psend-said err';said.textContent=r.message||'It could not be sent.';ok.disabled=false;return}
+    PHONE_SEND.what=what;PHONE_SEND.to=to;
+    try{localStorage.setItem('phone.send',JSON.stringify({channel,to:chat}))}catch(e){}
+    close();toast(r.message||'Sent.',{kind:'ok'});
+    if(typeof loadConvs==='function')loadConvs();
+  };
+  paint();(ok.disabled?no:ok).focus();
+}
+/* A new session for one phone chat, started here. The phone stays where it is. */
+async function phoneNewSession(channel,to){
+  let r;
+  try{r=await apiJSON('/api/phone/session',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({channel,to})})}
+  catch(e){toast('Could not start a session: '+(e.message||e));return}
+  if(!r.ok){toast(r.message||'Could not start a session.');return}
+  if(typeof loadConvs==='function')await loadConvs();
+  if(typeof openConv==='function')openConv(r.id);
+}
 /* ================= settings app ================= */
 /* ---- preference primitives: every row is label+description left, control right ---- */
 function pGroup(title,rows,o){
@@ -39360,6 +39489,9 @@ function stageNow(main){
     keep.title='Keep this story as a board, and refresh it if you like';keep.setAttribute('aria-label','Keep');
     keep.onclick=()=>stageKeepMenu(keep);bar.append(keep)}
   if(!STAGE.cur.xray&&STAGE.cur.cid)bar.append(stageSaveMenu('conv='+encodeURIComponent(STAGE.cur.cid)+'&answer='+encodeURIComponent(STAGE.cur.answer_to||'')));
+  if(!STAGE.cur.xray&&STAGE.cur.cid&&typeof phoneSend==='function'){const ph=sEl('button','stg-b','➤');ph.append(sEl('span','stg-long',' Phone'));
+    ph.title='Send this story to Telegram or WhatsApp';ph.setAttribute('aria-label','Send to your phone');
+    ph.onclick=()=>phoneSend({cid:STAGE.cur.cid,what:'stage',answer_to:STAGE.cur.answer_to||''});bar.append(ph)}
   if(STAGE.cur.cid){const chat=sEl('button','stg-b','Chat');chat.title='Open the conversation';
     chat.onclick=()=>{if(typeof openConv==='function'){openApp('chat');openConv(STAGE.cur.cid)}};
     bar.append(chat)}

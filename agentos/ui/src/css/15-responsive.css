@@ -337,7 +337,8 @@ body.dev-mobile.has-win #omnibar,body.dev-mobile.has-win #omnicards{display:none
 #tb-more{display:none}
 body.dev-mobile #tb-more{display:inline-flex;flex:none;min-width:var(--tap)}
 body.dev-mobile #topbar:not(.more) #autosel,body.dev-mobile #topbar:not(.more) #ttsbtn,
-body.dev-mobile #topbar:not(.more) #clearses{display:none}
+body.dev-mobile #topbar:not(.more) #clearses,body.dev-mobile #topbar:not(.more) #phonebtn,
+body.dev-mobile #topbar:not(.more) #tracebtn{display:none}
 /* list → detail: one pane at a time, with a way back */
 .tp-back{display:none}
 body.dev-mobile .two-pane{flex-direction:column}

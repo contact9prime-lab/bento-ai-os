@@ -5396,6 +5396,8 @@ async def api_conversations(q: str = "", tab: str = ""):
         hit = chattabs.search(state["store"], q)
         convs = [c for c in convs if c["id"] in hit]
     convs = chattabs.tag(state["store"], convs)
+    from . import phoneforward
+    convs = phoneforward.mark(state["store"], convs)     # a phone chat's sessions, each named
     if tab in chattabs.TABS:
         convs = [c for c in convs if tab in c["tabs"]]
     return {"conversations": convs, "tabs": [{"id": t, "name": chattabs.NAMES[t]} for t in chattabs.TABS]}
@@ -5429,6 +5431,39 @@ async def api_new_conversation(body: dict | None = None):
                                    "origin": origin, "space_id": space},
                                   str(usersmod.current() or ""))
     return {"id": cid, "title": title, "origin": origin, "space_id": space}
+
+
+@app.get("/api/phone/options")
+async def api_phone_options(conversation: str = ""):
+    """Where a chat of yours may be sent, and what it has to send (phoneforward.py). The
+    bridges and the store are the signed-in account's, so only its own chats are listed."""
+    from . import phoneforward
+    return phoneforward.options(state["store"], state.get("telegram"), state.get("whatsapp"), conversation)
+
+
+@app.post("/api/phone/send")
+async def api_phone_send(body: dict):
+    """Carry a chat on in Telegram or WhatsApp, or send one answer or one story there.
+    A person's act from a signed-in page: there is no agent tool for it. A ledger row each."""
+    from . import phoneforward
+    b = body or {}
+    channel, to, what = str(b.get("channel") or ""), str(b.get("to") or ""), str(b.get("what") or "")
+    cid = str(b.get("conversation_id") or "")
+    res = await phoneforward.send(state["store"], state.get("telegram"), state.get("whatsapp"), channel, to,
+                                  what, cid, mid=str(b.get("message_id") or ""),
+                                  answer_to=str(b.get("answer_to") or ""))
+    _ledger("phone.send", f"{channel}:{to}", f"{what} from chat {cid}: {res.get('message', '')}")
+    return res
+
+
+@app.post("/api/phone/session")
+async def api_phone_session(body: dict):
+    """A new session for one of your phone chats, started at the desktop."""
+    from . import phoneforward
+    b = body or {}
+    res = phoneforward.new_session(state["store"], state.get("telegram"), state.get("whatsapp"),
+                                   str(b.get("channel") or ""), str(b.get("to") or ""), str(b.get("name") or ""))
+    return res
 
 
 @app.get("/api/conversations/{cid}")
