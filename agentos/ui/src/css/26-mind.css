@@ -30,7 +30,12 @@ body.imm-mind .hm-greet,body.imm-mind .hm-chips,body.imm-mind .hm-play,body.imm-
 .mn-btn:hover{background:rgba(124,140,255,.3)}
 .mn-btn:focus-visible{outline:2px solid var(--acc,#8b5cf6);outline-offset:2px}
 .mn-say{position:absolute;left:50%;top:98px;transform:translateX(-50%);width:min(620px,calc(100vw - 32px));pointer-events:none;
-  text-align:center;font-size:15px;line-height:1.5;color:#fff;text-shadow:0 1px 10px rgba(0,0,0,.8)}
+  text-align:center;font-size:15px;line-height:1.5;color:#fff;text-shadow:0 1px 10px rgba(0,0,0,.8);
+  padding:8px 14px;border-radius:14px;background:rgba(8,10,28,.62);max-height:7.5em;overflow:hidden}
+/* while the lead says the panels the prompt bar steps aside (the words ran under it), and a
+   linked team's chip never sits on the ring */
+body.mind-telling:not(.has-win) #omnibar:not(.summoned):not(.pop){opacity:0;pointer-events:none}
+body.imm-mind .hm-links{display:none!important}
 
 .mn-tag{position:absolute;left:0;top:0;transform:translate(-50%,calc(-100% - var(--rh,40px)*.55 - 6px));pointer-events:auto;
   display:flex;align-items:center;justify-content:center;min-height:var(--tap,32px);min-width:var(--tap,32px);padding:0;border:0;background:none;cursor:pointer;font:inherit;color:#fff}
