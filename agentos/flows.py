@@ -681,6 +681,12 @@ def save(store, body: dict) -> tuple[dict, dict]:
     One path, so the permissions a flow has can never depend on which door it was
     created through."""
     created = ensure_agents(store, body.get("new_agents") or [])
+    if not body.get("space_id"):
+        # a save that says nothing about the space keeps the one the mission is in: its
+        # space is its company's (company.of_flow), and a re-save must not take it out
+        was = store.get_flow(str(body.get("name") or ""))
+        if was and was.get("space_id"):
+            body = {**body, "space_id": was["space_id"]}
     d = validate(body, store)
     triggers = d.pop("triggers")
     d.pop("new_agents", None)      # they exist now; the flow row does not record them
@@ -1017,9 +1023,17 @@ async def compose(cfg: dict, store, request: str, tools: list, model: str = "",
                   + f"\n\nTHE CHANGE ASKED FOR:\n{(request or '').strip()[:1000]}")
     else:
         intent = f"THE USER WANTS:\n{(request or '').strip()[:2000]}"
+    # a mission is its company's: people who work in another of the person's companies
+    # are not offered (company.outsiders refuses them at the save too)
+    try:
+        from . import company as _co
+        away = _co.elsewhere(cfg, store=store)
+    except Exception:
+        away = set()
     agents = "\n".join(
         f"  - {s['name']}: {' '.join((s.get('soul') or '(no persona)').split())[:150]}"
-        for s in store.list_subagents()) or "  (none yet — you will have to create them)"
+        for s in store.list_subagents() if s["name"].lower() not in away
+    ) or "  (none yet — you will have to create them)"
     tool_lines = "\n".join(f"  - {t['name']}: {' '.join((t.get('description') or '').split())[:90]}"
                            for t in (tools or [])[:120]) or "  (none)"
     skills = ", ".join(s["name"] for s in store.list_skills()) or "(none installed)"
@@ -1044,7 +1058,7 @@ async def compose(cfg: dict, store, request: str, tools: list, model: str = "",
     # exists nor is being created would fail validation later with a worse message, and a
     # tool that does not exist would become a grant for something unreachable.
     known_tools = {t["name"] for t in (tools or [])}
-    have = {s["name"] for s in store.list_subagents()}
+    have = {s["name"] for s in store.list_subagents() if s["name"].lower() not in away}
     new_agents, dropped_agents = [], []
     for a in (draft.get("new_agents") or []):
         nm = (a.get("name") or "").strip()

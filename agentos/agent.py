@@ -195,10 +195,31 @@ async def memory_text(cfg: dict, store, space_id: str = "", conversation_id: str
             from . import spaces as spacemod
             info = spacemod.describe(store, space_id)
             desc = f" — {info['description']}" if info.get("description") else ""
-            mem_text += (f"\n=== Current space: {info['name']}{desc} ===\n"
-                         "What you remember and produce belongs to this space unless it "
-                         "would still be true after this project ends. Memory and facts "
-                         "below are this space's plus what is true everywhere.\n")
+            co = None
+            try:
+                from . import company as _company
+                co = _company.of_space(cfg, space_id)
+            except Exception:
+                co = None
+            if co:
+                # A company's memory is its own, and what is about the PERSON goes with them
+                # (and with every agent) into each company. Asked for as "the context, KB and
+                # memory should be company specific, and a generic memory that helps to move
+                # around the agents": the two shelves are a space's rows and the global ones.
+                mem_text += (f"\n=== Memory of the company {co['name']} ===\n"
+                             f"Memory has two shelves. What you learn about THIS business (its "
+                             f"customers, products, numbers, plans, decisions) is saved as it "
+                             f"comes: it belongs to {co['name']} and is read only here, never in "
+                             f"the person's other companies. What is about the person themselves "
+                             f"(who they are, how they like to work, a rule for all their work) "
+                             f"is saved with everywhere: true, so it follows you and every agent "
+                             f"into each of their companies. Memory and facts below are "
+                             f"{co['name']}'s plus what is true everywhere.\n")
+            else:
+                mem_text += (f"\n=== Current space: {info['name']}{desc} ===\n"
+                             "What you remember and produce belongs to this space unless it "
+                             "would still be true after this project ends. Memory and facts "
+                             "below are this space's plus what is true everywhere.\n")
         except Exception:
             pass
     if user_mems:
@@ -935,7 +956,8 @@ class Agent:
                 # how they are organised first, when the person set up a company: which
                 # department does what is the first decision about any piece of work
                 from . import company as _company
-                mem_text += _company.note(self.cfg, store)
+                # who does the work is one decision, said before the lists it chooses from
+                mem_text += _company.route_note(self.cfg, store) + _company.note(self.cfg, store)
             except Exception:
                 pass
             try:
@@ -1109,6 +1131,10 @@ class Agent:
             # who is asking: the agent's own name, never the model's, so "me" means this agent
             args = {**{k: v for k, v in args.items() if k != "_from"},
                     "_from": self.principal.id if self.principal.kind == "subagent" else ""}
+        if name in ("open_company", "new_company"):
+            # which surface moves and which chat goes with it: the turn's, never the model's
+            args = {**{k: v for k, v in args.items() if not str(k).startswith("_")},
+                    "_surface": self.surface or "gui", "_conv": self.conversation_id or ""}
         if name == "create_subagent":
             # the chat a temporary agent was built in, where its "Keep it?" is asked
             args = {**{k: v for k, v in args.items() if k != "_conv"}, "_conv": self.conversation_id or ""}

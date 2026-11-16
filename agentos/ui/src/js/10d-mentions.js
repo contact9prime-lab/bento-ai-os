@@ -1,7 +1,8 @@
-/* ---------------- @ suggestions: an agent or a department, by name ----------------
+/* ---------------- @ suggestions: an agent, a department or a company, by name ----------------
    Typing @ at the start of a message offers the people and the departments it can
    reach: `@nora …` is the specialist answering itself (fabric.parse_mention), `@Sales …`
-   is a run of that department's desk (company.parse_department), `@a @b …` a huddle.
+   is a run of that department's desk (company.parse_department), `@a @b …` a huddle,
+   and `@Acme …` asks to open another of your companies and answers there.
    One list from the server (/api/chat/addresses → company.addresses), one popup, and
    every composer gets it by delegation: Chat (#input), the prompt bar (#omni-in) and
    every app's agent panel, the Office's included (.cp-in). Nothing is sent by picking;
@@ -36,6 +37,9 @@ function atsMatch(d,q){
     sub:(x.head?'head '+x.head+' · ':'')+x.people+' '+(x.people===1?'person':'people'),hex:x.hex,head:x.head,desk:x.desk})});
   (d.agents||[]).forEach(x=>{if(!k||has(x.name)||has(x.title))out.push({kind:'agent',name:x.name,
     sub:[x.title,x.dept].filter(Boolean).join(' · ')||'specialist'})});
+  // another of your companies: '@Acme' asks whether to open it (company.parse_company)
+  (d.companies||[]).forEach(x=>{if(!k||has(x.name))out.push({kind:'co',name:x.name,
+    sub:'company · asks to open it'+(x.about?' · '+x.about:'')})});
   return out.slice(0,8);
 }
 function atsClose(){if(ATS.box){ATS.box.remove();ATS.box=null}ATS.items=[];ATS.el=null}
@@ -48,8 +52,9 @@ function atsPaint(){
       e.preventDefault();atsPick(+r.dataset.i)})}
   ATS.box.innerHTML=ATS.items.map((x,i)=>`<div class="ats-row${i===ATS.sel?' on':''}" data-i="${i}" role="option" aria-selected="${i===ATS.sel}">
     ${x.kind==='dept'?`<span class="ats-dot" style="background:${esc(x.hex||'#64748b')}">▦</span>`
+      :x.kind==='co'?'<span class="ats-dot">⌂</span>'
       :(typeof avatarImg==='function'&&avatarImg(x.name,'ats-av'))||'<span class="ats-dot">@</span>'}
-    <span class="ats-name">${x.kind==='dept'?esc(x.name):'@'+esc(x.name)}</span>
+    <span class="ats-name">${x.kind==='agent'?'@'+esc(x.name):esc(x.name)}</span>
     <span class="ats-sub">${x.kind==='dept'?(x.desk?'department · ':'department, no desk · '):''}${esc(x.sub)}</span></div>`).join('');
   const r=el.getBoundingClientRect(),w=Math.min(360,innerWidth-32);
   ATS.box.style.width=w+'px';

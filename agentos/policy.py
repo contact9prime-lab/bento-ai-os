@@ -152,6 +152,9 @@ _DEFINE = _NO_FLOW_WRITE + _NO_AGENT_WRITE + _NO_PLUGIN_WRITE + _NO_MCP_INSTALL 
 # Asking the person for an ability is the team's: the lead, a specialist, a mission's master.
 # Never an app's, a peer's, a linked team's or a pool's: none of them is on this team.
 _NO_CAPABILITY = [("capability.grant", "*")]
+# Moving the desk to another company, or starting one, is the person's own agent's to ask
+# and the person's to answer. A specialist, a mission, an app or another machine never.
+_NO_COMPANY = [("company.switch", "*"), ("company.create", "*")]
 # Convening a huddle is the user's agent's alone. A specialist that could start one
 # would be an agent invoking agents (the tree stays two deep); an app or a peer that
 # could would be spending on several models with nobody at the keyboard; and a flow's
@@ -162,9 +165,9 @@ _NO_HUDDLE = [("agent.huddle", "*")]
 # agent would be starting work under that agent's name with nobody's consent.
 _NO_MESSAGE = [("agent.message", "*")]
 BUILTIN_DENY = {
-    "app": [("tool.use", p) for p in _SELF_MOD] + _NO_OUTSIDER + _DEFINE + _NO_HUDDLE + _NO_MESSAGE + _NO_CAPABILITY,
-    "subagent": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE,
-    "workflow": [("tool.use", p) for p in _SELF_MOD] + _NO_OUTSIDER + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE + _NO_MESSAGE + _NO_CAPABILITY,
+    "app": [("tool.use", p) for p in _SELF_MOD] + _NO_OUTSIDER + _DEFINE + _NO_HUDDLE + _NO_MESSAGE + _NO_CAPABILITY + _NO_COMPANY,
+    "subagent": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE + _NO_COMPANY,
+    "workflow": [("tool.use", p) for p in _SELF_MOD] + _NO_OUTSIDER + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE + _NO_MESSAGE + _NO_CAPABILITY + _NO_COMPANY,
     # A flow's master orchestrator is the one principal in the OS that exists to invoke
     # other agents, so the blanket agent.invoke deny above would defeat its purpose. It
     # is still barred from rewriting the OS, and delegation is not free: `_default` gives
@@ -172,23 +175,23 @@ BUILTIN_DENY = {
     # (its roster) can satisfy one. The agents it starts run as `subagent`, which IS
     # denied above — which is what makes the tree exactly two deep, enforced by the gate
     # rather than by a counter somebody has to remember to increment.
-    "flow": [("tool.use", p) for p in _SELF_MOD] + _DEFINE + _NO_HUDDLE + _NO_MESSAGE,
+    "flow": [("tool.use", p) for p in _SELF_MOD] + _DEFINE + _NO_HUDDLE + _NO_MESSAGE + _NO_COMPANY,
     # A peer is another machine holding a minted key to this one's agent-share
     # door. Its entire legitimate reach is `agent.share` — written as a grant
     # when its key is minted, revoked with it — and `_default` denies a peer
     # everything ungranted, so these rows are belt on top of braces: even a
     # hand-written grant must never let a peer near the OS or another agent.
-    "peer": [("tool.use", p) for p in _SELF_MOD] + _NO_OUTSIDER + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE + _NO_MESSAGE + _NO_CAPABILITY,
+    "peer": [("tool.use", p) for p in _SELF_MOD] + _NO_OUTSIDER + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE + _NO_MESSAGE + _NO_CAPABILITY + _NO_COMPANY,
     # A linked team's agent (another machine over mTLS, or another account here). Its
     # whole legitimate reach is asking one of YOUR agents a question — agent.message,
     # granted cell by cell — and `_default` refuses everything else before any model
     # default. These rows are belt on top of braces, as for a peer.
-    "team": [("tool.use", p) for p in _SELF_MOD] + _NO_OUTSIDER + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE + _NO_CAPABILITY,
+    "team": [("tool.use", p) for p in _SELF_MOD] + _NO_OUTSIDER + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE + _NO_CAPABILITY + _NO_COMPANY,
     # A machine of this machine's community (pool.py): on a leader, a member that thinks
     # with the leader's brain (model.use, granted at admission); on a member, the
     # community handing it work (pool.work, granted at joining). `_default` refuses a
     # pool principal everything else; these rows are the belt on top, as for a peer.
-    "pool": [("tool.use", p) for p in _SELF_MOD] + _NO_OUTSIDER + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE + _NO_MESSAGE + _NO_CAPABILITY,
+    "pool": [("tool.use", p) for p in _SELF_MOD] + _NO_OUTSIDER + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE + _NO_MESSAGE + _NO_CAPABILITY + _NO_COMPANY,
 }
 
 # tool name -> (action, resource template); anything unlisted is plain tool.use
@@ -489,6 +492,12 @@ def action_of(name: str, args: dict, mcp=None, ocp=None) -> tuple[str, str]:
         return "skill.install", f"skill:{str(args.get('source') or '').strip() or '*'}"
     # An ability for somebody: its own action, so apps, peers and linked teams are refused
     # it outright (_NO_CAPABILITY) and a person decides every one (ALWAYS_ASK).
+    # Which company the desk is in, and a new one: their own actions, so nobody but the
+    # person's own agent can ask (_NO_COMPANY) and a person decides each (ALWAYS_ASK).
+    if name == "open_company":
+        return "company.switch", f"company:{str(args.get('company') or '').strip().lower() or '*'}"
+    if name == "new_company":
+        return "company.create", f"company:{str(args.get('name') or '').strip().lower() or '*'}"
     if name == "request_capability":
         return "capability.grant", f"ability:{args.get('ability') or '*'}:{args.get('who') or 'self'}"
     # Writing a flow is its own capability, not another tool.use string: a flow definition

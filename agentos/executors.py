@@ -1931,6 +1931,9 @@ async def install(note=None) -> tuple[bool, str]:
 # tool but it isn't using that" and a Research memo that stopped at "no shell or Python".
 TEAM_TOOLS = ("delegate", "huddle", "department_task", "create_flow", "list_flows", "schedule_task",
               "create_subagent", "request_capability", "linked_teams",
+              # the work asked for is another company's, or no company's: the lead offers to
+              # open that one or start one, and the person answers on a card (company.others_note)
+              "open_company", "new_company",
               # the machines this one leads: work handed to their own hardware (pool.py). Offered
               # only where there is a community (Toolbox.schemas), each piece asked for as risky.
               "pool_task", "community_recall",
@@ -2161,9 +2164,10 @@ def team_hint(subagents: list) -> str:
 
 #: A jailed CLI has no `bento`, and setting up a company has no door tool: creating departments and
 #: moving a surface's space is a person's review (preview, ticks, apply). So the lead says where it is.
-COMPANY_DOOR_LINE = ("\n\nYou can't set up, switch or remove a company from here. If you're asked to, "
-                     "tell the person it's on the desktop, in the Office under Company, or "
-                     "`bento company new` in a terminal on this machine.")
+COMPANY_DOOR_LINE = ("\n\nYou can open another of the person's companies or start a new one "
+                     "(mcp__bento__open_company, mcp__bento__new_company; they are asked each time). "
+                     "Departments are set up, and a company is removed, on the desktop: in the "
+                     "Office under Company, or `bento company` in a terminal on this machine.")
 
 
 def open_team_door(env: "Envelope", cfg: dict, toolbox, store, emit, approver,
@@ -2221,8 +2225,9 @@ def open_team_door(env: "Envelope", cfg: dict, toolbox, store, emit, approver,
         from . import company as _company
         grouped = _company.not_on_the_list(cfg, store)
         dept_note = _company.note(cfg, store, desks=False, tool="mcp__bento__department_task")
+        route = _company.route_note(cfg, store, "mcp__bento__") if "delegate" in door else ""
     except Exception:
-        grouped, dept_note = set(), ""
+        grouped, dept_note, route = set(), "", ""
     # who does the work comes first: measured on the reporting machine, the department
     # rule as the last of ~8,000 characters was never followed
     # The Stage goes near the top, beside who does the work: measured on the owner's
@@ -2234,7 +2239,7 @@ def open_team_door(env: "Envelope", cfg: dict, toolbox, store, emit, approver,
         stage_note = "\n\n" + _stage.note(cfg, tool="mcp__bento__show_scene", surface=surface)
     env.context = (env.context or "").replace(NO_DOOR_LINE, DOOR_LINE) \
         + identity_note(cfg, store, company=False, space_id=space_id) \
-        + "\n\n" + finish_line() + (mind_rule() if mind and "remember" in door else "") \
+        + route + "\n\n" + finish_line() + (mind_rule() if mind and "remember" in door else "") \
         + stage_note + dept_note + COMPANY_DOOR_LINE \
         + team_note(subs, in_departments=grouped) + linked_note(cfg, store) + _zero_note(cfg) \
         + _pool_note(door) \
