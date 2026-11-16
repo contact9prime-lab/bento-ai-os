@@ -69,12 +69,12 @@ The list shows only your own account's chats: yours, people you let in, and grou
 row says everyone in it will see what you send. A WhatsApp chat whose 24-hour window is closed is greyed with
 the reason. Only you can do this; your agents can't. Each send is a row in the Ledger.
 
-![Send to your phone](screenshots/send-to-phone.png)
+![The Phone button in Chat, sending a chat to Telegram or WhatsApp](screenshots/send-to-phone.png)
 
 Chat's **Channels** tab lists every session of a phone chat under that chat, marks the one open on the phone,
 and ＋ starts another from the desktop.
 
-![A chat's sessions](screenshots/channel-sessions.png)
+![A phone chat and its earlier sessions listed in Chat](screenshots/channel-sessions.png)
 
 Two things about it are deliberate. **A command is never a way around the gate:** `/run` is
 `delegate` and `/model` is `configure_agentos` (or `set_engine` when it names an agent such as Claude Code), so each goes through the same policy decision,
