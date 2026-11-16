@@ -2,10 +2,6 @@
 
 ## 0.9.23 — 2026-11-16
 
-No release notes were written for this one; the commits since 0.9.22 are what changed (`bento update` lists them).
-
-## 0.9.23 — 2026-11-16
-
 **A busy local model no longer holds your chats.**
 
 - **Chats stuck on "waking the agent".** Background jobs loaded a local model at its largest
