@@ -2375,6 +2375,48 @@ class ControlPlane(usersmod.Scoped):
         return {"department": dept["name"], "head": dept.get("lead") or "",
                 "flow": flow["name"], "result": res}
 
+    async def open_company(self, ref: str, surface: str = "gui", approver=None,
+                           conversation_id: str = "") -> dict:
+        """'@Acme' typed in a chat: ask the person whether to open that company, and open
+        it on a yes. The lead's open_company tool is the same switch (company.open_here);
+        this is the door for a message that names the company itself, in Chat, the prompt
+        bar, the terminal, Telegram and WhatsApp. Decided by the gate as `company.switch`
+        (a ledger row), then asked of a person whatever the autonomy.
+
+        Returns {"company", "opened", "declined"}; ValueError when there is no such
+        company, PermissionError on a deny."""
+        from . import company as _company
+        from .policy import MAIN, _NEEDS_PERSON
+        hit = _company.find(self.cfg, ref)
+        if not hit:
+            names = ", ".join(c["name"] for c in _company.companies(self.cfg)) or "none yet"
+            raise ValueError(f"no company called '{ref}'. Yours: {names}")
+        if hit["active"]:
+            return {"company": hit, "opened": False, "declined": False}
+        why = "You named this company with @."
+        pdp = getattr(self.toolbox, "pdp", None) if self.toolbox is not None else None
+        if pdp:
+            dec = pdp.decide(MAIN, "company.switch", f"company:{hit['name'].lower()}",
+                             {"surface": surface, "risk": "risky", "tool": "open_company",
+                              "conversation_id": conversation_id})
+            if dec.effect == "deny":
+                raise PermissionError(dec.reason or f"{hit['name']} may not be opened here")
+        ok = False
+        if approver is not None:
+            tok = _NEEDS_PERSON.set("confirmed every time")
+            try:
+                ok = bool(await approver("open_company", {"company": hit["name"]}, why, None))
+            finally:
+                _NEEDS_PERSON.reset(tok)
+        if not ok:
+            return {"company": hit, "opened": False, "declined": True}
+        row = _company.open_here(self.cfg, self.store, hit["id"], surface=surface,
+                                 conversation_id=conversation_id)
+        moved = getattr(self.toolbox, "_company_moved", None)
+        if moved:
+            await moved()
+        return {"company": row, "opened": True, "declined": False}
+
     async def huddle(self, names: list, topic: str, rounds: int = 2,
                      conversation_id: str = "", space_id: str = "", say=None,
                      approver=None) -> dict:
@@ -3477,7 +3519,7 @@ class ControlPlane(usersmod.Scoped):
         if status not in companymod.AUDITED:
             return None
         # a parked company's mission is signed off by ITS bosses (company.cfg_for)
-        ccfg = companymod.cfg_for(self.cfg, flow["name"])
+        ccfg = companymod.cfg_for(self.cfg, flow["name"], flow.get("space_id") or "")
         dept = companymod.audit_scope(ccfg, self.store, flow["name"])
         if not dept:
             return None
@@ -3605,7 +3647,7 @@ class ControlPlane(usersmod.Scoped):
         from . import company as companymod, brief as briefmod
         run = self.store.fabric_run(run_id) or {}
         status = status or run.get("status") or ""
-        ccfg = companymod.cfg_for(self.cfg, flow["name"])
+        ccfg = companymod.cfg_for(self.cfg, flow["name"], flow.get("space_id") or "")
         if not force and not companymod.audit_on(ccfg):
             return None
         if status not in companymod.AUDITED:
@@ -3902,6 +3944,35 @@ async def department_reply(control, department: str, task: str, conversation_id:
     return (f"▦ {got['department']} · {res['status']}"
             + (f" · led by {got['head']}" if got["head"] else "") + "\n\n"
             + (res["content"] or res["fault"] or "(no output)"))
+
+
+async def company_turn(control, cfg: dict, store, text: str, surface: str, approver,
+                       conversation_id: str) -> dict | None:
+    """'@Acme …' at the start of a message, for every chat surface. None when the message
+    names no company. Otherwise {"reply": a sentence, or "" to carry on, "rest": what is
+    left to answer in that company, "company"}: an agent's name and a department of the
+    open company were checked first by the caller."""
+    from . import company as _company
+    hit = _company.parse_company(cfg, text)
+    if not hit or control is None:
+        return None
+    co, rest = hit
+    try:
+        got = await control.open_company(co["id"] or co["name"], surface=surface, approver=approver,
+                                         conversation_id=conversation_id)
+    except (ValueError, PermissionError) as e:
+        return {"reply": f"▦ {co['name']}: {e}", "rest": "", "company": co["name"]}
+    row = got["company"]
+    if got["declined"]:
+        cur = next((c["name"] for c in _company.companies(cfg) if c["active"]), "")
+        return {"reply": f"▦ {co['name']} wasn't opened" + (f", so you're still in {cur}" if cur else "")
+                         + (". Nothing was sent." if rest else "."), "rest": "", "company": co["name"]}
+    words = _company.opened_words(cfg, store, row)
+    if rest:
+        return {"reply": "", "rest": rest, "company": row["name"],
+                "status": f"{row['name']} is open" if got["opened"] else ""}
+    return {"reply": "▦ " + (words if got["opened"] else words.replace(" is open", " is already open", 1)),
+            "rest": "", "company": row["name"]}
 
 
 def parse_mention(store, text: str):

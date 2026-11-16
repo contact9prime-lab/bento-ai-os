@@ -539,6 +539,10 @@ ALWAYS_ASK = {"power_action", "enable_flow", "enable_openclaw_plugin",
               # a department or an agent asking for an ability it lacks (running code):
               # the person's yes, every time, whoever asks (agentos/tools.py ABILITIES)
               "request_capability",
+              # which company the desk is in, and a new one: the person's, every time. The
+              # lead offers it when the work asked for is another company's; '@Company' in
+              # a chat asks the same card
+              "open_company", "new_company",
               # this OS's own code and a restart that loads it, and who the agent is from now
               # on. No autonomy level answers these, and neither does a remembered yes
               "develop_agentos", "restart_agentos", "update_soul",
@@ -1959,6 +1963,43 @@ class Toolbox(usersmod.Scoped):
                     "blueprint, show one with kind blueprint, its parts nested so they can open each; "
                     "a phone gets it as pictures, a video and a PDF)")
         return out
+
+    async def open_company(self, company: str, _surface: str = "", _conv: str = "") -> str:
+        """Open another of the person's companies. ALWAYS_ASK: the person says yes on a
+        card (the lead offers it when what is asked is another company's work, and
+        '@Company' in a chat is the same switch). The chat it was asked in goes with it."""
+        from . import company as companymod
+        try:
+            row = companymod.open_here(self.cfg, self.store, company, surface=_surface or "gui",
+                                       conversation_id=_conv)
+        except ValueError as e:
+            return f"[error] {e}"
+        await self._company_moved()
+        return ("[opened] " + companymod.opened_words(self.cfg, self.store, row)
+                + " You are working for this company now: carry on with what was asked, and "
+                  "hand real work to its departments with department_task.")
+
+    async def new_company(self, name: str, about: str = "", objective: str = "",
+                          _surface: str = "", _conv: str = "") -> str:
+        """Start a new, empty company and open it. ALWAYS_ASK. The company that was open
+        is kept whole. Its departments are the person's to set up (Office → Company)."""
+        from . import company as companymod
+        try:
+            row = companymod.start_here(self.cfg, self.store, name, about, objective,
+                                        surface=_surface or "gui", conversation_id=_conv)
+        except ValueError as e:
+            return f"[error] {e}"
+        await self._company_moved()
+        return (f"[started] {row['name']} is a new company and it is open. It has no "
+                f"departments or people yet: tell the person they can set them up in the "
+                f"Office, under Company (it drafts them from a line about the business). "
+                f"Until then, answer what was asked yourself, for this company.")
+
+    async def _company_moved(self) -> None:
+        if self.broadcast:
+            for t in ("office", "agents", "avatars", "fabric_defs", "spaces_update", "company"):
+                with contextlib.suppress(Exception):
+                    await self.broadcast({"type": t})
 
     async def request_capability(self, ability: str, who: str = "", why: str = "",
                                  _from: str = "") -> str:
@@ -3832,9 +3873,11 @@ class Toolbox(usersmod.Scoped):
                           sinks: list | None = None, new_agents: list | None = None) -> str:
         """Write a flow definition. It is ALWAYS created disabled — see the note in the
         schema for why that is not a limitation but the entire point."""
+        from . import company as companymod
         from . import flows as flowsmod
         try:
-            flow, report = flowsmod.save(self.store, {
+            # a mission made while a company is open is that company's, with its people
+            flow, report = flowsmod.save(self.store, companymod.place_mission(self.cfg, self.store, {
                 "name": name, "mission": mission, "description": description,
                 "roster": roster or [], "permissions": permissions or {"memory": "read-space"},
                 "triggers": triggers or [], "sinks": sinks or [],
@@ -3843,11 +3886,13 @@ class Toolbox(usersmod.Scoped):
                 # permissions, so enabling one is granting them — and an agent that could
                 # do that could grant itself anything by writing a flow that says so.
                 # The user enables it in Missions → Build, having read what it grants.
-                "enabled": 0})
+                "enabled": 0}))
         except ValueError as e:
             return f"[error] {e}"
         would = flowsmod.declared_grants({**flow, "enabled": 1})
-        lines = [f"flow '{flow['name']}' saved (disabled — it holds nothing yet)."]
+        owner = companymod.of_flow(self.cfg, flow)
+        lines = [f"flow '{flow['name']}' saved (disabled — it holds nothing yet)"
+                 + (f", as a mission of {owner['name']}." if owner else ".")]
         if report.get("agents_created"):
             lines.append(f"created agents: {', '.join(report['agents_created'])}")
         lines.append(f"roster: {', '.join(r['subagent'] for r in flow['roster'])}")
@@ -4094,11 +4139,15 @@ class Toolbox(usersmod.Scoped):
         rows = self.store.list_flows()
         if not rows:
             return "no flows defined yet"
+        from . import company as companymod
         out = []
         for f in rows:
             trig = ", ".join(t["kind"] for t in self.store.flow_triggers(f["name"])) or "manual"
+            # whose mission it is: one of another company runs with that company's people
+            co = companymod.of_flow(self.cfg, f)
             out.append(f"{f['name']} — {'enabled' if f['enabled'] else 'disabled'} · "
-                       f"roster: {', '.join(r['subagent'] for r in f['roster']) or '—'} · "
+                       + (f"company: {co['name']}{'' if co['active'] else ' (not the open one)'} · " if co else "")
+                       + f"roster: {', '.join(r['subagent'] for r in f['roster']) or '—'} · "
                        f"starts: {trig}\n    {(f.get('mission') or '')[:140]}")
         return "\n".join(out)
 
@@ -4111,7 +4160,10 @@ class Toolbox(usersmod.Scoped):
             return "[error] fabric not available"
         res = await self.fabric.run_flow(defn, input, origin={"surface": "api"},
                                          conversation_id=conversation_id)
-        head = (f"[flow {defn['name']} · {res['status']} · {res['delegations']} delegations]")
+        from . import company as companymod
+        co = companymod.of_flow(self.cfg, defn)
+        head = (f"[flow {defn['name']} · {res['status']} · {res['delegations']} delegations"
+                + (f" · run by {co['name']}'s people" if co and not co["active"] else "") + "]")
         return ((TAINTED_REPLY if res.get("tainted") else "")
                 + f"{head}\n{handed_back(res['content'] or res['fault'] or '(no output)', res.get('run_id') or '')}")
 
@@ -4393,6 +4445,10 @@ class Toolbox(usersmod.Scoped):
             p = str(args.get("path") or "")
             where = os.path.realpath(self._abs(p)) if p else "this OS's own code"
             return "risky", f"Runs a test suite, which is code, in {where}."
+        if name == "open_company":
+            return "risky", "Your agent thinks what you asked is this company's work."
+        if name == "new_company":
+            return "risky", "None of your companies is for this, and you said yes to starting one."
         if name == "request_capability":
             who = str(args.get("who") or args.get("_from") or "an agent")
             return "risky", (f"Gives {who} an ability it does not have: "
@@ -5791,7 +5847,7 @@ class Toolbox(usersmod.Scoped):
                     f"payload (e.g. a whole app's html), emit it as a ```html code block in "
                     f"plain text instead of a tool call, or produce a smaller version.")
         try:
-            keep = ({"_flow", "_run_id"} if name == "brief_item" else {"_conv"} if name in ("create_app", "department_task", "show_scene", "stage_file", "create_subagent") else {"_from"} if name == "request_capability" else {"_who", "_why"} if name in ("device_get", "device_set") else {"_taint", "_space", "_files", "_files_note", "_root"} if name == "delegate" else {"_taint"} if name == "run_automation" else
+            keep = ({"_flow", "_run_id"} if name == "brief_item" else {"_conv"} if name in ("create_app", "department_task", "show_scene", "stage_file", "create_subagent") else {"_from"} if name == "request_capability" else {"_surface", "_conv"} if name in ("open_company", "new_company") else {"_who", "_why"} if name in ("device_get", "device_set") else {"_taint", "_space", "_files", "_files_note", "_root"} if name == "delegate" else {"_taint"} if name == "run_automation" else
                     {"_app"} if name in APP_BOUND_TOOLS else
                     {"_from", "_chain", "_root", "_run_id", "_conv", "_space", "_taint"}
                     if name == "ask_agent" else set())
@@ -7743,6 +7799,29 @@ CAPABILITY_REQUEST_SCHEMAS = [{
         "required": ["ability", "why"]},
 }]
 TOOL_SCHEMAS.extend(CAPABILITY_REQUEST_SCHEMAS)
+
+COMPANY_SWITCH_SCHEMAS = [{
+    "name": "open_company",
+    "description": "Open another of the person's companies, when what they ask is that "
+                   "company's work and not the open one's. The person is asked on a card; "
+                   "after a yes the desk, this chat and you are in that company, with its "
+                   "departments and people. Never for small talk or a quick fact.",
+    "parameters": {"type": "object", "properties": {
+        "company": {"type": "string", "description": "the company's name, as listed to you"}},
+        "required": ["company"]},
+}, {
+    "name": "new_company",
+    "description": "Start a new company for the person and open it, when what they ask is "
+                   "ongoing work for a business none of their companies is for AND they have "
+                   "said yes to starting one. The person confirms on a card. It starts empty; "
+                   "the one that was open is kept as it is.",
+    "parameters": {"type": "object", "properties": {
+        "name": {"type": "string", "description": "a short name for the business"},
+        "about": {"type": "string", "description": "one line: what the business is"},
+        "objective": {"type": "string", "description": "what the person wants from it, in their words"}},
+        "required": ["name"]},
+}]
+TOOL_SCHEMAS.extend(COMPANY_SWITCH_SCHEMAS)
 
 #: Tools whose reads and writes belong to the turn's space. The agent loop injects
 #: `space_id` for these; nothing else in the OS decides scope on the model's behalf.
