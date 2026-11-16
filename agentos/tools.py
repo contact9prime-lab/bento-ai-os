@@ -2204,8 +2204,8 @@ class Toolbox(usersmod.Scoped):
             # the list it is handed, which is the right layer for it.
             try:
                 from . import knowledge
-                ranked = await knowledge.semantic_rank(
-                    self.cfg, self.store.search_memories("", limit=500, space=space_id), query)
+                ranked = await knowledge.quick_rank(
+                    self.cfg, self.store.search_memories("", limit=500, space=space_id), query, wait=8.0)
                 if ranked:
                     seen = {m["id"] for m in mems}
                     mems += [m for m in ranked[:10] if m["id"] not in seen]

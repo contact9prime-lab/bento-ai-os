@@ -20734,6 +20734,9 @@ async def _run_chat(cid: str, data: dict):
             from . import spaces as _spacemod
             _surface = data.get("surface") if data.get("surface") in CLIENT_SURFACES else "gui"
             _space = _spacemod.active_for(cfg, _surface, store, cid)
+            # said before the wait, not after: this runs ahead of turn_start, and a panel
+            # with nothing to show kept reading "sent — waking the agent"
+            await evsend({"type": "status", "message": "reading what I know about you"})
             team_token = execmod.open_team_door(
                 env, cfg, toolbox, store, evsend, approver, conversation_id=cid, surface=_surface,
                 space_id=_space, text=text,

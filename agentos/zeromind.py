@@ -129,7 +129,7 @@ async def _pick(cfg, rows: list[dict], query: str, n: int) -> list[dict]:
     if query and take:
         try:
             from . import knowledge
-            ranked = await knowledge.semantic_rank(cfg, rest, query)
+            ranked = await knowledge.quick_rank(cfg, rest, query)
             if ranked is not None:
                 picked = ranked[:take]
         except Exception:
@@ -190,7 +190,7 @@ async def answer(store, cfg: dict, lk: dict, req: dict) -> dict:
         if q:
             try:
                 from . import knowledge
-                ranked = await knowledge.semantic_rank(cfg, store.search_memories("", limit=500, space=only), q)
+                ranked = await knowledge.quick_rank(cfg, store.search_memories("", limit=500, space=only), q, wait=8.0)
                 if ranked:
                     seen = {m["id"] for m in rows}
                     rows = (rows + [m for m in ranked[:10] if m["id"] not in seen])[:15]
