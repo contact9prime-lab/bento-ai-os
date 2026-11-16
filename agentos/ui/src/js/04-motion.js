@@ -82,6 +82,8 @@ function showCtxItems(e,items,opts){
   m.innerHTML='';
   items.forEach((it,i)=>{
     if(it===null){m.appendChild(document.createElement('hr'));return}
+    // a heading inside one list (the folded menu bar's menus): words, not a button
+    if(it.head){const h=document.createElement('div');h.className='mh';h.textContent=it.label;m.appendChild(h);return}
     const b=document.createElement('button');b.dataset.i=i;
     if(it.danger)b.style.color='var(--err)';
     b.textContent=it.label;
