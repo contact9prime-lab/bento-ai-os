@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.21 — 2026-11-16
+
+No release notes were written for this one; the commits since 0.9.20 are what changed (`bento update` lists them).
+
 ## 0.9.20 — 2026-11-16
 
 **Who may talk to your agent is a table now, with when and who decided.** The Telegram app shows
