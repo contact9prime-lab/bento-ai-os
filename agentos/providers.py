@@ -384,7 +384,8 @@ async def chat(cfg: dict, model_id: str, messages: list, tools: list,
     if not p:
         raise ProviderError(f"Unknown provider: {provider}")
     if provider == "ollama":
-        gen = _chat_ollama(p["base_url"], model, messages, tools, ollama_window(cfg, messages, options, model))
+        opts = await fit_loaded(p["base_url"], model, ollama_window(cfg, messages, options, model))
+        gen = _chat_ollama(p["base_url"], model, messages, tools, opts)
     elif provider == "anthropic":
         if not p.get("api_key"):
             raise ProviderError("Anthropic API key not set — add it in Settings.")
@@ -475,6 +476,53 @@ def ollama_window(cfg: dict, messages: list, options: dict | None = None, model:
     if size > base:
         learn_window(cfg, model, size)
     return {**(options or {}), "num_ctx": size}
+
+
+# What Ollama holds in memory right now: {model: its window}. Asked at most every few
+# seconds, with a short wait, and never an error: an Ollama that does not answer this is
+# simply asked for the size we wanted.
+LOADED_TTL = 3.0
+_loaded = {"at": 0.0, "base": "", "models": {}}
+
+
+async def ollama_loaded(base_url: str) -> dict:
+    now = time.time()
+    if _loaded["base"] == base_url and now - _loaded["at"] < LOADED_TTL:
+        return _loaded["models"]
+    models = {}
+    try:
+        async with httpx.AsyncClient(timeout=1.5) as client:
+            r = await client.get(f"{base_url}/api/ps")
+            r.raise_for_status()
+            for m in r.json().get("models") or []:
+                size = int(m.get("context_length") or 0)
+                for name in {m.get("name"), m.get("model")}:
+                    if name and size:
+                        models[str(name)] = size
+    except Exception:
+        models = {}
+    _loaded.update(at=now, base=base_url, models=models)
+    return models
+
+
+async def fit_loaded(base_url: str, model: str, options: dict | None) -> dict:
+    """A model already in memory is used as it is loaded. Asked for as "if the local model
+    is already loaded it should not be loaded again": Ollama unloads and loads a model
+    whenever a call names a different window from the one it is running with, so two
+    callers with two sizes (a chat, then a background summary) reloaded it every time. When
+    the loaded window is at least what this call needs, the call asks for exactly that
+    window. Only a call that needs MORE than is loaded makes it load again."""
+    options = dict(options or {})
+    want = int(options.get("num_ctx") or 0)
+    have = (await ollama_loaded(base_url)).get(model) or (await ollama_loaded(base_url)).get(f"{model}:latest") or 0
+    if have and want <= have <= OLLAMA_WINDOW_CEILING:
+        # (a model somebody loaded past the ceiling is the jam this file exists to end:
+        # that one is loaded again, once, at a size that leaves room for the others)
+        options["num_ctx"] = have
+    elif want:
+        # it is about to be loaded at this size: the next call inside the TTL should see it
+        _loaded["models"] = {**_loaded["models"], model: want}
+    return options
 
 
 async def complete(cfg: dict, model_id: str, prompt: str, system: str = "") -> str:

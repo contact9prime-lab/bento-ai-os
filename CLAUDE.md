@@ -4351,6 +4351,11 @@ log showed that window on ~1,000-token requests, and one embedding call took 2 m
   the newest memories, and backs off for `QUICK_BACKOFF`. `memory_text` runs BEFORE `turn_start` on a forwarded
   turn (so does `mind_note`), which is why a brain that needs no local model waited 120 s on one. Replayed
   against the jammed Ollama: 120.1 s to `turn_start` before, 3.1 s after. A status is sent before that wait.
+- **A model in memory is used as it is loaded** (`fit_loaded`, `ollama_loaded` over `/api/ps`, cached `LOADED_TTL`,
+  a 1.5 s wait, never an error). Asked for as "if the local model is already loaded it should not be loaded
+  again". A call that needs no more than the loaded window asks for exactly that window; only one that needs
+  more reloads. A model loaded past the ceiling is not kept that way. `tests/conftest.py` stands "nothing
+  loaded" in for every test, or the developer's real Ollama decided a test's window.
 - **A window that grows is kept per model** (`ollama_windows`, a USER_KEY like `default_model`): by the agent
   loop's "filled the window" retry and by `ollama_window`. It only grows, under `OLLAMA_WINDOW_CEILING`.
 

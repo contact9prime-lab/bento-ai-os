@@ -30,6 +30,8 @@ os.environ.setdefault("AGENTOS_VAULT_KEYRING", "0")
 from agentos import agent as agentmod, knowledge, providers          # noqa: E402
 from agentos.memory import Store                                     # noqa: E402
 
+REAL_LOADED = providers.ollama_loaded      # conftest stands a "nothing loaded" in for every test
+
 
 def test_every_call_to_ollama_says_how_big_its_window_is(monkeypatch):
     seen = []
@@ -163,3 +165,75 @@ def test_the_agent_loop_starts_at_the_kept_window_and_keeps_what_it_grows(monkey
     # hand hid a wrong one, and every local turn failed)
     import inspect as _i
     assert "self.model_id = model_id" in _i.getsource(agentmod.Agent.__init__)
+
+
+def test_a_model_already_in_memory_is_not_loaded_again(monkeypatch):
+    """Asked for as "if the local model is already loaded then it should not be loaded
+    again, it is doing that a lot for the local models". Ollama reloads a model whenever a
+    call names another window than the one it runs with."""
+    loaded = {"gemma4:12b": 49152}
+
+    async def ps(base_url):
+        return dict(loaded)
+    monkeypatch.setattr(providers, "ollama_loaded", ps)
+    monkeypatch.setattr(providers, "_loaded", {"at": 0.0, "base": "", "models": {}})
+    seen = []
+
+    async def fake(base_url, model, messages, tools, options=None):
+        seen.append((model, options["num_ctx"]))
+        yield {"type": "text", "text": "ok"}
+    monkeypatch.setattr(providers, "_chat_ollama", fake)
+    cfg = {"providers": {"ollama": {"base_url": "http://x", "enabled": True}}, "ollama_num_ctx": 24576}
+
+    async def run(model, options=None, text="hi"):
+        async for _ in providers.chat(cfg, model, [{"role": "user", "content": text}], [], options):
+            pass
+    # a background call and the agent loop's own size both get the window it is running with
+    asyncio.run(run("ollama/gemma4:12b"))
+    asyncio.run(run("ollama/gemma4:12b", {"num_ctx": 24576, "think": False}))
+    assert seen == [("gemma4:12b", 49152), ("gemma4:12b", 49152)]
+    # a call that needs more than is loaded is the only one that loads it again
+    asyncio.run(run("ollama/gemma4:12b", {"num_ctx": 65536}))
+    assert seen[-1] == ("gemma4:12b", 65536)
+    # a model that is not loaded gets the machine's size
+    asyncio.run(run("ollama/qwen3.5:9b"))
+    assert seen[-1] == ("qwen3.5:9b", 24576)
+    # one loaded past the ceiling (the jam) is not kept that way
+    loaded["qwen3.5:9b"] = 262144
+    asyncio.run(run("ollama/qwen3.5:9b"))
+    assert seen[-1] == ("qwen3.5:9b", 24576)
+
+
+def test_what_is_loaded_is_read_from_ollama_and_never_holds_a_call(monkeypatch):
+    import httpx
+    asked = []
+
+    class _R:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"models": [{"name": "gemma4:12b", "model": "gemma4:12b", "context_length": 49152},
+                               {"name": "broken"}]}
+
+    class _C:
+        def __init__(self, timeout=None):
+            asked.append(timeout)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def get(self, url):
+            if "down" in url:
+                raise httpx.ConnectError("no")
+            return _R()
+    monkeypatch.setattr(providers.httpx, "AsyncClient", _C)
+    monkeypatch.setattr(providers, "_loaded", {"at": 0.0, "base": "", "models": {}})
+    assert asyncio.run(REAL_LOADED("http://up")) == {"gemma4:12b": 49152}
+    assert asked == [1.5], "a short wait: this is asked in front of every call"
+    assert asyncio.run(REAL_LOADED("http://up")) == {"gemma4:12b": 49152} and len(asked) == 1, "kept a few seconds"
+    # an Ollama that does not answer is simply asked for the size we wanted
+    assert asyncio.run(REAL_LOADED("http://down")) == {}
