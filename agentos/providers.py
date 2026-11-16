@@ -384,7 +384,7 @@ async def chat(cfg: dict, model_id: str, messages: list, tools: list,
     if not p:
         raise ProviderError(f"Unknown provider: {provider}")
     if provider == "ollama":
-        gen = _chat_ollama(p["base_url"], model, messages, tools, options)
+        gen = _chat_ollama(p["base_url"], model, messages, tools, ollama_window(cfg, messages, options, model))
     elif provider == "anthropic":
         if not p.get("api_key"):
             raise ProviderError("Anthropic API key not set — add it in Settings.")
@@ -419,6 +419,62 @@ async def chat(cfg: dict, model_id: str, messages: list, tools: list,
         raise ProviderError(f"Unknown provider: {provider}")
     async for ev in gen:
         yield ev
+
+
+OLLAMA_WINDOW_CEILING = 131072
+
+
+def learned_window(cfg: dict, model: str) -> int:
+    """The window this machine found a local model needs, or 0 (`ollama_windows`)."""
+    try:
+        return int(((cfg or {}).get("ollama_windows") or {}).get(str(model or "")) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def learn_window(cfg: dict, model: str, size: int) -> bool:
+    """Keep a window that had to grow, for that model, in the config. Asked for as "if the
+    context window changes locally because it can't fit, that should be stored somewhere in
+    the config": it was grown for one turn and forgotten, so the next long turn was cut at
+    the small window again, asked a second time, and the model was loaded twice. Only ever
+    grows, under the ceiling; taking a model's line out of `ollama_windows` resets it."""
+    model = str(model or "").strip()
+    try:
+        size = min(OLLAMA_WINDOW_CEILING, int(size or 0))
+    except (TypeError, ValueError):
+        return False
+    base = int((cfg or {}).get("ollama_num_ctx") or 24576)
+    if not model or size <= max(base, learned_window(cfg, model)):
+        return False
+    cfg["ollama_windows"] = {**((cfg.get("ollama_windows") or {})), model: size}
+    try:
+        from . import config as cfgmod
+        cfgmod.save_config(cfg)
+    except Exception:
+        pass                      # kept for this run even when the file could not be written
+    return True
+
+
+def ollama_window(cfg: dict, messages: list, options: dict | None = None, model: str = "") -> dict:
+    """The options for a call to Ollama, always with a context size.
+
+    Found on the owner's machine: every chat sat on "waking the agent" and a local model
+    "loading" for minutes. The background calls (`complete`: memory extraction, summaries,
+    titles) sent no num_ctx, and this Ollama loads a model at ITS default when none is
+    given: qwen3.5:9b came up at 262,144 tokens and took 13.3 of the GPU's 16 GB. Nothing
+    else fitted beside it, so the embedding model and the chat model each waited to load,
+    and a model asked for at two sizes is unloaded and loaded again every time. One size
+    for every call (`ollama_num_ctx`, or what the model was found to need), grown only
+    when the prompt itself needs more, and then kept (`learn_window`)."""
+    if options and options.get("num_ctx"):
+        return options
+    base = max(int((cfg or {}).get("ollama_num_ctx") or 24576), learned_window(cfg, model))
+    chars = sum(len(str(m.get("content") or "")) for m in messages or [])
+    need = chars // 3 + 2048
+    size = base if need <= base else min(OLLAMA_WINDOW_CEILING, -(-need // 4096) * 4096)
+    if size > base:
+        learn_window(cfg, model, size)
+    return {**(options or {}), "num_ctx": size}
 
 
 async def complete(cfg: dict, model_id: str, prompt: str, system: str = "") -> str:

@@ -182,7 +182,7 @@ async def memory_text(cfg: dict, store, space_id: str = "", conversation_id: str
         if query and take > 0:
             try:
                 from . import knowledge
-                ranked = await knowledge.semantic_rank(cfg, rest, query)
+                ranked = await knowledge.quick_rank(cfg, rest, query)   # never holds the turn
                 if ranked is not None:
                     picked = ranked[:take]
             except Exception:
@@ -727,12 +727,18 @@ class Agent:
     def _gen_options(self) -> dict:
         # num_ctx must comfortably exceed the system prompt (memories + KG + skills +
         # MCP catalog + tool schemas can reach ~15k tokens) PLUS the reply
+        local = str(self.model or "").split("/", 1)[1] if str(self.model or "").startswith("ollama/") else ""
         opts = {
-            "num_ctx": int(self.cfg.get("ollama_num_ctx", 24576)),
+            # what this local model was found to need before, when that is more (ollama_windows)
+            "num_ctx": max(int(self.cfg.get("ollama_num_ctx", 24576)),
+                           providers.learned_window(self.cfg, local) if local else 0),
             "max_tokens": int(self.cfg.get("max_output_tokens", 16384)),
         }
         if getattr(self, "_ctx_up", False):
             opts["num_ctx"] = min(CTX_CEILING, max(opts["num_ctx"] * 2, int(getattr(self, "_ctx_need", 0) or 0)))
+            if local:
+                # kept in the config for this model, so the next long turn starts there
+                providers.learn_window(self.cfg, local, opts["num_ctx"])
         if self.cfg.get("ollama_think") is not None:
             opts["think"] = bool(self.cfg["ollama_think"])
         if getattr(self, "_think_off", False):

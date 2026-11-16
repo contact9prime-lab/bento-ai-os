@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.22 — 2026-11-16
+
+**A busy local model no longer holds your chats.**
+
+- **Chats stuck on "waking the agent".** Background jobs loaded a local model at its largest
+  window (262,144 tokens, 13 GB of a 16 GB card), and nothing else fitted beside it. Every call
+  to Ollama now says how big its window is, and it is the same size for all of them.
+- **A turn never waits on the embedding model.** Picking which memories to read waits three
+  seconds at most, then uses the newest, and leaves the model alone for a minute.
+- **A window that had to grow is kept.** When a local model needs a bigger window to fit a
+  prompt, that size is saved for that model under `ollama_windows` in your config.
+
 ## 0.9.20 — 2026-11-16
 
 **A company is addressed by name, and your agent decides who does the work.**

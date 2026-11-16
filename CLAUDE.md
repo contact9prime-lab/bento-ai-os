@@ -4311,6 +4311,22 @@ steerable=)`; `tests/test_task_desktops.py`. Four rules:
 - **A panel must not repeat its own window title.** `panelShell` reads the title bar above
   it and drops the label when they match — and keeps it where there is no title bar.
 
+## A local model is shared, so every call says its size and no turn waits on it
+
+`providers.ollama_window`/`learn_window`/`learned_window`, `knowledge.quick_rank`; `tests/test_ollama_jam.py`.
+Reported with two screenshots: Claude Code chats sat on "sent — waking the agent", and gemma4 read "loading
+model" for minutes. Measured on that machine: Ollama held qwen3.5:9b at a 262,144 window (13.3 of 16 GB), its
+log showed that window on ~1,000-token requests, and one embedding call took 2 min 30 s. Three rules:
+- **Every call to Ollama carries `num_ctx`.** `providers.complete` (extraction, summaries) sent none, and this
+  Ollama then loads the model at its own default. One size for all calls (`ollama_num_ctx`, or the model's
+  kept one), because a model asked for at two sizes is unloaded and loaded again each time.
+- **Nothing a turn waits on calls `semantic_rank`.** `quick_rank` gives it `QUICK_WAIT` seconds, falls back to
+  the newest memories, and backs off for `QUICK_BACKOFF`. `memory_text` runs BEFORE `turn_start` on a forwarded
+  turn (so does `mind_note`), which is why a brain that needs no local model waited 120 s on one. Replayed
+  against the jammed Ollama: 120.1 s to `turn_start` before, 3.1 s after. A status is sent before that wait.
+- **A window that grows is kept per model** (`ollama_windows`, a USER_KEY like `default_model`): by the agent
+  loop's "filled the window" retry and by `ollama_window`. It only grows, under `OLLAMA_WINDOW_CEILING`.
+
 ## The footprint is a feature: this may be a Raspberry Pi
 
 Measured, on a warm install with no browser attached: ~70 MB idle RSS, ~0.6% of

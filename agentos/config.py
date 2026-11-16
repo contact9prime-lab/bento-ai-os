@@ -294,6 +294,9 @@ DEFAULTS = {
     # ollama_think: null = model default; false = disable the thinking channel
     # (App Studio builds always disable it regardless).
     "ollama_num_ctx": 24576,
+    # model -> the window it had to be given to fit a prompt; kept so the next long turn
+    # starts there (providers.learn_window). Delete a model's line to reset it.
+    "ollama_windows": {},
     "ollama_think": None,
     "max_output_tokens": 16384,
     "build_max_output_tokens": 32768,
