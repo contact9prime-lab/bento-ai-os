@@ -4739,6 +4739,106 @@ async def api_face_wake_test(request: Request, lang: str = ""):
     return out
 
 
+# ---- a person's voice print: only an enrolled voice wakes the screen (voiceprint.py) ----
+
+def _voice_home():
+    return usersmod.home_for(usersmod.current() or "")
+
+
+@app.get("/api/voiceprint")
+async def api_voiceprint():
+    """Whether this person has a voice print and whether it filters. Never the print."""
+    from . import voiceprint
+    return voiceprint.status(state["cfg"], _voice_home())
+
+
+@app.post("/api/voiceprint/enroll")
+async def api_voiceprint_enroll(request: Request, lang: str = "", fresh: int = 0):
+    """One recording of the signed-in person saying the wake word, added to THEIR print.
+
+    The recording is turned into numbers here and thrown away. When this machine can
+    understand speech, the recording must contain a wake word, so the print is made from the
+    words that will wake it; an admin's recording that does also counts as the wake word
+    heard (the setup step's evidence), so one recording does both. `fresh=1` starts over."""
+    from . import face as facemod
+    from . import hearing, voiceprint
+    home = _voice_home()
+    if not voiceprint.ready():
+        return JSONResponse({"error": voiceprint.why_not(), "install": voiceprint.COMPONENT}, status_code=409)
+    wav = bytearray()
+    async for part in request.stream():
+        wav += part
+        if len(wav) > voiceprint.MAX_BYTES:
+            return JSONResponse({"error": "That was too long. Say the name and a short sentence."}, status_code=413)
+    wav = bytes(wav)
+    mcfg = state.machine_cfg()
+    text, heard, words = "", None, facemod.wake_words(mcfg)
+    if hearing.status(mcfg).get("engine") not in ("", None, "browser"):
+        try:
+            text = await hearing.transcribe(mcfg, wav, lang)
+        except hearing.HearError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        heard = facemod.addressed(text, words) if text.strip() else None
+        if not heard:
+            said = f"I heard “{text}”, but not " if text.strip() else "I heard sound but no words, and not "
+            return JSONResponse({"error": said + " or ".join(f"“{w}”" for w in words) + ". Say it again.",
+                                 "text": text, "words": words}, status_code=400)
+    loop = asyncio.get_running_loop()
+    try:
+        if fresh:
+            voiceprint.forget(home)
+        got = await loop.run_in_executor(None, voiceprint.enroll, home, wav)
+    except voiceprint.PrintError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    cfg = state["cfg"]
+    if got["enrolled"] and got["samples"] == voiceprint.NEED:
+        # the third recording completes the print, and the person asked for the filter
+        cfg["voiceprint"] = {**(cfg.get("voiceprint") if isinstance(cfg.get("voiceprint"), dict) else {}), "only": True}
+        cfgmod.save_config(cfg)
+        _ledger("voiceprint.enroll", "voiceprint:me", "a voice print was saved; only this voice wakes the screen")
+    if heard and usersmod.is_admin(usersmod.current() or ""):
+        engine = hearing.status(mcfg).get("engine") or ""
+        facemod.mark_heard(mcfg, text, heard[0], engine)
+        with usersmod.as_user(""):
+            cfgmod.save_config(mcfg)
+        if mcfg is not state["cfg"] and isinstance(state["cfg"], dict):
+            state["cfg"].setdefault("face", {})["heard"] = mcfg["face"]["heard"]
+        await state["broadcast"]({"type": "face"})
+    if not voiceprint.filtering(state["cfg"], home):
+        voiceprint.release()
+    return {**got, "text": text, "word": heard[0] if heard else "", "status": voiceprint.status(state["cfg"], home)}
+
+
+@app.put("/api/voiceprint")
+async def api_voiceprint_set(body: dict):
+    """Switch the filter: only my voice wakes the screen, or any voice does."""
+    from . import voiceprint
+    on = bool((body or {}).get("only"))
+    home = _voice_home()
+    if on and not voiceprint.enrolled(home):
+        return JSONResponse({"error": "Record your voice first: there is no print to filter with."}, status_code=400)
+    cfg = state["cfg"]
+    cfg["voiceprint"] = {**(cfg.get("voiceprint") if isinstance(cfg.get("voiceprint"), dict) else {}), "only": on}
+    cfgmod.save_config(cfg)
+    _ledger("voiceprint.only", "voiceprint:me", "only this voice wakes the screen" if on else "any voice wakes the screen")
+    return voiceprint.status(cfg, home)
+
+
+@app.delete("/api/voiceprint")
+async def api_voiceprint_forget():
+    """Delete this person's voice print. The filter goes off with it."""
+    from . import voiceprint
+    home = _voice_home()
+    had = voiceprint.forget(home)
+    cfg = state["cfg"]
+    cfg["voiceprint"] = {"only": False}
+    cfgmod.save_config(cfg)
+    if had:
+        _ledger("voiceprint.forget", "voiceprint:me", "the voice print was deleted")
+    voiceprint.release()
+    return voiceprint.status(cfg, home)
+
+
 @app.post("/api/speech/hear")
 async def api_speech_hear(request: Request, lang: str = ""):
     """One spoken utterance (16 kHz mono WAV from the kiosk face) to text, on whatever
@@ -4755,7 +4855,15 @@ async def api_speech_hear(request: Request, lang: str = ""):
         text = await hearing.transcribe(state.machine_cfg(), wav, lang)
     except hearing.HearError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
-    return {"text": text}
+    out = {"text": text}
+    # Only this person's voice wakes the screen (voiceprint.py): the verdict rides with the
+    # words, and the kiosk ignores a wake word from a voice that does not match. A filter,
+    # never a key: nothing here signs anybody in or decides what an agent may do.
+    from . import voiceprint
+    home = _voice_home()
+    if voiceprint.filtering(state["cfg"], home):
+        out["voice"] = await asyncio.get_running_loop().run_in_executor(None, voiceprint.match, home, wav)
+    return out
 
 
 @app.get("/api/profile")
@@ -5637,7 +5745,7 @@ async def api_agent_shareables():
         "mcp_servers": sorted((cfg.get("mcp_servers") or {})),
         "has_soul": bool(cfgmod.load_soul().strip()),
         "can_sign": agentbundle.signing_key_exists(),
-        "agent_name": cfg.get("agent_name") or "Aria",
+        "agent_name": cfg.get("agent_name") or "Bento",
         "well_known": agentbundle.WELL_KNOWN[0],
         "topic": agentbundle.DISCOVERY_TOPIC,
     }
@@ -12626,7 +12734,7 @@ async def api_setup_state():
         # set up from a hub: the hub chooses everything, so this screen asks nothing
         "first_run": cfgmod.is_first_run() and not hub,
         "from_hub": hub,
-        "agent_name": cfg.get("agent_name", "Aria"),
+        "agent_name": cfg.get("agent_name", "Bento"),
         "autonomy": cfg.get("autonomy", "balanced"),
         "default_model": cfg.get("default_model", ""),
         "ollama_models": local,
@@ -13294,7 +13402,7 @@ async def api_setup_say(body: dict):
     body = body or {}
     step = str(body.get("step") or "autonomy")
     name = (str(body.get("name") or "").strip()
-            or state["cfg"].get("agent_name") or "Aria")[:40]
+            or state["cfg"].get("agent_name") or "Bento")[:40]
     model = str(body.get("model") or "").strip()
     canned = SAY_FALLBACK.get(step, SAY_FALLBACK["done"]).format(name=name)
     cfg = state["cfg"]
@@ -13595,7 +13703,7 @@ async def api_app_context(request: Request):
     # what the app's AI actually answers on: the machine's brain or the provider model,
     # and the sentence when nothing does, so an app can say it instead of failing
     return {"app_id": principal.id, "app_name": a.get("name", ""),
-            "agent_name": cfg.get("agent_name", "Aria"),
+            "agent_name": cfg.get("agent_name", "Bento"),
             "model": model if engine == "aria" else engine, "brain": engine or "",
             "ai_ready": not why, "ai_note": why, "theme": "dark"}
 
@@ -14021,7 +14129,7 @@ async def api_world_checkin(body: dict):
         return _world_view(uid)
     v = _world_view(uid)
     w = v["world"]
-    system, prompt = worldmod.reply_prompt(w, cfg.get("agent_name") or "Aria", you)
+    system, prompt = worldmod.reply_prompt(w, cfg.get("agent_name") or "Bento", you)
     raw, who = await execmod.ask_once(cfg, system, prompt, timeout=60)
     reply = " ".join(str(raw or "").split())[:400]
     how = "brain" if reply else "words"
@@ -15983,7 +16091,7 @@ async def api_network_targets():
         out.append({"id": co["id"], "name": co["name"], "open": co["active"],
                     "departments": [{"name": d["name"], "desk": bool(d.get("desk")), "people": len(d["members"])}
                                     for d in companymod.departments(ccfg, state["store"]) if d["members"]]})
-    return {"lead": cfg.get("agent_name") or "Aria", "companies": out}
+    return {"lead": cfg.get("agent_name") or "Bento", "companies": out}
 
 
 @app.put("/api/network/ties/{label}/target")
@@ -16350,7 +16458,7 @@ def _me_on_map() -> dict:
         name = teamlink.machine_name(state.machine_cfg())
     except Exception:
         name = "this computer"
-    return {"name": name, "agent": cfg.get("agent_name") or "Aria"}
+    return {"name": name, "agent": cfg.get("agent_name") or "Bento"}
 
 
 def _look_choices() -> dict:

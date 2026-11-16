@@ -88,3 +88,17 @@ body.dev-mobile #apphub{top:calc(var(--mbh) + var(--safe-t,0px) + var(--tap) + 1
 body.dev-touch .dvs-m h2 .dvs-co{height:var(--tap)}
 .dvs-head h1 .dvs-for{font-size:var(--fs-sm);font-weight:600;color:var(--dim);margin-left:6px;vertical-align:middle}
 #pager .pgb[data-scene=apps] .pgs{color:var(--acc)}
+
+/* a voice print (24h-kiosk.js voicePrintHTML): the setup step and Settings → Voice draw one block */
+.vp{margin-top:14px;padding-top:12px;border-top:1px solid color-mix(in srgb,var(--txt) 12%,transparent);display:flex;flex-direction:column;gap:8px}
+.vp>b{font-size:var(--fs-md)}
+.vp p{margin:0}
+.vp .sp-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.vp-dots{display:flex;gap:8px}
+.vp-dots i{width:14px;height:14px;border-radius:50%;border:2px solid color-mix(in srgb,var(--txt) 34%,transparent)}
+.vp-dots i.on{background:var(--acc);border-color:var(--acc)}
+.vp-only{display:inline-flex;align-items:center;gap:8px;font-weight:600}
+body.dev-touch .vp-only{min-height:var(--tap)}
+/* in Settings the block lines up with the card's rows (16px), like every other row there */
+#s-vp{padding:0 16px 14px}
+#s-vp .vp{margin-top:0}

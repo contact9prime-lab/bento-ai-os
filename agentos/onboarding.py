@@ -156,7 +156,8 @@ STEPS: list[Step] = [
     # ticked: a kiosk whose microphone nobody tested is a kiosk that ignores everybody.
     Step("voice", "Wake it with your voice", icon="◎",
          blurb="Say its name and a question. This machine hears you, understands you, and "
-               "answers out loud, so you know the microphone and the wake word work.",
+               "answers out loud, so you know the microphone and the wake word work. Then "
+               "record your voice, so only you wake it.",
          produces="a wake word this machine has really heard, and a voice that answers",
          panel="look"),
     Step("flow", "Give the specialist a mission", icon="⚙", needs=("agent",),
@@ -256,7 +257,7 @@ def _has_model(cfg: dict) -> tuple[bool, str]:
     return False, ""
 
 
-DEFAULT_NAME = "Aria"
+DEFAULT_NAME = "Bento"
 
 
 def _confirmed(cfg: dict) -> set:
@@ -379,7 +380,17 @@ def state(cfg: dict, store=None, show_all: bool = False) -> dict:
         if sid == "voice":
             from . import face as facemod
             h = facemod.heard(cfg)
-            return ("done", f"heard “{h.get('word') or ''}”") if h else ("todo", "")
+            # a person who is not an admin cannot test the machine's wake word, and proves
+            # the same thing with their own voice print (voiceprint.py)
+            vp = False
+            try:
+                from . import users as usersmod, voiceprint
+                vp = voiceprint.enrolled(usersmod.home_for(usersmod.current() or ""))
+            except Exception:
+                vp = False
+            if h:
+                return "done", f"heard “{h.get('word') or ''}”" + (" · voice print saved" if vp else "")
+            return ("done", "voice print saved") if vp else ("todo", "")
         if sid == "look":
             d = cfg.get("desktop") or {}
             if d.get("wallpaper_preset") or d.get("theme") or "voice_tts" in d:

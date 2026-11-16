@@ -133,7 +133,7 @@ async def run_tui():
         mine = await get("/api/config")        # THIS person's agent, not the machine's
         model = (mine.get("default_model") or cfg.get("default_model", "")
                  or (models.get("models", [{}])[0] or {}).get("id", ""))
-        name = mine.get("agent_name") or cfg.get("agent_name", "Aria")
+        name = mine.get("agent_name") or cfg.get("agent_name", "Bento")
         _banner(sysinfo, model, name)
 
         cid = None

@@ -168,7 +168,7 @@ def run_cli_wizard() -> None:
     cfg = cfgmod.load_config()
     print("\n▲ AgentOS first-time setup — five quick questions.\n")
 
-    name = _ask("1/5  Name your agent", cfg.get("agent_name") or "Aria")
+    name = _ask("1/5  Name your agent", cfg.get("agent_name") or "Bento")
 
     local = asyncio.run(providers.ollama_models(cfg["providers"]["ollama"]["base_url"]))
     model, prov_choices = "", {}

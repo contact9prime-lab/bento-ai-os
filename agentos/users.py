@@ -741,7 +741,10 @@ USER_KEYS = ("channels", "telegram", "whatsapp", "mcp_servers", "credentials", "
              "device_alarms",
              # which of MY companies each of my machines is for (devboard.py). Companies are
              # mine, so the mapping is; it changes what a board shows and reaches nothing.
-             "device_companies")
+             "device_companies",
+             # whether only MY voice wakes the screen (voiceprint.py). The print is a file
+             # in my own home; this is the switch for it.
+             "voiceprint")
 
 
 def machine_view(cfg: dict) -> dict:

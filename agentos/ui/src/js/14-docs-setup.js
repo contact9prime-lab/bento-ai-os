@@ -57,7 +57,7 @@ function docsAsk(text){
    over: each remaining question arrives as a streamed in-character message
    (POST /api/setup/say) with inline choice chips. Offline-safe end to end —
    every line has a canned fallback baked in here too. */
-let WIZ={agent_name:'Aria',autonomy:'balanced',default_model:'',providers:{},autostart:true,
+let WIZ={agent_name:'Bento',autonomy:'balanced',default_model:'',providers:{},autostart:true,
   open_at_login:true,wallpaper_preset:'',voice:false,locale:null,step:1,info:null,convo:[],convoAt:0};
 async function checkSetup(){
   try{
@@ -66,7 +66,7 @@ async function checkSetup(){
     // the wizard branches on PLATFORM.mode (de vs hosted); init loads it in
     // parallel with us, so fetch it ourselves if it hasn't landed yet
     try{if(!Object.keys(PLATFORM.capabilities||{}).length)PLATFORM=await(await fetch('/api/platform')).json()}catch(e){}
-    WIZ.info=s;WIZ.agent_name=s.agent_name||'Aria';
+    WIZ.info=s;WIZ.agent_name=s.agent_name||'Bento';
     // The arc, not the old four-question form. One component for the first run and
     // for Settings → Run setup again, so the two can never drift.
     if(typeof obShow==='function'){obShow({});return}
@@ -177,7 +177,7 @@ function wizRender(){
 }
 function wizDots(on){return `<div class="wiz-dots">${[1,2,3].map(n=>`<span class="${n<=on?'on':''}"></span>`).join('')}</div>`}
 function wizCollect(){
-  if(WIZ.step===1&&$('#wz-name'))WIZ.agent_name=$('#wz-name').value.trim()||'Aria';
+  if(WIZ.step===1&&$('#wz-name'))WIZ.agent_name=$('#wz-name').value.trim()||'Bento';
   if(WIZ.step===2&&document.querySelector('input[name="wz-model"]')){
     const v=document.querySelector('input[name="wz-model"]:checked')?.value||'';
     if(v==='cloud'){const p=$('#wz-prov').value,k=$('#wz-key').value.trim(),m=$('#wz-cmodel').value.trim();

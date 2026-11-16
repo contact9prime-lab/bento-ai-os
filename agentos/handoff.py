@@ -421,7 +421,7 @@ def _client_js() -> str:
     return src[:cut] if cut > 0 else src
 
 
-def page_html(e: dict | None, ticket: str, road: str, agent: str = "Aria", theirs: bool = True) -> str:
+def page_html(e: dict | None, ticket: str, road: str, agent: str = "Bento", theirs: bool = True) -> str:
     """The link's page, for somebody already signed in. Everything on it that came from
     elsewhere (a site's name, the agent's name) is escaped; the script draws with text nodes."""
     def card(head: str, body: str) -> str:
@@ -561,7 +561,7 @@ def routes():
 
     async def landing(request):
         e = _find(request.path_params["ticket"])
-        agent = str((cfg() or {}).get("agent_name") or "Aria")
+        agent = str((cfg() or {}).get("agent_name") or "Bento")
         theirs = bool(e and _theirs(e, request))
         code = 404 if not e else 200 if (theirs or e["state"] == "ended") else 403
         return HTMLResponse(page_html(e, request.path_params["ticket"], _road_of(request), agent, theirs),

@@ -613,7 +613,7 @@ class WhatsAppBridge(usersmod.Scoped):
             cfgmod.save_config(self.cfg)
             self.store.wa_set_allowed(wa_id, 1)
             chat["allowed"] = 1
-            agent = self.cfg.get("agent_name") or "Aria"
+            agent = self.cfg.get("agent_name") or "Bento"
             self.store.log("whatsapp", f"paired: owner = {name} ({wa_id})")
             await self.send(f"▲ Linked. I'm {agent}, the agent on your machine — same "
                             f"memory and the same tools as at the desk. Send me "
@@ -736,7 +736,7 @@ class WhatsAppBridge(usersmod.Scoped):
         turn: a picture of the page and one question (cdpbrowser.tool_wait). No button: a
         reply of "done" carries on, which works on both transports."""
         from . import cdpbrowser as _cdpb
-        text = _cdpb.phone_words(att, self.cfg.get("agent_name") or "Aria", button=False,
+        text = _cdpb.phone_words(att, self.cfg.get("agent_name") or "Bento", button=False,
                                  offer=_cdpb.phone_offer(att))
         if png:
             out = await self.send_photo(png, text, wa_id)

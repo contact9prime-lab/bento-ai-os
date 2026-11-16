@@ -50,7 +50,7 @@ def logical(cfg: dict, store, ties: list[dict] | None = None) -> dict:
     cfg = cfg or {}
     by = _agents(store, cfg)
     lead_key = next((k for k, a in by.items() if a.get("master")), "")
-    lead = {**_person(by.get(lead_key), cfg.get("agent_name") or "Aria"), "lead": True}
+    lead = {**_person(by.get(lead_key), cfg.get("agent_name") or "Bento"), "lead": True}
     placed: set = set()
     companies = []
     for co in companymod.companies(cfg):
@@ -123,7 +123,7 @@ def access(cfg: dict, store, lk: dict) -> dict:
     t = tiesmod.target_of(lk)
     label = lk.get("label") or ""
     by = _agents(store, cfg)
-    lead_name = cfg.get("agent_name") or "Aria"
+    lead_name = cfg.get("agent_name") or "Bento"
     zero = zeromod.ships_to(lk)
     out = {"talks_to": t, "words": tiesmod.target_words(cfg, t), "caution": "", "reach": [],
            "tools": [], "asks": [], "grants": []}
