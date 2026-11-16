@@ -34,6 +34,8 @@ deckLoad();buildDeck();
 paintSpaceChip();
 /* the tray opens Control Center as a popover (macOS-style), not an app window */
 $('#tray-ctl').onclick=e=>{e.stopPropagation();toggleControlCenter()};
+$('#tray-net').onclick=e=>{e.stopPropagation();toggleTrayNet()};
+trayNetLoad(false);
 $('#tray-voice').onclick=()=>jarvisMode(!JARVIS.on);
 $('#tray-voice').innerHTML=svgMic(14);
 /* power & session menu — AgentOS as the desktop environment carries real session

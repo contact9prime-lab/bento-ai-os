@@ -63,6 +63,8 @@ command — the exact install command in Settings → Executors.
 | `mcp_servers` | connected MCP tool servers |
 | `telegram` | `{ enabled, bot_token, owner_chat_id }` |
 | `widgets` | pinned desktop widgets |
+| `ollama_num_ctx` | the context window every call to a local (Ollama) model asks for (default `24576`). One size for all calls, so the model is loaded once |
+| `ollama_windows` | `{ model: tokens }`, written by Bento. When a prompt didn't fit a local model's window, the bigger size it was given is kept here and used from then on. Delete a model's line to reset it |
 | `security` | `{ taint }` — what a turn may do after reading untrusted content (a fetched page, an MCP reply): `ask` (default, holds risky steps for you even at full autonomy) \| `strict` (refuses them) \| `off`. See [security.md](security.md#the-taint-ceiling-what-a-fetched-page-is-allowed-to-cause) |
 | `history` | `{ tool_trace, trace_chars, compact, budget_tokens, model }` — how a conversation is replayed each turn. `tool_trace` replays what earlier turns actually did; `compact` summarises turns that no longer fit the window (off = they are dropped, and you are told); `budget_tokens` 0 derives the budget from the model (`ollama_num_ctx` for local models) |
 | `tools` | `{ scope, budget, window_share, cloud_context }` — how many of the ~90 tools are offered per step. `scope: "all"` (default) never narrows; `auto` narrows only on a tight context window. Measured to score slightly worse on a local 9B, so it ships off — check your own model with `agentos eval` |

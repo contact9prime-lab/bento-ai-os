@@ -220,6 +220,28 @@ async def semantic_rank(cfg: dict, mems: list[dict], query: str) -> list[dict] |
     return [m for _, m in scored] + unscored
 
 
+# A turn never waits on the embedding model. `quick_rank` is the ranking for a prompt that
+# is about to be sent: a few seconds at most, and after a miss it is not tried again for a
+# minute, so a busy or stuck Ollama costs one short wait and not one per message.
+QUICK_WAIT = 3.0
+QUICK_BACKOFF = 60.0
+_quick = {"until": 0.0}
+
+
+async def quick_rank(cfg: dict, mems: list[dict], query: str, wait: float | None = None):
+    """`semantic_rank`, bounded: None (use the newest) when the embedding model does not
+    answer within `wait`. Measured on the owner's machine with the GPU full: one embedding
+    took 2 min 30 s, and the chat turn that asked for it sat on "waking the agent" until
+    the 120 s timeout, on a machine whose brain was Claude Code and needed no local model."""
+    if time.time() < _quick["until"]:
+        return None
+    try:
+        return await asyncio.wait_for(semantic_rank(cfg, mems, query), wait or QUICK_WAIT)
+    except Exception:
+        _quick["until"] = time.time() + QUICK_BACKOFF
+        return None
+
+
 async def backfill_embeddings(cfg: dict, store, batch: int = 64) -> int:
     """Embed any memories that don't have a vector yet. Returns how many were embedded."""
     done = 0

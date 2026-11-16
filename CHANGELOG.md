@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.9.23 — 2026-11-16
+## 0.9.25 — 2026-11-16
 
 **Send a chat to your phone.** Chat has a ➤ Phone button: carry the open chat on in Telegram or WhatsApp,
 or send its last answer or its story there. You pick the chat, from your own account's chats only. The Stage
@@ -8,6 +8,32 @@ has the same button for a story.
 
 **A phone chat's sessions are listed on the desktop.** Chat's Channels tab groups every session under its chat,
 marks the one open on the phone, and ＋ starts another from the desk.
+
+## 0.9.24 — 2026-11-16
+
+No release notes were written for this one; the commits since 0.9.23 are what changed (`bento update` lists them).
+
+## 0.9.23 — 2026-11-16
+
+**A busy local model no longer holds your chats.**
+
+- **Chats stuck on "waking the agent".** Background jobs loaded a local model at its largest
+  window (262,144 tokens, 13 GB of a 16 GB card), and nothing else fitted beside it. Every call
+  to Ollama now says how big its window is, and it is the same size for all of them.
+- **A turn never waits on the embedding model.** Picking which memories to read waits three
+  seconds at most, then uses the newest, and leaves the model alone for a minute.
+- **A model already in memory is not loaded again.** A call uses the window the model is
+  running with. Before, two callers with two sizes made Ollama unload and load it each time.
+- **A window that had to grow is kept.** When a local model needs a bigger window to fit a
+  prompt, that size is saved for that model under `ollama_windows` in your config.
+- **The menu bar fits a smaller screen, and carries on down the right edge.** At 1366 wide the space chip
+  lay over Window and Help, and the brand and the clock wrapped. Nothing in the bar wraps or shrinks now.
+  When it runs out of room the icons (mic, network, sound and battery, notifications) move into a rail on
+  the right edge, and windows stop at it; then the date goes and your chip and the brain move there too.
+  Only after that does it hide things, and last it folds the app's menus into one ☰ list.
+- **The network is on the menu bar.** Wi-Fi with its signal, wired, or Offline in amber, read from
+  NetworkManager. Click for the networks in range and join one (admin only). From another device it says
+  it's the machine's network and asks before switching. When the network comes back, one toast says so.
 
 ## 0.9.22 — 2026-11-16
 

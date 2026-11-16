@@ -699,6 +699,9 @@ USER_KEYS = ("channels", "telegram", "whatsapp", "mcp_servers", "credentials", "
              "desktop", "widgets", "shortcuts", "spaces",
              "agent_name", "soul", "onboarding", "setup_complete",
              "autonomy", "default_model", "brain_fallbacks", "max_steps", "workspace",
+             # the window a local model was found to need (providers.learn_window): learned
+             # by this person's turns, so it saves with them, as their default model does
+             "ollama_windows",
              "memory", "history", "tools", "steer_queued_messages",
              # whom I trust: added registry publisher keys and the first-install
              # pins of apps I installed. Personal by the USER_KEYS test — trusting
