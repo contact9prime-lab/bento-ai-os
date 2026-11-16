@@ -7772,6 +7772,95 @@ body.dev-touch .vp-only{min-height:var(--tap)}
   .whotab tr.ct-sub>td{display:block;padding:0 0 8px 10px;text-align:left}
   .ct-act{width:100%}
 }
+/* ---- the menu bar fits its screen (04g-menubar-fit.js) ----
+   Nothing in the bar shrinks or wraps: a squeezed item slid under its neighbour (the
+   space chip over Window and Help at 1366 wide) and a wrapped one changed the band's
+   height. The spacer is the only thing that gives; past that, menubarFit hides in order. */
+#menubar>*,#tray>*{flex-shrink:0;white-space:nowrap}
+#menubar>#mb-spacer{flex:1 1 0;min-width:0}
+#menubar #mbmenus{min-width:auto}
+.spchip .spname{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#mbmenus .mbm-all{display:none;font-size:var(--fs-md)}
+#menubar.f1 #tbclock .dt{display:none}
+#menubar.f2 #mb-name{display:none}
+#menubar.f3 #mb-user .badge,#menubar.f3 #fwdchip .fwdmdl{display:none}
+#menubar.f4 .spchip .spname{max-width:150px}
+#menubar.f5 #tray-ctl .pct,#menubar.f5 #mb-user .nm{display:none}
+#menubar.f5 #mb-user{padding-right:3px}
+#menubar.f6 .spchip .spname{max-width:72px}
+#menubar.f7 #mbapp{display:none}
+#menubar.f8 #mbmenus button:not(.mbm-all){display:none}
+#menubar.f8 #mbmenus .mbm-all{display:inline-block}
+/* past here only a phone-sized bar: the brain becomes its dot (a tap still opens it), the
+   space chip goes (the Spaces app has it), then your own chip (the power menu says who) */
+#menubar.f9 #fwdchip{font-size:0;gap:0;padding:4px 7px}
+#menubar.f9 #fwdchip::before{margin:0}
+body:not(.immersive) #menubar.f9 #fwdchip::after{content:'';width:7px;height:7px;border-radius:50%;background:currentColor}
+#menubar.f10 #mbspace{display:none}
+#menubar.f11 #mb-user{display:none}
+/* a heading inside one list (the folded menus) */
+#ctxmenu .mh{padding:6px 10px 2px;font-size:var(--fs-2xs);font-weight:700;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--dim2)}
+
+/* ---- the network button and its panel (22b-traynet.js) ---- */
+#tray-net{display:flex;align-items:center;gap:5px;padding:2px 6px;border-radius:var(--r-sm);color:var(--txt)}
+#tray-net[hidden]{display:none}
+#tray-net:hover{background:rgba(255,255,255,.1)}
+#tray-net.off{color:var(--warn,#f5a524)}
+#tray-net .tn-off{font-size:var(--fs-2xs);font-weight:700}
+#netpop{position:fixed;z-index:9600;display:none;width:300px;max-height:70vh;overflow:auto;right:8px;
+  top:calc(var(--mbh) + 4px);background:var(--glass);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+  border:1px solid var(--line);border-radius:var(--r-md);padding:8px;box-shadow:var(--el-4)}
+#netpop.show{display:block}
+#netpop .tn-head{display:flex;align-items:center;gap:8px;padding:2px 4px 6px;font-size:var(--fs-sm)}
+#netpop .tn-head b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#netpop .tn-scan{font-size:var(--fs-xs);color:var(--dim);padding:3px 8px;border-radius:var(--r-sm)}
+#netpop .tn-scan:hover{background:var(--bg4);color:var(--txt)}
+#netpop .tn-note{font-size:var(--fs-xs);color:var(--dim);margin:4px 4px 6px}
+#netpop .tn-warn{font-size:var(--fs-xs);margin:2px 4px 8px;padding:7px 9px;border-radius:var(--r-sm);
+  color:var(--txt);background:color-mix(in srgb,var(--warn,#f5a524) 16%,transparent);
+  border:1px solid color-mix(in srgb,var(--warn,#f5a524) 40%,transparent)}
+#netpop .tn-list{display:flex;flex-direction:column;gap:2px}
+#netpop .tn-n{display:flex;align-items:center;gap:9px;width:100%;min-height:34px;padding:6px 8px;
+  border-radius:var(--r-sm);text-align:left;color:var(--txt);font-size:var(--fs-sm)}
+#netpop .tn-n:not([disabled]):hover{background:var(--bg4)}
+#netpop .tn-n[disabled]{cursor:default}
+#netpop .tn-n.on{background:color-mix(in srgb,var(--acc) 14%,transparent)}
+#netpop .tn-n:not(.on)[disabled]{opacity:.6}
+#netpop .tn-s{display:flex;color:var(--dim)}
+#netpop .tn-nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#netpop .tn-n small{color:var(--dim);font-size:var(--fs-2xs)}
+#netpop .tn-join{display:flex;flex-direction:column;gap:8px;padding:4px}
+#netpop .tn-name{font-weight:600}
+#netpop .tn-pw{width:100%}
+#netpop .tn-row{display:flex;gap:8px;justify-content:flex-end}
+#netpop .tn-err{color:var(--err);font-size:var(--fs-xs);margin:0}
+body.dev-mobile #netpop{left:8px;right:8px;width:auto}
+body.dev-mobile #tray-net{min-width:var(--tap,40px);min-height:var(--tap,40px);justify-content:center}
+
+/* ---- the rail: the menu bar continued down the right edge (04g-menubar-fit.js) ---- */
+:root{--railw:46px}
+#mbrail{position:fixed;z-index:8999;top:var(--mbh);right:0;bottom:0;width:var(--railw);
+  display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 0;
+  background:rgba(13,16,21,.72);backdrop-filter:blur(24px) saturate(1.5);-webkit-backdrop-filter:blur(24px) saturate(1.5);
+  border-left:1px solid var(--hairline);color:var(--txt);font-size:var(--fs-sm)}
+#mbrail[hidden]{display:none}
+:root[data-theme=light] #mbrail{background:rgba(255,255,255,.72)}
+body.mb-rail #desktop{right:var(--railw)}
+#mbrail>*{flex-shrink:0;white-space:nowrap}
+#mbrail>button,#mbrail #tray-ctl{width:34px;min-height:32px;justify-content:center;padding:4px 0;border-radius:var(--r-sm)}
+#mbrail #tray-ctl{flex-direction:column;gap:6px;padding:6px 0}
+#mbrail #tray-ctl>span{flex-direction:column;gap:2px!important}
+#mbrail #tray-ctl .pct{font-size:9px!important;opacity:.8}
+#mbrail #mb-user .nm,#mbrail #mb-user .badge,#mbrail #tray-net .tn-off{display:none}
+#mbrail #mb-user{padding:0;border-radius:999px;width:auto;min-height:0;background:none;border:none}
+#mbrail #mb-user .ini{width:26px;height:26px}
+#mbrail #fwdchip{font-size:0;gap:0;padding:0;width:26px;height:26px;min-height:0;border-radius:999px;justify-content:center}
+#mbrail #fwdchip::before{margin:0}
+body:not(.immersive) #mbrail #fwdchip::after{content:'';width:8px;height:8px;border-radius:50%;background:currentColor}
+#mbrail #tray-net.off{background:color-mix(in srgb,var(--warn,#f5a524) 18%,transparent)}
+/* what opens from the rail opens beside it, not over it */
+body.mb-rail #ccpop,body.mb-rail #netpop,body.mb-rail #notifpanel,body.mb-rail #powermenu{right:calc(var(--railw) + 8px)}
 </style>
 </head>
 <body>
@@ -7794,6 +7883,8 @@ body.dev-touch .vp-only{min-height:var(--tap)}
   <button id="deskbtn" type="button" aria-haspopup="dialog" title="What this desktop shows"></button>
   <div id="tray">
     <button id="tray-voice" title="Voice mode — Alt+J"></button>
+    <!-- the machine's network: drawn only where NetworkManager can answer (22b-traynet.js) -->
+    <button id="tray-net" type="button" hidden title="Network"></button>
     <button id="tray-ctl" title="Sound & battery — click for Quick Settings"></button>
     <button id="tray-bell" title="Notifications"></button>
     <div id="spin" title="agent is working"></div>
@@ -7813,6 +7904,8 @@ body.dev-touch .vp-only{min-height:var(--tap)}
     <button id="tray-power" data-ic="power" title="Power &amp; session — lock, log out, restart, power off">⏻</button>
   </div>
 </div>
+<!-- the menu bar's right edge, used when the bar runs out of room (04g-menubar-fit.js) -->
+<div id="mbrail" role="toolbar" aria-label="Menu bar, continued" hidden></div>
 <div id="powermenu">
   <!-- Only shown on a machine that has accounts. "Sign out" on a single-user
        install would be a button that locks you out of your own laptop with
@@ -14659,6 +14752,8 @@ function showCtxItems(e,items,opts){
   m.innerHTML='';
   items.forEach((it,i)=>{
     if(it===null){m.appendChild(document.createElement('hr'));return}
+    // a heading inside one list (the folded menu bar's menus): words, not a button
+    if(it.head){const h=document.createElement('div');h.className='mh';h.textContent=it.label;m.appendChild(h);return}
     const b=document.createElement('button');b.dataset.i=i;
     if(it.danger)b.style.color='var(--err)';
     b.textContent=it.label;
@@ -16014,6 +16109,11 @@ function raiseShell(on){
   return fetch('/api/shell/raise',{method:'POST',quiet:true,headers:{'Content-Type':'application/json'},
     body:JSON.stringify({on:on!==false})}).catch(()=>{});
 }
+function mbFolded(menus){
+  const out=[];
+  menus.forEach(([title,items],i)=>{if(i)out.push(null);out.push({label:title,head:true});out.push(...items)});
+  return out;
+}
 /* ---- the menu bar renders the focused window's menus ---- */
 function buildAppMenus(){
   const box=$('#mbmenus');if(!box)return;
@@ -16039,7 +16139,10 @@ function buildAppMenus(){
   paintMenuBar(box,menus,()=>(activeWin()===w?menuStd(w):menus));
 }
 function paintMenuBar(box,menus,live){
-  box.innerHTML=menus.map(([title],i)=>`<button data-i="${i}">${esc(title)}</button>`).join('');
+  // The last button is the same menus folded into one list. CSS shows it only when the
+  // bar has run out of room (menubarFit's last step), so folding never repaints the bar.
+  box.innerHTML=menus.map(([title],i)=>`<button data-i="${i}">${esc(title)}</button>`).join('')
+    +`<button class="mbm-all" data-all="1" aria-label="Menus" title="Menus">☰</button>`;
   /* The dropdown is a popover with the title as its anchor. Before the manager,
      the title's click opened the menu and the document-level "click outside the
      context menu" listener closed it in the SAME event — so no menu ever opened
@@ -16053,7 +16156,7 @@ function paintMenuBar(box,menus,live){
       box.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
       let set=menus;
       try{set=live()||menus}catch(e){}
-      const items=(set[+b.dataset.i]||menus[+b.dataset.i])[1];
+      const items=b.dataset.all?mbFolded(set):(set[+b.dataset.i]||menus[+b.dataset.i])[1];
       showCtxItems({clientX:r.left,clientY:r.bottom+2,preventDefault(){}},items,
         {anchor:b,close:()=>b.classList.remove('on')});
     };
@@ -16545,6 +16648,95 @@ function renderAppWindow(body,w){
     onMessage:m=>{if(m.type==='ended'){body.innerHTML=emptyBox('This app has closed','Open it again from the Apps launcher.')}},
     onError:t=>{body.innerHTML=emptyBox('This app is not open any more',esc(t))}});
 }
+/* ================= the menu bar fits its screen =================
+   Reported with a 1366x768 screenshot: the space chip sat on top of Window and Help,
+   "Bento Box AI" wrapped onto two lines and the clock onto three. Every part of the bar
+   was a flex item that could shrink, so the menus shrank under their neighbours instead
+   of anything giving way.
+
+   Now nothing in the bar shrinks or wraps (44-menubar-fit.css). When it does not fit, the
+   icon controls move to a rail on the right edge first (below), and only if the bar still
+   does not fit does it let go of things in ONE order, least useful first, each step a class on #menubar:
+     f1 the date beside the clock          f5 battery percent, your name (initial stays)
+     f2 the words "Bento Box AI"            f6 the space name shortened further
+     f3 the ADMIN tag and the model name    f7 the focused app's name (its menus stay)
+     f4 the space name, to 150px            f8 the app's menus folded into one ☰ list
+   and on a phone-sized bar: f9 the brain chip as its dot, f10 the space chip, f11 your chip.
+   Every one is still a tooltip or a click away; nothing is removed from the machine.
+
+   Measured, never guessed: each pass starts from nothing hidden and adds a step while
+   the bar is wider than the screen. It runs on resize and when anything in the bar
+   changes (a window takes focus, the clock ticks, a chip appears); it only changes
+   classes on #menubar itself, which the observer does not watch, so it cannot loop.
+
+   SUI: the bar's height is reported to the compositor (00-sui.js); nowrap keeps it one
+   line, which is the same height on every screen. TUI: not applicable, a terminal has
+   no menu bar. A phone keeps its own layout (15-responsive.css); this only ever hides. */
+/* The right edge first (asked for as "use the right part of the screen, like the tool bar
+   extending to the right on the edge"): before anything is hidden, the bar's icon controls
+   (mic, network, sound and battery, notifications, your account, the brain) move into a rail
+   down the right edge of the screen, and the top bar keeps the menus, the space and the
+   brand. The desktop gives the rail its width (body.mb-rail #desktop), so a window, a
+   maximised one too, stops at the rail instead of lying under it. The elements are MOVED,
+   not copied: same ids, same handlers, one of each.
+   Only where the page owns the screen's edges: not in SUI (the compositor reserves the top
+   and bottom bands only, so native windows would cover a rail; there the bar hides instead),
+   not on a phone (its own layout, 15-responsive.css) and not in the kiosk. */
+/* Two stages: the plain icons go first; your chip and the brain chip keep their words in the
+   top bar and move only if the bar still does not fit (the first cut moved all six at once,
+   and a 1366 screen showed a P and a dot beside 330px of empty bar). */
+var MBRAIL_STAGES=[['tray-voice','tray-net','tray-ctl','tray-bell'],['mb-user','fwdchip']];
+var MBRAIL_IDS=MBRAIL_STAGES[0].concat(MBRAIL_STAGES[1]);
+var MBFIT={n:0,max:11,raf:0,rail:0,obs:null};
+function menubarRailAllowed(){
+  const b=document.body.classList;
+  if(b.contains('dev-mobile')||b.contains('kiosk'))return false;
+  try{if(typeof suiActive==='function'&&suiActive())return false}catch(e){}
+  try{if(localStorage.getItem('menubar.rail')==='0')return false}catch(e){}
+  return !!document.getElementById('mbrail');
+}
+function menubarRail(stage){
+  const on=stage>0,ids=on?MBRAIL_STAGES.slice(0,stage).flat():[];
+  const rail=document.getElementById('mbrail'),tray=document.getElementById('tray');
+  if(!rail||!tray)return;
+  ids.forEach(id=>{const e=document.getElementById(id);if(e&&e.parentNode!==rail)rail.appendChild(e)});
+  {
+    const spin=document.getElementById('spin'),dot=document.getElementById('statdot');
+    MBRAIL_IDS.filter(id=>!ids.includes(id)).forEach(id=>{const e=document.getElementById(id);if(!e||e.parentNode===tray)return;
+      const before=(id==='mb-user'||id==='fwdchip')?dot:spin;
+      tray.insertBefore(e,before&&before.parentNode===tray?before:null)});
+  }
+  rail.hidden=!on;
+  document.body.classList.toggle('mb-rail',on);
+  MBFIT.rail=stage;
+}
+function menubarFit(){
+  MBFIT.raf=0;
+  const mb=document.getElementById('menubar');if(!mb)return;
+  const set=n=>{for(let i=1;i<=MBFIT.max;i++)mb.classList.toggle('f'+i,i<=n)};
+  const over=()=>mb.scrollWidth>mb.clientWidth+1;
+  let n=0;set(0);
+  menubarRail(0);
+  // the icons to the edge, then the date, then the two chips, then the steps above
+  const rail=menubarRailAllowed();
+  if(rail&&over())menubarRail(1);
+  if(over()){n=1;set(1)}
+  if(rail&&over())menubarRail(2);
+  while(n<MBFIT.max&&over()){n++;set(n)}
+  MBFIT.n=n;
+  // what this pass moved is not news: drop it, or the observer would run the fit again
+  if(MBFIT.obs)MBFIT.obs.takeRecords();
+}
+function menubarFitSoon(){if(!MBFIT.raf)MBFIT.raf=requestAnimationFrame(menubarFit)}
+(function(){
+  const mb=document.getElementById('menubar');if(!mb)return;
+  try{new ResizeObserver(menubarFitSoon).observe(mb)}catch(e){addEventListener('resize',menubarFitSoon)}
+  const opts={childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['hidden']};
+  try{MBFIT.obs=new MutationObserver(menubarFitSoon);MBFIT.obs.observe(mb,opts);
+    const rail=document.getElementById('mbrail');if(rail)MBFIT.obs.observe(rail,opts)}catch(e){}
+  if(document.fonts&&document.fonts.ready)document.fonts.ready.then(menubarFitSoon);
+  menubarFitSoon();
+})();
 /* ================= apps ================= */
 const APPS={
   chat:{id:'chat',title:'Agent Chat',icon:'',w:920,h:620,desc:'Talk to your machine',
@@ -24747,8 +24939,10 @@ async function loadSpaces(force){
 function spaceChipHTML(){
   const id=activeSpace(),s=spaceById(id);
   const dot=s&&s.colour?`<span class="spdot" style="background:${esc(s.colour)}"></span>`:'';
-  return `<button class="spchip" onclick="spaceMenu(event)" title="Which project you are working in. Memory and facts you save belong to it; what is true everywhere stays shared.">
-    ${dot}${esc(s?((s.icon?s.icon+' ':'')+s.name):'Everywhere')}</button>`;
+  const name=s?((s.icon?s.icon+' ':'')+s.name):'Everywhere';
+  // the name is its own span: on a narrow bar it is shortened with an ellipsis (menubarFit)
+  return `<button class="spchip" onclick="spaceMenu(event)" title="${esc(name)}: the project you are working in. Memory and facts you save belong to it; what is true everywhere stays shared.">
+    ${dot}<span class="spname">${esc(name)}</span></button>`;
 }
 
 async function paintSpaceChip(){
@@ -31630,6 +31824,132 @@ async function takeScreenshot(area){
   const d=await r.json();toast(d.ok?'📸 saved: '+d.path.split('/').pop():(d.error||'screenshot failed'));
 }
 
+/* ================= the network, on the menu bar =================
+   Asked for as "it is not showing a wifi option on the top". The kiosk could already join
+   Wi-Fi (24h-kiosk.js) and Quick Settings only sent you to the system's own settings, so a
+   desktop running Bento, where the system's network menu may not exist, had no way to see
+   or change its network. This is the same /api/wifi (wifi.py, NetworkManager) on the bar.
+
+   What it says, all read from the machine:
+     - the signal of the network it is on, or wired, or Offline in amber. Offline also
+       says what that costs: a cloud brain cannot answer until it is back.
+     - when it comes back, one toast naming the network, so a dropped link is noticed both
+       ways without anybody watching the icon.
+   Joining is the admin's (the route checks; the page says it before asking for a
+   password). From another device it warns first: that device reaches Bento over the
+   network being changed, so it may lose the page.
+
+   It is the MACHINE's network, so a phone or laptop looking at Bento sees the server's
+   Wi-Fi, and the panel says so. No nmcli here (a Mac, a container) and the button is not
+   drawn at all: there is nothing it could do. TUI: `bento wifi`. SUI: a page element,
+   nothing touches the compositor. Polled once a minute while the page is visible; a scan
+   happens only while the panel is open. */
+var TRAYNET={st:null,nets:null,open:false,pick:'',err:'',busy:false,t:0,was:null,scanning:false};
+var TRAYNET_MS=60000;
+function trayNetIcon(st){
+  const w=st&&st.wifi,on=w&&w.state==='connected';
+  if(st&&!st.online&&!(st.wired))return `<svg width="16" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2.5 9.5a14 14 0 0 1 19 0M6 13a9 9 0 0 1 12 0M9.5 16.5a4 4 0 0 1 5 0" opacity=".45"/><path d="M4 3l16 18"/></svg>`;
+  if(!on&&st&&st.wired)return `<svg width="16" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="3" width="10" height="8" rx="1"/><path d="M12 11v4M5 21v-3h14v3M12 15v3"/></svg>`;
+  const s=on&&w.signal!=null?w.signal:70;
+  const lit=s>=67?3:s>=34?2:1;
+  const arc=(d,i)=>`<path d="${d}" opacity="${i<=lit?1:.3}"/>`;
+  return `<svg width="16" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">${arc('M9.5 16.5a4 4 0 0 1 5 0',1)}${arc('M6 13a9 9 0 0 1 12 0',2)}${arc('M2.5 9.5a14 14 0 0 1 19 0',3)}<circle cx="12" cy="20" r="1.2" fill="currentColor" stroke="none"/></svg>`;
+}
+function trayNetLine(st){
+  if(!st)return '';
+  const w=st.wifi;
+  if(w&&w.state==='connected')return `Wi-Fi · ${w.connection}${w.signal!=null?' · '+w.signal+'%':''}`;
+  if(st.wired)return 'Wired';
+  if(!st.online)return 'Offline';
+  return 'Online';
+}
+async function trayNetLoad(scan){
+  clearTimeout(TRAYNET.t);
+  const b=document.getElementById('tray-net');if(!b)return;
+  let st=null;
+  try{st=await apiJSON('/api/wifi'+(scan?'?scan=1':''))}catch(e){st=null}
+  if(!st||(!st.ok&&!st.devices?.length&&st.why)){b.hidden=true;TRAYNET.st=st;trayNetSoon();return}
+  if(st.networks)TRAYNET.nets=st.networks;
+  // back online after being off: say where, once
+  if(TRAYNET.was===false&&st.online)toast('✓ Back online'+(st.wifi&&st.wifi.state==='connected'?' · '+st.wifi.connection:''),{kind:'ok'});
+  TRAYNET.was=!!st.online;TRAYNET.st=st;
+  const off=!st.online;
+  b.hidden=false;b.classList.toggle('off',off);
+  b.innerHTML=trayNetIcon(st)+(off?'<span class="tn-off">Offline</span>':'');
+  b.title=trayNetLine(st)+' · click for networks';
+  b.setAttribute('aria-label',trayNetLine(st));
+  if(TRAYNET.open)trayNetPaint();
+  trayNetSoon();
+}
+function trayNetSoon(){
+  TRAYNET.t=setTimeout(()=>{if(document.hidden){trayNetSoon();return}trayNetLoad(false)},TRAYNET_MS);
+}
+function trayNetAdmin(){
+  try{const m=USERS&&USERS.me;return !(m&&m.multiuser&&!m.admin)}catch(e){return true}
+}
+function toggleTrayNet(){
+  let p=document.getElementById('netpop');
+  if(!p){p=document.createElement('div');p.id='netpop';p.setAttribute('role','dialog');
+    p.setAttribute('aria-label','Network');document.body.appendChild(p)}
+  if(p.classList.contains('show')){popClose(p);return}
+  TRAYNET.open=true;TRAYNET.pick='';TRAYNET.err='';
+  popOpen(p,{anchor:document.getElementById('tray-net'),close:()=>{TRAYNET.open=false}});
+  trayNetPaint();
+  if(typeof popIn==='function')popIn(p,{origin:'top right'});
+  TRAYNET.scanning=true;trayNetPaint();
+  trayNetLoad(true).finally(()=>{TRAYNET.scanning=false;if(TRAYNET.open)trayNetPaint()});
+}
+function trayNetPaint(){
+  const p=document.getElementById('netpop');if(!p||!TRAYNET.open)return;
+  const st=TRAYNET.st||{},list=TRAYNET.nets||[];
+  const where=(typeof remoteClient==='function'&&remoteClient())
+    ?`<p class="tn-note">This is the network of ${esc(typeof hostName==='function'?hostName():'the machine')}, the machine Bento runs on, not of this device.</p>`:'';
+  const head=`<div class="tn-head"><b>${esc(trayNetLine(st)||'Network')}</b>
+    <button type="button" class="tn-scan" title="Look again">${TRAYNET.scanning?'Looking…':'↻'}</button></div>`
+    +(!st.online?`<p class="tn-warn">This machine is offline. Cloud brains can't answer until it's back on a network.</p>`:'')+where;
+  if(TRAYNET.pick){
+    const n=list.find(x=>x.ssid===TRAYNET.pick)||{secure:true};
+    p.innerHTML=head+`<form class="tn-join"><div class="tn-name">${esc(TRAYNET.pick)}</div>
+      ${n.secure?`<input class="tn-pw" type="text" autocomplete="off" data-lpignore="true" data-1p-ignore placeholder="Password" aria-label="Wi-Fi password">`:''}
+      <div class="tn-row"><button type="button" class="endbtn tn-back">Back</button>
+      <button type="submit" class="endbtn pri"${TRAYNET.busy?' disabled':''}>${TRAYNET.busy?'Joining…':'Join'}</button></div>
+      ${TRAYNET.err?`<p class="tn-err">${esc(TRAYNET.err)}</p>`:''}</form>`;
+    const pw=p.querySelector('.tn-pw');if(pw&&!TRAYNET.busy)pw.focus();
+    p.querySelector('.tn-back').onclick=()=>{TRAYNET.pick='';TRAYNET.err='';trayNetPaint()};
+    p.querySelector('form').onsubmit=e=>{e.preventDefault();trayNetJoin(pw?pw.value:'')};
+  }else{
+    const admin=trayNetAdmin();
+    p.innerHTML=head+(list.length?`<div class="tn-list">${list.map(n=>`<button type="button" class="tn-n${n.in_use?' on':''}" data-ssid="${esc(n.ssid)}"${n.in_use||!admin?' disabled':''}>
+        <span class="tn-s">${trayNetIcon({online:true,wifi:{state:'connected',signal:n.signal}})}</span>
+        <span class="tn-nm">${esc(n.ssid)}</span><small>${n.in_use?'connected':(n.secure?'🔒 ':'')+n.signal+'%'}</small></button>`).join('')}</div>`
+      :`<p class="tn-note">${TRAYNET.scanning?'Looking for networks…':'No Wi-Fi networks in range.'}</p>`)
+      +(admin?'':`<p class="tn-note">Only an admin can change this machine's network.</p>`);
+    p.querySelectorAll('.tn-n:not([disabled])').forEach(b=>b.onclick=()=>{TRAYNET.pick=b.dataset.ssid;TRAYNET.err='';trayNetPaint()});
+  }
+  const sc=p.querySelector('.tn-scan');
+  if(sc)sc.onclick=()=>{if(TRAYNET.scanning)return;TRAYNET.scanning=true;trayNetPaint();
+    trayNetLoad(true).finally(()=>{TRAYNET.scanning=false;trayNetPaint()})};
+}
+async function trayNetJoin(password){
+  if(TRAYNET.busy)return;
+  const ssid=TRAYNET.pick;
+  // a phone or laptop reaches Bento over the network being changed
+  if(typeof remoteClient==='function'&&remoteClient()&&typeof osConfirm==='function'){
+    const ok=await osConfirm(`Switch ${typeof hostName==='function'?hostName():'the machine'} to ${ssid}?`,
+      'You are reaching Bento over its network. If the new one is different, this page may stop answering until you join it too.');
+    if(!ok)return;
+  }
+  TRAYNET.busy=true;TRAYNET.err='';trayNetPaint();
+  try{
+    const r=await fetch('/api/wifi/connect',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ssid,password})});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(d.error||'could not join');
+    TRAYNET.pick='';toast('✓ Joined '+(d.ssid||ssid),{kind:'ok'});
+    if(d.status){TRAYNET.st=d.status}
+  }catch(e){TRAYNET.err=String(e.message||e)}
+  TRAYNET.busy=false;trayNetPaint();trayNetLoad(false);
+}
 /* ================= System Settings (the DE's own control center) ================= */
 const SYS={tab:0};
 const SYS_TABS=['Network','Remote access','Bluetooth','Displays','Keyboard & Mouse','Sound','Power','Session','Components'];
@@ -32949,7 +33269,7 @@ async function updateTray(){
     const a=d.audio||{},b=d.battery||{};
     const el=$('#tray-ctl');if(!el)return;
     el.innerHTML=`<span title="volume ${a.volume??'?'}%">${svgSpeaker(a.muted)}</span>`+
-      (b.percent!=null?`<span title="battery ${b.percent}% · ${esc(b.state||'')}" style="display:flex;align-items:center;gap:5px">${svgBattery(b.percent)}<span style="font-size:11.5px">${b.percent}%</span></span>`:'');
+      (b.percent!=null?`<span title="battery ${b.percent}% · ${esc(b.state||'')}" style="display:flex;align-items:center;gap:5px">${svgBattery(b.percent)}<span class="pct" style="font-size:11.5px">${b.percent}%</span></span>`:'');
   }catch(e){}
 }
 
@@ -48756,6 +49076,8 @@ deckLoad();buildDeck();
 paintSpaceChip();
 /* the tray opens Control Center as a popover (macOS-style), not an app window */
 $('#tray-ctl').onclick=e=>{e.stopPropagation();toggleControlCenter()};
+$('#tray-net').onclick=e=>{e.stopPropagation();toggleTrayNet()};
+trayNetLoad(false);
 $('#tray-voice').onclick=()=>jarvisMode(!JARVIS.on);
 $('#tray-voice').innerHTML=svgMic(14);
 /* power & session menu — AgentOS as the desktop environment carries real session

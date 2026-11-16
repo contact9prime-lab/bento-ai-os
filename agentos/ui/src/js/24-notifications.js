@@ -359,7 +359,7 @@ async function updateTray(){
     const a=d.audio||{},b=d.battery||{};
     const el=$('#tray-ctl');if(!el)return;
     el.innerHTML=`<span title="volume ${a.volume??'?'}%">${svgSpeaker(a.muted)}</span>`+
-      (b.percent!=null?`<span title="battery ${b.percent}% · ${esc(b.state||'')}" style="display:flex;align-items:center;gap:5px">${svgBattery(b.percent)}<span style="font-size:11.5px">${b.percent}%</span></span>`:'');
+      (b.percent!=null?`<span title="battery ${b.percent}% · ${esc(b.state||'')}" style="display:flex;align-items:center;gap:5px">${svgBattery(b.percent)}<span class="pct" style="font-size:11.5px">${b.percent}%</span></span>`:'');
   }catch(e){}
 }
 

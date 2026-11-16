@@ -17,6 +17,8 @@
   <button id="deskbtn" type="button" aria-haspopup="dialog" title="What this desktop shows"></button>
   <div id="tray">
     <button id="tray-voice" title="Voice mode — Alt+J"></button>
+    <!-- the machine's network: drawn only where NetworkManager can answer (22b-traynet.js) -->
+    <button id="tray-net" type="button" hidden title="Network"></button>
     <button id="tray-ctl" title="Sound & battery — click for Quick Settings"></button>
     <button id="tray-bell" title="Notifications"></button>
     <div id="spin" title="agent is working"></div>
@@ -36,6 +38,8 @@
     <button id="tray-power" data-ic="power" title="Power &amp; session — lock, log out, restart, power off">⏻</button>
   </div>
 </div>
+<!-- the menu bar's right edge, used when the bar runs out of room (04g-menubar-fit.js) -->
+<div id="mbrail" role="toolbar" aria-label="Menu bar, continued" hidden></div>
 <div id="powermenu">
   <!-- Only shown on a machine that has accounts. "Sign out" on a single-user
        install would be a button that locks you out of your own laptop with
