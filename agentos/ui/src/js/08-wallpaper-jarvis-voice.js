@@ -176,7 +176,43 @@ function speechStop(){
   SPEECH.gen++;SPEECH.chain=Promise.resolve();SPEECH.pending=0;
   try{SPEECH.audio&&SPEECH.audio.pause()}catch(e){}
   try{window.speechSynthesis&&speechSynthesis.cancel()}catch(e){}
+  speechPill();
 }
+/* ---- Stop the voice ----
+   Reported as "if I want to stop the voice in the chat I should be able to do that, I have
+   no idea how to stop the voice". The only way was the header's "Voice on" button, which
+   reads as a setting, is not on the Office's chat panel or the prompt bar at all, and
+   turns the voice off for good. So while anything is being said there is one pill on
+   screen, on every surface, that stops THIS reply: what is being said, what is queued,
+   and the rest of a reply still arriving. The voice stays on for the next one. Esc does
+   the same. Not shown in Jarvis, whose own screen is the voice.
+   GUI and SUI: this pill. TUI: the terminal does not speak. Kiosk: the pill is there too. */
+function speechHush(){
+  // the reply being read as it arrives says nothing more (speechLiveFeed / speechLiveEnd)
+  if(SPEECH_LIVE&&SPEECH_LIVE.cid)SPEECH_LIVE.hushed=true;
+  SPEECH.hushedAt=Date.now();
+  speechStop();
+}
+function speechSpeaking(){return SPEECH.pending>0}
+function speechPill(){
+  if(typeof document==='undefined'||!document.body)return;
+  let el=document.getElementById('voicestop');
+  const on=speechSpeaking()&&!(typeof JARVIS!=='undefined'&&JARVIS.on);
+  if(!on){if(el)el.classList.remove('on');return}
+  if(!el){
+    el=document.createElement('button');el.id='voicestop';el.type='button';
+    el.setAttribute('aria-label','Stop the voice');el.title='Stop the voice (Esc)';
+    const sq=document.createElement('span');sq.className='vs-sq';sq.textContent='■';
+    const tx=document.createElement('span');tx.className='vs-tx';tx.textContent='Stop voice';
+    el.appendChild(sq);el.appendChild(tx);
+    el.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();speechHush()});
+    document.body.appendChild(el);
+  }
+  el.classList.add('on');
+}
+if(typeof document!=='undefined')document.addEventListener('keydown',e=>{
+  // Esc stops what is being said; whatever else Esc closes still closes
+  if(e.key==='Escape'&&speechSpeaking()&&!(typeof JARVIS!=='undefined'&&JARVIS.on))speechHush()},true);
 function speechWho(name){return name&&name!=='@agent'?name:agentName()}
 function browserSay(name,clean){
   return new Promise(res=>{
@@ -193,8 +229,8 @@ function speakAs(name,text,done){
   const clean=voiceClean(text);
   if(!clean){if(done)done();return}
   if(!SPEECH.loaded){speechLoad().then(()=>speakAs(name,text,done));return}
-  SPEECH.pending++;
-  const settle=()=>{SPEECH.pending=Math.max(0,SPEECH.pending-1)};
+  SPEECH.pending++;speechPill();
+  const settle=()=>{SPEECH.pending=Math.max(0,SPEECH.pending-1);speechPill()};
   if(SPEECH.engine==='browser'){
     // queued behind whatever is still being said, like every other engine
     const g0=SPEECH.gen;
@@ -255,7 +291,9 @@ function speechLiveStart(L){
 }
 function speechLiveFeed(cid,full){
   if(!speechLiveOk())return;
-  const L=speechLiveFor(cid),rest=speechLiveText(full).slice(L.said);
+  const L=speechLiveFor(cid);
+  if(L.hushed)return;                 // the person stopped this reply's voice
+  const rest=speechLiveText(full).slice(L.said);
   let end=-1,m;const re=/[.!?…](?=["')\]]?\s)|\n/g;
   while((m=re.exec(rest)))end=m.index+m[0].length;
   if(end<0)return;
@@ -271,6 +309,9 @@ function speechLiveFeed(cid,full){
    been said. False when this turn was not being spoken live (the caller speaks it whole). */
 function speechLiveEnd(cid,full,done){
   const L=SPEECH_LIVE;
+  if(L.cid===cid&&L.hushed){
+    // stopped by the person: the rest is not said, and neither is the whole reply
+    SPEECH_LIVE={cid:null,said:0,on:false,lastAt:0};if(done)done();return true}
   if(L.cid!==cid||!L.on){SPEECH_LIVE={cid:null,said:0,on:false,lastAt:0};return false}
   const rest=speechLiveText(full).slice(L.said);
   SPEECH_LIVE={cid:null,said:0,on:false,lastAt:0};
@@ -283,6 +324,7 @@ function speechLiveTool(cid,ev){
   if(!speechLiveOk()||!ev||ev.pending_approval)return;
   let w=SPEECH_TOOL_WORDS[ev.name];if(!w)return;
   const L=speechLiveFor(cid);
+  if(L.hushed)return;
   // one line at a time, and not more than one every eight seconds
   if(SPEECH.pending>0||Date.now()-L.lastAt<8000)return;
   const a=ev.args||{};
