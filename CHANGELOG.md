@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.22 — 2026-11-16
+
+No release notes were written for this one; the commits since 0.9.21 are what changed (`bento update` lists them).
+
 ## 0.9.21 — 2026-11-16
 
 **The voice can be stopped.** While a reply is read aloud there is a Stop voice button on screen,
