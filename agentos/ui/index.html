@@ -2320,6 +2320,23 @@ body.deck-dragging .deck-tile,body.deck-dragging .deck-gname{cursor:grabbing}
 .sec-card .sec-file{display:block;font:var(--fs-xs,12px) var(--mono,monospace);overflow-wrap:anywhere;margin-top:3px}
 .sec-card .sec-alert{margin-top:6px;overflow-wrap:anywhere}
 .sec-card .sec-alert small{display:block}
+
+/* Stop the voice: one pill while anything is being said, on every surface (speechPill).
+   Bottom left, clear of the "agent is working" bubble and the approval card on the right.
+   A real 44px target: it is pressed in a hurry. */
+#voicestop{position:fixed;left:16px;bottom:88px;z-index:9450;display:none;align-items:center;gap:8px;
+  min-height:var(--tap,44px);padding:0 16px 0 13px;border-radius:var(--r-full,999px);cursor:pointer;
+  font:600 13px/1 var(--font,inherit);color:var(--txt);
+  background:color-mix(in srgb,var(--bg2) 92%,transparent);
+  border:1px solid color-mix(in srgb,var(--err,#f87171) 55%,transparent);box-shadow:var(--el-3)}
+#voicestop.on{display:inline-flex}
+#voicestop .vs-sq{color:var(--err,#f87171);font-size:12px}
+#voicestop:hover{background:var(--bg3)}
+#voicestop:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+/* on a phone the bottom of the screen is the composer and the dock: at the bottom left the
+   pill sat on the attach button (seen in the first screenshot), so it goes under the menu bar */
+body.dev-mobile #voicestop{bottom:auto;top:calc(46px + env(safe-area-inset-top,0px));left:50%;
+  transform:translateX(-50%)}
 /* ================= cross-device layout =================
    AgentOS runs the same desktop on a phone, a tablet and a workstation. Nothing
    here changes what the OS *is* — the menu bar, the dock, the prompt bar, the
@@ -7722,6 +7739,39 @@ body.dev-touch .vp-only{min-height:var(--tap)}
 /* in Settings the block lines up with the card's rows (16px), like every other row there */
 #s-vp{padding:0 16px 14px}
 #s-vp .vp{margin-top:0}
+/* `.whotab`, never `.ctab`: that is Chat's pill tabs, and on a phone it drew a 999px oval round the table.
+   Who may talk to the agent: Telegram's people and groups, WhatsApp's people (16b-chantables.js).
+   A table on a wide window; under 560px of its own width each row is a card with labelled values,
+   because a six-column table on a phone either scrolls sideways or cuts its buttons off. */
+.whotw{container-type:inline-size;margin:6px 0 4px}
+.whotab{width:100%;border-collapse:collapse;font-size:var(--fs-sm)}
+.whotab th{padding:4px 8px;text-align:left;font-size:var(--fs-2xs);font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--dim);border-bottom:1px solid var(--line);white-space:nowrap}
+.whotab td{padding:8px;vertical-align:middle;border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.whotab td small{display:block;color:var(--dim);font-size:var(--fs-2xs)}
+.whotab .badge{white-space:nowrap}
+.ct-act{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
+.ct-act .endbtn,.ct-sel{min-height:var(--tap,28px)}
+.ct-sel{max-width:100%;font:inherit;font-size:var(--fs-sm)}
+.ct-empty{margin:6px 0}
+.whotab tr.ct-sub>td{padding:0 8px 10px 22px;border-bottom:1px solid var(--line)}
+.whotab tr.ct-sub summary{cursor:pointer;color:var(--dim);font-size:var(--fs-xs);padding:6px 0;min-height:var(--tap,28px);display:flex;align-items:center}
+.whotab tr.ct-sub .whotab th{border-bottom-style:dashed}
+.tg-head{display:flex;align-items:center;gap:8px;margin:14px 0 2px;font-weight:600}
+@container (max-width:560px){
+  .whotab thead{display:none}
+  .whotab,.whotab tbody,.whotab tr,.whotab td{display:block;width:auto}
+  .whotab tr{padding:8px 0;border-bottom:1px solid var(--line)}
+  .whotab td{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:3px 0;border:0;text-align:right}
+  .whotab td::before{content:attr(data-l);color:var(--dim);font-size:var(--fs-2xs);text-transform:uppercase;letter-spacing:.05em;text-align:left;flex:none}
+  .whotab td{flex-wrap:wrap}
+  .whotab td small{flex-basis:100%;text-align:right}
+  .whotab td:first-child{display:block;text-align:left}
+  .whotab td:first-child small{text-align:left}
+  .whotab td:first-child::before,.whotab td[data-l=""]::before{content:none}
+  .whotab tr.ct-sub{padding:0}
+  .whotab tr.ct-sub>td{display:block;padding:0 0 8px 10px;text-align:left}
+  .ct-act{width:100%}
+}
 </style>
 </head>
 <body>
@@ -18449,7 +18499,43 @@ function speechStop(){
   SPEECH.gen++;SPEECH.chain=Promise.resolve();SPEECH.pending=0;
   try{SPEECH.audio&&SPEECH.audio.pause()}catch(e){}
   try{window.speechSynthesis&&speechSynthesis.cancel()}catch(e){}
+  speechPill();
 }
+/* ---- Stop the voice ----
+   Reported as "if I want to stop the voice in the chat I should be able to do that, I have
+   no idea how to stop the voice". The only way was the header's "Voice on" button, which
+   reads as a setting, is not on the Office's chat panel or the prompt bar at all, and
+   turns the voice off for good. So while anything is being said there is one pill on
+   screen, on every surface, that stops THIS reply: what is being said, what is queued,
+   and the rest of a reply still arriving. The voice stays on for the next one. Esc does
+   the same. Not shown in Jarvis, whose own screen is the voice.
+   GUI and SUI: this pill. TUI: the terminal does not speak. Kiosk: the pill is there too. */
+function speechHush(){
+  // the reply being read as it arrives says nothing more (speechLiveFeed / speechLiveEnd)
+  if(SPEECH_LIVE&&SPEECH_LIVE.cid)SPEECH_LIVE.hushed=true;
+  SPEECH.hushedAt=Date.now();
+  speechStop();
+}
+function speechSpeaking(){return SPEECH.pending>0}
+function speechPill(){
+  if(typeof document==='undefined'||!document.body)return;
+  let el=document.getElementById('voicestop');
+  const on=speechSpeaking()&&!(typeof JARVIS!=='undefined'&&JARVIS.on);
+  if(!on){if(el)el.classList.remove('on');return}
+  if(!el){
+    el=document.createElement('button');el.id='voicestop';el.type='button';
+    el.setAttribute('aria-label','Stop the voice');el.title='Stop the voice (Esc)';
+    const sq=document.createElement('span');sq.className='vs-sq';sq.textContent='■';
+    const tx=document.createElement('span');tx.className='vs-tx';tx.textContent='Stop voice';
+    el.appendChild(sq);el.appendChild(tx);
+    el.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();speechHush()});
+    document.body.appendChild(el);
+  }
+  el.classList.add('on');
+}
+if(typeof document!=='undefined')document.addEventListener('keydown',e=>{
+  // Esc stops what is being said; whatever else Esc closes still closes
+  if(e.key==='Escape'&&speechSpeaking()&&!(typeof JARVIS!=='undefined'&&JARVIS.on))speechHush()},true);
 function speechWho(name){return name&&name!=='@agent'?name:agentName()}
 function browserSay(name,clean){
   return new Promise(res=>{
@@ -18466,8 +18552,8 @@ function speakAs(name,text,done){
   const clean=voiceClean(text);
   if(!clean){if(done)done();return}
   if(!SPEECH.loaded){speechLoad().then(()=>speakAs(name,text,done));return}
-  SPEECH.pending++;
-  const settle=()=>{SPEECH.pending=Math.max(0,SPEECH.pending-1)};
+  SPEECH.pending++;speechPill();
+  const settle=()=>{SPEECH.pending=Math.max(0,SPEECH.pending-1);speechPill()};
   if(SPEECH.engine==='browser'){
     // queued behind whatever is still being said, like every other engine
     const g0=SPEECH.gen;
@@ -18528,7 +18614,9 @@ function speechLiveStart(L){
 }
 function speechLiveFeed(cid,full){
   if(!speechLiveOk())return;
-  const L=speechLiveFor(cid),rest=speechLiveText(full).slice(L.said);
+  const L=speechLiveFor(cid);
+  if(L.hushed)return;                 // the person stopped this reply's voice
+  const rest=speechLiveText(full).slice(L.said);
   let end=-1,m;const re=/[.!?…](?=["')\]]?\s)|\n/g;
   while((m=re.exec(rest)))end=m.index+m[0].length;
   if(end<0)return;
@@ -18544,6 +18632,9 @@ function speechLiveFeed(cid,full){
    been said. False when this turn was not being spoken live (the caller speaks it whole). */
 function speechLiveEnd(cid,full,done){
   const L=SPEECH_LIVE;
+  if(L.cid===cid&&L.hushed){
+    // stopped by the person: the rest is not said, and neither is the whole reply
+    SPEECH_LIVE={cid:null,said:0,on:false,lastAt:0};if(done)done();return true}
   if(L.cid!==cid||!L.on){SPEECH_LIVE={cid:null,said:0,on:false,lastAt:0};return false}
   const rest=speechLiveText(full).slice(L.said);
   SPEECH_LIVE={cid:null,said:0,on:false,lastAt:0};
@@ -18556,6 +18647,7 @@ function speechLiveTool(cid,ev){
   if(!speechLiveOk()||!ev||ev.pending_approval)return;
   let w=SPEECH_TOOL_WORDS[ev.name];if(!w)return;
   const L=speechLiveFor(cid);
+  if(L.hushed)return;
   // one line at a time, and not more than one every eight seconds
   if(SPEECH.pending>0||Date.now()-L.lastAt<8000)return;
   const a=ev.args||{};
@@ -19486,8 +19578,15 @@ function handle(ev){
     // somebody new wrote to the bot: the owner decides here as well as on their phone
     case 'telegram_request':
       toast('📩 '+(ev.title||'Someone')+' wants to talk to '+agentName()+' on Telegram: “'+(ev.text||'')+'”',
-        {kind:'warn',ms:60000,label:'Allow',go:()=>{tgAllow(ev.chat_id,1);toast((ev.title||'They')+' can talk to '+agentName()+' now')}});
+        {kind:'warn',ms:60000,label:'Allow',go:()=>{if(ev.member)tgMember(ev.chat_id,ev.member,'allowed');else tgAllow(ev.chat_id,1);
+          toast((ev.title||'They')+' can talk to '+agentName()+' now')}});
       refreshApp('telegram');break;
+    // the same question for WhatsApp: this account's desktop is one of the places it is asked
+    case 'whatsapp_request':
+      toast('📩 '+(ev.title||'Someone')+' wants to talk to '+agentName()+' on WhatsApp: “'+(ev.text||'')+'”',
+        {kind:'warn',ms:60000,label:'Allow',go:()=>{waAllow(ev.wa_id,1);toast((ev.title||'They')+' can talk to '+agentName()+' now')}});
+      if(typeof waPanel==='function')waPanel();break;
+    case 'whatsapp_chats': if(typeof waPanel==='function')waPanel(); break;
     case 'knowledge_update': refreshApp('memory'); refreshApp('kg'); refreshApp('profile'); break;
     case 'assets_update': refreshApp('gallery'); refreshApp('timeline'); break;
     case 'spaces_update': loadSpaces(true).then(paintSpaceChip); refreshApp('spaces'); if(typeof deskCompaniesLoad==='function')deskCompaniesLoad(); break;
@@ -22810,7 +22909,7 @@ async function waPanel(){
   if(!d){box.innerHTML='';return}
   // Two transports, one card. Which one is showing is decided by cfg, not by
   // guessing from which fields happen to be filled in.
-  if((d.mode||'cloud')==='baileys'){box.innerHTML=waLinkPanel(d);return}
+  if((d.mode||'cloud')==='baileys'){box.innerHTML=waLinkPanel(d)+((d.chats||[]).length?waPeopleTable(d):'');return}
   const reach=d.reach||{};
   const hook=reach.reachable
     ? `<div class="wa-hook"><b>Callback URL</b>
@@ -22829,14 +22928,7 @@ async function waPanel(){
         ? `<div class="wa-line ok">The ${d.window_hours}-hour window is open, so it can message you now.</div>`
         : `<div class="wa-line warn">The ${d.window_hours}-hour window has closed. Send the number anything to reopen it. ${pInfo('WhatsApp only lets a business message you first within a day of your last message.')}</div>`)
     : '';
-  const chats=(d.chats||[]).filter(c=>c.wa_id!==d.owner_wa_id);
-  const others=chats.length
-    ? `<div class="wa-line"><b>Other numbers that wrote in</b></div>`
-      +chats.map(c=>`<div class="item wa-row"><div class="grow">
-          <code>+${esc(c.wa_id)}</code> ${esc(c.name||'')}</div>
-        <button class="endbtn" onclick="waAllow('${jsq(c.wa_id)}',${c.allowed?0:1})">
-          ${c.allowed?'Block':'Allow'}</button></div>`).join('')
-    : '';
+  const others=(d.chats||[]).length?waPeopleTable(d):'';
   // The way back. Without it, choosing the Business API once is a one-way door:
   // the four fields are the only thing on screen and nothing offers the QR again.
   const modeSwitch=`<div class="wa-line mut" style="margin-top:10px">
@@ -29370,7 +29462,7 @@ async function renderTelegram(body){
     <div class="provbox">
       <div class="ptitle">Pairing</div>
       <p class="mut" style="margin-top:6px">${d.owner_chat_id
-        ?`Owner chat: <b>${d.owner_chat_id}</b>. Commands: <code>/clear</code> resets a session, <code>/status</code> pings.`
+        ?`Owner chat: <b>${d.owner_chat_id}</b>. From that chat, <code>/people</code>, <code>/groups</code> and <code>/members</code> show these lists.`
         :(d.bot_username?`Not paired yet — send any message to <a href="https://t.me/${esc(d.bot_username)}" target="_blank" style="color:var(--acc2)">@${esc(d.bot_username)}</a>; the first private chat becomes the owner.`:'Not paired yet — save a token first.')}</p>
       <div class="row" style="margin-top:10px">
         <button class="save" style="margin:0" onclick="tgTest()">Send test message</button>
@@ -29379,22 +29471,16 @@ async function renderTelegram(body){
     </div>
     <div class="provbox">
       <div class="ptitle">Chats, groups &amp; channels</div>
-      <p class="mut" style="margin:6px 0 10px">Every user, group or channel that reaches the bot registers here — connect more by adding the bot
-        to a group (as a member) or a channel (as an admin). New arrivals start <b>blocked</b>; only chats you enable can talk to the agent.
-        Telegram is an IO gate of the permission framework: scope any grant to the <code>telegram</code> surface in the Permissions app
-        and it applies (only) here — blocked IO is denied and logged.</p>
+      <p class="mut" style="margin:6px 0 10px">Everybody who wrote to the bot, and when each was let in. New arrivals start blocked.
+        ${pInfo('Add the bot to a group to connect it. In a group you can answer everybody, or only the people you pick.')}</p>
       <label class="tg-groups" style="display:flex;align-items:center;gap:8px;margin:0 0 10px">
         <input type="checkbox" id="tg-groups" style="width:auto" ${d.groups?'checked':''} onchange="tgGroups(this.checked)">
         Answer in group chats ${pInfo('Off, the agent answers in no group or channel. On, it answers only in the ones you enable below. Everybody in an enabled group can talk to it.')}
       </label>
-      ${(d.chats||[]).map(c=>`<div class="item">
-        <span class="lbadge">${c.type==='private'?'user':c.type==='channel'?'channel':'group'}</span>
-        <div class="grow"><b>${esc(c.title||c.chat_id)}</b>${c.username?` <span class="mut">@${esc(c.username)}</span>`:''}${c.chat_id===d.owner_chat_id?' <span class="badge ok">owner</span>':''}
-          <div class="sub">${esc(c.type)} · ${c.msg_count} msg · last ${new Date(c.last_seen*1000).toLocaleString()}</div></div>
-        <span class="badge ${c.allowed&&(c.type==='private'||d.groups)?'ok':'err'}">${c.allowed?(c.type==='private'||d.groups?'enabled':'groups are off'):'blocked'}</span>
-        <button title="${c.allowed?'disable':'enable'}" onclick="tgAllow(${+c.chat_id},${c.allowed?0:1})">${c.allowed?'⏸':'▶'}</button>
-        <button onclick="tgDelChat(${+c.chat_id})">✕</button>
-      </div>`).join('')||'<p class="mut">No chats registered yet.</p>'}
+      <div class="tg-head">People</div>
+      ${tgPeopleTable(d)}
+      <div class="tg-head">Groups and channels</div>
+      ${tgGroupsTable(d)}
     </div>
   </div>`;
   $('#tg-token').addEventListener('input',e=>{if(e.target.value.trim())$('#tg-on').checked=true});
@@ -29480,6 +29566,102 @@ async function loadLogs(w){
 function logExpand(tr){const p=tr.querySelector('.log-full');if(p)p.style.display=p.style.display==='none'?'block':'none'}
 async function logsClear(){await fetch('/api/logs',{method:'DELETE'});refreshApp('logs')}
 
+/* ================= who may talk to the agent, as tables =================
+   Telegram's people and groups and WhatsApp's people, drawn by one helper: who,
+   whether they are answered, when that was decided and by whom, and for a group
+   the people who wrote in it, each with their own allow or block. Asked for as "the
+   groups list and the people list should come in form of a table that we can see
+   when it was validated and who all … in the group also you can restrict".
+   Every name here is somebody else's words, so every cell goes through esc(). On a
+   narrow window the rows become cards (43b-chantables.css), each value labelled.
+   GUI and SUI draw this; the phone's /people, /groups and /members say the same. */
+function chanWhen(ts){
+  if(!ts)return '';
+  const d=new Date(ts*1000);
+  return d.toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'})+', '
+    +d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'});
+}
+function chanDecided(r){
+  if(!r.decided_at)return '<span class="mut">not recorded</span>';
+  return esc(chanWhen(r.decided_at))+(r.decided_by?`<small>${esc(r.decided_by)}</small>`:'');
+}
+function chanBadge(ok,word){return `<span class="badge ${ok?'ok':'err'}">${esc(word)}</span>`}
+function chanTable(heads,rows,empty){
+  if(!rows.length)return `<p class="mut ct-empty">${esc(empty)}</p>`;
+  return `<div class="whotw"><table class="whotab"><thead><tr>${heads.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead>
+    <tbody>${rows.join('')}</tbody></table></div>`;
+}
+function chanCells(heads,cells){
+  return cells.map((c,i)=>`<td data-l="${esc(heads[i]||'')}">${c}</td>`).join('');
+}
+
+/* ---- Telegram ---- */
+var TG_PEOPLE_H=['Who','Status','Decided','Messages','Last wrote',''];
+var TG_GROUP_H=['Group','Status','Who may talk','Decided','Wrote',''];
+var TG_MEMBER_H=['Person','Answered','Decided','Messages','Last wrote',''];
+function tgPeopleTable(d){
+  const rows=(d.people||[]).map(c=>`<tr>${chanCells(TG_PEOPLE_H,[
+    `<b>${esc(c.title||c.chat_id)}</b>${c.username?` <span class="mut">@${esc(c.username)}</span>`:''}${c.owner?' <span class="badge ok">owner</span>':''}<small>${esc(c.chat_id)}</small>`,
+    chanBadge(c.allowed,c.allowed?'let in':'blocked'),
+    chanDecided(c),
+    esc(c.msg_count||0),
+    esc(chanWhen(c.last_seen)),
+    c.owner?'':`<span class="ct-act"><button class="endbtn" onclick="tgAllow(${+c.chat_id},${c.allowed?0:1})">${c.allowed?'Block':'Allow'}</button>
+      <button class="endbtn" title="Forget this chat" onclick="tgDelChat(${+c.chat_id})">Forget</button></span>`])}</tr>`);
+  return chanTable(TG_PEOPLE_H,rows,'Nobody has written yet.');
+}
+function tgGroupsTable(d){
+  const on=!!d.groups_on;
+  const rows=(d.group_rows||[]).map(g=>{
+    const ms=g.members||[],picked=ms.filter(m=>m.state==='allowed').length;
+    const status=!g.allowed?chanBadge(false,'blocked'):on?chanBadge(true,'answered'):chanBadge(false,'groups are off');
+    const who=`<select class="ct-sel" aria-label="Who may talk in ${esc(g.title||g.chat_id)}" onchange="tgMembersOnly(${+g.chat_id},this.value==='1')">
+        <option value="0"${g.members_only?'':' selected'}>Everybody in it</option>
+        <option value="1"${g.members_only?' selected':''}>Only people I pick${g.members_only?' ('+picked+')':''}</option></select>`;
+    const head=`<tr>${chanCells(TG_GROUP_H,[
+      `<b>${esc(g.title||g.chat_id)}</b><small>${esc(g.type)} · ${esc(g.chat_id)}</small>`,
+      status,who,chanDecided(g),esc(ms.length)+(ms.length===1?' person':' people'),
+      `<span class="ct-act"><button class="endbtn" onclick="tgAllow(${+g.chat_id},${g.allowed?0:1})">${g.allowed?'Stop':'Allow'}</button>
+        <button class="endbtn" title="Forget this group" onclick="tgDelChat(${+g.chat_id})">Forget</button></span>`])}</tr>`;
+    const mrows=ms.map(m=>`<tr>${chanCells(TG_MEMBER_H,[
+      `<b>${esc(m.name||m.member_id)}</b>${m.username?` <span class="mut">@${esc(m.username)}</span>`:''}${m.owner?' <span class="badge ok">owner</span>':''}`,
+      chanBadge(m.talks,m.talks?'yes':(m.state==='blocked'?'blocked':'not picked')),
+      m.state?chanDecided(m):'<span class="mut">the group’s rule</span>',
+      esc(m.msg_count||0),esc(chanWhen(m.last_seen)),
+      m.owner?'':`<span class="ct-act"><button class="endbtn" onclick="tgMember(${+g.chat_id},'${jsq(m.member_id)}','${m.talks?'blocked':'allowed'}')">${m.talks?'Block':'Allow'}</button>
+        ${m.state?`<button class="endbtn" title="Back to the group’s rule" onclick="tgMember(${+g.chat_id},'${jsq(m.member_id)}','')">Reset</button>`:''}</span>`])}</tr>`);
+    const inner=ms.length?chanTable(TG_MEMBER_H,mrows,''):'<p class="mut ct-empty">Nobody has written to the agent in this group yet.</p>';
+    return head+`<tr class="ct-sub"><td colspan="${TG_GROUP_H.length}"><details${g.allowed&&ms.length?' open':''}>
+      <summary>Who wrote in ${esc(g.title||g.chat_id)}</summary>${inner}</details></td></tr>`;
+  });
+  return chanTable(TG_GROUP_H,rows,'No group has written yet. Add the bot to a group and write to it there.');
+}
+async function tgMembersOnly(id,on){
+  await fetch('/api/telegram/chats/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({members_only:!!on})});
+  toast(on?'Only the people you pick are answered there.':'Everybody in that group is answered.');refreshApp('telegram');
+}
+async function tgMember(id,member,state){
+  const r=await fetch('/api/telegram/chats/'+id+'/members/'+encodeURIComponent(member),
+    {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({state})});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok||d.ok===false)toast('Could not change that: '+(d.message||d.error||r.status));
+  refreshApp('telegram');
+}
+
+/* ---- WhatsApp ---- */
+var WA_PEOPLE_H=['Who','Status','Decided','Messages','Last wrote',''];
+function waPeopleTable(d){
+  const rows=(d.chats||[]).map(c=>{
+    const own=c.wa_id===d.owner_wa_id;
+    return `<tr>${chanCells(WA_PEOPLE_H,[
+      `<b>${esc(c.name||'+'+c.wa_id)}</b>${own?' <span class="badge ok">owner</span>':''}<small>+${esc(c.wa_id)}</small>`,
+      chanBadge(c.allowed,c.allowed?'let in':'blocked'),
+      chanDecided(c),esc(c.msg_count||0),esc(chanWhen(c.last_seen)),
+      own?'':`<span class="ct-act"><button class="endbtn" onclick="waAllow('${jsq(c.wa_id)}',${c.allowed?0:1})">${c.allowed?'Block':'Allow'}</button></span>`])}</tr>`;
+  });
+  return `<div class="wa-line"><b>Who may talk to the agent here</b> ${pInfo('Everybody who wrote in. A new number is blocked until you allow it, here or from your phone.')}</div>`
+    +chanTable(WA_PEOPLE_H,rows,'Nobody has written yet.');
+}
 /* ================= soul app ================= */
 // A Zero's mind is on its hub (zeromind.py): on the Zero this page says where; on the hub,
 // "Whose soul" picks this machine's or one of its Zeros', each kept in that Zero's section.

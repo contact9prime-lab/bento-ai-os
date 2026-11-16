@@ -575,7 +575,7 @@ class TelegramBridge(usersmod.Scoped):
         if not (t.get("owner_chat_id") or 0) and ctype == "private":
             t["owner_chat_id"] = chat_id
             cfgmod.save_config(self.cfg)
-            self.store.tg_set_allowed(chat_id, 1)
+            self.store.tg_set_allowed(chat_id, 1, "pairing: the first chat to write")
             chat["allowed"] = 1
             name = self.cfg.get("agent_name") or "Bento"
             self.store.log("telegram", f"paired: owner = {title} ({chat_id})")
@@ -605,7 +605,7 @@ class TelegramBridge(usersmod.Scoped):
             match = chanmod.preauthorised(chanmod.conf_of(self.cfg, "telegram"),
                                           username, str(chat_id))
             if match:
-                self.store.tg_set_allowed(chat_id, 1)
+                self.store.tg_set_allowed(chat_id, 1, f"the allow-list ({match})")
                 chat["allowed"] = 1
                 self.store.log("telegram", f"allowed {title} ({chat_id}) — on the allow-list as "
                                            f"{match}", {"chat_id": chat_id, "matched": match})
@@ -628,6 +628,9 @@ class TelegramBridge(usersmod.Scoped):
             await self.broadcast({"type": "telegram_chats"})
             return
         await self.broadcast({"type": "telegram_chats"})
+
+        if ctype != "private" and not await self._member_ok(chat, frm, text):
+            return
 
         if text.startswith("/start"):
             await self.send("▲ Already linked. Send me anything; /new starts a new session.", chat_id)
@@ -949,6 +952,84 @@ class TelegramBridge(usersmod.Scoped):
                 pass
         return val in ("1", "2", "3")
 
+    def member_rule(self, chat: dict, member: dict, member_id) -> bool:
+        """May this person talk to the agent in this group? The owner always; a blocked
+        person never; otherwise everybody, or only the picked ones when the group is
+        set to `members_only`."""
+        if str(member_id) == str(self._t().get("owner_chat_id") or 0):
+            return True
+        state = (member or {}).get("state") or ""
+        if state == "blocked":
+            return False
+        return state == "allowed" or not chat.get("members_only")
+
+    async def _member_ok(self, chat: dict, frm: dict, text: str = "") -> bool:
+        """The person inside an enabled group. Everyone who writes there is recorded, so
+        the owner can see who talks to the agent and stop one of them."""
+        mid = frm.get("id")
+        if not mid:
+            return not chat.get("members_only")      # a post with no sender (a channel)
+        name = " ".join(filter(None, [frm.get("first_name", ""), frm.get("last_name", "")])).strip() or str(mid)
+        m = self.store.member_seen("telegram", chat["chat_id"], mid, name, frm.get("username") or "")
+        if self.member_rule(chat, m, mid):
+            return True
+        title = chat.get("title") or chat["chat_id"]
+        self.store.log("telegram", f"refused {name} in the group {title} — "
+                       + ("blocked there" if m.get("state") == "blocked" else "not one of the people picked there"),
+                       {"chat_id": chat["chat_id"], "member": str(mid), "text": text[:160]})
+        if m.get("state") != "blocked" and m["msg_count"] <= 1:
+            # asked once: the owner picks who talks to the agent in this group
+            await self.send(f"▲ In this group I answer only the people the owner picked. "
+                            f"I've asked about you, {name}.", chat["chat_id"])
+            owner = self._t().get("owner_chat_id") or 0
+            agent = self.cfg.get("agent_name") or "Bento"
+            if owner:
+                with contextlib.suppress(Exception):
+                    await self._api("sendMessage", chat_id=owner,
+                                    text=(f"📩 {name} wrote to {agent} in the group {title}:\n“{text[:300]}”\n\n"
+                                          f"Only people you pick are answered there.")[:4000],
+                                    reply_markup={"inline_keyboard": [[
+                                        {"text": "✓ Allow them there", "callback_data": f"mem:{chat['chat_id']}:{mid}:1"},
+                                        {"text": "✗ Block", "callback_data": f"mem:{chat['chat_id']}:{mid}:0"}]]})
+            with contextlib.suppress(Exception):
+                await self.broadcast({"type": "telegram_request", "chat_id": chat["chat_id"], "member": str(mid),
+                                      "title": f"{name}, in the group {title}", "text": text[:160]})
+        with contextlib.suppress(Exception):
+            await self.broadcast({"type": "telegram_chats"})
+        return False
+
+    def decide_member(self, chat_id, member_id, state: str, by: str = "the owner, on Telegram") -> str:
+        """Allow or block one person inside a group, or hand them back to the group's rule."""
+        if str(member_id) == str(self._t().get("owner_chat_id") or 0) and state == "blocked":
+            return "That's the owner. The owner is always answered."
+        if not self.store.member_set("telegram", chat_id, member_id, state, by):
+            return "Nobody by that id wrote in that group."
+        self.store.log("telegram", f"member {member_id} of chat {chat_id}: {state or 'the group rule'} ({by})",
+                       {"chat_id": chat_id, "member": str(member_id), "state": state, "by": by})
+        return {"allowed": "allowed there", "blocked": "blocked there"}.get(state, "back to the group's rule")
+
+    def set_members_only(self, chat_id, on: bool, by: str = "the owner, on Telegram") -> None:
+        self.store.tg_set_members_only(chat_id, on)
+        self.store.log("telegram", f"chat {chat_id} answers {'only picked people' if on else 'everybody in it'} ({by})")
+
+    def table(self) -> dict:
+        """People and groups as the tables draw them: who, since when, decided by whom,
+        and for a group the people who wrote there."""
+        owner = self._t().get("owner_chat_id") or 0
+        people, groups = [], []
+        for c in self.store.tg_list_chats():
+            row = {**c, "owner": c["chat_id"] == owner}
+            if (c.get("type") or "private") == "private":
+                people.append(row)
+                continue
+            ms = self.store.members("telegram", c["chat_id"])
+            for m in ms:
+                m["owner"] = str(m["member_id"]) == str(owner)
+                m["talks"] = self.member_rule(c, m, m["member_id"])
+            row["members"], row["answered"] = ms, bool(c.get("allowed")) and self.groups_on()
+            groups.append(row)
+        return {"people": people, "group_rows": groups, "groups_on": self.groups_on()}
+
     def groups_on(self) -> bool:
         """Whether groups and channels are answered at all. The owner's switch
         (`telegram.groups`); a machine that never set it keeps answering the groups it
@@ -1001,16 +1082,16 @@ class TelegramBridge(usersmod.Scoped):
             await self.broadcast({"type": "telegram_request", "chat_id": chat_id, "title": who,
                                   "text": text[:160]})
 
-    async def decide_newcomer(self, chat_id: int, allow: bool) -> str:
+    async def decide_newcomer(self, chat_id: int, allow: bool, by: str = "the owner, on Telegram") -> str:
         """The owner's answer, from a button or the desktop: one door for both."""
         row = next((c for c in self.store.tg_list_chats() if c["chat_id"] == chat_id), None) or {}
         if allow and (row.get("type") or "private") != "private" and not self.groups_on():
             # picking a group is the owner saying yes to groups: the two go together,
             # or the group would read "enabled" and never be answered
             self.set_groups(True, f"allowing {row.get('title') or chat_id}")
-        self.store.tg_set_allowed(chat_id, 1 if allow else 0)
-        self.store.log("telegram", f"{'allowed' if allow else 'blocked'} chat {chat_id} (asked the owner)",
-                       {"chat_id": chat_id, "allowed": allow})
+        self.store.tg_set_allowed(chat_id, 1 if allow else 0, by)
+        self.store.log("telegram", f"{'allowed' if allow else 'blocked'} chat {chat_id} ({by})",
+                       {"chat_id": chat_id, "allowed": allow, "by": by})
         if allow:
             name = self.cfg.get("agent_name") or "Bento"
             await self.send(f"▲ You're in. I'm {name}. Send me anything; /new starts a new session.", chat_id)
@@ -1029,6 +1110,12 @@ class TelegramBridge(usersmod.Scoped):
             owner = chat_id == (self._t().get("owner_chat_id") or 0)
             if chat and (chat.get("type") or "private") != "private" and not self.groups_on():
                 return
+            if chat and (chat.get("type") or "private") != "private":
+                who = cq.get("from") or {}
+                m = next((x for x in self.store.members("telegram", chat_id)
+                          if x["member_id"] == str(who.get("id"))), None)
+                if not self.member_rule(chat, m, who.get("id")):
+                    return
             if chat and (chat.get("allowed") or owner):
                 await self._sessions(chat, tapped=cq["data"][3:])
             return
@@ -1052,6 +1139,40 @@ class TelegramBridge(usersmod.Scoped):
             said = await self._console.open_company(data[3:])
             msg = cq.get("message", {})
             await self.send(said, (msg.get("chat") or {}).get("id") or cq.get("from", {}).get("id"))
+            return
+        if data.startswith("mem:") or data.startswith("gm:"):
+            # one person inside a group (mem:<chat>:<member>:<1|0>), or the group's rule
+            # (gm:<chat>:<1|0> = only picked people | everybody)
+            parts = data.split(":")
+            try:
+                if parts[0] == "mem":
+                    said = self.decide_member(int(parts[1]), parts[2], "allowed" if parts[3] == "1" else "blocked")
+                else:
+                    self.set_members_only(int(parts[1]), parts[2] == "1")
+                    said = "only the people you pick are answered there" if parts[2] == "1" \
+                        else "everybody in that group is answered"
+            except (ValueError, IndexError):
+                return
+            msg = cq.get("message", {})
+            if msg:
+                with contextlib.suppress(Exception):
+                    await self._api("editMessageText", chat_id=msg["chat"]["id"], message_id=msg["message_id"],
+                                    text=(msg.get("text") or "")[:3900] + f"\n\n→ {said}")
+            with contextlib.suppress(Exception):
+                await self.broadcast({"type": "telegram_chats"})
+            return
+        if data.startswith("wan:"):
+            # somebody new on WHATSAPP, asked here because this account's Telegram is paired
+            parts = data.split(":")
+            wa = getattr(self.toolbox, "whatsapp", None)
+            if wa is None or len(parts) < 3:
+                return
+            said = await wa.decide_newcomer(parts[1], parts[2] == "1", "the owner, on Telegram")
+            msg = cq.get("message", {})
+            if msg:
+                with contextlib.suppress(Exception):
+                    await self._api("editMessageText", chat_id=msg["chat"]["id"], message_id=msg["message_id"],
+                                    text=(msg.get("text") or "")[:3900] + f"\n\n→ {said}")
             return
         if data.startswith("who:"):
             # the owner's answer about somebody new (ask_owner_about)
@@ -1227,4 +1348,4 @@ class TelegramBridge(usersmod.Scoped):
         return {"enabled": bool(t.get("enabled")), "has_token": bool(t.get("bot_token")),
                 "owner_chat_id": t.get("owner_chat_id") or 0,
                 "status": self.status, "error": self.error, "bot_username": self.bot_username,
-                "groups": self.groups_on(), "chats": self.store.tg_list_chats()}
+                "groups": self.groups_on(), "chats": self.store.tg_list_chats(), **self.table()}

@@ -2052,6 +2052,23 @@ switch on, or it would read enabled and never answer. Unset, the switch is on on
 chip of a story with no message in the feed was appended at the END: on the owner's thread the 18 Oct Bengaluru
 story sat under the newest answer about the market. It stays in the Stage's library.
 
+**Who may talk is a table with its decision on it, and a group has people** (`decided_at`/`decided_by` on
+`telegram_chats` and `whatsapp_chats`, table `chat_members`, `TelegramBridge.member_rule`/`_member_ok`/
+`decide_member`/`set_members_only`/`table`, `/members`, `16b-chantables.js`, `43b-chantables.css`;
+`tests/test_channel_tables.py`). Asked for as "a table that we can see when it was validated and who all … in the
+group also you can restrict". Every allow or block passes `by` in words (pairing, the allow-list, the owner on a
+channel, an account at the desktop): a new caller of `tg_set_allowed`/`wa_set_allowed` must say who. Inside an
+enabled group everybody who writes is recorded; the owner is always answered, a blocked person never, the rest by
+the group's rule (`members_only`). The session buttons ask the same rule. The tables are one helper for both
+channels, every cell escaped, cards under 560px of their own width. `info()`'s `groups` is the switch; the rows are
+`group_rows` (a `groups` list once replaced the switch in the same dict).
+
+**A request to let somebody in goes to the account that owns the channel** (`ask_owner_about` on both bridges,
+`WhatsAppBridge.decide_newcomer`/`_owner_command`, Telegram's `wan:` button, `whatsapp_request` on the page).
+Its owner chat on that channel, its desktop (`_owner_send`), and for a WhatsApp newcomer its Telegram when that
+is polling. WhatsApp told the newcomer to find Settings and told the owner nothing. WhatsApp groups are not read
+(bridge.js drops `@g.us`; a linked device would see every group the person is in).
+
 **A phone turn is saved first and shown like a desk turn** (`TelegramBridge._handle` `built_history`/`emit`,
 `WhatsAppBridge._turn_in`; `tests/test_telegram_turns.py`). The history rebuild (which can compact with a model
 call) ran before the message was saved, on every engine: measured 2 min 45 s on the owner's long thread, which
@@ -3052,6 +3069,16 @@ Full story in `docs/team.md`. Two features, five rules.
   dies mid-talk keeps what was said), then a broadcast. The start and end are `team.freetalk`
   ledger rows carrying the session's `run_id`. `fabric.talk_log` reads every agent-to-agent
   conversation (free talks, huddles, asks) back out of `fabric_runs`, never a table of its own.
+
+**The voice is stopped where it is heard** (`speechHush`/`speechPill`/`speechSpeaking`, `#voicestop`;
+`tests/test_voice_stop.py`). Reported as "I have no idea how to stop the voice": the only way was the chat
+header's Voice on button, which reads as a setting, is not on the Office's panel or the prompt bar, and turns
+the voice off for good. One pill while `SPEECH.pending` is over zero, and Esc. It stops what is said and
+queued, marks the live reply `hushed` so `speechLiveFeed`/`speechLiveEnd` say no more of it (End returns true,
+or the whole reply was read at the turn's end), and leaves `VOICE.tts` alone. Not in Jarvis: a stopped line
+never calls its `done`, and Jarvis waits on that. On a phone it sits under the menu bar: at the bottom left
+it covered the composer's attach button, seen in the first screenshot. A headless browser has no voice and
+finishes a line at once, so the picture holds one open with a stand-in.
 
 **A voice per agent, on any engine, and it never cuts anyone off.** Every line goes through ONE
 door on the page, `speakAs(name, text)` (08-wallpaper-jarvis-voice.js): the Jarvis reply, huddle,

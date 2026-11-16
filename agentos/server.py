@@ -6819,17 +6819,36 @@ async def api_put_telegram(body: dict):
     return {"ok": True}
 
 
+def _desk_by() -> str:
+    """Who decided, for the channel tables: the signed-in account, at the desktop."""
+    u = usersmod.get(usersmod.current() or "") if usersmod.current() else None
+    return (f"{u['name']}, at the desktop" if u and u.get("name") else "at the desktop")
+
+
 @app.put("/api/telegram/chats/{chat_id}")
 async def api_telegram_chat(chat_id: int, body: dict):
+    tg = state.get("telegram")
     if "allowed" in body:
         # the same door as the owner's phone buttons: the person is told when they're in
-        tg = state.get("telegram")
         if tg is not None and hasattr(tg, "decide_newcomer"):
-            await tg.decide_newcomer(chat_id, bool(body["allowed"]))
+            await tg.decide_newcomer(chat_id, bool(body["allowed"]), _desk_by())
         else:
-            state["store"].tg_set_allowed(chat_id, 1 if body["allowed"] else 0)
+            state["store"].tg_set_allowed(chat_id, 1 if body["allowed"] else 0, _desk_by())
             state["store"].log("telegram", f"chat {chat_id} {'enabled' if body['allowed'] else 'disabled'}")
+    if "members_only" in body and tg is not None:
+        # a group answers everybody in it, or only the people picked
+        tg.set_members_only(chat_id, bool(body["members_only"]), _desk_by())
     return {"ok": True}
+
+
+@app.put("/api/telegram/chats/{chat_id}/members/{member_id}")
+async def api_telegram_member(chat_id: int, member_id: str, body: dict):
+    """One person inside a group: allowed, blocked, or '' for the group's own rule."""
+    state_word = str((body or {}).get("state") or "")
+    if state_word not in ("", "allowed", "blocked"):
+        return JSONResponse({"error": "state is allowed, blocked or empty"}, status_code=400)
+    said = state["telegram"].decide_member(chat_id, member_id, state_word, _desk_by())
+    return {"ok": "there" in said or "rule" in said, "message": said}
 
 
 @app.delete("/api/telegram/chats/{chat_id}")
@@ -6894,9 +6913,8 @@ async def api_put_whatsapp(body: dict):
 @app.put("/api/whatsapp/chats/{wa_id}")
 async def api_whatsapp_chat(wa_id: str, body: dict):
     if "allowed" in body:
-        state["store"].wa_set_allowed(wa_id, 1 if body["allowed"] else 0)
-        state["store"].log("whatsapp",
-                           f"{wa_id} {'enabled' if body['allowed'] else 'blocked'}")
+        said = await state["whatsapp"].decide_newcomer(wa_id, bool(body["allowed"]), _desk_by())
+        return {"ok": said in ("allowed", "blocked"), "message": said}
     return {"ok": True}
 
 

@@ -729,6 +729,15 @@ that page.", "Checking your calendar.", "Asking researcher." Only for tools that
 started, at most one line every eight seconds, and never over something it is already
 saying. Code in a reply is read as "code block".
 
+**Stop the voice.** While anything is being read aloud, a **Stop voice** button is on screen:
+bottom left on a desktop, under the menu bar on a phone. Press it, or press Esc, and the
+reply stops being read, including the part still arriving. The voice stays on, so the next
+reply is spoken. To turn the voice off for good, use **Voice on** in the chat's header.
+
+![The Stop voice button while a reply is read](screenshots/voice-stop.png)
+
+![The same button on a phone](screenshots/voice-stop-phone.png)
+
 ![Settings → Voice: the voice engine](screenshots/voice-engine.png)
 
 From a terminal:

@@ -611,7 +611,7 @@ class WhatsAppBridge(usersmod.Scoped):
         if not (self._c().get("owner_wa_id") or ""):
             c["owner_wa_id"] = wa_id
             cfgmod.save_config(self.cfg)
-            self.store.wa_set_allowed(wa_id, 1)
+            self.store.wa_set_allowed(wa_id, 1, "pairing: the first chat to write")
             chat["allowed"] = 1
             agent = self.cfg.get("agent_name") or "Bento"
             self.store.log("whatsapp", f"paired: owner = {name} ({wa_id})")
@@ -627,7 +627,7 @@ class WhatsAppBridge(usersmod.Scoped):
         if not chat.get("allowed"):
             match = chanmod.preauthorised(conf(self.cfg), wa_id)
             if match:
-                self.store.wa_set_allowed(wa_id, 1)
+                self.store.wa_set_allowed(wa_id, 1, f"the allow-list ({match})")
                 chat["allowed"] = 1
                 self.store.log("whatsapp", f"allowed {name} ({wa_id}) — on the allow-list",
                                {"wa_id": wa_id, "matched": match})
@@ -643,14 +643,17 @@ class WhatsAppBridge(usersmod.Scoped):
                            {"wa_id": wa_id, "name": name,
                             "msg_count": chat.get("msg_count") or 0, "text": text[:160]})
             if (chat.get("msg_count") or 0) <= 1:
-                await self.send("▲ This number reached an AgentOS machine, but it is not "
-                                "enabled. Its owner can allow it in Settings → Channels.",
-                                wa_id)
+                await self.send("▲ I've asked the owner whether you can talk to me. You'll hear "
+                                "back here once they say yes.", wa_id)
+                await self.ask_owner_about(wa_id, name, text)
             await self.broadcast({"type": "whatsapp_chats"})
             return
         await self.broadcast({"type": "whatsapp_chats"})
 
         low = text.lower()
+        if wa_id == (self._c().get("owner_wa_id") or "") and low.split(" ")[0] in ("/people", "/allow", "/block"):
+            await self.send(await self._owner_command(low.split(" ")[0], text.partition(" ")[2].strip()), wa_id)
+            return
         if low.startswith("/clear"):
             self.store.clear_messages(self._conversation(chat))
             await self.send("🧹 Session cleared — starting fresh.", wa_id)
@@ -743,6 +746,70 @@ class WhatsAppBridge(usersmod.Scoped):
             if out == "sent via WhatsApp":
                 return
         await self.send(text, wa_id)
+
+    async def ask_owner_about(self, wa_id: str, name: str, text: str) -> None:
+        """Somebody new wrote: the account that owns this channel decides. Asked on its
+        WhatsApp owner chat, on its Telegram owner chat when that is paired (buttons),
+        and on its desktop. Before, the newcomer was sent to Settings and the owner
+        was told nothing."""
+        owner = self._c().get("owner_wa_id") or ""
+        agent = self.cfg.get("agent_name") or "Bento"
+        who = f"{name} (+{wa_id})" if name and name != wa_id else f"+{wa_id}"
+        words = (f"📩 {who} wants to talk to {agent} on WhatsApp. They wrote:\n“{text[:300]}”\n\n"
+                 f"Allowing them lets them chat with {agent}, under your settings and permissions.")
+        if owner and owner != wa_id:
+            with contextlib.suppress(Exception):
+                await self.send(words + f"\n\nReply /allow {wa_id} or /block {wa_id}.", owner, quiet=True)
+        tg = getattr(self.toolbox, "telegram", None)
+        tg_owner = tg is not None and (tg._t().get("owner_chat_id") or 0)
+        if tg_owner and getattr(tg, "status", "") == "polling":
+            with contextlib.suppress(Exception):
+                await tg._api("sendMessage", chat_id=tg_owner, text=words[:4000],
+                              reply_markup={"inline_keyboard": [[
+                                  {"text": "✓ Allow", "callback_data": f"wan:{wa_id}:1"},
+                                  {"text": "✗ Block", "callback_data": f"wan:{wa_id}:0"}]]})
+        with contextlib.suppress(Exception):
+            await self.broadcast({"type": "whatsapp_request", "wa_id": wa_id, "title": who, "text": text[:160]})
+
+    async def decide_newcomer(self, wa_id: str, allow: bool, by: str = "the owner, on WhatsApp") -> str:
+        """The owner's answer, from WhatsApp, Telegram or the desktop: one door."""
+        if not self.store.wa_get_chat(wa_id):
+            return "nobody by that number has written"
+        if not allow and wa_id == (self._c().get("owner_wa_id") or ""):
+            return "that's the owner"
+        self.store.wa_set_allowed(wa_id, 1 if allow else 0, by)
+        self.store.log("whatsapp", f"{'allowed' if allow else 'blocked'} {wa_id} ({by})",
+                       {"wa_id": wa_id, "allowed": allow, "by": by})
+        if allow:
+            agent = self.cfg.get("agent_name") or "Bento"
+            with contextlib.suppress(Exception):
+                await self.send(f"▲ You're in. I'm {agent}. Send me anything; /new starts a new session.",
+                                wa_id, quiet=True)
+        with contextlib.suppress(Exception):
+            await self.broadcast({"type": "whatsapp_chats"})
+        return "allowed" if allow else "blocked"
+
+    async def _owner_command(self, cmd: str, arg: str) -> str:
+        """/people, /allow, /block: the owner's, from their own WhatsApp."""
+        from .telegram_admin import decided
+        owner = self._c().get("owner_wa_id") or ""
+        if cmd == "/people":
+            ok, waiting = [], []
+            for c in self.store.wa_list_chats():
+                line = (f"• {c.get('name') or ''} +{c['wa_id']}".replace("  ", " ")
+                        + (" · owner" if c["wa_id"] == owner else "")
+                        + (f"\n   {'let in' if c['allowed'] else 'blocked'} {decided(c)}" if c.get("decided_at") else ""))
+                (ok if c["allowed"] else waiting).append(line)
+            out = "▲ Can talk to me\n" + ("\n".join(ok) or "only you")
+            if waiting:
+                out += "\n\nWrote, not allowed\n" + "\n".join(waiting)
+            return out + "\n\n/allow <number> lets somebody in. /block <number> stops them."
+        num = "".join(ch for ch in arg.split(" ")[0] if ch.isdigit())
+        if not num:
+            return f"▲ Who? {cmd} <number>. /people lists them."
+        said = await self.decide_newcomer(num, cmd == "/allow")
+        return {"allowed": f"▲ +{num} can talk to me now. I've told them.",
+                "blocked": f"▲ +{num} can no longer talk to me."}.get(said, f"▲ I can't: {said}.")
 
     def _conversation(self, chat: dict) -> str:
         cid = chat.get("conversation_id")

@@ -1,6 +1,10 @@
 # Changelog
 
-## 0.9.22 — 2026-11-16
+## 0.9.23 — 2026-11-16
+
+No release notes were written for this one; the commits since 0.9.22 are what changed (`bento update` lists them).
+
+## 0.9.23 — 2026-11-16
 
 **A busy local model no longer holds your chats.**
 
@@ -12,8 +16,30 @@
 - **A window that had to grow is kept.** When a local model needs a bigger window to fit a
   prompt, that size is saved for that model under `ollama_windows` in your config.
 
+## 0.9.22 — 2026-11-16
+
+No release notes were written for this one; the commits since 0.9.21 are what changed (`bento update` lists them).
+
+## 0.9.21 — 2026-11-16
+
+**The voice can be stopped.** While a reply is read aloud there is a Stop voice button on screen,
+on every surface, and Esc does the same. It stops what is being said and the rest of that reply;
+the voice stays on for the next one.
+No release notes were written for this one; the commits since 0.9.20 are what changed (`bento update` lists them).
+
 ## 0.9.20 — 2026-11-16
 
+**Who may talk to your agent is a table now, with when and who decided.** The Telegram app shows
+People and Groups in two tables: whether each is answered, when that was decided and by whom, how
+many messages, and when they last wrote. Under each group is everybody who wrote to the agent
+there. A group answers everybody in it or only the people you pick, and you can block one person
+either way. From your phone, `/people` and `/groups` say the same, and `/members <group>` lists a
+group's people with a button for each. WhatsApp's card has the same people table.
+
+**A request to let somebody in reaches the account that owns the channel.** It is asked on that
+account's owner chat and on its desktop. A new WhatsApp number used to be told to find Settings
+while you heard nothing; now you are asked on WhatsApp (`/allow <number>`, `/block <number>`,
+`/people`), on your Telegram with buttons when it is paired, and on the desktop.
 **A company is addressed by name, and your agent decides who does the work.**
 
 - **`@Company` opens a company.** Start a message with `@` and one of your companies' names, in Chat,
