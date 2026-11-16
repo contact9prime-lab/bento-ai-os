@@ -13,6 +13,20 @@ group's people with a button for each. WhatsApp's card has the same people table
 account's owner chat and on its desktop. A new WhatsApp number used to be told to find Settings
 while you heard nothing; now you are asked on WhatsApp (`/allow <number>`, `/block <number>`,
 `/people`), on your Telegram with buttons when it is paired, and on the desktop.
+**A company is addressed by name, and your agent decides who does the work.**
+
+- **`@Company` opens a company.** Start a message with `@` and one of your companies' names, in Chat,
+  the prompt bar, the terminal, Telegram or WhatsApp. You're asked on a card; after a yes the rest of
+  the message is answered there, by that company's departments.
+- **Your agent notices the wrong company.** A stock market question put to a kids' channel is offered
+  to the company it belongs to. When none fits, it asks whether to start one, and does after your yes.
+- **Your agent hands work on.** Before real work it decides who does it: the right company, a
+  department, a specialist, or a specialist it builds. It works alone only when it is alone. Asked to
+  run code, it gives it to the department that can.
+- **A mission belongs to its company.** It runs with that company's people, also while another
+  company is open, and nobody from another company can be added to it.
+- **Memory is per company, with one shelf that goes everywhere.** What is about a business stays in
+  that company; what is about you follows your agent into each one.
 
 ## 0.9.19 — 2026-11-16
 

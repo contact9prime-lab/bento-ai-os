@@ -14991,7 +14991,8 @@ async def api_company_task(body: dict, request: Request):
 
 @app.get("/api/chat/addresses")
 async def api_chat_addresses():
-    """Who `@` reaches in a chat: the specialists and the open company's departments.
+    """Who `@` reaches in a chat: the specialists, the open company's departments, and
+    the person's other companies ('@Acme' asks to open it).
     Every composer's suggestions read this one list (company.addresses)."""
     from . import company as companymod
     return companymod.addresses(state["cfg"], state["store"])
@@ -18796,6 +18797,7 @@ async def api_run_job_now(name: str, request: Request):
 
 @app.get("/api/flows")
 async def api_flows(request: Request):
+    from . import company as _co
     store = state["store"]
     out = []
     for f in store.list_flows():
@@ -18808,6 +18810,9 @@ async def api_flows(request: Request):
                 t["url"] = flowsmod.hook_url(state["cfg"], f["name"], t,
                                              base=_base_url(request))
         out.append({**f, "triggers": trigs,
+                    # whose mission it is: it runs with that company's people (company.of_flow)
+                    "company": (lambda c: {"name": c["name"], "active": c["active"]} if c else None)(
+                        _co.of_flow(state["cfg"], f)),
                     "grants": [g for g in store.list_grants()
                                if (g.get("source_ref") or "") == flowsmod.source_ref(f["name"])],
                     # a disabled flow holds no grants, so the card has to be able to say
@@ -18983,7 +18988,10 @@ async def api_flows_preview(body: dict):
 async def api_save_flow(body: dict):
     before = state["store"].get_flow(str((body or {}).get("name") or ""))
     try:
-        flow, report = flowsmod.save(state["store"], body or {})
+        from . import company as _companymod
+        # a mission made while a company is open is that company's, with its own people
+        flow, report = flowsmod.save(state["store"],
+                                     _companymod.place_mission(state["cfg"], state["store"], body or {}))
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     await state["broadcast"]({"type": "fabric_defs"})
@@ -20544,10 +20552,52 @@ async def _run_chat(cid: str, data: dict):
                 dept_hit = _companymod.parse_department(cfg, store, text)
             except Exception:
                 dept_hit = None
+        # '@Acme …' names one of the person's COMPANIES: they are asked whether to open it,
+        # and what follows the name is answered there, by its people. An agent's name and a
+        # department of the open company were checked first.
+        canned = None
+        # A chat belongs to the company it was held in: its memory and graph are that
+        # company's. Carried on while ANOTHER company is open, the team and the memory would
+        # be two different companies', so the person is asked which it is.
+        if not retry and not text.startswith("@"):
+            with contextlib.suppress(Exception):
+                from . import company as _cmod
+                _conv = store.get_conversation(cid) or {}
+                _theirs = _cmod.of_space(cfg, _conv.get("space_id") or "")
+                if _theirs and not _theirs["active"] and _theirs.get("id"):
+                    _got = await state["fabric"].open_company(_theirs["id"], surface="gui",
+                                                              approver=approver, conversation_id=cid)
+                    if _got["opened"]:
+                        await evsend({"type": "status", "message": f"{_theirs['name']} is open"})
+                        await _company_changed(spaces=True)
+                    else:
+                        _here = next((c for c in _cmod.companies(cfg) if c["active"]), None)
+                        if _here and _here.get("space_id"):
+                            store.set_conversation_space(cid, _here["space_id"])
+                            await evsend({"type": "status", "message":
+                                          f"this chat is {_here['name']}'s from here on"})
+        if text.startswith("@") and not (huddle_hit or mention or dept_hit):
+            co_turn = await fabricmod.company_turn(state["fabric"], cfg, store, text, "gui",
+                                                   approver, cid)
+            if co_turn and co_turn["reply"]:
+                canned = co_turn["reply"]
+            elif co_turn:
+                if co_turn.get("status"):
+                    await evsend({"type": "status", "message": co_turn["status"]})
+                    await _company_changed(spaces=True)
+                text = co_turn["rest"]
+                history[-1] = {**history[-1], "content": place + text}
+                huddle_hit = fabricmod.parse_huddle(store, text)
+                mention = None if huddle_hit else fabricmod.parse_mention(store, text)
+                if not (huddle_hit or mention):
+                    with contextlib.suppress(Exception):
+                        dept_hit = _companymod.parse_department(cfg, store, text)
+            if co_turn and canned and "is open" in canned:
+                await _company_changed(spaces=True)
         # A message trigger can start a flow from the chat too. `@name` is resolved first
         # and always wins: an explicit address is not a pattern to be second-guessed.
         flow_hit = None
-        if not mention and not huddle_hit and not dept_hit:
+        if not mention and not huddle_hit and not dept_hit and canned is None:
             try:
                 flow_hit = flowsmod.match_message(store, text, surface="gui")
             except Exception:
@@ -20560,7 +20610,7 @@ async def _run_chat(cid: str, data: dict):
         # brain is Claude Code. Checked in the wrong order, every `@toolsmith build a
         # tool` was forwarded to Claude Code, which built it itself.
         zero_res = None
-        if _zero().chat_on_hub(cfg) and not (mention or huddle_hit or flow_hit or dept_hit):
+        if canned is None and _zero().chat_on_hub(cfg) and not (mention or huddle_hit or flow_hit or dept_hit):
             # A Zero: the turn is worked on its hub, in its section there, and kept there
             # (fabric.zero_chat). This machine shows it and keeps the screen's copy.
             turns[cid] = {"agent": None, "task": asyncio.current_task(), "model": model, "uid": owner}
@@ -20574,7 +20624,13 @@ async def _run_chat(cid: str, data: dict):
                 started = False
                 await evsend({"type": "status", "message": zero_res["fallback"]})
                 zero_res = None
-        if zero_res is not None:
+        if canned is not None:
+            # the company was opened (or not), and that is the whole answer
+            await evsend({"type": "turn_start", "model": ""})
+            await evsend({"type": "text_delta", "text": canned})
+            result = {"content": canned, "steps": [], "tokens": {"input": 0, "output": 0}}
+            model = ""
+        elif zero_res is not None:
             result = zero_res
             model = ""
         elif model in execmod.ENGINES and model != "aria" and not (mention or huddle_hit or flow_hit or dept_hit):

@@ -77,7 +77,7 @@ ACTION_WORDS = {"agent.invoke": "hand-over", "agent.message": "asked a colleague
                 "net.fetch": "fetched a page", "memory.read": "recalled", "memory.write": "remembered",
                 "kg.read": "looked up facts", "kg.write": "noted a fact", "mail.read": "read mail",
                 "mail.send": "sent mail", "calendar.read": "read the calendar",
-                "capability.grant": "asked for an ability", "model.use": "used a model",
+                "capability.grant": "asked for an ability", "company.switch": "opened a company", "company.create": "started a company", "model.use": "used a model",
                 "browser.read": "read the browser", "browser.act": "used the browser",
                 "media.generate": "made a picture", "grant.write": "permission written",
                 "grant.revoke": "permission removed", "company.review": "sign-off",
