@@ -7837,6 +7837,30 @@ body:not(.immersive) #menubar.f9 #fwdchip::after{content:'';width:7px;height:7px
 #netpop .tn-err{color:var(--err);font-size:var(--fs-xs);margin:0}
 body.dev-mobile #netpop{left:8px;right:8px;width:auto}
 body.dev-mobile #tray-net{min-width:var(--tap,40px);min-height:var(--tap,40px);justify-content:center}
+
+/* ---- the rail: the menu bar continued down the right edge (04g-menubar-fit.js) ---- */
+:root{--railw:46px}
+#mbrail{position:fixed;z-index:8999;top:var(--mbh);right:0;bottom:0;width:var(--railw);
+  display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 0;
+  background:rgba(13,16,21,.72);backdrop-filter:blur(24px) saturate(1.5);-webkit-backdrop-filter:blur(24px) saturate(1.5);
+  border-left:1px solid var(--hairline);color:var(--txt);font-size:var(--fs-sm)}
+#mbrail[hidden]{display:none}
+:root[data-theme=light] #mbrail{background:rgba(255,255,255,.72)}
+body.mb-rail #desktop{right:var(--railw)}
+#mbrail>*{flex-shrink:0;white-space:nowrap}
+#mbrail>button,#mbrail #tray-ctl{width:34px;min-height:32px;justify-content:center;padding:4px 0;border-radius:var(--r-sm)}
+#mbrail #tray-ctl{flex-direction:column;gap:6px;padding:6px 0}
+#mbrail #tray-ctl>span{flex-direction:column;gap:2px!important}
+#mbrail #tray-ctl .pct{font-size:9px!important;opacity:.8}
+#mbrail #mb-user .nm,#mbrail #mb-user .badge,#mbrail #tray-net .tn-off{display:none}
+#mbrail #mb-user{padding:0;border-radius:999px;width:auto;min-height:0;background:none;border:none}
+#mbrail #mb-user .ini{width:26px;height:26px}
+#mbrail #fwdchip{font-size:0;gap:0;padding:0;width:26px;height:26px;min-height:0;border-radius:999px;justify-content:center}
+#mbrail #fwdchip::before{margin:0}
+body:not(.immersive) #mbrail #fwdchip::after{content:'';width:8px;height:8px;border-radius:50%;background:currentColor}
+#mbrail #tray-net.off{background:color-mix(in srgb,var(--warn,#f5a524) 18%,transparent)}
+/* what opens from the rail opens beside it, not over it */
+body.mb-rail #ccpop,body.mb-rail #netpop,body.mb-rail #notifpanel,body.mb-rail #powermenu{right:calc(var(--railw) + 8px)}
 </style>
 </head>
 <body>
@@ -7880,6 +7904,8 @@ body.dev-mobile #tray-net{min-width:var(--tap,40px);min-height:var(--tap,40px);j
     <button id="tray-power" data-ic="power" title="Power &amp; session — lock, log out, restart, power off">⏻</button>
   </div>
 </div>
+<!-- the menu bar's right edge, used when the bar runs out of room (04g-menubar-fit.js) -->
+<div id="mbrail" role="toolbar" aria-label="Menu bar, continued" hidden></div>
 <div id="powermenu">
   <!-- Only shown on a machine that has accounts. "Sign out" on a single-user
        install would be a button that locks you out of your own laptop with
@@ -16628,8 +16654,9 @@ function renderAppWindow(body,w){
    was a flex item that could shrink, so the menus shrank under their neighbours instead
    of anything giving way.
 
-   Now nothing in the bar shrinks or wraps (44-menubar-fit.css), and when it does not fit
-   it lets go of things in ONE order, least useful first, each step a class on #menubar:
+   Now nothing in the bar shrinks or wraps (44-menubar-fit.css). When it does not fit, the
+   icon controls move to a rail on the right edge first (below), and only if the bar still
+   does not fit does it let go of things in ONE order, least useful first, each step a class on #menubar:
      f1 the date beside the clock          f5 battery percent, your name (initial stays)
      f2 the words "Bento Box AI"            f6 the space name shortened further
      f3 the ADMIN tag and the model name    f7 the focused app's name (its menus stay)
@@ -16645,21 +16672,68 @@ function renderAppWindow(body,w){
    SUI: the bar's height is reported to the compositor (00-sui.js); nowrap keeps it one
    line, which is the same height on every screen. TUI: not applicable, a terminal has
    no menu bar. A phone keeps its own layout (15-responsive.css); this only ever hides. */
-var MBFIT={n:0,max:11,raf:0};
+/* The right edge first (asked for as "use the right part of the screen, like the tool bar
+   extending to the right on the edge"): before anything is hidden, the bar's icon controls
+   (mic, network, sound and battery, notifications, your account, the brain) move into a rail
+   down the right edge of the screen, and the top bar keeps the menus, the space and the
+   brand. The desktop gives the rail its width (body.mb-rail #desktop), so a window, a
+   maximised one too, stops at the rail instead of lying under it. The elements are MOVED,
+   not copied: same ids, same handlers, one of each.
+   Only where the page owns the screen's edges: not in SUI (the compositor reserves the top
+   and bottom bands only, so native windows would cover a rail; there the bar hides instead),
+   not on a phone (its own layout, 15-responsive.css) and not in the kiosk. */
+/* Two stages: the plain icons go first; your chip and the brain chip keep their words in the
+   top bar and move only if the bar still does not fit (the first cut moved all six at once,
+   and a 1366 screen showed a P and a dot beside 330px of empty bar). */
+var MBRAIL_STAGES=[['tray-voice','tray-net','tray-ctl','tray-bell'],['mb-user','fwdchip']];
+var MBRAIL_IDS=MBRAIL_STAGES[0].concat(MBRAIL_STAGES[1]);
+var MBFIT={n:0,max:11,raf:0,rail:0,obs:null};
+function menubarRailAllowed(){
+  const b=document.body.classList;
+  if(b.contains('dev-mobile')||b.contains('kiosk'))return false;
+  try{if(typeof suiActive==='function'&&suiActive())return false}catch(e){}
+  try{if(localStorage.getItem('menubar.rail')==='0')return false}catch(e){}
+  return !!document.getElementById('mbrail');
+}
+function menubarRail(stage){
+  const on=stage>0,ids=on?MBRAIL_STAGES.slice(0,stage).flat():[];
+  const rail=document.getElementById('mbrail'),tray=document.getElementById('tray');
+  if(!rail||!tray)return;
+  ids.forEach(id=>{const e=document.getElementById(id);if(e&&e.parentNode!==rail)rail.appendChild(e)});
+  {
+    const spin=document.getElementById('spin'),dot=document.getElementById('statdot');
+    MBRAIL_IDS.filter(id=>!ids.includes(id)).forEach(id=>{const e=document.getElementById(id);if(!e||e.parentNode===tray)return;
+      const before=(id==='mb-user'||id==='fwdchip')?dot:spin;
+      tray.insertBefore(e,before&&before.parentNode===tray?before:null)});
+  }
+  rail.hidden=!on;
+  document.body.classList.toggle('mb-rail',on);
+  MBFIT.rail=stage;
+}
 function menubarFit(){
   MBFIT.raf=0;
   const mb=document.getElementById('menubar');if(!mb)return;
   const set=n=>{for(let i=1;i<=MBFIT.max;i++)mb.classList.toggle('f'+i,i<=n)};
+  const over=()=>mb.scrollWidth>mb.clientWidth+1;
   let n=0;set(0);
-  while(n<MBFIT.max&&mb.scrollWidth>mb.clientWidth+1){n++;set(n)}
+  menubarRail(0);
+  // the icons to the edge, then the date, then the two chips, then the steps above
+  const rail=menubarRailAllowed();
+  if(rail&&over())menubarRail(1);
+  if(over()){n=1;set(1)}
+  if(rail&&over())menubarRail(2);
+  while(n<MBFIT.max&&over()){n++;set(n)}
   MBFIT.n=n;
+  // what this pass moved is not news: drop it, or the observer would run the fit again
+  if(MBFIT.obs)MBFIT.obs.takeRecords();
 }
 function menubarFitSoon(){if(!MBFIT.raf)MBFIT.raf=requestAnimationFrame(menubarFit)}
 (function(){
   const mb=document.getElementById('menubar');if(!mb)return;
   try{new ResizeObserver(menubarFitSoon).observe(mb)}catch(e){addEventListener('resize',menubarFitSoon)}
-  try{new MutationObserver(menubarFitSoon).observe(mb,{childList:true,subtree:true,characterData:true,
-    attributes:true,attributeFilter:['hidden'],attributeOldValue:false})}catch(e){}
+  const opts={childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['hidden']};
+  try{MBFIT.obs=new MutationObserver(menubarFitSoon);MBFIT.obs.observe(mb,opts);
+    const rail=document.getElementById('mbrail');if(rail)MBFIT.obs.observe(rail,opts)}catch(e){}
   if(document.fonts&&document.fonts.ready)document.fonts.ready.then(menubarFitSoon);
   menubarFitSoon();
 })();

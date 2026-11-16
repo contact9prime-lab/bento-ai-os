@@ -162,12 +162,20 @@ desktop opens fullscreen automatically, hiding the host taskbar.
 
 ### The menu bar on a smaller screen
 Nothing in the menu bar wraps or slides under its neighbour. When the screen is too narrow
-for all of it, it lets go of things in one order, least useful first: the date beside the
-clock, the words "Bento Box AI", the ADMIN tag and the model name, then the space name gets
-shorter, then the battery percent and your name (your initial stays), then the app's name.
-Last of all, File, Edit, View, Window and Help fold into one ☰ menu with the same items.
-Everything it hides is still a tooltip or a click away. On a phone the brain chip becomes its
-dot, then the space chip and your own chip go (the power menu still says who you are).
+for all of it, the bar carries on down the right edge of the screen: the mic, network, sound
+and battery and notifications move into a thin rail there, and the top bar keeps the menus,
+your space, your name and the brain. Windows stop at the rail rather than going under it. If
+that still isn't enough, the date goes, then your chip and the brain chip move to the rail too.
+
+Only past that does it hide things, least useful first: the words "Bento Box AI", the ADMIN
+tag and the model name, then the space name gets shorter, then your name (your initial stays),
+then the app's name. Last of all, File, Edit, View, Window and Help fold into one ☰ menu with
+the same items. Everything hidden is still a tooltip or a click away.
+
+When Bento is the whole desktop (the session), the bar hides things instead of using the
+rail, because native windows would cover it. A phone keeps its own layout.
+
+![At 1366 wide the top bar keeps everything and the icons sit in a rail down the right edge](screenshots/menubar-rail-1366.png)
 
 ### The network
 Where the machine runs NetworkManager, the menu bar shows its network beside the sound and

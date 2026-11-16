@@ -58,3 +58,27 @@ def test_the_network_button_starts_hidden_and_only_joins_through_the_admin_route
 def test_the_connect_route_is_still_a_machine_route():
     mr = (Path(__file__).resolve().parent.parent / "agentos" / "machineroutes.py").read_text()
     assert '"/api/wifi/connect"' in mr
+
+
+def test_the_right_edge_is_used_before_anything_is_hidden():
+    body = FIT[FIT.index("function menubarFit()"):]
+    assert body.index("menubarRail(1)") < body.index("set(1)") < body.index("menubarRail(2)") < body.index("set(n)}")
+    # the chips that carry words go only after the plain icons
+    first = FIT[FIT.index("var MBRAIL_STAGES"):].split("\n")[0]
+    assert "'mb-user'" in first.split("],[")[1] and "'fwdchip'" in first.split("],[")[1]
+    # moved, never copied: one element per id, its handlers with it
+    assert "rail.appendChild(e)" in FIT and "cloneNode" not in FIT
+    assert '<div id="mbrail"' in SHELL
+
+
+def test_a_window_stops_at_the_rail():
+    assert "body.mb-rail #desktop{right:var(--railw)}" in CSS
+
+
+def test_no_rail_where_native_windows_would_cover_it_or_on_a_phone():
+    allowed = FIT[FIT.index("function menubarRailAllowed"):FIT.index("function menubarRail(")]
+    assert "suiActive()" in allowed and "dev-mobile" in allowed and "kiosk" in allowed
+
+
+def test_the_fit_drops_its_own_moves_from_the_observer():
+    assert "MBFIT.obs.takeRecords()" in FIT

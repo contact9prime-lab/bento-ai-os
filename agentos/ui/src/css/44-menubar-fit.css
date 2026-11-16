@@ -63,3 +63,27 @@ body:not(.immersive) #menubar.f9 #fwdchip::after{content:'';width:7px;height:7px
 #netpop .tn-err{color:var(--err);font-size:var(--fs-xs);margin:0}
 body.dev-mobile #netpop{left:8px;right:8px;width:auto}
 body.dev-mobile #tray-net{min-width:var(--tap,40px);min-height:var(--tap,40px);justify-content:center}
+
+/* ---- the rail: the menu bar continued down the right edge (04g-menubar-fit.js) ---- */
+:root{--railw:46px}
+#mbrail{position:fixed;z-index:8999;top:var(--mbh);right:0;bottom:0;width:var(--railw);
+  display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 0;
+  background:rgba(13,16,21,.72);backdrop-filter:blur(24px) saturate(1.5);-webkit-backdrop-filter:blur(24px) saturate(1.5);
+  border-left:1px solid var(--hairline);color:var(--txt);font-size:var(--fs-sm)}
+#mbrail[hidden]{display:none}
+:root[data-theme=light] #mbrail{background:rgba(255,255,255,.72)}
+body.mb-rail #desktop{right:var(--railw)}
+#mbrail>*{flex-shrink:0;white-space:nowrap}
+#mbrail>button,#mbrail #tray-ctl{width:34px;min-height:32px;justify-content:center;padding:4px 0;border-radius:var(--r-sm)}
+#mbrail #tray-ctl{flex-direction:column;gap:6px;padding:6px 0}
+#mbrail #tray-ctl>span{flex-direction:column;gap:2px!important}
+#mbrail #tray-ctl .pct{font-size:9px!important;opacity:.8}
+#mbrail #mb-user .nm,#mbrail #mb-user .badge,#mbrail #tray-net .tn-off{display:none}
+#mbrail #mb-user{padding:0;border-radius:999px;width:auto;min-height:0;background:none;border:none}
+#mbrail #mb-user .ini{width:26px;height:26px}
+#mbrail #fwdchip{font-size:0;gap:0;padding:0;width:26px;height:26px;min-height:0;border-radius:999px;justify-content:center}
+#mbrail #fwdchip::before{margin:0}
+body:not(.immersive) #mbrail #fwdchip::after{content:'';width:8px;height:8px;border-radius:50%;background:currentColor}
+#mbrail #tray-net.off{background:color-mix(in srgb,var(--warn,#f5a524) 18%,transparent)}
+/* what opens from the rail opens beside it, not over it */
+body.mb-rail #ccpop,body.mb-rail #netpop,body.mb-rail #notifpanel,body.mb-rail #powermenu{right:calc(var(--railw) + 8px)}

@@ -2,10 +2,11 @@
 
 ## 0.9.23 — 2026-11-16
 
-- **The menu bar fits a smaller screen.** At 1366 wide the space chip lay over Window and Help, and the
-  brand and the clock wrapped. Nothing in the bar wraps or shrinks now; when it runs out of room it
-  hides things in one order (the date, the brand's words, the ADMIN tag and model, a shorter space name,
-  battery percent, your name, the app's name) and last folds the app's menus into one ☰ list.
+- **The menu bar fits a smaller screen, and carries on down the right edge.** At 1366 wide the space chip
+  lay over Window and Help, and the brand and the clock wrapped. Nothing in the bar wraps or shrinks now.
+  When it runs out of room the icons (mic, network, sound and battery, notifications) move into a rail on
+  the right edge, and windows stop at it; then the date goes and your chip and the brain move there too.
+  Only after that does it hide things, and last it folds the app's menus into one ☰ list.
 - **The network is on the menu bar.** Wi-Fi with its signal, wired, or Offline in amber, read from
   NetworkManager. Click for the networks in range and join one (admin only). From another device it says
   it's the machine's network and asks before switching. When the network comes back, one toast says so.
