@@ -148,8 +148,9 @@ def test_every_chat_door_routes_a_department():
     assert "_companymod.parse_department(cfg, store, text)" in src
     assert "elif dept_hit:" in src and 'state["fabric"].department_task(' in src
     for f in ("telegram.py", "whatsapp.py"):
-        s = (ROOT / "agentos" / f).read_text()
-        assert "parse_department(self.cfg, self.store, text)" in s and "fabricmod.department_reply(" in s, f
+        assert "phoneturn.answer(" in (ROOT / "agentos" / f).read_text(), f
+    s = (ROOT / "agentos/phoneturn.py").read_text()      # the one turn both phones share
+    assert "parse_department(cfg, store, text)" in s and "fabricmod.department_reply(" in s
     assert '@app.get("/api/chat/addresses")' in src
 
 

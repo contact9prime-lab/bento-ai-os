@@ -237,16 +237,21 @@ def cost(cfg: dict, model: str, tokens_in: int, tokens_out: int) -> float | None
 
 def record(store, cfg: dict, model: str, tokens: dict, *, surface: str = "",
            principal: str = "user", conversation_id: str = "", space_id: str = "",
-           kind: str = "chat") -> None:
+           kind: str = "chat", cost_usd: float | None = None) -> None:
     """One turn's usage. Called from every path that runs a turn; silent about
     turns that reported nothing, because a provider that does not send usage is
-    not the same as a turn that spent nothing."""
+    not the same as a turn that spent nothing.
+
+    `cost_usd`: what an agent CLI said the turn cost (Claude Code reports it on its last
+    line). It is the bill, so it is recorded as given; this OS has no price list for a
+    CLI's models and never works one out."""
     tin, tout = int((tokens or {}).get("input") or 0), int((tokens or {}).get("output") or 0)
-    if not (tin or tout):
+    if not (tin or tout or cost_usd):
         return
     try:
         store.usage_add(model=model, tokens_in=tin, tokens_out=tout,
-                        cost_usd=cost(cfg, model, tin, tout), surface=surface,
+                        cost_usd=cost_usd if cost_usd is not None else cost(cfg, model, tin, tout),
+                        surface=surface,
                         principal=principal, conversation_id=conversation_id,
                         space_id=space_id, kind=kind)
     except Exception:

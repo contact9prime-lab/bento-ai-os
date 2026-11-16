@@ -782,14 +782,8 @@ class WhatsAppBridge(usersmod.Scoped):
         await self.broadcast({"type": "whatsapp_in", "conversation_id": cid,
                               "text": text[:160]})
         note = ("[Message arriving via WhatsApp — the user is away from the "
-                "machine. Reply in plain text (no markdown tables). Keep it "
-                "short enough to read on a phone.]\n\n")
-
-        async def built_history():
-            h, _info = await _history.build(self.store, cid, self.cfg, self.cfg.get("default_model", ""))
-            if h and h[-1].get("role") == "user" and str(h[-1].get("content") or "").strip() == text:
-                h = h[:-1]
-            return h + [{"role": "user", "content": note + text}]
+                "machine. Reply in plain text (no markdown tables). Do the whole "
+                "job before you reply; then say it in plain words a phone can show.]\n\n")
 
         async def emit(ev):
             # the turn is the screen's too (the Office, Chat), as Telegram's is
@@ -814,78 +808,23 @@ class WhatsAppBridge(usersmod.Scoped):
         engine = execmod.resolve_engine(self.cfg)
         await emit({"type": "turn_start", "model": engine if engine != "aria" else model})
         try:
-            return await self._turn_body(chat, wa_id, text, cid, emit, approver, model, engine,
-                                         exec_meta, built_history)
+            return await self._turn_body(chat, wa_id, text, cid, emit, approver, note)
         finally:
             await emit({"type": "turn_end"})
 
-    async def _turn_body(self, chat, wa_id, text, cid, emit, approver, model, engine,
-                         exec_meta, built_history):
-        from . import knowledge as _k
-        from . import usage as _usage
-        from . import executors as execmod
-        from . import fabric as fabricmod
-        mention = (fabricmod.parse_mention(self.store, text)
-                   if getattr(self.toolbox, "fabric", None) else None)
-        dept_hit = None
-        if not mention and getattr(self.toolbox, "fabric", None):
-            from . import company as _companymod
-            dept_hit = _companymod.parse_department(self.cfg, self.store, text)
-        if dept_hit:
-            # '@Sales …' from the phone is a task for that department, as it is at the desk
-            dept, task = dept_hit
-            _k.turn_started()
-            try:
-                reply = await fabricmod.department_reply(self.toolbox.fabric, dept["name"], task,
-                                                         cid, approver, "whatsapp")
-            finally:
-                _k.turn_ended()
-            result = {"steps": []}
-        elif mention:
-            # '@toolsmith …' from the phone goes straight to that specialist, as it does
-            # on Telegram and at the desk — whatever the machine's brain is
-            defn, task = mention
-            _k.turn_started()
-            try:
-                res = await self.toolbox.fabric.run_subagent(defn, task, conversation_id=cid,
-                                                             approver=approver)
-            finally:
-                _k.turn_ended()
-            reply = (f"@{defn['name']} · {res['status']}\n\n"
-                     + (res["content"] or res["fault"] or "(no output)"))
-            result = {"steps": res["steps"]}
-        elif engine != "aria":
-            _k.turn_started()
-            try:
-                reply, run = await execmod.forward(
-                    engine, text, self.cfg, execmod.default_workspace(self.cfg), emit=emit,
-                    session_id=self.store.exec_session(cid),
-                    prior=self.store.get_messages(cid)[:-1],
-                    team={"toolbox": self.toolbox, "store": self.store, "approver": approver,
-                          "conversation_id": cid, "surface": "whatsapp"})
-                if run and run.session_id:
-                    # kept in the conversation row, so a restart does not make every
-                    # phone thread a stranger (an in-memory dict did)
-                    self.store.set_exec_session(cid, run.session_id)
-                    exec_meta = {"engine": engine, "exec_session": run.session_id}
-            finally:
-                _k.turn_ended()
-            reply = reply or "(done — no text output)"
-            result = {"steps": [{"type": "executor", "name": engine}]}
-        else:
-            agent = Agent(self.cfg, self.toolbox, model, emit, approver,
-                          conversation_id=cid, surface="whatsapp")
-            _k.turn_started()
-            try:
-                result = await agent.run(await built_history())
-            finally:
-                _k.turn_ended()
-            reply = result["content"] or "(done — no text output)"
+    async def _turn_body(self, chat, wa_id, text, cid, emit, approver, note):
+        # one function for both phones (phoneturn.py): who is addressed, which brain, and
+        # the next brain when that one isn't available
+        from . import phoneturn
 
-        self.store.add_message(cid, "assistant", reply, {"steps": result["steps"], **exec_meta})
+        async def tell(line):
+            await self.send("↪ " + line, wa_id)
+        out = await phoneturn.answer(
+            self.store, self.cfg, self.toolbox, cid=cid, text=text, surface="whatsapp",
+            emit=emit, approver=approver, note=note, tell=tell)
+        reply = out["reply"]
+        self.store.add_message(cid, "assistant", reply, {"steps": out["steps"], **out["meta"]})
         self.store.touch_conversation(cid)
-        _usage.record(self.store, self.cfg, model, result.get("tokens") or {},
-                      surface="whatsapp", conversation_id=cid)
         await self.send(reply, wa_id)
         await self.send_files(reply, wa_id)
         await self.send_stage(cid, reply, wa_id)

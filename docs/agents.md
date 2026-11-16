@@ -256,8 +256,8 @@ tool" with a toolsmith on the roster), it hands the work over with `delegate` an
 what they did, instead of doing it itself.
 
 This holds when the lead's brain is Claude Code. A chat turn forwarded to Claude Code keeps
-its own tools and also gets exactly two of this OS's: `delegate` and `huddle`, over the same
-bridge missions use. Every hand-over passes this OS's permission check, asks you when a
+its own tools and also gets this OS's own, starting with `delegate` and `huddle`, over the
+same bridge missions use. Every hand-over passes this OS's permission check, asks you when a
 built-in turn would, and is in the audit log. The same applies to a message sent from
 Telegram or WhatsApp. A scheduled turn does not get it; a mission is how a schedule gets a
 team.
@@ -266,6 +266,46 @@ Addressing someone directly always wins: `@toolsmith build a VCP scanner` goes t
 toolsmith, `@researcher @validator is this right?` starts a huddle, whatever the brain.
 Before this, with Claude Code as the brain, even an `@toolsmith` message was answered by
 Claude Code itself.
+
+### What a lead on Claude Code, Gemini CLI or Codex knows and keeps
+
+A lead that answers through one of these gets the same things the built-in lead has:
+
+![A chat answered by Claude Code: it reads the attached picture, answers from memory and saves a new fact](screenshots/chat-cli-knows.png)
+
+The same turn on a phone:
+
+![The same chat on a 390px phone](screenshots/chat-cli-knows-phone.png)
+
+- **Your memory.** What this machine remembers about you, the notes of the conversation
+  and the latest facts from the knowledge graph are in front of it on every turn, in the
+  space the conversation belongs to. It can look further with `recall` and `kg_query`.
+- **A way to keep things.** When you tell it something worth keeping, it saves it with
+  `remember` or `kg_add`, so every screen and every other brain knows it. It is told not to
+  use the CLI's own memory files, which nothing else here reads. Each save and each lookup
+  is a permission check and a line in the ledger, like any tool.
+- **Your skills and connected servers**, by name, so it loads a skill before a job the
+  skill covers and calls a connected server's tools.
+- **Pictures.** One attached in Chat, or a photo sent on Telegram, reaches the brain that
+  answers. Claude Code gets it inside the message. Gemini CLI and Codex get it as a file in
+  the workspace, named in the request; that way was not measured here, because neither is
+  installed on the machine this was built on.
+
+A scheduled prompt reads your memory too, and cannot change it: it has none of this OS's
+tools. A task from a linked team or a Zero is given none of your memory through this door.
+
+When you address somebody by name in a conversation (`@researcher summarise it`,
+`@Sales price that`, `@a @b is this right?`), they are shown what was said before, so "it"
+and "that" mean something. From Telegram and WhatsApp too, where `@a @b` now starts a
+huddle as it does at the desk.
+
+A turn you stop keeps what it had written. If the brain is not available (a usage limit, a
+lapsed sign-in), the next one on your list in Settings → AI providers answers: in Chat, on
+Telegram, on WhatsApp and for a scheduled job. What a turn on one of these agents cost is
+in Usage with the rest.
+
+Both kinds of lead are told to finish the job before replying: to do the next step
+instead of offering it, and to set up a schedule instead of asking you to message again.
 
 ## The map
 

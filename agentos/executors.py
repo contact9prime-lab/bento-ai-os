@@ -117,6 +117,12 @@ class Envelope:
     # draft, a linked team, a Zero, anything tainted) starts with none, so nothing a file
     # says can run. Off unless a surface says so. See `_settings_flags`.
     person: bool = False
+    # Pictures the person attached to this message, as data URLs (the chat's own cap and
+    # check: server._chat_images). They were saved on the message and shown in the bubble
+    # and never reached a CLI, which then answered as if nothing was attached.
+    # Claude Code takes them as image blocks in its first message (measured on 2.1.x: a
+    # red square came back "Red"); the others get files in the workspace (`_attach`).
+    images: tuple = ()
     # An admin's written yes for the two things a jail cannot make safe (Settings → Executors).
     unjailed_ok: bool = False           # Bash on a machine with no jail
     shell_for_accounts: bool = False    # Bash for non-admins: the CLI's credentials are in reach
@@ -173,8 +179,59 @@ class Envelope:
                         fallback=str(self.fallback or "")[-6000:],
                         extra_env=dict(self.extra_env or {}), scratch=self.scratch,
                         shares=_clean_shares(self.shares), steerable=bool(self.steerable),
-                        person=bool(self.person), unjailed_ok=bool(self.unjailed_ok),
+                        person=bool(self.person), images=_clean_images(self.images),
+                        unjailed_ok=bool(self.unjailed_ok),
                         shell_for_accounts=bool(self.shell_for_accounts))
+
+
+MAX_IMAGES = 4
+_IMAGE_EXT = {"image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp"}
+
+
+def _clean_images(raw) -> tuple:
+    """Data-URL pictures of a kind every CLI reads, capped as the chat caps them."""
+    out = []
+    for u in list(raw or ())[:MAX_IMAGES]:
+        if isinstance(u, str) and ";base64," in u and len(u) < 8_000_000 \
+                and u[5:u.find(";")] in _IMAGE_EXT:
+            out.append(u)
+    return tuple(out)
+
+
+def image_blocks(text: str, images: tuple) -> "str | list":
+    """A first message with its pictures, in the shape Claude Code's stream input reads."""
+    if not images:
+        return text
+    blocks = [{"type": "text", "text": text}]
+    for u in images:
+        blocks.append({"type": "image", "source": {"type": "base64", "media_type": u[5:u.find(";")],
+                                                   "data": u.split(";base64,", 1)[1]}})
+    return blocks
+
+
+def _attach(env: "Envelope") -> str:
+    """For a CLI that reads one prompt (Gemini CLI, Codex): the pictures as files in the
+    run's own folder, named in the prompt so it opens them. '' when there are none or they
+    could not be written; then the line says they did not arrive, never silence."""
+    if not env.images:
+        return ""
+    import base64 as _b64
+    paths = []
+    try:
+        folder = Path(env.workspace) / ".attachments"
+        folder.mkdir(parents=True, exist_ok=True)
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        for i, u in enumerate(env.images, 1):
+            f = folder / f"{stamp}-{i}.{_IMAGE_EXT[u[5:u.find(';')]]}"
+            f.write_bytes(_b64.b64decode(u.split(";base64,", 1)[1]))
+            paths.append(str(f))
+    except Exception:
+        paths = []
+    if not paths:
+        return ("\n\n[The person attached a picture to this message, and it could not be handed "
+                "to you. Say so; do not guess what it shows.]")
+    return ("\n\nATTACHED BY THE PERSON (open each one before you answer):\n"
+            + "\n".join(paths))
 
 
 def _clean_shares(raw) -> tuple:
@@ -328,6 +385,30 @@ def _said(msgs: list[dict]) -> str:
         for m in msgs if m.get("role") in ("user", "assistant") and str(m.get("content") or "").strip())
 
 
+THREAD_CHARS = 4000
+
+
+def thread_note(prior: list[dict], lead: str = "the lead agent") -> str:
+    """The conversation somebody addressed by name was addressed IN, for them to read.
+
+    `@researcher summarise it`, `@Sales price that` and a huddle about "this" each ran
+    with the task alone: the specialist, the desk and the room had never seen the thread
+    they were asked inside, the "chat is losing context" report again for everyone but
+    the lead. '' when nothing was said before, so a first message is the task alone."""
+    rows = []
+    for m in [m for m in (prior or []) if m.get("role") in ("user", "assistant")][-CARRY_MESSAGES:]:
+        text = " ".join(str(m.get("content") or "").split())
+        if not text:
+            continue
+        who = "Person" if m.get("role") == "user" else \
+            "@" + str((m.get("meta") or {}).get("speaker") or "") if (m.get("meta") or {}).get("speaker") else lead
+        rows.append(f"{who}: {text[:1200]}")
+    if not rows:
+        return ""
+    return ("SAID IN THIS CONVERSATION BEFORE YOU WERE ASKED (for reference; the request "
+            "is what you answer):\n" + "\n".join(rows)[-THREAD_CHARS:])
+
+
 def carry_over(prior: list[dict], session_id: str, engine: str) -> tuple[str, str, str]:
     """What a forwarded turn needs to know of its own conversation.
 
@@ -460,7 +541,8 @@ async def forward(engine: str, text: str, cfg: dict, workspace_default: str,
                   prior: list | None = None,
                   tools: tuple | None = None,
                   app: dict | None = None, run: "Run | None" = None,
-                  steerable: bool = False) -> tuple[str, "Run | None"]:
+                  steerable: bool = False, images: tuple = (),
+                  model: str = "") -> tuple[str, "Run | None"]:
     """Send one turn to another agent and return what it said.
 
     Used by the surfaces that have no event stream of their own (Telegram, the
@@ -487,6 +569,9 @@ async def forward(engine: str, text: str, cfg: dict, workspace_default: str,
     env = envelope_from(cfg, workspace_default, engine)
     if tools is not None:
         env.tools = tuple(t for t in tools if t in KNOWN_TOOLS)   # narrower, never wider
+    env.images = tuple(images or ())      # a photo sent from a phone reaches the brain too
+    if model:
+        env.model = model                 # a fallback that names its CLI's model
     env.session_id = session_id if engine in RESUMES else ""
     if prior is not None:
         # the conversation's stored messages before this one: what the session has
@@ -500,15 +585,26 @@ async def forward(engine: str, text: str, cfg: dict, workspace_default: str,
     env.person = bool(team) and not team.get("taint") and team.get("surface") in ("telegram", "whatsapp")
     # `team`: {toolbox, store, approver, conversation_id, surface} from a phone
     # channel, so a turn sent from Telegram or WhatsApp can hand over too
+    # the person's own turn (a phone) reads and writes their memory; a linked team's or a
+    # Zero's task (tainted, or narrowed with `only`) is given none of it here
+    mine = bool(team) and not team.get("taint") and not team.get("only")
+    mind = await mind_note(cfg, team.get("toolbox"), team.get("store"), team.get("space_id", ""),
+                           team.get("conversation_id", ""), text) if mine else ""
     token = open_team_door(env, cfg, team.get("toolbox"), team.get("store"), sink,
                            team.get("approver"), conversation_id=team.get("conversation_id", ""),
                            surface=team.get("surface", "gui"), text=text,
                            taint=team.get("taint"), only=team.get("only"),
-                           space_id=team.get("space_id", "")) if team else ""
+                           space_id=team.get("space_id", ""), mind=mind) if team else ""
     if not token:
         # no team door (a schedule, a board's refresh, an app's run): it still speaks as
         # the person's agent, for their company
         env.context += identity_note(cfg, _store_of(cfg))
+        if tools is None and not app and not team:
+            # a scheduled prompt is the person's own work: it reads what they told the
+            # machine (read only: it has none of this OS's tools). A draft, a designer or a
+            # ballot (`tools=()`) asks one closed question and is given no memory.
+            env.context += "\n\n" + finish_line("a line saying what to schedule") \
+                + await mind_note(cfg, None, _store_of(cfg), "", "", text, door=False)
     # `app`: {toolbox, app_id, approver} from a schedule that belongs to an app. One door
     # per run: a turn with a team already has its tools, and none of them is the app's.
     if app and not token:
@@ -1867,7 +1963,71 @@ CAPABILITY_DOOR_TOOLS = ("find_tools", "discover_mcp_servers", "install_mcp_serv
 STAGE_DOOR_TOOLS = ("show_scene",)
 # the story as a file (stagedoc.py): for a chat, never for a board's own refresh, which has nobody to hand a file to
 STAGE_FILE_TOOLS = ("stage_file",)
-DOOR_TOOLS = TEAM_TOOLS + WORKSPACE_DOOR_TOOLS + CAPABILITY_DOOR_TOOLS + STAGE_DOOR_TOOLS + STAGE_FILE_TOOLS
+# The person's memory and knowledge graph. A forwarded lead had its soul and nothing else:
+# no memory in its prompt and no tool to read or write one, so on a machine whose brain is
+# Claude Code it answered without what the person had told it and wrote what it learned
+# into the CLI's own memory files, which nothing here reads (the owner's record has a reply
+# saying it "recorded these rules in memory": none of them is in this OS's memory).
+MIND_DOOR_TOOLS = ("remember", "recall", "forget", "kg_add", "kg_query")
+DOOR_TOOLS = (TEAM_TOOLS + WORKSPACE_DOOR_TOOLS + CAPABILITY_DOOR_TOOLS + STAGE_DOOR_TOOLS + STAGE_FILE_TOOLS
+              + MIND_DOOR_TOOLS)
+MIND_CHARS = 6000
+
+
+def finish_line(schedule: str = "mcp__bento__schedule_task") -> str:
+    """The rule against stopping short, for the built-in lead and a forwarded one alike.
+
+    Measured on the owner's record: 21 of the last 133 replies from Claude Code ended on an
+    offer ("next I can test the rule I haven't backtested", "message me at 9:45 and I'll
+    pull live data") instead of the work, with a tool to schedule it in reach. Nothing in
+    either lead's prompt asked it to finish; the built-in one said only "be concise"."""
+    return ("FINISH THE JOB. Do the whole of what was asked in this turn, every part of it, "
+            "before you reply, and read the request once more before you answer to check "
+            "nothing is missing. Do not end on an offer to do the next step (\"next I can…\", "
+            "\"tell me and I'll…\") when you can do it now: do it, then say what you did and "
+            "what you found. If something has to happen later or again, set it up with "
+            f"{schedule} instead of asking the person to message you. Stop early only for a "
+            "decision or a detail that is theirs to give; then ask that one question. When a "
+            "step fails, try another way before you report it. Thorough means the work is "
+            "complete and checked, not that the reply is long: keep the words plain and short.")
+
+
+def mind_rule(prefix: str = "mcp__bento__") -> str:
+    """Where a forwarded lead keeps what it learns. Short, and near the top: a rule at the
+    end of a long context is the one that is not followed."""
+    return (f"\n\nMEMORY. This machine keeps the person's memory, you do not. What it holds now "
+            f"is at the end of this note; look further with {prefix}recall and {prefix}kg_query "
+            f"before you say you don't know something about them. When they tell you something "
+            f"worth keeping (a preference, a fact about them or their work, a decision, a rule "
+            f"they want followed), save it with {prefix}remember, and a link between things with "
+            f"{prefix}kg_add. Never keep it in your own memory files or notes: nothing on this "
+            f"machine reads those, and the person's other screens would never know it.")
+
+
+async def mind_note(cfg: dict, toolbox, store, space_id: str = "", conversation_id: str = "",
+                    query: str = "", door: bool = True) -> str:
+    """What a forwarded lead knows: the same memory, knowledge-graph facts, installed skills
+    and connected servers the built-in lead's prompt carries (agent.memory_text, skills_text,
+    mcp_text: one reading for both). `door` False is a turn with no tools of this OS (a
+    schedule): it reads the memory and is told nothing about tools it has not got."""
+    if store is None:
+        return ""
+    from .agent import mcp_text, memory_text, skills_text
+    try:
+        mem, _z = await memory_text(cfg, store, space_id, conversation_id, query)
+    except Exception:
+        mem = ""
+    out = ""
+    if mem.strip():
+        out += "\n\nWHAT THIS MACHINE REMEMBERS FOR THE PERSON:\n" + mem.strip()[:MIND_CHARS]
+    if door:
+        try:
+            out += skills_text(store, tool="mcp__bento__use_skill")
+            out += mcp_text(toolbox, how="call their tools through mcp__bento__use_connected_tool",
+                            native="mcp__bento__find_tools lists the rest")
+        except Exception:
+            pass
+    return out
 
 
 def capability_note(prefix: str = "mcp__bento__") -> str:
@@ -2008,7 +2168,8 @@ COMPANY_DOOR_LINE = ("\n\nYou can't set up, switch or remove a company from here
 
 def open_team_door(env: "Envelope", cfg: dict, toolbox, store, emit, approver,
                    conversation_id: str = "", surface: str = "gui", space_id: str = "",
-                   text: str = "", taint: list | None = None, only: tuple | None = None) -> str:
+                   text: str = "", taint: list | None = None, only: tuple | None = None,
+                   mind: str = "") -> str:
     """Give a forwarded chat turn a way to hand work to the person's specialists.
 
     A forwarded turn has the executor's own tools and knew nothing of the team, so
@@ -2072,10 +2233,12 @@ def open_team_door(env: "Envelope", cfg: dict, toolbox, store, emit, approver,
         from . import stage as _stage
         stage_note = "\n\n" + _stage.note(cfg, tool="mcp__bento__show_scene", surface=surface)
     env.context = (env.context or "").replace(NO_DOOR_LINE, DOOR_LINE) \
-        + identity_note(cfg, store, company=False, space_id=space_id) + stage_note + dept_note + COMPANY_DOOR_LINE \
+        + identity_note(cfg, store, company=False, space_id=space_id) \
+        + "\n\n" + finish_line() + (mind_rule() if mind and "remember" in door else "") \
+        + stage_note + dept_note + COMPANY_DOOR_LINE \
         + team_note(subs, in_departments=grouped) + linked_note(cfg, store) + _zero_note(cfg) \
         + _pool_note(door) \
-        + workspace_note() + capability_note()
+        + workspace_note() + capability_note() + mind
     return token
 
 
@@ -3030,12 +3193,17 @@ async def run_task(task: str, env: Envelope, emit, run: Run | None = None) -> Ru
     # only Claude Code reads a stream of messages on its input
     if env.steerable and env.engine not in ("claude-code", ""):
         env = Envelope(**{**env.__dict__, "steerable": False})
+    if env.images and env.engine in ("claude-code", "") and not env.steerable:
+        # pictures ride its first message, which only the stream input carries
+        env = Envelope(**{**env.__dict__, "steerable": True})
+    if env.images and env.engine not in ("claude-code", ""):
+        task = task + _attach(env)
 
     async def once(e: Envelope) -> Run:
         words = prompt_of(task, e)
         cmd = _jailed(build_command(task, e), e)
         return await _drive(cmd, e.workspace, emit, run, e.extra_env,
-                            first=words if e.steerable else None,
+                            first=image_blocks(words, e.images) if e.steerable else None,
                             prompt=None if e.steerable else words)
     try:
         _scratch(env)
@@ -3067,7 +3235,7 @@ def _drop_scratch(path: str) -> None:
 
 
 async def _drive(cmd: list[str], cwd: str, emit, run: Run, extra_env: dict | None = None,
-                 first: str | None = None, prompt: str | None = None) -> Run:
+                 first: "str | list | None" = None, prompt: str | None = None) -> Run:
     """Start the CLI with `cmd` and stream its events through `emit` until it exits.
 
     The one subprocess loop for both kinds of run — a chat turn inside an envelope
