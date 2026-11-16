@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.25 — 2026-11-16
+
+**Send a chat to your phone.** Chat has a ➤ Phone button: carry the open chat on in Telegram or WhatsApp,
+or send its last answer or its story there. You pick the chat, from your own account's chats only. The Stage
+has the same button for a story.
+
+**A phone chat's sessions are listed on the desktop.** Chat's Channels tab groups every session under its chat,
+marks the one open on the phone, and ＋ starts another from the desk.
+
 ## 0.9.24 — 2026-11-16
 
 No release notes were written for this one; the commits since 0.9.23 are what changed (`bento update` lists them).

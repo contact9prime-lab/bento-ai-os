@@ -276,7 +276,7 @@ class TelegramBridge(usersmod.Scoped):
             except Exception as e:
                 self.store.log("telegram", f"could not send the blueprint document: {e}")
 
-    async def send_stage(self, cid: str, reply: str, chat_id: int) -> None:
+    async def send_stage(self, cid: str, reply: str, chat_id: int, ans: str = "") -> str:
         """The answer's story, when it showed one (stage.py), as pictures in the chat.
 
         Reported as "the stage experience in Telegram is really bad": it was one .html file
@@ -287,10 +287,10 @@ class TelegramBridge(usersmod.Scoped):
         this machine to draw them, the page goes as before. Never fatal."""
         try:
             from . import stage as stagemod, stagestill, executors as _ex
-            ans = stagemod.last_question(self.store, cid)
+            ans = ans or stagemod.last_question(self.store, cid)   # one named story (sent from the desktop), else the last
             scenes = [s["scene"] for s in stagemod.story(self.store, cid, ans)] if ans else []
             if not scenes:
-                return
+                return ""
             agent = self.cfg.get("agent_name") or ""
             # a blueprint fills itself in after the reply (bpfill.py): a phone gets its pictures,
             # so wait a while for the parts to land rather than photograph the outline
@@ -318,7 +318,7 @@ class TelegramBridge(usersmod.Scoped):
                     await self.send_clips(scenes, chat_id, items, pngs)
                     await self.send_narration(scenes, chat_id)
                     await self.send_blueprint_docs(rows, ans, chat_id)
-                    return
+                    return "sent"
                 self.store.log("telegram", f"could not send the story as pictures: {res}")
             p = stagemod.write_report(self.store, _ex.default_workspace(self.cfg), cid, ans,
                                       answer=reply, agent=agent)
@@ -328,8 +328,12 @@ class TelegramBridge(usersmod.Scoped):
                                                        f"Open it in your browser to watch.", chat_id)
                 if res.startswith("[error]"):
                     self.store.log("telegram", f"could not send the story: {res}")
+                    return str(res)
+                return "sent"
+            return "[error] the story could not be drawn or written on this machine"
         except Exception as e:
             self.store.log("telegram", f"could not send the story: {e}")
+            return f"[error] {e}"
 
     async def _settle_with_word(self, rows: list, chat_id: int) -> None:
         """Wait for a blueprint to fill in, saying so on the phone. Reported as "it shows the
