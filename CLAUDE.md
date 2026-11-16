@@ -573,6 +573,31 @@ user." Six rules:
   and then set up from ticked departments lost the line. Removing a company switches its desks
   and missions off (nothing would sign their work off) and keeps its agents and space.
 
+**A company is addressed by name, and the lead decides who does the work** (`company.parse_company`/
+`open_here`/`route_note`/`others_note`/`of_flow`/`place_mission`, `ControlPlane.open_company`, `fabric.company_turn`,
+the `open_company` and `new_company` tools; `docs/company.md`, `tests/test_at_company.py`). Asked for as "@company in
+the chat asks the user to switch", "a stock market question to the kids channel: it can say the context is
+different, create a company or switch", "Aria does all the heavy lifting … it needs to take that cognitive
+decision", "memory should be company specific, and a generic memory". Six rules:
+- **`@Acme …` is `company.switch`, decided by the gate and then asked of a person** at every autonomy, on every
+  chat surface, through one door (`company_turn`, called after `parse_mention` and `parse_department`). What
+  follows the name is parsed again in that company, so `@Acme @Sales …` reaches its Sales.
+- **The lead's two tools are ALWAYS_ASK and refused to everybody else** (`_NO_COMPANY` in every `BUILTIN_DENY`
+  row). The surface and the chat are injected by the loop. They are on the team door.
+- **Who does the work is ONE decision near the top** (`route_note`, before `finish_line` in the door, before the
+  company note in `_system`), written from what the machine has: alone, specialists only, departments, other
+  companies. Measured with real Claude Code on the owner's pattern (a quick look, then "do the end to end
+  backtests" in the same chat): before, it tried with its own Read and gave up; after, `department_task` to Tech.
+  A one-turn "run this Python" was handed to Tech before and after, so that case alone proves nothing.
+- **A question counts.** Told a quick fact is never a reason to switch, the lead answered a Nifty question in the
+  kids channel and offered the switch afterwards. `others_note` now says not even the quick part.
+- **A mission is the company's whose space it is in** (`of_flow`; `cfg_for(…, space_id)` for the bosses and the
+  auditor). `place_mission` stamps a new one and refuses somebody ADDED from another company, at the lead's
+  `create_flow` and the editor's save; `flows.save` keeps the space on a re-save that names none.
+- **A company's memory is its space; `everywhere` is what goes with the agents** (`agent.memory_text` says which
+  shelf is which). The chat moves to the company that was opened (`set_conversation_space`), and a chat held in a
+  parked company asks to open it before it carries on, or becomes the open company's.
+
 **A department at work is seen where it was asked, and the desk master keeps the scope** (`fabric._can_words`,
 `_master_persona`, flow_start's `conversation_id`/`department`/`head`, `officeLive` over `O.runs`, the
 `department_task` branch in `officePulse`, `deptCardLive` in 10a-handoff.js; `tests/test_department_routing.py`).

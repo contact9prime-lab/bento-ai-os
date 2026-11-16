@@ -68,6 +68,8 @@ CORE = {
     "delegate", "huddle", "department_task", "linked_teams",
     # and when nobody has what a step needs: build one, or ask the person for the ability
     "create_subagent", "request_capability",
+    # the prompt names the person's other companies; a narrowed set keeps the way to them
+    "open_company", "new_company",
 }
 
 DEFAULTS = {

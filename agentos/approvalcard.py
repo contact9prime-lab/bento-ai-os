@@ -66,6 +66,8 @@ GOALS = {
     "create_theme": "Change how the whole desktop looks",
     "create_theme_shell": "Draw a page over the whole desktop",
     "request_capability": "Give a department or an agent an ability it lacks",
+    "open_company": "Open another of your companies",
+    "new_company": "Start a new company",
     "add_mcp_server": "Add a tool server",
     "install_openclaw_plugin": "Install a plugin",
     "enable_openclaw_plugin": "Switch a plugin on",
@@ -154,6 +156,14 @@ def body(name: str, args: dict) -> str:
         return (f"To {args.get('to') or 'another team'}, with the task:\n"
                 + "\n".join(f"- {n}" for n in names)
                 + (f"\nNot sent: {'; '.join(args['refused'])}" if args.get("refused") else ""))
+    if name == "open_company":
+        return (f"Open {args.get('company') or 'that company'}. This desk and this chat move to "
+                f"its office, departments and people. The company that is open now is kept as it is.")
+    if name == "new_company":
+        return (f"Start a company called {args.get('name') or '(no name)'} and open it."
+                + (f"\nWhat it is: {args.get('about')}" if args.get("about") else "")
+                + (f"\nWhat it is for: {args.get('objective')}" if args.get("objective") else "")
+                + "\nIt starts with no departments. The company that is open now is kept as it is.")
     if name == "request_capability":
         # what is asked, for whom and why, in words; the ability is one of a closed set
         who = str(args.get("who") or args.get("_from") or "an agent")

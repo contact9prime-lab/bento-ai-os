@@ -34,10 +34,23 @@ async def answer(store, cfg: dict, toolbox, *, cid: str, text: str, surface: str
     prior = store.get_messages(cid)[:-1]
     huddle = fabricmod.parse_huddle(store, text) if control else None
     mention = fabricmod.parse_mention(store, text) if control and not huddle else None
+    from . import company as _company
     dept = None
     if control and not (huddle or mention):
-        from . import company as _company
         dept = _company.parse_department(cfg, store, text)
+    if control and text.startswith("@") and not (huddle or mention or dept):
+        # '@Acme …' from a phone: asked on the phone, and the rest is answered there
+        co_turn = await fabricmod.company_turn(control, cfg, store, text, surface, approver, cid)
+        if co_turn and co_turn["reply"]:
+            return {"reply": co_turn["reply"], "steps": [], "meta": {"company": co_turn["company"]}}
+        if co_turn:
+            if co_turn.get("status") and tell:
+                await tell(f"▦ {co_turn['status']}.")
+            text = co_turn["rest"]
+            huddle = fabricmod.parse_huddle(store, text)
+            mention = fabricmod.parse_mention(store, text) if not huddle else None
+            if not (huddle or mention):
+                dept = _company.parse_department(cfg, store, text)
     # whoever is addressed by name reads the thread they were addressed in
     thread = execmod.thread_note(prior, cfg.get("agent_name") or "Aria") if (huddle or mention or dept) else ""
 
@@ -137,7 +150,7 @@ async def _built_in(store, cfg, toolbox, model, cid, text, surface, sink, approv
     from . import history as _history
     from .agent import Agent
     h, _info = await _history.build(store, cid, cfg, model)
-    if h and h[-1].get("role") == "user" and str(h[-1].get("content") or "").strip() == text:
+    if h and h[-1].get("role") == "user" and str(h[-1].get("content") or "").strip().endswith(text):
         h = h[:-1]          # the message just saved goes in once, with its note
     entry = {"role": "user", "content": note + text}
     if images:

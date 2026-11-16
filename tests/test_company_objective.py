@@ -280,7 +280,7 @@ def test_the_lead_hears_the_objective_and_the_other_companies(tmp_path):
 def test_it_is_personal_and_the_control_plane_asks_whose_flow_it_is():
     assert "companies" in users.USER_KEYS
     src = (ROOT / "agentos/fabric.py").read_text()
-    assert src.count("companymod.cfg_for(self.cfg, flow[\"name\"])") == 2, \
+    assert src.count("companymod.cfg_for(self.cfg, flow[\"name\"], flow.get(\"space_id\") or \"\")") == 2, \
         "the review chain and the auditor both read the flow's own company"
 
 

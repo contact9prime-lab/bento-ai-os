@@ -425,7 +425,10 @@ def test_the_door_says_a_company_is_not_made_from_here():
     src = (ROOT / "executors.py").read_text()
     door = src[src.index("def open_team_door("):src.index("def _pool_note(")]
     assert "dept_note + COMPANY_DOOR_LINE" in door
-    assert "can't set up" in ex.COMPANY_DOOR_LINE and "Office" in ex.COMPANY_DOOR_LINE
+    # it has a door for opening and starting one now (asked of the person each time); the
+    # rest is still the desktop's, and the note still says where
+    assert "mcp__bento__open_company" in ex.COMPANY_DOOR_LINE and "asked each time" in ex.COMPANY_DOOR_LINE
+    assert "Office" in ex.COMPANY_DOOR_LINE
 
 
 # ---- a browser you start through Bento is let in; one Bento starts for itself is told why (item 15) ----

@@ -806,7 +806,7 @@ async function renderFabFlows(body,w){
       <span style="color:${dot};font-size:9px;margin-right:6px">●</span>
       <div class="grow"><b>${esc(f.name)}</b>
         <div class="sub">${f.enabled?'live':(f.draft&&f.draft.model?'drafted':'off')}${
-          run?' · last '+esc(run.status):''}</div></div></div>`;
+          run?' · last '+esc(run.status):''}${f.company?' · '+esc(f.company.name):''}</div></div></div>`;
   }).join('')||'<p class="mut" style="padding:6px">nothing yet</p>';
 
   /* `.two-pane`: list beside detail on a desktop; on a phone one at a time — the
@@ -858,7 +858,8 @@ function flowDetail(f,run){
   const allow=gr.filter(g=>g.effect!=='deny');
   return `<div class="ptitle" style="margin-top:0">${esc(f.name)}
       ${drafted?'<span class="lbadge" title="drafted by '+esc(f.draft.model)+'">✦ drafted</span>':''}
-      <span class="sub">· ${f.enabled?'live':'not enabled'}</span>
+      <span class="sub">· ${f.enabled?'live':'not enabled'}${f.company?' · a mission of '+esc(f.company.name)
+        +(f.company.active?'':', run by its people while another company is open'):''}</span>
       <span style="float:right">
         <button class="save" style="margin:0;display:inline-block;width:auto;padding:4px 12px"
           onclick="enableFlow('${jsq(f.name)}',${f.enabled?'false':'true'})">${f.enabled?'Turn off':'Enable'}</button>
