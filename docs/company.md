@@ -504,7 +504,7 @@ department of the open company wins when the names clash.
 
 ![The card that asks before a company is opened](screenshots/company-at-ask.png)
 
-![The same card on a phone](screenshots/company-at-ask-phone.png)
+![The card that asks to open a company, on a phone](screenshots/company-at-ask-phone.png)
 
 **Your agent notices the wrong company.** Ask the kids' channel a stock market question and
 it says the question belongs to another business, then asks to open that company and
