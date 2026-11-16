@@ -505,3 +505,20 @@ body.deck-dragging .deck-tile,body.deck-dragging .deck-gname{cursor:grabbing}
 .sec-card .sec-file{display:block;font:var(--fs-xs,12px) var(--mono,monospace);overflow-wrap:anywhere;margin-top:3px}
 .sec-card .sec-alert{margin-top:6px;overflow-wrap:anywhere}
 .sec-card .sec-alert small{display:block}
+
+/* Stop the voice: one pill while anything is being said, on every surface (speechPill).
+   Bottom left, clear of the "agent is working" bubble and the approval card on the right.
+   A real 44px target: it is pressed in a hurry. */
+#voicestop{position:fixed;left:16px;bottom:88px;z-index:9450;display:none;align-items:center;gap:8px;
+  min-height:var(--tap,44px);padding:0 16px 0 13px;border-radius:var(--r-full,999px);cursor:pointer;
+  font:600 13px/1 var(--font,inherit);color:var(--txt);
+  background:color-mix(in srgb,var(--bg2) 92%,transparent);
+  border:1px solid color-mix(in srgb,var(--err,#f87171) 55%,transparent);box-shadow:var(--el-3)}
+#voicestop.on{display:inline-flex}
+#voicestop .vs-sq{color:var(--err,#f87171);font-size:12px}
+#voicestop:hover{background:var(--bg3)}
+#voicestop:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+/* on a phone the bottom of the screen is the composer and the dock: at the bottom left the
+   pill sat on the attach button (seen in the first screenshot), so it goes under the menu bar */
+body.dev-mobile #voicestop{bottom:auto;top:calc(46px + env(safe-area-inset-top,0px));left:50%;
+  transform:translateX(-50%)}

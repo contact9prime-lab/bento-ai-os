@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.21 — 2026-11-16
+
+**The voice can be stopped.** While a reply is read aloud there is a Stop voice button on screen,
+on every surface, and Esc does the same. It stops what is being said and the rest of that reply;
+the voice stays on for the next one.
+
 ## 0.9.19 — 2026-11-16
 
 No release notes were written for this one; the commits since 0.9.18 are what changed (`bento update` lists them).

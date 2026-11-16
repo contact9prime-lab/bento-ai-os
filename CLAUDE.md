@@ -3028,6 +3028,16 @@ Full story in `docs/team.md`. Two features, five rules.
   ledger rows carrying the session's `run_id`. `fabric.talk_log` reads every agent-to-agent
   conversation (free talks, huddles, asks) back out of `fabric_runs`, never a table of its own.
 
+**The voice is stopped where it is heard** (`speechHush`/`speechPill`/`speechSpeaking`, `#voicestop`;
+`tests/test_voice_stop.py`). Reported as "I have no idea how to stop the voice": the only way was the chat
+header's Voice on button, which reads as a setting, is not on the Office's panel or the prompt bar, and turns
+the voice off for good. One pill while `SPEECH.pending` is over zero, and Esc. It stops what is said and
+queued, marks the live reply `hushed` so `speechLiveFeed`/`speechLiveEnd` say no more of it (End returns true,
+or the whole reply was read at the turn's end), and leaves `VOICE.tts` alone. Not in Jarvis: a stopped line
+never calls its `done`, and Jarvis waits on that. On a phone it sits under the menu bar: at the bottom left
+it covered the composer's attach button, seen in the first screenshot. A headless browser has no voice and
+finishes a line at once, so the picture holds one open with a stand-in.
+
 **A voice per agent, on any engine, and it never cuts anyone off.** Every line goes through ONE
 door on the page, `speakAs(name, text)` (08-wallpaper-jarvis-voice.js): the Jarvis reply, huddle,
 ask and free-talk lines (`voiceAgentLine`) and the Mind's Tell me. It asks `/api/speech/say` for
