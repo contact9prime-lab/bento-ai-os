@@ -151,11 +151,15 @@ def test_the_agent_loop_starts_at_the_kept_window_and_keeps_what_it_grows(monkey
     monkeypatch.setattr(cfgmod, "save_config", lambda c: None)
     cfg = {"ollama_num_ctx": 24576, "ollama_windows": {"qwen3.5:9b": 49152}}
     a = agentmod.Agent.__new__(agentmod.Agent)
-    a.cfg, a.model = cfg, "ollama/qwen3.5:9b"
+    a.cfg, a.model_id = cfg, "ollama/qwen3.5:9b"
     assert a._gen_options()["num_ctx"] == 49152
     a._ctx_up, a._ctx_need = True, 61440
     assert a._gen_options()["num_ctx"] == 98304
     assert cfg["ollama_windows"]["qwen3.5:9b"] == 98304, "the size it had to grow to is kept"
     b = agentmod.Agent.__new__(agentmod.Agent)
-    b.cfg, b.model = cfg, "anthropic/claude-opus-5-5"
+    b.cfg, b.model_id = cfg, "anthropic/claude-opus-5-5"
     assert b._gen_options()["num_ctx"] == 24576, "only a local model's window is this machine's to learn"
+    # the loop's real constructor sets the name these read (an attribute the test set by
+    # hand hid a wrong one, and every local turn failed)
+    import inspect as _i
+    assert "self.model_id = model_id" in _i.getsource(agentmod.Agent.__init__)

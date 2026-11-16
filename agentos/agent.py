@@ -727,7 +727,8 @@ class Agent:
     def _gen_options(self) -> dict:
         # num_ctx must comfortably exceed the system prompt (memories + KG + skills +
         # MCP catalog + tool schemas can reach ~15k tokens) PLUS the reply
-        local = str(self.model or "").split("/", 1)[1] if str(self.model or "").startswith("ollama/") else ""
+        mid = str(getattr(self, "model_id", "") or "")
+        local = mid.split("/", 1)[1] if mid.startswith("ollama/") else ""
         opts = {
             # what this local model was found to need before, when that is more (ollama_windows)
             "num_ctx": max(int(self.cfg.get("ollama_num_ctx", 24576)),
