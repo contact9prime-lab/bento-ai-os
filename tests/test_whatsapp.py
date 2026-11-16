@@ -146,7 +146,7 @@ def test_a_second_number_is_told_this_machine_is_not_theirs(bridge, monkeypatch)
     sent.clear()
     asyncio.run(b.handle(envelope("hello?", frm="447700900000", mid="wamid.2")))
     assert store.wa_get_chat("447700900000")["allowed"] == 0
-    assert "not enabled" in sent[0][1]
+    assert "asked the owner" in sent[0][1], "told what happens next, and the owner is asked"
 
 
 def test_a_redelivered_message_does_not_start_a_second_turn(bridge, monkeypatch):

@@ -2052,6 +2052,23 @@ switch on, or it would read enabled and never answer. Unset, the switch is on on
 chip of a story with no message in the feed was appended at the END: on the owner's thread the 18 Oct Bengaluru
 story sat under the newest answer about the market. It stays in the Stage's library.
 
+**Who may talk is a table with its decision on it, and a group has people** (`decided_at`/`decided_by` on
+`telegram_chats` and `whatsapp_chats`, table `chat_members`, `TelegramBridge.member_rule`/`_member_ok`/
+`decide_member`/`set_members_only`/`table`, `/members`, `16b-chantables.js`, `43b-chantables.css`;
+`tests/test_channel_tables.py`). Asked for as "a table that we can see when it was validated and who all … in the
+group also you can restrict". Every allow or block passes `by` in words (pairing, the allow-list, the owner on a
+channel, an account at the desktop): a new caller of `tg_set_allowed`/`wa_set_allowed` must say who. Inside an
+enabled group everybody who writes is recorded; the owner is always answered, a blocked person never, the rest by
+the group's rule (`members_only`). The session buttons ask the same rule. The tables are one helper for both
+channels, every cell escaped, cards under 560px of their own width. `info()`'s `groups` is the switch; the rows are
+`group_rows` (a `groups` list once replaced the switch in the same dict).
+
+**A request to let somebody in goes to the account that owns the channel** (`ask_owner_about` on both bridges,
+`WhatsAppBridge.decide_newcomer`/`_owner_command`, Telegram's `wan:` button, `whatsapp_request` on the page).
+Its owner chat on that channel, its desktop (`_owner_send`), and for a WhatsApp newcomer its Telegram when that
+is polling. WhatsApp told the newcomer to find Settings and told the owner nothing. WhatsApp groups are not read
+(bridge.js drops `@g.us`; a linked device would see every group the person is in).
+
 **A phone turn is saved first and shown like a desk turn** (`TelegramBridge._handle` `built_history`/`emit`,
 `WhatsAppBridge._turn_in`; `tests/test_telegram_turns.py`). The history rebuild (which can compact with a model
 call) ran before the message was saved, on every engine: measured 2 min 45 s on the owner's long thread, which

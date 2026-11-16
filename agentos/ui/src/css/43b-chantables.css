@@ -1,0 +1,33 @@
+/* `.whotab`, never `.ctab`: that is Chat's pill tabs, and on a phone it drew a 999px oval round the table.
+   Who may talk to the agent: Telegram's people and groups, WhatsApp's people (16b-chantables.js).
+   A table on a wide window; under 560px of its own width each row is a card with labelled values,
+   because a six-column table on a phone either scrolls sideways or cuts its buttons off. */
+.whotw{container-type:inline-size;margin:6px 0 4px}
+.whotab{width:100%;border-collapse:collapse;font-size:var(--fs-sm)}
+.whotab th{padding:4px 8px;text-align:left;font-size:var(--fs-2xs);font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--dim);border-bottom:1px solid var(--line);white-space:nowrap}
+.whotab td{padding:8px;vertical-align:middle;border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.whotab td small{display:block;color:var(--dim);font-size:var(--fs-2xs)}
+.whotab .badge{white-space:nowrap}
+.ct-act{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
+.ct-act .endbtn,.ct-sel{min-height:var(--tap,28px)}
+.ct-sel{max-width:100%;font:inherit;font-size:var(--fs-sm)}
+.ct-empty{margin:6px 0}
+.whotab tr.ct-sub>td{padding:0 8px 10px 22px;border-bottom:1px solid var(--line)}
+.whotab tr.ct-sub summary{cursor:pointer;color:var(--dim);font-size:var(--fs-xs);padding:6px 0;min-height:var(--tap,28px);display:flex;align-items:center}
+.whotab tr.ct-sub .whotab th{border-bottom-style:dashed}
+.tg-head{display:flex;align-items:center;gap:8px;margin:14px 0 2px;font-weight:600}
+@container (max-width:560px){
+  .whotab thead{display:none}
+  .whotab,.whotab tbody,.whotab tr,.whotab td{display:block;width:auto}
+  .whotab tr{padding:8px 0;border-bottom:1px solid var(--line)}
+  .whotab td{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:3px 0;border:0;text-align:right}
+  .whotab td::before{content:attr(data-l);color:var(--dim);font-size:var(--fs-2xs);text-transform:uppercase;letter-spacing:.05em;text-align:left;flex:none}
+  .whotab td{flex-wrap:wrap}
+  .whotab td small{flex-basis:100%;text-align:right}
+  .whotab td:first-child{display:block;text-align:left}
+  .whotab td:first-child small{text-align:left}
+  .whotab td:first-child::before,.whotab td[data-l=""]::before{content:none}
+  .whotab tr.ct-sub{padding:0}
+  .whotab tr.ct-sub>td{display:block;padding:0 0 8px 10px;text-align:left}
+  .ct-act{width:100%}
+}
