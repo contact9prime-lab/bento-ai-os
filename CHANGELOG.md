@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.27 — 2026-11-17
+
+No release notes were written for this one; the commits since 0.9.26 are what changed (`bento update` lists them).
+
 ## 0.9.26 — 2026-11-17
 
 **Each company can work in folders of its own.** In the Office, ▦ Company → Folders, a
