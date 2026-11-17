@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.9.26 — 2026-11-17
+## 0.9.28 — 2026-11-17
 
 **A department's card keeps showing who is doing what, and the Brief says what it wants from you.**
 
@@ -14,6 +14,32 @@
   out of it, from the Brief app or `bento brief schedule off` and `bento brief company "<name>" off`.
 - **Sound.** The Brief is read to you on Telegram when this machine has a voice of its own. With only
   the browser's voice, it says so once and points to Settings → Voice.
+
+## 0.9.27 — 2026-11-17
+
+No release notes were written for this one; the commits since 0.9.26 are what changed (`bento update` lists them).
+
+## 0.9.26 — 2026-11-17
+
+**Each company can work in folders of its own.** In the Office, ▦ Company → Folders, a
+company either uses your account's folders, as before, or keeps a list of its own, each read
+only or read and write. **Make a folder for it** creates one named for the company in your
+workspace. Its department agents, desks and missions then read and write only there, and the
+code they run can write only in its read-and-write folders. Your own agent keeps the account's
+folders. A company can't reach further than your account: a folder your agents can't reach is
+refused when you save, and a folder shared with you read only stays read only. Every change is
+in the ledger, and Permissions shows a refusal at its own step. From a terminal it's
+`bento company folders`.
+## 0.9.26 — 2026-11-16
+
+**A model that says it did something it never ran is caught.**
+
+- **Said, not done.** When your agent writes that it called a huddle, made a blueprint, saved a file
+  or set a schedule, and no tool ran for it, it is asked once to do it for real. If it still only
+  writes about it, the reply says so: nothing was made, which model it was, and where to pick a
+  stronger one.
+- **Worked, then silent.** When a model runs its tools and then gives no answer, you get what the
+  tools brought back instead of an error over nothing.
 
 ## 0.9.25 — 2026-11-16
 

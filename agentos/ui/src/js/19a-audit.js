@@ -110,7 +110,7 @@ function audSearch(ev){clearTimeout(_audT);const v=ev.target.value;
 /* "decided at <step>": the Flow tab, with this row's path lit (20b-permflow.js). */
 var AUD_ROWS=[];
 function audStage(k){const s=((typeof PF!=='undefined'&&PF.stages)||[]).find(x=>x.key===k);
-  return s?s.label:({hard:'hard blocks',builtin:'built-in protection',reach:'hands',channel:'channel',
+  return s?s.label:({hard:'hard blocks',builtin:'built-in protection',reach:'hands',folders:'company folders',channel:'channel',
     taint:'outside content',rate:'speed limit',team:'team matrix',rules:'your rules',
     default:'default',person:'always a person'}[k]||k)}
 function audPath(ev,id){

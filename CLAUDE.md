@@ -715,6 +715,31 @@ department's work yourself". Five rules:
 - **Every forwarded turn hears who it is** (`identity_note`: the name and soul; with no team door, the company
   profile too). On Claude Code a schedule had only the generic preamble.
 
+**A company may keep folders of its own, or use the account's** (`company.folders_of`/`company_of`/
+`folders_for`/`folder_refusal`/`clean_folders`/`set_folders`/`folders_note`, `tools.company_jail`/`account_refusal`/
+`_company_run`, `Agent._company_jail`, `/api/company/folders`, `bento company folders`, the panel's Folders;
+`docs/company.md`, `tests/test_company_folders.py`). Asked for as "every company can have its own set of folders
+… along with the permissions, or it can inherit the default one from the account level". Five rules:
+- **Absent is inherit.** `cfg["company"]["folders"]` missing means the account's folders, so nothing changes for
+  a company that never chose; a list (even empty) is its own. It travels with the company when it is parked.
+- **It only narrows.** The gate's `company-folders` step (after `reach`, a STAGES row) refuses fs reads and
+  writes outside the list, a write to a read-only one, `git_*`/`run_tests` paths outside it, `search_files` unless
+  the workspace is listed, and the shared terminal. The file tools' own account checks still run after it, and a
+  list that can't be read refuses files rather than allowing them.
+- **The save asks the account's own checks** (`tools.account_refusal`, the file tools' `_tenant_deny` and
+  `_sandbox_deny`): a folder the account can't reach, a home or a relative path is refused in a sentence, and a
+  read-only share can't become read-write for a company. With the default sandbox on, that means the workspace
+  or a safe folder; "Make a folder for it" makes `<workspace>/<Company>`.
+- **Who is held is decided by who it is, never by the model**: a department's specialists, the master of one of
+  the company's desks or missions, and anyone working inside such a run (`company_of`, parked companies too).
+  The lead keeps the account's folders. `Agent._execute` sets `tools.company_jail` for JAILED_TOOLS from the
+  principal and the run, so the company's code runs in a jail built on a throwaway folder with only its
+  read-write folders writable, and refuses with no jail. A jailed command still reads outside every home; say so.
+  An agent pinned to an unfenced CLI (Codex) runs on the machine's brain while held, as inside a mission.
+- **Only a person sets it**: the route, the panel and the CLI; no tool, and `configure_agentos` can't reach
+  `company`. Each change is a `company.folders` ledger row. The prompt hears the folders (`folders_note` in
+  `_persona` and `_master_persona`), because a relative path resolves against the account's workspace.
+
 **A new department starts with a kit: asked, proposed, ticked** (`company.KITS`, `KIT_SKILLS`,
 `KIT_MCP`, `recommend`, `clean_kit`, `apply_kit`, `kit_status`; `tests/test_company_kit.py`). Asked for
 as "set up the skills, tools and MCP most widely used for that kind of department, asking questions".
@@ -4385,6 +4410,22 @@ steerable=)`; `tests/test_task_desktops.py`. Four rules:
   second `box-shadow` layer so it costs no layout and does not clip at the radius.
 - **A panel must not repeat its own window title.** `panelShell` reads the title bar above
   it and drops the label when they match — and keeps it where there is no title bar.
+
+## What a reply claims is compared with what ran
+
+`agentos/claims.py`, the two branches in `Agent.run`; `tests/test_claimed_not_done.py`. Reported from Telegram on
+gemma4:12b: "I have called a huddle … the blueprint is now ready … a PDF on your phone", in a turn whose ledger has
+four `model.use` rows and nothing else; three more replies were built on it. The owner: "ask it once more, or tell
+the user the model is so and so and not equipped". Four rules:
+- **Only first-person claims of a finished step are read** (`CLAIMS`: huddle, blueprint or story, hand-over,
+  schedule, file, memory), each with the tools that would make it true. A plan, a refusal, a question and a turn
+  where the tool ran are left alone (`_NOT`); a guard that fires on ordinary sentences is one people ignore.
+- **Asked once, then said.** `nudge` names the call to make; a second reply that still claims it gets `note`
+  appended (nothing was made, the model's name, where to choose another), and a `unbacked` step in the record.
+- **Worked and then silent hands the work back** (`after_silence`, in the thinking-only give-up). Measured live on
+  gemma4:12b, twice: it DID call the huddle, then gave two thinking-only replies and the turn ended on an error
+  with an empty answer. The false claim itself did not reproduce on a clean home, so that half is tests only.
+- The person's own agent on the built-in loop only: a CLI's own tools never show in `steps`.
 
 ## A local model is shared, so every call says its size and no turn waits on it
 

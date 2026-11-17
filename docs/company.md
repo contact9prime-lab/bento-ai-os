@@ -409,6 +409,48 @@ an agent can reach. Give one to a whole department with **Executor** on its line
 ▦ Company, or `bento company hands Sales research`. Everyone in it works with that executor,
 except an agent that has one of its own. Choose **Each agent's own** to go back.
 
+## The folders a company works in
+
+![A company with folders of its own in the Company panel](screenshots/company-folders.png)
+
+A company starts on your account's folders: its agents reach what your own agent reaches.
+Give it folders of its own with **Folders → Works in → Folders of its own** in ▦ Company.
+That makes a folder named for the company in your workspace, read and write. Add more,
+each **Read and write** or **Read only**, or remove them. **Your account's folders** puts it
+back.
+
+With folders of its own, the company's department agents, its desks and its missions:
+
+- read and write files only in its read-and-write folders, and only read the read-only ones;
+- run their code (`run_python`) in a jail where only its read-and-write folders can be
+  written. Code can still read files outside every home, as any jailed command can. With no
+  jail on this machine (bubblewrap on Linux), their code does not run;
+- don't use the shared terminal, or search the workspace unless it is one of the folders;
+- are told the folders in their instructions, so they use full paths there;
+- run on the machine's brain if they're pinned to Codex, which keeps a read-only shell of
+  its own that these folders can't reach.
+
+Your own agent, the lead, works for your account and keeps your account's folders. So does
+any agent that isn't in one of the company's departments, outside the company's own runs.
+Each company keeps its own list, so a parked company's missions still work in its folders.
+
+A company can't reach further than your account. A folder your agents can't reach, a home,
+or a relative path is refused when you save, and a folder shared with you read-only stays
+read-only for the company. Every change is a row in the ledger, and Permissions shows a
+refusal at its own step, **Company folders**.
+
+![The Folders section on a phone: each folder with its access and a Remove button, a fingertip wide](screenshots/company-folders-phone.png)
+
+```
+bento company folders                           # what the open company works in
+bento company folders make                      # a folder of its own, in the workspace
+bento company folders add ~/AgentOS/clients ro  # add one read only
+bento company folders rw ~/AgentOS/clients      # make it read and write
+bento company folders remove ~/AgentOS/clients
+bento company folders inherit                   # back to the account's folders
+bento company folders --company 0f0f0f0f        # another of your companies
+```
+
 ## A new department starts with a kit
 
 ![The kit for a new Support department](screenshots/company-kit.png)
@@ -463,8 +505,8 @@ bento company kit Sales crm=hubspot --yes      # give it to Sales
   `chain` shows and sets who reports to whom, `review` chooses who signs off,
   `audit on|off` switches the auditor and `check` asks it to check a task.
   `permissions`, `allow`, `block` and `ask` decide who may ask whom between departments,
-  `hands` gives a department an executor, and `kit` shows or gives a department its kit.
-  A task, a start and a check need the server running, because that is where the work runs.
+  `hands` gives a department an executor, `kit` shows or gives a department its kit, and
+  `folders` sets the folders the company works in. A task, a start and a check need the server running, because that is where the work runs.
 - **SUI:** the same page. The desktop scenes (Office, Crew, Mind, World) show the
   departments. The Office scene shows no cards, because nothing under the windows can be
   tapped; the Mind's and the World's tags can be.

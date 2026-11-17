@@ -1412,7 +1412,26 @@ class Agent:
         files are two consents, and the matrix's cell is only the first."""
         if name == "delegate" and args.get("_cross") and args.get("files"):
             args = await self._files_out(args)
-        return await self.toolbox.execute(name, args)
+        cj = self._company_jail() if name in tools_mod.JAILED_TOOLS else None
+        if cj is None:
+            return await self.toolbox.execute(name, args)
+        # a company agent's code runs in its company's folders (company.py), decided here from
+        # who this agent is and which run it is in, never from what the model sent
+        tok = tools_mod.company_jail.set(cj)
+        try:
+            return await self.toolbox.execute(name, args)
+        finally:
+            tools_mod.company_jail.reset(tok)
+
+    def _company_jail(self) -> dict | None:
+        from . import company as companymod
+        if self.principal.kind not in ("subagent", "flow"):
+            return None
+        hit = companymod.folders_for(self.cfg, self.principal.kind, self.principal.id, self.flow)
+        if hit is None:
+            return None
+        rw, ro = companymod.folder_places(self.cfg, hit[1])
+        return {"name": hit[0], "rw": rw, "ro": ro}
 
     async def _files_out(self, args: dict) -> dict:
         """`file.send` on `team:<label>` (linkfiles.py): decided by the same gate, asked
@@ -1545,6 +1564,7 @@ class Agent:
         carry = ""       # accumulated text across token-limit continuations
         cont_rounds = 0  # bounded: never chase a runaway continuation loop
         silent_retry = False  # one retry with thinking off when a reply is all-thinking
+        claim_nudged = False  # one push when a reply claims a step no tool ran (claims.py)
         nudged = False        # one push when a turn announces work and then stops
         repeats: dict[str, int] = {}   # tool-call signature → how often this turn used it
         # Untrusted content does not become trusted by being a turn old. If the
@@ -1686,6 +1706,16 @@ class Agent:
                     await self.emit({"type": "status",
                                      "message": "the model answered in its thinking channel — retrying…"})
                     continue
+                # It did the work and then said nothing: the person gets what the tools
+                # brought back, and is told the model is not up to this (claims.after_silence).
+                from . import claims as _claims
+                kept = _claims.after_silence(self.model_id, steps) if self.principal is MAIN else ""
+                if kept:
+                    await self.emit({"type": "text_delta", "text": kept})
+                    final_text = self._final_text = kept
+                    steps.append({"type": "text", "text": kept})
+                    steps.append({"type": "unbacked", "claims": ["gave no answer after its tools"]})
+                    break
                 msg = ("the model finished without producing an answer (it spent the reply in "
                        "its thinking channel). Try again, turn thinking off for this model, or "
                        "pick a stronger one.")
@@ -1710,6 +1740,29 @@ class Agent:
                                  "sentence and use a keyless alternative such as an RSS feed. Do not "
                                  "restate the plan."})
                 continue
+
+            # "I have called a huddle … the blueprint is ready", in a turn where neither tool
+            # ran (claims.py). Asked once to actually make the call; if the reply still claims
+            # work nobody did, it says so in plain words, with the model named.
+            if (not tool_calls and not self.aborted and self.principal is MAIN and text.strip()
+                    and getattr(self, "check_claims", True)):
+                from . import claims as _claims
+                missing = _claims.unbacked(text, steps)
+                if missing and not claim_nudged:
+                    claim_nudged = True
+                    await self.emit({"type": "status", "message":
+                                     "it said it did something it never ran — asking it to do it for real…"})
+                    messages.append({"role": "assistant", "content": text})
+                    messages.append({"role": "user", "content": _claims.nudge(
+                        missing, {t.get("name") for t in self._tools()})})
+                    continue
+                if missing:
+                    warn = _claims.note(self.model_id, missing)
+                    await self.emit({"type": "text_delta", "text": "\n\n" + warn})
+                    text = final_text = self._final_text = text + "\n\n" + warn
+                    if steps and steps[-1].get("type") == "text":
+                        steps[-1] = {"type": "text", "text": text}
+                    steps.append({"type": "unbacked", "claims": [m["what"] for m in missing]})
 
             if not tool_calls or self.aborted:
                 # About to end — but a message may have landed while that last reply

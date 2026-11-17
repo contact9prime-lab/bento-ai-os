@@ -14857,6 +14857,7 @@ async def api_company():
             "brain_notes": companymod.brain(store),
             "companies": companymod.companies(cfg), "max_companies": companymod.MAX_COMPANIES,
             "permissions": companymod.permission_mode(cfg),
+            "folders": companymod.folders_state(cfg),
             "executors": [{"name": p["name"], "summary": p.get("summary", "")}
                           for p in _hands_list(store)]}
 
@@ -18688,6 +18689,37 @@ async def api_company_hands(body: dict):
     cfgmod.save_config(state["cfg"])
     await state["broadcast_user"]({"type": "office"}, usersmod.current() or "")
     await state["broadcast_user"]({"type": "agents"}, usersmod.current() or "")
+    return {"ok": True, **got}
+
+
+@app.get("/api/company/folders")
+async def api_company_folders(company: str = ""):
+    """The folders a company works in: its own list, or the account's (company.folders_state)."""
+    from . import company as companymod
+    try:
+        return companymod.folders_state(state["cfg"], company)
+    except KeyError:
+        return JSONResponse({"error": "you keep no company with that id"}, status_code=404)
+
+
+@app.put("/api/company/folders")
+async def api_company_folders_set(body: dict):
+    """Give a company folders of its own, each read-only or read-write, or put it back on
+    the account's (`inherit: true`). `make: true` also creates a folder of its own under
+    the workspace. A person's door only: no agent tool reaches it, and a folder the
+    account cannot reach is refused in a sentence (company.clean_folders)."""
+    from . import company as companymod
+    b = body or {}
+    try:
+        got = companymod.set_folders(state["cfg"], state["store"],
+                                     None if b.get("inherit") else list(b.get("folders") or []),
+                                     cid=str(b.get("company") or ""), make=bool(b.get("make")))
+    except KeyError:
+        return JSONResponse({"error": "you keep no company with that id"}, status_code=404)
+    except (ValueError, OSError) as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    cfgmod.save_config(state["cfg"])
+    await state["broadcast_user"]({"type": "office"}, usersmod.current() or "")
     return {"ok": True, **got}
 
 

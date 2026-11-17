@@ -116,6 +116,8 @@ function pfWhy(){
       <button class="endbtn" onclick="pfAttach('deny')">Always refuse it</button></div>`;
   }else if(stage==='reach'){
     doors=`<div class="pf-rule"><button class="endbtn" onclick="placeSettings('executors')()">Change its hands</button></div>`;
+  }else if(stage==='folders'){
+    doors=`<div class="pf-rule"><button class="endbtn" onclick="openApp('office');setTimeout(()=>officeCompany(true),300)">The company's folders</button></div>`;
   }else if(stage==='channel'){
     doors=`<div class="pf-rule"><button class="endbtn" onclick="placeSettings('channels')()">Channel settings</button></div>`;
   }else if(stage==='rate'){

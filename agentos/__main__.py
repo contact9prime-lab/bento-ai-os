@@ -4190,6 +4190,69 @@ def _company_cli(args):
         print("✓ the independent auditor is " + ("on: every finished department task is checked."
                                                  if want else "off: finished tasks are not checked."))
         return
+    if a == "folders":
+        # the folders a company works in: its own list (each read-only or read-write), or
+        # the account's. The same save as the panel (company.set_folders), so the same checks.
+        cid = str(getattr(args, "company", "") or "")
+
+        def show(st):
+            print(f"{st['company']} " + ("uses your account's folders." if st["inherit"] else
+                                          f"works in {len(st['folders'])} folder{'' if len(st['folders']) == 1 else 's'} of its own:"))
+            for f in st["folders"]:
+                print(f"  {'read and write' if f['mode'] == 'rw' else 'read only     '}  {f['label']}"
+                      + ("" if f["exists"] else "  (missing)"))
+            if st["inherit"] or not st["folders"]:
+                print("  bento company folders make | add PATH [ro] | inherit")
+        try:
+            st = co.folders_state(cfg, cid)
+        except KeyError:
+            print(f"✗ you keep no company with the id {cid}. bento company companies lists them.")
+            sys.exit(1)
+        if not rest or rest[0] == "show":
+            show(st)
+            return
+        verb, args_ = rest[0], rest[1:]
+        rows = [{"path": f["path"], "mode": f["mode"]} for f in st["folders"]]
+        body = {"company": st["id"]}
+        if verb == "inherit":
+            body["inherit"] = True
+        elif verb == "make":
+            body.update(folders=rows, make=True)
+        elif verb in ("add", "remove", "ro", "rw") and args_:
+            path = os.path.realpath(os.path.expanduser(args_[0])) if args_[0] != "@workspace" else "@workspace"
+            same = [r for r in rows if (r["path"] if r["path"] == "@workspace"
+                                        else os.path.realpath(os.path.expanduser(r["path"]))) == path]
+            if verb == "add":
+                rows = [r for r in rows if r not in same] + [
+                    {"path": path, "mode": "ro" if args_[1:] and args_[1] == "ro" else "rw"}]
+            elif not same:
+                print(f"✗ {args_[0]} is not one of {st['company']}'s folders")
+                sys.exit(1)
+            elif verb == "remove":
+                rows = [r for r in rows if r not in same]
+            else:
+                rows = [{**r, "mode": verb} if r in same else r for r in rows]
+            body["folders"] = rows
+        else:
+            print("bento company folders [show | make | add PATH [ro|rw] | "
+                  "remove PATH | ro PATH | rw PATH | inherit]")
+            sys.exit(2)
+        if up:
+            d = _api_call(port, "/api/company/folders", "PUT", body)
+            if d.get("error"):
+                print(f"✗ {d['error']}")
+                sys.exit(1)
+            show(d)
+            return
+        try:
+            got = co.set_folders(cfg, store, None if body.get("inherit") else body.get("folders") or [],
+                                 cid=st["id"], make=bool(body.get("make")))
+        except (ValueError, OSError) as e:
+            print(f"✗ {e}")
+            sys.exit(1)
+        _cfgmod.save_config(cfg)
+        show(got)
+        return
     if a == "review":
         # who signs finished work off: each boss up to the lead, each department's own
         # head, or nobody. Up to the lead unless the person says otherwise.
@@ -4542,7 +4605,7 @@ def _company_cli(args):
         co.record(store, f"company renamed: {cur['name']}")
         print(f"✓ the company is called {co.profile(cfg)['name']}")
         return
-    print("bento company [show|templates|setup|task|name|objective|todo|start|audit|review|"
+    print("bento company [show|templates|setup|task|name|objective|todo|start|folders|audit|review|"
           "chain|check|companies|new|open|drop]")
     sys.exit(2)
 
@@ -10233,7 +10296,7 @@ def main():
                       choices=["show", "list", "templates", "setup", "task", "name", "audit",
                                "review", "chain", "check", "objective", "todo", "start",
                                "companies", "new", "open", "drop", "permissions", "allow", "block",
-                               "ask", "hands", "kit", "code"], metavar="ACTION")
+                               "ask", "hands", "kit", "code", "folders"], metavar="ACTION")
     p_co.add_argument("args", nargs="*", help="setup: what the company does · task: DEPARTMENT \"the task\""
                                               " · name: the company's name · audit: on|off"
                                               " · review: lead|heads|off"
@@ -10243,7 +10306,9 @@ def main():
                                               " · permissions: agent|department"
                                               " · allow/block/ask: DEPARTMENT DEPARTMENT"
                                               " · hands: DEPARTMENT EXECUTOR|own · kit: DEPARTMENT"
-                                              " · code: DEPARTMENT on|off")
+                                              " · code: DEPARTMENT on|off"
+                                              " · folders: make|add PATH [ro]|remove PATH|ro PATH|rw PATH|inherit")
+    p_co.add_argument("--company", default="", help="folders: the company's id (default: the open one)")
     p_co.add_argument("--objective", default="", help="setup, new: what the company is trying to achieve")
     p_co.add_argument("--about", default="", help="new: what the company does, in one line")
     p_co.add_argument("--departments", default="", help="setup: exactly these, e.g. admin,hr,finance,sales")

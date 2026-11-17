@@ -156,6 +156,14 @@ body.dev-touch .co-review{min-height:var(--tap);display:inline-flex;align-items:
 .co-gate.unchecked,.co-gate.skipped,.co-gate.wait{color:var(--dim)}
 body.dev-touch .co-rep select,body.dev-touch .co-signoff select{min-height:var(--tap)}
 .co-audit{display:flex;align-items:center;gap:8px;font-size:var(--fs-sm);margin:2px 0 8px}
+.co-folders{display:flex;flex-direction:column;gap:6px;margin:0 0 8px}
+.co-frow{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:var(--fs-xs)}
+.co-fpath{flex:1 1 10em;min-width:0;overflow-wrap:break-word;font-size:var(--fs-xs)}
+.co-frow select{font-size:var(--fs-xs);padding-right:26px}
+.co-fnew{flex:1 1 12em;min-width:0;font-size:var(--fs-xs)}
+.co-fmake{align-self:flex-start;text-align:left;overflow-wrap:anywhere}
+.co-ferr{font-size:var(--fs-xs);margin:0 0 8px}
+body.dev-touch .co-frow select,body.dev-touch .co-frow .endbtn,body.dev-touch .co-fnew,body.dev-touch .co-fmake{min-height:var(--tap)}
 .co-said{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 body.dev-touch .co-card{min-height:var(--tap)}
 body.dev-touch .of-company .endbtn,body.dev-touch .of-company .of-chip,body.dev-touch .of-company select,
