@@ -22,6 +22,7 @@ async function coSetPaint(){
   try{
     const [l,b]=await Promise.all([apiJSON('/api/companies'),apiJSON('/api/brief').catch(()=>({}))]);
     COSET.list=l.companies||[];COSET.max=l.max||8;COSET.brief=b.companies||[];
+    COSET.briefOn=!(b.schedule&&b.schedule.on===false);
     const want=COSET.list.find(c=>c.id&&c.id===COSET.sel)||COSET.list.find(c=>c.active)||COSET.list[0];
     COSET.sel=want?want.id:'';
     COSET.d=want?await apiJSON('/api/companies/one?id='+encodeURIComponent(COSET.sel)):null;
@@ -81,10 +82,15 @@ function coSetDraw(){
       <div class="ghint">Who works in each department. You design them in the Office.</div>
       ${coSetPick()}${depts}
       ${d?`<div class="co-set-go"><button class="endbtn" id="co-d-go">${d.active?'Design departments in the Office':'Open '+esc(d.name)+' and design its departments'}</button></div>`:''}</div>
-    <div class="pgroup" data-f="company brief morning briefing in the brief"><h3>In your Brief</h3>
-      <div class="ghint">A company switched off here is left out of the Brief you are sent. Its items stay in the Brief app.</div>
-      ${L.length?L.map(c=>pRow(c.name,`<label class="psw"><input type="checkbox" data-co-brief="${esc(c.name)}"${briefOn(c.name)?' checked':''} aria-label="${esc(c.name)} in your Brief"><span></span></label>`,
-        {f:'brief '+c.name})).join(''):'<p class="mut">No companies yet, so the Brief has everything in it.</p>'}</div>`;
+    <div class="pgroup" data-f="company brief morning briefing in the brief on off"><h3>In your Brief</h3>
+      <div class="ghint">The Brief is what your missions leave for you, sent at the times you set in the Brief app.</div>
+      ${pRow('Send me the Brief',`<label class="psw"><input type="checkbox" id="co-brief-all"${COSET.briefOn?' checked':''} aria-label="Send me the Brief"><i></i></label>`,
+        {desc:COSET.briefOn?'It comes at its times, with every company switched on below.':'Off. Nothing is sent; the Brief app still has every item.',
+         f:'brief on off send me the brief morning'})}
+      ${L.length?L.map(c=>pRow(c.name,`<label class="psw"><input type="checkbox" data-co-brief="${esc(c.name)}"${briefOn(c.name)?' checked':''}${COSET.briefOn?'':' disabled'} aria-label="${esc(c.name)} in your Brief"><i></i></label>`,
+        {desc:briefOn(c.name)?'Its items are in the Brief you are sent.':'Left out of the Brief you are sent. Its items stay in the Brief app.',f:'brief '+c.name})).join('')
+        :'<p class="mut">No companies yet, so the Brief has everything in it.</p>'}
+      <div class="co-set-go"><button class="endbtn" id="co-brief-open">Set its times in the Brief app</button></div></div>`;
   coSetWire(box);
 }
 
@@ -98,6 +104,8 @@ function coSetWire(box){
   const go=box.querySelector('#co-n-go');if(go)go.onclick=()=>coSetCreate(go);
   const dg=box.querySelector('#co-d-go');if(dg)dg.onclick=()=>coSetDesign(dg);
   box.querySelectorAll('[data-co-brief]').forEach(c=>c.onchange=()=>coSetBrief(c.dataset.coBrief,c.checked,c));
+  const ball=box.querySelector('#co-brief-all');if(ball)ball.onchange=()=>coSetBriefAll(ball.checked,ball);
+  const bopen=box.querySelector('#co-brief-open');if(bopen)bopen.onclick=()=>openApp('brief');
   const fsec=box.querySelector('.pgroup[data-f^="company folders"]');
   if(fsec&&COSET.d)companyFoldersWire(fsec,COSET.d.folders,coSetFolders);
 }
@@ -149,6 +157,13 @@ async function coSetBrief(name,on,ctl){
     toast(on?`${name} is in your Brief`:`${name} is left out of your Brief`);
     const b=COSET.brief.find(x=>x.name===name);if(b)b.on=on}
   catch(e){toast('could not save: '+(e.message||e),{kind:'err'});if(ctl)ctl.checked=!on}
+}
+/* The account's own switch (brief.on): off keeps the times and the items, and sends nothing. */
+async function coSetBriefAll(on,ctl){
+  try{await coSetCall('/api/brief/schedule','PUT',{on},ctl);COSET.briefOn=on;
+    toast(on?'Your Brief is on':'Your Brief is off. Nothing is sent until you switch it on')}
+  catch(e){toast('could not save: '+(e.message||e),{kind:'err'});if(ctl)ctl.checked=!on}
+  coSetDraw();
 }
 async function coSetDesign(ctl){
   const d=COSET.d;if(!d)return;

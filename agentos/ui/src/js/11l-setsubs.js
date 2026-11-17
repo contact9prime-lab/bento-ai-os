@@ -21,7 +21,7 @@
    GUI and SUI: this page. TUI: `bento config` and the verbs each card names; there is no pane to
    scroll. */
 var SETSUBS={
-  ai:[['Answering','Answering'],['Cloud providers','Cloud providers'],['Agents installed here','AI agents installed here'],['Images','Image generation']],
+  ai:[['In use','In use'],['Providers','Model providers'],['Installed agents','AI agents installed here'],['Images','Image generation'],['Voice','Voice']],
   agent:[['Lead agent','Lead agent'],['Models','Models'],['Working together','Asking each other'],['Your agents','Your agents'],['Map','The map'],['Sharing','Share this agent']],
   companies:[['Your companies','Your companies'],['New company','A new company'],['Folders','Folders'],['Departments','Departments'],['Brief','In your Brief']],
   network:[['Discovery','Discovery and linkage'],['Linked teams','Linked teams'],['Community','Community'],['Messages','Messages'],['Mapping','Team to agent mapping'],['Maps','Maps']],
@@ -90,6 +90,10 @@ function setSubsApply(main){
     let top=found[0].el;while(top.parentNode&&top.parentNode!==main)top=top.parentNode;
     main.insertBefore(bar,top);
   }
+  // A wrapper that was a section's card when it held one titled card ("checking…") and is
+  // opened up now that it holds several (the share box) is no longer a unit, so a hide it
+  // was given then must go, or every card inside it stays hidden: Sharing showed nothing.
+  main.querySelectorAll('.ssub-off').forEach(e=>{if(!of.has(e))e.classList.remove('ssub-off')});
   const selI=found.find(f=>f.label===sel).i;
   units.forEach(u=>{const s=of.get(u);
     u.classList.toggle('ssub-off',s>=0&&s!==selI);

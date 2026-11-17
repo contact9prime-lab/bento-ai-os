@@ -649,7 +649,7 @@ function hearChoices(){
           ['openai','OpenAI'],['google','Google Cloud'],['browser','This browser']];
 }
 /* The two fixes for a machine that cannot hear, side by side: a voice key (the Voice
-   pane, where the same key makes the agents speak) and whisper.cpp installed here
+   engine in AI providers, where the same key makes the agents speak) and whisper.cpp installed here
    (components.py, with its licence and command shown before anything runs). */
 function hearFixHTML(hear,pre){
   const inst=(hear.install||[]).includes('whisper-cpp');
@@ -662,8 +662,8 @@ function hearFixWire(box,pre,after){
     // already on Voice: the key box is just above, so go to it
     const eng=document.getElementById('v-engine-box');
     if(eng){eng.scrollIntoView({block:'center',behavior:'smooth'});return}
-    openApp('settings');setTimeout(()=>{
-    const b=document.querySelector('.prefs-side button[data-t="voice"]');if(b)b.click()},150)};
+    // the engine and its key are with the other providers (Settings → AI providers → Voice)
+    openApp('settings');setTimeout(()=>settingsGo('ai','Voice'),150)};
   const w=box.querySelector('#'+pre+'-whisper');
   if(w)w.onclick=async()=>{w.disabled=true;w.textContent='Installing… (a few minutes)';
     try{await installComponent('whisper-cpp')}finally{if(typeof after==='function')after()}};

@@ -92,7 +92,10 @@ def test_a_turn_whose_brain_is_out_goes_to_the_next(monkeypatch):
 
 def test_the_settings_row_and_the_terminal():
     js = (ROOT / "agentos/ui/src/js/11-settings.js").read_text()
-    assert "If it isn’t available" in js and "/api/brain/fallbacks" in js
+    # the lead's backups sit on the lead (Agents → Lead agent), in priority order
+    lead = js[js.index("pGroup('Lead agent'"):js.index("pGroup('How it works'")]
+    assert "Then, in this order" in lead and "s-fallbacks" in lead and "s-brain" in lead
+    assert "/api/brain/fallbacks" in js
     cli = (ROOT / "agentos/__main__.py").read_text()
     assert "_fallbacks_cli" in cli
     from agentos import users
