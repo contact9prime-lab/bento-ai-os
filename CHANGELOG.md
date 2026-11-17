@@ -12,6 +12,11 @@
 - A request is asked on your Telegram and your WhatsApp, whichever channel it came from.
 - Settings → Channels → Authorization: everybody and every group, waiting first, with Allow and Block.
   `bento channels who` is the same list in a terminal.
+**WhatsApp linked by QR code just works.**
+
+- After scanning the QR code, Settings → Channels no longer asks for a phone number ID, access token,
+  app secret or verify token, and no longer holds the switch off. Those four are the Business API's,
+  and now only show when that is the way you connect. The Meta walkthrough is hidden for a linked phone too.
 
 ## 0.9.34 — 2026-11-17
 

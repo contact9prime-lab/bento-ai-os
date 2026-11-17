@@ -61,11 +61,14 @@ class Field:
     secret: bool = False
     required: bool = True
     placeholder: str = ""
+    # Which transport reads it ("cloud" for WhatsApp's Business API fields), or ""
+    # when every way of connecting the channel uses it.
+    only: str = ""
 
     def as_dict(self) -> dict:
         return {"key": self.key, "label": self.label, "help": self.help,
                 "secret": self.secret, "required": self.required,
-                "placeholder": self.placeholder}
+                "placeholder": self.placeholder, "only": self.only}
 
 
 @dataclass
@@ -251,18 +254,22 @@ CATALOGUE: list[Channel] = [
             Field("phone_number_id", "Phone number ID",
                   "Business API only. From the WhatsApp product page on "
                   "developers.facebook.com.",
-                  placeholder="123456789012345"),
+                  placeholder="123456789012345",
+                  only="cloud"),
             Field("access_token", "Access token",
                   "The permanent token for your system user. Temporary tokens expire "
                   "in 24 hours and the channel will simply stop.",
-                  secret=True),
+                  secret=True,
+                  only="cloud"),
             Field("app_secret", "App secret",
                   "Used to verify that a webhook delivery really came from Meta. "
                   "Without it the webhook is refused, because it is a public URL.",
-                  secret=True),
+                  secret=True,
+                  only="cloud"),
             Field("verify_token", "Verify token",
                   "Any string you invent. Paste the same one into Meta's console "
-                  "when you set the callback URL."),
+                  "when you set the callback URL.",
+                  only="cloud"),
         ],
     ),
 ]
@@ -374,13 +381,17 @@ def _missing(chan: Channel, conf: dict) -> list[str]:
     WhatsApp carries two transports and only one of them needs the Cloud API
     fields. Holding the channel off because four boxes it will never read are
     empty would be refusing to switch on for a reason that does not apply — so
-    in `link` mode the requirement is the bridge being installed, and that is
-    reported by the card rather than as a missing field.
+    in `baileys` mode the only thing it needs is the QR scan. The mode is spelled
+    as `whatsapp.MODES` spells it: this once checked for `link`, which no config
+    ever holds, so a phone linked by QR was still asked for a token.
     """
-    if chan.id == "whatsapp" and (conf or {}).get("mode", "link") == "link":
-        return []
+    mode = (conf or {}).get("mode") or "cloud"
+    if chan.id == "whatsapp" and mode == "baileys":
+        from . import wa_baileys
+        return [] if wa_baileys.paired() else ["a QR scan"]
     return [f.label for f in chan.fields
-            if f.required and not str((conf or {}).get(f.key) or "").strip()]
+            if f.required and (not f.only or f.only == mode)
+            and not str((conf or {}).get(f.key) or "").strip()]
 
 
 def _conf(cfg: dict, chan: Channel) -> dict:
@@ -445,6 +456,16 @@ def state(cfg: dict, store=None) -> list[dict]:
             detail = "connected" if enabled else "ready, switch it on to use it"
 
         d = chan.as_dict()
+        mode = str(conf.get("mode") or "") if chan.id == "whatsapp" else ""
+        if mode:
+            # Only the fields and the walkthrough of the transport in use: a phone
+            # linked by QR has nothing to type, and Meta's six steps are not its own.
+            d["fields"] = [f for f in d["fields"] if not f["only"] or f["only"] == mode]
+            d["mode"] = mode
+            if mode == "baileys":
+                d["setup"] = []
+                d["note"] = ("Linked as a WhatsApp Web device by QR code. It is "
+                             "unofficial, so a spare number is safer.")
         d.update({
             "enabled": enabled, "status": status, "detail": detail,
             "posture": posture,
