@@ -431,6 +431,10 @@ async function initCopilot(w,panel){
         d.querySelectorAll('.tool .head').forEach(h=>h.onclick=()=>h.parentNode.classList.toggle('open'));
         const wk=[...feedEl.querySelectorAll('.mf-working')].pop();
         if(wk)feedEl.insertBefore(d,wk);else feedEl.appendChild(d)}
+      // a department's card drawn again from that snapshot is put back on its run, and a
+      // task that began before this panel was here is asked for (10a-handoff.js)
+      if(typeof deptCardRestore==='function'){deptCardRestore(feedEl);
+        deptCardCatchUp(cid,feedEl,[...feedEl.querySelectorAll('.mf-working')].pop())}
       // a question this turn is waiting on is drawn here too (approvalHome re-homes it)
       if(typeof APPROVALS!=='undefined'&&Object.keys(APPROVALS).length&&typeof approvalWatch==='function')approvalWatch();
       feedEl.scrollTop=feedEl.scrollHeight}

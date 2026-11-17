@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.9.26 — 2026-11-17
+
+**A department's card keeps showing who is doing what, and the Brief says what it wants from you.**
+
+- **The department card.** The `department_task` card in a chat lists each hand-over and step. It used
+  to go blank when you switched chats and came back, and never filled in if you opened the Office after
+  the task began. It now follows its task in both cases.
+- **The Brief on your phone.** It greets you by the hour and by name, lists what waits for you company
+  by company, and starts each line with what is asked (Do or Decide), who asked and why. FYI and
+  finished work are only counted. The buttons carry the same numbers as the text.
+- **Sound.** The Brief is read to you on Telegram when this machine has a voice of its own. With only
+  the browser's voice, it says so once and points to Settings → Voice.
+
 ## 0.9.25 — 2026-11-16
 
 **Send a chat to your phone.** Chat has a ➤ Phone button: carry the open chat on in Telegram or WhatsApp,

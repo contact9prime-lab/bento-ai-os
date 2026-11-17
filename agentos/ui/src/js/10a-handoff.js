@@ -147,26 +147,83 @@ function handoffEmit(ev,cid,sink,inChat){
    (flow_start carries conversation_id and department, fabric.department_task); from then
    on its runs write into that card: who got which piece, what tool they are on, who
    finished. Every card on the page for that call follows, wherever the chat is drawn. */
-var DEPTCARD={runs:{}};
+var DEPTCARD={runs:{},asked:{}};
+function deptCardIs(c,want){
+  const n=c.querySelector('.tname2'),st=c.querySelector('.tstat');
+  return !!(n&&n.textContent==='department_task'&&st&&st.classList.contains('run')
+    &&(!want||String(c.querySelector('.targ')&&c.querySelector('.targ').textContent||'').toLowerCase().includes(want)));
+}
 function deptCardFind(ev){
   const want=String(ev.department||'').toLowerCase();
-  return [...document.querySelectorAll('.tool')].filter(c=>{
-    const n=c.querySelector('.tname2'),st=c.querySelector('.tstat');
-    return n&&n.textContent==='department_task'&&st&&st.classList.contains('run')&&!c.dataset.deptRun
-      &&(!want||String(c.querySelector('.targ')&&c.querySelector('.targ').textContent||'').toLowerCase().includes(want))});
+  return [...document.querySelectorAll('.tool')].filter(c=>!c.dataset.deptRun&&deptCardIs(c,want));
+}
+function deptCardPaint(c,d){
+  c.dataset.deptRun=d.top;
+  const out=c.querySelector('.out');if(out){out.textContent=d.lines.join('\n');c.classList.add('open')}
+  const st=c.querySelector('.tstat');if(st&&d.lines.length)st.title=d.lines[d.lines.length-1];
 }
 function deptCardLine(run,text){
   const d=DEPTCARD.runs[run];if(!d)return;
   d.lines.push(text);if(d.lines.length>40)d.lines.shift();
-  document.querySelectorAll(`.tool[data-dept-run="${CSS.escape(d.top)}"]`).forEach(c=>{
-    const out=c.querySelector('.out');if(out){out.textContent=d.lines.join('\n');c.classList.add('open')}
-    const st=c.querySelector('.tstat');if(st)st.title=text});
+  document.querySelectorAll(`.tool[data-dept-run="${CSS.escape(d.top)}"]`).forEach(c=>deptCardPaint(c,d));
+}
+/* A card that was drawn again: the panel left this chat and came back, the Office was
+   reopened, Chat reopened the conversation. It comes from a snapshot taken at some earlier
+   moment, so it may have no link to its run, or old lines. Every followed run that is
+   still open is put back on its card, with everything written since. Found with the
+   owner's screenshot: "running · 10m 20s" and nothing under it. */
+function deptCardRestore(root){
+  const tops={};Object.values(DEPTCARD.runs).forEach(d=>{if(d.top&&DEPTCARD.runs[d.top]===d)tops[d.top]=d});
+  const list=Object.values(tops);if(!list.length)return 0;
+  let n=0;
+  (root||document).querySelectorAll('.tool').forEach(c=>{
+    let d=c.dataset.deptRun&&tops[c.dataset.deptRun];
+    if(!d&&!c.dataset.deptRun)d=list.find(x=>deptCardIs(c,String(x.department||'').toLowerCase())
+      &&!(root||document).querySelector(`.tool[data-dept-run="${CSS.escape(x.top)}"]`));
+    if(d){deptCardPaint(c,d);n++}});
+  return n;
+}
+/* A page that was not there when the task began (opened or reloaded since) asks the
+   server what is open in this chat and what its people have done (/api/company/live).
+   With no card to write into, it draws one where the turn's work is shown. */
+async function deptCardCatchUp(cid,box,before){
+  if(!cid||DEPTCARD.asked[cid]&&Date.now()-DEPTCARD.asked[cid]<4000)return;
+  DEPTCARD.asked[cid]=Date.now();
+  let tasks=[];
+  try{const r=await fetch('/api/company/live?conversation_id='+encodeURIComponent(cid));
+    if(!r.ok)return;tasks=(await r.json()).tasks||[]}catch(e){return}
+  tasks.forEach(t=>{
+    let d=DEPTCARD.runs[t.run_id];
+    // what the server read is the whole story so far; lines that arrived live since are after it
+    if(!d){d=DEPTCARD.runs[t.run_id]={top:t.run_id,lines:[],cid,department:t.department}}
+    if((t.lines||[]).length>=d.lines.length)d.lines=(t.lines||[]).slice();
+    (t.children||[]).forEach(k=>{if(!DEPTCARD.runs[k.run_id])DEPTCARD.runs[k.run_id]={...d,lines:d.lines,who:k.who}});
+    Object.values(DEPTCARD.runs).forEach(x=>{if(x.top===d.top)x.lines=d.lines});
+  });
+  const root=box||document;
+  deptCardRestore(root);
+  if(!box)return;
+  tasks.forEach(t=>{
+    if(root.querySelector(`.tool[data-dept-run="${CSS.escape(t.run_id)}"]`))return;
+    const d=DEPTCARD.runs[t.run_id],card=document.createElement('div');card.className='tool';
+    const head=document.createElement('div');head.className='head';
+    const nm=document.createElement('span');nm.className='tname2';nm.textContent='department_task';
+    const ar=document.createElement('span');ar.className='targ';ar.textContent=t.department;
+    const st=document.createElement('span');st.className='tstat run';st.textContent='running';
+    if(t.started_at)st.dataset.t0=Math.round(t.started_at*1000);
+    head.appendChild(nm);head.appendChild(ar);head.appendChild(st);
+    const out=document.createElement('div');out.className='out';
+    card.appendChild(head);card.appendChild(out);
+    head.onclick=()=>card.classList.toggle('open');
+    const at=before&&before.isConnected&&before.parentNode===box?before:null;
+    box.insertBefore(card,at);deptCardPaint(card,d)});
 }
 function deptCardLive(ev){
   const e=ev.event,run=ev.run_id;if(!run)return;
   if(e==='flow_start'&&ev.department&&ev.conversation_id){
-    const cards=deptCardFind(ev);if(!cards.length)return;
-    DEPTCARD.runs[run]={top:run,lines:[]};
+    // followed even when no card is on screen yet: the chat may be drawn later (deptCardRestore)
+    const cards=deptCardFind(ev);
+    DEPTCARD.runs[run]={top:run,lines:[],cid:ev.conversation_id,department:ev.department};
     cards.forEach(c=>c.dataset.deptRun=run);
     deptCardLine(run,`${ev.department} has it${ev.head?`, led by ${ev.head}`:''}`);return}
   // a child run of a followed desk is followed too
@@ -179,5 +236,6 @@ function deptCardLive(ev){
   else if(e==='step'&&ev.status==='start')deptCardLine(run,`  ${d.who||'the desk'} · ${ev.tool}${ev.detail?' · '+String(ev.detail).slice(0,80):''}`);
   else if(e==='review'&&ev.phase==='start')deptCardLine(run,`${ev.reviewer||'a boss'} is checking it`);
   else if(e==='review'&&ev.phase&&ev.phase!=='start')deptCardLine(run,`${ev.reviewer||'a boss'}: ${ev.verdict||ev.phase}`);
-  else if(e==='flow_end'){deptCardLine(run,`${ev.status==='ok'||!ev.status?'done':ev.status}`);delete DEPTCARD.runs[run]}
+  else if(e==='flow_end'){deptCardLine(run,`${ev.status==='ok'||!ev.status?'done':ev.status}`);
+    Object.keys(DEPTCARD.runs).forEach(k=>{if(DEPTCARD.runs[k].top===d.top)delete DEPTCARD.runs[k]})}
 }

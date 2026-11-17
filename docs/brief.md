@@ -59,6 +59,12 @@ in since the last Brief, and delivers it:
 - **On your screen**, a card: *Your 08:00 Brief: 3 need you · 2 decisions*, with **▶ Play**. If you
   weren't looking, it's offered once when you come back.
 - **On Telegram**, the digest with its buttons, then the story as pictures.
+  The message greets you by the hour and by name, then lists what waits for you company by
+  company. Each line starts with what is asked: **Do** or **Decide**, then who asked and
+  why. FYI and finished work are only counted. The numbers match the buttons under the
+  message. When this machine has a voice of its own (Settings → Voice), the Brief is also
+  read to you as an audio message; with only the browser's voice a phone gets no sound, and
+  the Brief says so once.
 - **In Missions → History**, as a run, so you can see it happened.
 
 **▶ Play your Brief** turns it into a Stage story, narrated when voice is on: how much is waiting,
