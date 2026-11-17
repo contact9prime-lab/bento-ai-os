@@ -1040,7 +1040,9 @@ class Store:
             ("subagents", (("memory_scope", "TEXT DEFAULT 'inherit'"),
                            ("skills_locked", "INTEGER DEFAULT 1"),
                            # which executor profile (hands) it works with; '' = default
-                           ("profile", "TEXT DEFAULT ''"))),
+                           ("profile", "TEXT DEFAULT ''"),
+                           # the models it tries after its pin, in order (fabric.agent_brain)
+                           ("backups", "TEXT DEFAULT '[]'"))),
             # provenance for a flow the model drafted: which model, what it assumed, what
             # it had to drop, and which agents came with it (so Discard can clean up)
             # `job` is the recipe a flow came out of (agentos/jobs.py), or '' for one
@@ -2815,6 +2817,10 @@ class Store:
                 "max_steps, max_seconds, builtin, memory_scope, skills_locked, updated_at, id, "
                 "created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (*vals, sid, now))
+        if "backups" in d:
+            # only when given, like the profile: a save that doesn't name them keeps them
+            self.db.execute("UPDATE subagents SET backups=? WHERE id=?",
+                            (json.dumps([str(x) for x in (d.get("backups") or []) if x][:4]), sid))
         if "profile" in d:
             # Only when given: every older caller (the wizard, the recipes, a fork)
             # saves without it, and must not silently move an agent back to default.
@@ -2828,6 +2834,10 @@ class Store:
         d = dict(r)
         d["tools"] = json.loads(d.get("tools") or "[]")
         d["skills"] = json.loads(d.get("skills") or "[]")
+        try:
+            d["backups"] = [str(x) for x in json.loads(d.get("backups") or "[]") if x][:4]
+        except (ValueError, TypeError):
+            d["backups"] = []
         return d
 
     def list_subagents(self) -> list[dict]:

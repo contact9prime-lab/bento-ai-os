@@ -7255,6 +7255,29 @@ def _team_cli(args):
         print(f"  {args.name} now answers on {b['provider_name']} · {b['short']}"
               + (f"  ({b['note']})" if b["note"] else ""))
         return
+    elif act == "backups":
+        # the agent's priority list after its first choice (fabric.set_agent_backups)
+        spec = (args.model or "").strip()
+        try:
+            if spec:
+                b = fabricmod.set_agent_backups(store, cfg, args.name, [] if spec == "clear" else
+                                                [x.strip() for x in spec.split(",") if x.strip()])
+            else:
+                if not store.get_subagent(args.name):
+                    raise KeyError(args.name)
+                b = fabricmod.agent_brain(cfg, store.get_subagent(args.name))
+        except KeyError:
+            print(f"no agent called '{args.name}'")
+            sys.exit(2)
+        except ValueError as e:
+            print(e)
+            sys.exit(2)
+        sa = store.get_subagent(args.name)
+        print(f"  {args.name}: first {sa.get('model') or 'this machine’s brain'}")
+        for i, m in enumerate(sa.get("backups") or [], 1):
+            print(f"    then {i}. {m}")
+        print(f"  answers on {b['provider_name']} · {b['short']}" + (f"  ({b['note']})" if b["note"] else ""))
+        return
     subs = store.list_subagents()
     if not subs:
         print("  no specialists yet — ask your agent for one, or: bento flow add")
@@ -7273,7 +7296,7 @@ def _team_cli(args):
               + (f"   ({b['note']})" if b["note"] else ""))
     from .policy import team_talk
     print(f"\n  agents message each other: {team_talk(cfg)}  (bento team matrix)")
-    print("\n  bento team set NAME provider/model · bento team own on|off\n"
+    print("\n  bento team set NAME provider/model · bento team backups NAME a,b · bento team own on|off\n"
           "  talk it through: in chat, \"@researcher @validator should we…\"")
 
 
@@ -10564,8 +10587,8 @@ def main():
     p_link.add_argument("--user", default="", help="whose links, on a machine with users")
     p_team = verb("team", help="which AI provider each agent answers on — list, pin one, or the switch")
     p_team.add_argument("action", nargs="?", default="list",
-                        choices=["list", "set", "own", "talk", "matrix", "allow", "block", "ask", "limits",
-                                 "draft", "freetalk", "log"])
+                        choices=["list", "set", "backups", "own", "talk", "matrix", "allow", "block", "ask",
+                                 "limits", "draft", "freetalk", "log"])
     p_team.add_argument("name", nargs="?", default="",
                         help="set: the agent · own: on|off · talk: matrix|swarm|democracy|off · allow/block/ask: the asker "
                              "· draft: what the new agent should do, in words "
@@ -10573,6 +10596,7 @@ def main():
     p_team.add_argument("model", nargs="?", default="",
                         help="set: provider/model, or an agent CLI such as gemini-cli/gemini-2.5-pro, "
                              "codex/default or claude-code/sonnet ('' = this machine's brain) "
+                             "· backups: the models tried next, comma-separated ('clear' for none) "
                              "· allow/block/ask: the one asked")
     p_team.add_argument("more", nargs="*", default=[], help="limits: more name=value pairs")
     p_team.add_argument("--user", default="", help="whose agents, on a machine with users")

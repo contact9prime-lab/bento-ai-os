@@ -15355,8 +15355,13 @@ async def api_subagents():
     pinned model, which a switched-off provider or the team switch can overrule."""
     cfg = state["cfg"]
     subs = state["store"].list_subagents()
+    from . import office as _office
     for s in subs:
         s["brain"] = fabricmod.agent_brain(cfg, s)
+        # the company and department it works in, open or parked; none is the Default company
+        hit = _office.department_of(cfg, s.get("name") or "")
+        s["works_for"] = ({"company": str((hit[1] or {}).get("name") or "Your company"),
+                           "department": str(hit[0].get("name") or "")} if hit else {})
     from . import company as companymod
     return {"subagents": subs, "agent_brain": fabricmod.agent_brain(cfg, None),
             "own_brains": bool((cfg.get("team") or {}).get("own_brains", True)),
@@ -18797,8 +18802,12 @@ async def api_subagent_brain(name: str, body: dict):
     The same check the agent's own tool uses (fabric.set_agent_model): a model on a
     provider this machine does not have is refused with the list that would work."""
     try:
-        brain = fabricmod.set_agent_model(state["store"], state["cfg"], name,
-                                          str((body or {}).get("model") or ""))
+        if "model" in (body or {}) or "backups" not in (body or {}):
+            brain = fabricmod.set_agent_model(state["store"], state["cfg"], name,
+                                              str((body or {}).get("model") or ""))
+        if isinstance((body or {}).get("backups"), list):
+            # the agent's priority list after its first choice (fabric.set_agent_backups)
+            brain = fabricmod.set_agent_backups(state["store"], state["cfg"], name, body["backups"])
     except KeyError:
         return JSONResponse({"error": f"no agent called '{name}'"}, status_code=404)
     except ValueError as e:

@@ -34,13 +34,13 @@ function zmMount(host,root,o){
   ZM[id]={root,focus:keep(prev&&prev.focus)||root.id,sel:keep(prev&&prev.sel),k:prev?prev.k:1,x:prev?prev.x:0,y:prev?prev.y:0,o};
   if(!host.querySelector('.zm')){
     host.innerHTML=`<div class="zm" tabindex="0" aria-label="${esc(o.label||'Map')}">
-      <svg class="zm-svg" role="img" aria-label="${esc(o.label||'Map')}"><g class="zm-cam"></g></svg>
+      <svg class="zm-svg" role="img" aria-label="${esc(o.label||'Map')}"><defs><marker id="${id}-arr" viewBox="0 0 10 10" refX="22" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="zm-arr"/></marker></defs><g class="zm-cam"></g></svg>
       <div class="zm-tools"><input class="zm-q" type="search" placeholder="Find…" aria-label="Find on the map" list="${id}-names">
         <datalist id="${id}-names"></datalist>
         <button class="endbtn zm-b" data-zmb="in" aria-label="Zoom in">＋</button><button class="endbtn zm-b" data-zmb="out" aria-label="Zoom out">−</button>
         <button class="endbtn zm-b" data-zmb="fit">Fit</button><button class="endbtn zm-b zm-up" data-zmb="up" hidden></button></div>
       <aside class="zm-side" hidden></aside>
-      <p class="zm-hint">Tap to go in · ↑ goes back · drag to move · scroll to zoom</p></div>`;
+      <p class="zm-hint">Tap to go in · ↑ goes back · drag to move · scroll to zoom${o.talk&&o.talk.talk!=='off'?'<span class="zm-legend"><i class="zl ok"></i>may ask each other <i class="zl no"></i>blocked · an arrow points at the one who answers</span>':''}</p></div>`;
     zmWire(host,id);
   }
   zmPaint(host,id);
@@ -63,7 +63,29 @@ function zmLayout(st){
     g.slice(0,24).forEach((gc,j)=>{const b=a+(g.length>1?(j/(Math.min(g.length,24)-1)-.5)*span:0);
       pos[gc.id]={x:Math.cos(b)*R2,y:Math.sin(b)*R2,d:2,n:gc,a:b};vis.push(gc.id);edges.push([c.id,gc.id,'ghost'])});
   });
+  zmTalkEdges(st,kids,edges);
   return {pos,vis,edges,up:hit.path[hit.path.length-1]||null};
+}
+/* Who may ask whom among the people on the ring: a solid line where a question is allowed
+   (an allow cell, or an open cell under swarm), dashed where it is blocked, an arrow when it
+   goes one way only. An unset cell that asks you first draws nothing: it is decided when it
+   happens. Read from the same cells as Settings → Agents → Working together (fabric.matrix). */
+function zmTalkOf(t,a,b){
+  if(!t||t.talk==='off')return '';
+  const v=(t.cells||{})[a+'>'+b]||'';
+  return v==='allow'?'ok':v==='deny'?'no':t.talk==='swarm'?'ok':'';
+}
+function zmTalkEdges(st,kids,edges){
+  const t=st.o&&st.o.talk;if(!t)return;
+  const ppl=kids.filter(c=>c.agent);
+  for(let i=0;i<ppl.length;i++)for(let j=i+1;j<ppl.length;j++){
+    const a=ppl[i],b=ppl[j],ab=zmTalkOf(t,a.agent,b.agent),ba=zmTalkOf(t,b.agent,a.agent);
+    if(!ab&&!ba)continue;
+    const kind=(ab==='no'||ba==='no')&&ab!=='ok'&&ba!=='ok'?'no':'ok';
+    // one way: the arrow points at the one who answers
+    const one=kind==='ok'&&!(ab==='ok'&&ba==='ok');
+    edges.push(one&&ba==='ok'&&ab!=='ok'?[b.id,a.id,'talk '+kind+' one']:[a.id,b.id,'talk '+kind+(one?' one':'')]);
+  }
 }
 
 function zmPaint(host,id){
@@ -73,6 +95,11 @@ function zmPaint(host,id){
   L.crowded=L.vis.filter(v=>L.pos[v].d===1&&!L.pos[v].up).length>10;
   const P=L.pos;
   const edge=([a,b,k])=>{const A=P[a],B=P[b];if(!A||!B)return'';
+    if(String(k||'').startsWith('talk')){
+      // a chord bowed away from the middle, so it never runs over the name of the place
+      const cx=(A.x+B.x)*.62,cy=(A.y+B.y)*.62;
+      return `<path class="zm-e ${esc(k)}${st.sel&&(a===st.sel||b===st.sel)?' on':''}" d="M${A.x.toFixed(1)},${A.y.toFixed(1)} Q${cx.toFixed(1)},${cy.toFixed(1)} ${B.x.toFixed(1)},${B.y.toFixed(1)}"${String(k).includes('one')?` marker-end="url(#${id}-arr)"`:''}><title>${esc(P[a].n.label)} ${String(k).includes('no')?'may not ask':String(k).includes('one')?'may ask':'and'} ${esc(P[b].n.label)}${String(k).includes('one')||String(k).includes('no')?'':' may ask each other'}</title></path>`;
+    }
     return `<line class="zm-e ${esc(k||'')}${st.sel&&(a===st.sel||b===st.sel)?' on':''}" x1="${A.x.toFixed(1)}" y1="${A.y.toFixed(1)}" x2="${B.x.toFixed(1)}" y2="${B.y.toFixed(1)}"/>`};
   const node=nid=>{const p=P[nid],n=p.n,kids=(n.children||[]).length;
     if(p.d===2)return `<g class="zm-n dot ${esc(n.kind||'')}" data-zid="${esc(n.id)}" transform="translate(${p.x.toFixed(1)},${p.y.toFixed(1)})"><circle class="zm-c" r="${ZM_SIZE[2]}"><title>${esc(n.label)}</title></circle></g>`;
@@ -208,7 +235,18 @@ function zmPersonDetail(p){
     ${(p.skills||[]).length?`<div><span class="ag-k">Skills</span>${p.skills.map(x=>`<span class="brainchip">${esc(x)}</span>`).join(' ')}</div>`:''}
     <div><span class="ag-k">Permissions</span>${p.autonomy?'autonomy '+esc(p.autonomy)+' · ':''}${p.allow||0} allowed, ${p.deny||0} refused${fams.length?' <span class="mut">('+fams.map(([k,v])=>esc(k)+' '+v.allow+(v.deny?'/'+v.deny+'✗':'')).join(', ')+')</span>':''}</div>
     ${(p.missions||[]).length?`<div><span class="ag-k">Missions</span>${p.missions.map(esc).join(', ')}</div>`:''}
+    ${zmTalkRows(p)}
     <div class="zm-acts">${p.lead?'':`<button class="endbtn" onclick="agentEdit('${jsq(p.name)}')">Edit</button>`}<button class="endbtn" onclick="openApp('permissions')">Permissions</button></div></div>`;
+}
+/* In the panel: whom this agent may ask, whom it may not, and whom it asks you about first. */
+function zmTalkRows(p){
+  let t=null;for(const k in ZM){if(ZM[k].o&&ZM[k].o.talk){t=ZM[k].o.talk;break}}
+  if(!t||p.lead||!p.name)return '';
+  if(t.talk==='off')return '<div><span class="ag-k">Asks</span><span class="mut">nobody: agents can’t message each other</span></div>';
+  const others=(t.agents||[]).filter(n=>n!==p.name),by={ok:[],no:[],'':[]};
+  others.forEach(n=>by[zmTalkOf(t,p.name,n)].push(n));
+  const row=(k,w)=>by[k].length?`<div><span class="ag-k">${w}</span>${by[k].map(esc).join(', ')}</div>`:'';
+  return row('ok','May ask')+row('no','Can’t ask')+row('','Asks you first');
 }
 function zmAvatar(key){try{return typeof avatarSrc==='function'?avatarSrc(key):''}catch(e){return ''}}
 function zmTieNode(t,where){
@@ -225,7 +263,7 @@ function zmTieGroup(ties,where,gid){
 }
 function zmLogical(tree){
   const L=tree.lead||{};
-  const person=(p,pre)=>({id:pre+':'+p.name,label:p.label||p.name,kind:'person'+(p.head?' head':''),kindWord:p.head?'head':'agent',
+  const person=(p,pre)=>({id:pre+':'+p.name,agent:p.name,label:p.label||p.name,kind:'person'+(p.head?' head':''),kindWord:p.head?'head':'agent',
     sub:p.hands&&p.hands!=='default'?p.hands:'',img:zmAvatar(p.name),detail:()=>zmPersonDetail(p)});
   const companies=(tree.companies||[]).map((c,ci)=>({id:'co:'+ci,label:c.name,kind:'company'+(c.default?' default':''),kindWord:c.default?'':'company',
     sub:c.about||(c.open&&!c.default?'open':''),big:true,glyph:'▦',

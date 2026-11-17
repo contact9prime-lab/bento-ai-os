@@ -94,6 +94,40 @@ def _cli_pin_refused(cli: str) -> str:
     return "Only an admin can put an agent on an agent CLI on this machine."
 
 
+def _pin_state(cfg: dict, pin: str, names: dict, own_ok: bool) -> tuple[bool, str, str]:
+    """(own, cli, why not) for one model an agent could answer on."""
+    from . import executors, providers
+    if pin.split("/", 1)[0] in executors.DRIVEN:
+        # An agent CLI as this agent's own brain ("gemini-cli/gemini-2.5-pro",
+        # "codex/default"): that is how Claude Code, Gemini CLI and Codex work on one
+        # team. It answers through the run bridge, with this OS's tools and gate.
+        pid = pin.split("/", 1)[0]
+        title = executors.EXECUTORS_BY_ID.get(pid, {}).get("title", pid)
+        if not own_ok:
+            return False, "", "every agent uses this machine's brain (Agents → Models)"
+        if _cli_pin_refused(pid):
+            return False, "", f"only an admin can put an agent on {title}"
+        if executors.switched_off(cfg, pid):
+            return False, "", f"{title} is switched off in AI providers"
+        if pid not in executors.MCP_ENGINES:
+            return False, "", f"{title} cannot be handed this OS's tools yet"
+        if not executors.probe(pid).get("installed"):
+            return False, "", f"{title} is not installed on this machine"
+        return True, pid, ""
+    pid, _m = providers.parse_model_id(pin)
+    conf = (cfg.get("providers") or {}).get(pid)
+    label = names.get(pid, pid)
+    if not own_ok:
+        return False, "", "every agent uses this machine's brain (Agents → Models)"
+    if conf is None:
+        return False, "", f"'{pid}' is not a provider on this machine"
+    if not conf.get("enabled"):
+        return False, "", f"{label} is switched off in AI providers"
+    if pid in _KEYED and not conf.get("api_key"):
+        return False, "", f"{label} has no key yet"
+    return True, "", ""
+
+
 def agent_brain(cfg: dict, defn: dict | None, override: str = "") -> dict:
     """Which brain an agent answers with, and why — the ONE answer, read by the run
     itself, the roster, the Crew stage's provider tag, Settings and the CLI.
@@ -114,39 +148,26 @@ def agent_brain(cfg: dict, defn: dict | None, override: str = "") -> dict:
     own_ok = bool((cfg.get("team") or {}).get("own_brains", True))
     names = {pid: name.split(" — ")[0] for pid, name, _ in executors.PROVIDER_EXECUTORS}
     names["custom"] = "Custom server"      # the catalogue's name lists three products
-    own, note, cli = False, "", ""
-    if pinned and pinned.split("/", 1)[0] in executors.DRIVEN:
-        # An agent CLI as this agent's own brain ("gemini-cli/gemini-2.5-pro",
-        # "codex/default"): that is how Claude Code, Gemini CLI and Codex work on one
-        # team. It answers through the run bridge, with this OS's tools and gate.
-        pid = pinned.split("/", 1)[0]
-        title = executors.EXECUTORS_BY_ID.get(pid, {}).get("title", pid)
+    # The pin, then its backups in order (the agent's own priority list, asked for as "the
+    # agents should choose from more than one model in priority, like the lead"). The first
+    # this machine can run answers; the note says why the ones before it could not. A
+    # per-step override is one model and has no backups.
+    backups = [] if override else [str(x).strip() for x in ((defn or {}).get("backups") or []) if str(x).strip()]
+    tries = ([pinned] if pinned else []) + [b for b in backups if b != pinned]
+    own, note, cli, skipped = False, "", "", []
+    for i, pin in enumerate(tries):
+        own, cli, why = _pin_state(cfg, pin, names, own_ok)
+        if own:
+            pinned = pin
+            if i:
+                note = f"backup {i} answers: " + "; ".join(skipped)
+            break
+        skipped.append(why)
         if not own_ok:
-            note = "every agent uses this machine's brain (Agents → Models)"
-        elif _cli_pin_refused(pid):
-            note = f"only an admin can put an agent on {title}"
-        elif executors.switched_off(cfg, pid):
-            note = f"{title} is switched off in AI providers"
-        elif pid not in executors.MCP_ENGINES:
-            note = f"{title} cannot be handed this OS's tools yet"
-        elif not executors.probe(pid).get("installed"):
-            note = f"{title} is not installed on this machine"
-        else:
-            own, cli = True, pid
-    elif pinned:
-        pid, _m = providers.parse_model_id(pinned)
-        conf = (cfg.get("providers") or {}).get(pid)
-        label = names.get(pid, pid)
-        if not own_ok:
-            note = "every agent uses this machine's brain (Agents → Models)"
-        elif conf is None:
-            note = f"'{pid}' is not a provider on this machine"
-        elif not conf.get("enabled"):
-            note = f"{label} is switched off in AI providers"
-        elif pid in _KEYED and not conf.get("api_key"):
-            note = f"{label} has no key yet"
-        else:
-            own = True
+            break                     # the switch is off: no backup can change that
+    if not own:
+        note = "; ".join(skipped)
+    backup_n = tries.index(pinned) if own and pinned in tries else 0
     engine = executors.resolve_engine(cfg)
     if own and cli:
         model, engine = pinned, cli
@@ -163,6 +184,8 @@ def agent_brain(cfg: dict, defn: dict | None, override: str = "") -> dict:
         provider = engine
         provider_name = executors.EXECUTORS_BY_ID.get(engine, {}).get("title", engine)
     return {"model": model, "pinned": pinned, "own": own, "engine": engine,
+            # which of the agent's list answers: 0 its first choice, n its n-th backup
+            "backup": backup_n, "backups": backups,
             # can this brain be given ONLY this OS's tools (what a mission needs)?
             "fenced": engine == "aria" or engine in executors.FENCED_ENGINES,
             "provider": provider, "provider_name": provider_name,
@@ -170,18 +193,9 @@ def agent_brain(cfg: dict, defn: dict | None, override: str = "") -> dict:
             "note": note}
 
 
-def set_agent_model(store, cfg: dict, name: str, model: str) -> dict:
-    """Pin an agent to a model ('' = the machine's brain). One door for Settings, the
-    CLI and the agent's `set_agent_brain` tool, so all three refuse the same things.
-
-    Refused: a provider this machine has no row for. Allowed with a note: a provider
-    that is switched off or has no key — the pin is remembered and the badge says the
-    agent is on the machine's brain until the provider is turned on, which is the
-    honest reading of both states."""
+def _check_model(cfg: dict, model: str) -> str:
+    """A model an agent may be pinned to, or ValueError with the sentence that fixes it."""
     from . import executors, providers
-    defn = store.get_subagent(name)
-    if not defn:
-        raise KeyError(name)
     model = (model or "").strip()
     cli = model.split("/", 1)[0] if model else ""
     if cli in executors.DRIVEN:
@@ -201,6 +215,47 @@ def set_agent_model(store, cfg: dict, name: str, model: str) -> dict:
         if pid not in known or not m:
             raise ValueError(f"'{model}' is not a model on a provider here — write it as "
                              f"provider/model, with provider one of: {', '.join(known)}")
+    return model
+
+
+BACKUPS_MAX = 4      # each is a model call the agent may make before the machine's brain
+
+
+def set_agent_backups(store, cfg: dict, name: str, models: list) -> dict:
+    """An agent's backups: the models it answers on, in order, when its first choice can't
+    run here (fabric.agent_brain walks them). Each is checked like the pin; the list is
+    a ledger row, as the pin is."""
+    defn = store.get_subagent(name)
+    if not defn:
+        raise KeyError(name)
+    got = []
+    for m in list(models or []):
+        m = _check_model(cfg, str(m or ""))
+        if m and m not in got and m != (defn.get("model") or ""):
+            got.append(m)
+    if len(got) > BACKUPS_MAX:
+        raise ValueError(f"an agent keeps at most {BACKUPS_MAX} backups")
+    store.save_subagent({**defn, "backups": got})
+    brain = agent_brain(cfg, store.get_subagent(name))
+    audit_team(store, "agent.write", f"agent:subagent/{defn['name']}",
+               f"backups {', '.join(defn.get('backups') or []) or '(none)'} -> "
+               f"{', '.join(got) or '(none)'}; answers on {brain['provider_name']}")
+    return brain
+
+
+def set_agent_model(store, cfg: dict, name: str, model: str) -> dict:
+    """Pin an agent to a model ('' = the machine's brain). One door for Settings, the
+    CLI and the agent's `set_agent_brain` tool, so all three refuse the same things.
+
+    Refused: a provider this machine has no row for. Allowed with a note: a provider
+    that is switched off or has no key — the pin is remembered and the badge says the
+    agent is on the machine's brain until the provider is turned on, which is the
+    honest reading of both states."""
+    from . import executors, providers
+    defn = store.get_subagent(name)
+    if not defn:
+        raise KeyError(name)
+    model = _check_model(cfg, model)
     store.save_subagent({**defn, "model": model})
     brain = agent_brain(cfg, store.get_subagent(name))
     audit_team(store, "agent.write", f"agent:subagent/{defn['name']}",
@@ -1228,7 +1283,38 @@ class ControlPlane(usersmod.Scoped):
         parts.append(_world.inner_note(_users.current() or "", defn["name"]))
         return "\n\n".join(p for p in parts if p)
 
-    async def run_subagent(self, defn: dict, task: str, context: str = "",
+    async def run_subagent(self, defn: dict, task: str, context: str = "", **kw) -> dict:
+        """One specialist run, and its backups when its brain turns out to be unavailable.
+
+        agent_brain already skips a choice this machine can't run (switched off, no key,
+        not installed). This covers the other half, the lead's rule (fallback.py): a run
+        that FAILED because its brain was unavailable (a usage limit, a lapsed sign-in, a
+        service down) before it said or did anything is asked again of the agent's next
+        backup, once each, in order. A run that took a step, a stop or a refusal is never
+        retried: that would repeat what it did, or route around a no."""
+        from . import fallback as _fb
+        res = await self._run_subagent_once(defn, task, context, **kw)
+        if kw.get("model_override") or kw.get("resume"):
+            return res
+        brain = agent_brain(self.cfg, defn)
+        ups = [b for b in (brain.get("backups") or []) if b]
+        cur = brain.get("model") if brain.get("own") else ""
+        rest = ups[ups.index(cur) + 1:] if cur in ups else ups
+        for nxt in rest:
+            if res.get("status") != "error" or (res.get("content") or "").strip():
+                break
+            if any(st.get("type") == "tool" for st in res.get("steps") or []):
+                break
+            if not _fb.unavailable([res.get("fault") or ""]):
+                break
+            if not agent_brain(self.cfg, defn, nxt)["own"]:
+                continue
+            self.store.log("subagent", f"{defn.get('name')}: its brain was not available "
+                                       f"({(res.get('fault') or '')[:120]}); asking its backup {nxt}")
+            res = await self._run_subagent_once(defn, task, context, **{**kw, "model_override": nxt})
+        return res
+
+    async def _run_subagent_once(self, defn: dict, task: str, context: str = "",
                            parent_run: str = "", model_override: str = "",
                            approver=None, kind: str = "delegate",
                            conversation_id: str = "", ui_emit=None,

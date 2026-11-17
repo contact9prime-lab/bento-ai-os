@@ -209,7 +209,7 @@ def test_the_clock_and_stop_end_it(tmp_path):
 
 def test_run_subagent_takes_the_tools_away_in_talk_mode():
     src = (ROOT / "agentos" / "fabric.py").read_text()
-    body = src.split("    async def run_subagent(", 1)[1].split("\n    async def ", 1)[0]
+    body = src.split("    async def _run_subagent_once(", 1)[1].split("\n    async def ", 1)[0]
     assert 'kind == "vote" or no_tools' in body
     assert '"freetalk")' in body.split("talks = team_talk", 1)[1].split("\n", 1)[0], \
         "a free-talk message never asks a colleague on top of the talk"

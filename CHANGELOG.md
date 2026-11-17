@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.9.32 — 2026-11-17
+
+**Each agent has backups in priority order, shows its company, and the map shows who may ask whom.**
+
+- **Agents → Models**: each agent's row names the company and department it works in (or the
+  Default company), its first choice, and its backups in order (＋ backup, ✕ to remove). The first
+  one this machine can run answers, and the row says which and why the ones before it couldn't.
+  A run whose brain turns out to be unavailable (a usage limit, a lapsed sign-in) before it said or
+  did anything is asked again of the next backup; a stop, a refusal or a run that acted is never
+  retried. `bento team backups NAME a,b`.
+- **The map** joins the agents on a ring by who may ask whom: solid where allowed, dashed where
+  blocked, an arrow when it goes one way. An agent's panel lists May ask, Can't ask and Asks you
+  first.
+
 ## 0.9.31 — 2026-11-17
 
 **AI providers lists what is switched on; the lead's brain and its backups are on the lead.**

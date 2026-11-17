@@ -69,3 +69,12 @@ body.dev-mobile .zm-b,body.dev-mobile .zm-q,body.dev-mobile .zm-kid,body.dev-mob
 .zm-q{min-width:0}
 .zm.narrow .zm-q{flex:1 1 120px}
 .zm-up[hidden]{display:none}
+
+/* who may ask whom (zmTalkEdges): solid accent for allowed, dashed warning for blocked;
+   the legend says it in words, so the colour is never the only signal */
+.zm-e.talk.ok{stroke:color-mix(in srgb,var(--acc) 70%,transparent);stroke-width:1.8}
+.zm-e.talk.no{stroke:color-mix(in srgb,var(--err,#f85149) 70%,transparent);stroke-dasharray:4 4;stroke-width:1.4}
+.zm-arr{fill:color-mix(in srgb,var(--acc) 80%,transparent)}
+.zm-legend{display:inline-flex;gap:6px;align-items:center;margin-left:10px}
+.zm-legend .zl{display:inline-block;width:16px;height:0;border-top:2px solid color-mix(in srgb,var(--acc) 70%,transparent)}
+.zm-legend .zl.no{border-top:2px dashed color-mix(in srgb,var(--err,#f85149) 70%,transparent)}
