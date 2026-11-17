@@ -66,7 +66,8 @@ def test_the_owner_is_asked_about_somebody_new(tmp_path):
     assert 'data.startswith("who:")' in cb and "decide_newcomer" in cb
     assert cb.index("owner_chat_id") < cb.index('"who:"'), "only the owner's buttons count"
     srv = (ROOT / "agentos/server.py").read_text()
-    assert "await tg.decide_newcomer(chat_id, bool(body[\"allowed\"]))" in srv
+    # the desk's answer also says who decided (the channels table shows it)
+    assert "await tg.decide_newcomer(chat_id, bool(body[\"allowed\"]), _desk_by())" in srv
 
 
 def test_phone_chats_have_their_own_tab():
