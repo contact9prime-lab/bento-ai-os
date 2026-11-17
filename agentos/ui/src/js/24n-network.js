@@ -409,7 +409,7 @@ async function netAct(act,b){
       await post('/api/network/label',{key:r.key,label:n});return netPaint()}
     if(act==='setup'){const m=[...document.querySelectorAll('.prov-m')].find(e=>e.textContent.includes(r.name||r.display));
       if(!m){toast('It is not waiting any more. Press Look at the network.');return}
-      m.scrollIntoView({block:'center',behavior:'smooth'});const c=m.querySelector('[data-pick]');if(c&&!c.disabled&&!c.checked)c.click();
+      if(typeof setSubReveal==='function')setSubReveal(m);m.scrollIntoView({block:'center',behavior:'smooth'});const c=m.querySelector('[data-pick]');if(c&&!c.disabled&&!c.checked)c.click();
       (m.querySelector('.prov-code')||m.querySelector('.prov-name'))?.focus({preventScroll:true});return}
     if(act==='more'){NET.more=NET.more===r.key?'':r.key;return netPaint()}
     if(act==='hardware'){NET.more='';const same=NET.open===r.key&&NET.mode==='hardware';

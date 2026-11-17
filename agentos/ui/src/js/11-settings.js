@@ -116,6 +116,7 @@ const pSelect=(id,opts,cur)=>`<select id="${id}">${opts.map(([v,l])=>
 const SETTINGS_TABS=[
   ['ai','✦','AI providers','sparkles'],
   ['agent','◈','Agents','agent'],
+  ['companies','▦','Companies','bag'],
   ['network','⌖','Network & Teams','wifi'],
   ['permissions','⛨','Permissions','shield'],
   ['executors','⇥','Executors','executors'],
@@ -133,6 +134,9 @@ var SETTAB_ALIAS={team:'network'};
 let SETTAB=(t=>SETTAB_ALIAS[t]||t)(localStorage.getItem('settab')||'ai');
 
 async function renderSettings(body){
+  // A redraw of the window (an agent saved, a theme picked, a company opened) must not throw
+  // the person back to the top of the tab they were working in (setKeepTake, 11l-setsubs.js)
+  const keep=typeof setKeepTake==='function'?setKeepTake(body):null;
   await loadConfig();
   if(zeroTabHidden(SETTAB))SETTAB='agent';   // a Zero has no AI providers or channels of its own
   body.innerHTML=`<div class="pshell">
@@ -169,8 +173,12 @@ async function renderSettings(body){
     setAutoSave(e);
   });
   if(typeof MutationObserver!=='undefined'){let q=0;
-    new MutationObserver(()=>{if(q)return;q=1;queueMicrotask(()=>{q=0;pTidy(pm)})}).observe(pm,{childList:true,subtree:true})}
+    new MutationObserver(()=>{if(q)return;q=1;queueMicrotask(()=>{q=0;pTidy(pm);
+      if(typeof setSubsApply==='function')setSubsApply(pm);
+      if(typeof setKeepHold==='function')setKeepHold(pm)})}).observe(pm,{childList:true,subtree:true})}
+  if(typeof setKeepWatch==='function')setKeepWatch(pm);
   setTab(body);
+  if(keep&&typeof setKeepGive==='function')setKeepGive(body,keep);
 }
 /* listFilter hides each [data-f] on its own words, and a card is one of them: a search
    for "api key" hid every provider card, because the card's words are its name while
@@ -187,6 +195,9 @@ function setSearchGroups(pm,v){
 }
 function setTab(body,all){
   const main=(body||document).querySelector('#prefs-main');if(!main)return;
+  // the same tab drawn again keeps its place; another tab starts at its top (11l-setsubs.js)
+  const again=!all&&main.dataset.tab===SETTAB&&!main.classList.contains('searching');
+  if(typeof setKeepSame==='function')setKeepSame(main,again);
   const p=cfg.providers;
   const P=[];
   const want=id=>(all||SETTAB===id)&&!zeroTabHidden(id);
@@ -417,6 +428,13 @@ function setTab(body,all){
        11c-agentshare.js renders it, agentbundle.py decides everything. */
     P.push(`<div id="agent-share-box" data-f="share fork agent bundle export import publish host"><div class="pgroup"><h3>Share this agent</h3><div class="ghint mut">checking…</div></div></div>`);
     setTimeout(renderAgentShare,0);
+  }
+  if(want('companies')){
+    // every company you keep, its line and objective, its folders, its departments and
+    // whether it is in your Brief (11k-companies.js). The Office's ▦ Company panel is where
+    // departments are designed; this is where the companies themselves are managed.
+    P.push(`<h2>Companies</h2><p class="lead">Each company is its own setup: its people, missions, memory and folders. ${pInfo('Your own agent works for all of them. Open a company to work in it; the others are kept as they are.')}</p>`);
+    P.push(`<div id="co-set" class="co-set-wrap"><p class="mut">loading…</p></div>`);
   }
   if(want('network')){
     /* Network & Teams: Team & Communications merged into Network (2026-10), in three parts.
@@ -756,6 +774,10 @@ function setTab(body,all){
       bm.insertAdjacentHTML('beforeend',`<option value="${esc(cur)}" selected>${esc(cur)} · unavailable right now</option>`);
     bm.value=cur;
   }).catch(()=>{});
+  if(want('companies')&&typeof coSetPaint==='function')coSetPaint();
+  main.dataset.tab=all?'':SETTAB;
+  if(typeof setSubsApply==='function')setSubsApply(main);
+  if(typeof setKeepHold==='function')setKeepHold(main);
 }
 function settingsVoices(){
   const vsel=$('#v-voice');
@@ -1565,7 +1587,7 @@ function openLinkedTeams(){
   openApp('settings');
   setTimeout(()=>{
     if(!document.getElementById('s-team-links'))document.querySelector('.prefs-side button[data-t="network"]')?.click();
-    setTimeout(()=>{const e=document.getElementById('s-team-links');if(e){paintTeamLinks();e.scrollIntoView({block:'start',behavior:'smooth'})}},120);
+    setTimeout(()=>{const e=document.getElementById('s-team-links');if(e){paintTeamLinks();if(typeof setSubReveal==='function')setSubReveal(e);e.scrollIntoView({block:'start',behavior:'smooth'})}},120);
   },250);
 }
 function tlkReqHTML(r){

@@ -176,6 +176,7 @@ async function ocpReview(pid){
     </div>
     <div class="ghint mut">Changes take effect after OpenClaw's gateway restarts.</div>
   </div>`;
+  if(typeof setSubReveal==='function')setSubReveal(out);
   out.scrollIntoView({block:'nearest', behavior:'smooth'});
 }
 

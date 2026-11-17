@@ -196,6 +196,7 @@ body.immersive .prefs-side .psi{width:26px;height:26px;border-radius:8px;display
 body.immersive .prefs-side button.on .psi{box-shadow:inset 0 .5px 0 rgba(255,255,255,.5),0 1px 3px rgba(0,0,0,.3)}
 body.immersive .prefs-side [data-t=ai] .psi{background:linear-gradient(135deg,#a78bfa,#6d28d9)}
 body.immersive .prefs-side [data-t=agent] .psi{background:linear-gradient(135deg,#2dd4bf,#0f766e)}
+body.immersive .prefs-side [data-t=companies] .psi{background:linear-gradient(135deg,#fbbf24,#b45309)}
 body.immersive .prefs-side [data-t=team] .psi{background:linear-gradient(135deg,#fbbf24,#b45309)}
 body.immersive .prefs-side [data-t=permissions] .psi{background:linear-gradient(135deg,#f87171,#b91c1c)}
 body.immersive .prefs-side [data-t=network] .psi{background:linear-gradient(135deg,#22d3ee,#0e7490)}

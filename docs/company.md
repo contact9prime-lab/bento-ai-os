@@ -123,6 +123,19 @@ How they stay apart:
   missions move into it. Chats and memories made before that stay where they were,
   visible from every company.
 
+**Manage them in Settings → Companies.** Every company you keep is listed there, the open
+one marked. **Manage** shows one, open or not, so you can change its name, what it does and
+its objective. **Open** switches to it, and **Remove…** takes it off your list. **New company**
+starts another one. **Folders** sets the folders it works in. **Departments** lists who works
+where and opens the Office to design them. **Brief** leaves a company out of the Brief you are
+sent. The tab is split into those five sections, and the chips at the top choose one.
+
+![Settings → Companies: every company, the open one marked](screenshots/settings-companies.png)
+
+![A parked company's folders, set from Settings](screenshots/settings-companies-folders.png)
+
+![Settings → Companies on a phone](screenshots/settings-companies-phone.png)
+
 **Remove one** you are not in with `bento company drop NAME`. Its desks and missions are
 switched off, since nothing would sign their work off any more. Its agents, missions and
 space are kept.
@@ -132,6 +145,8 @@ bento company companies                       # your companies, the open one fir
 bento company new Forgeline --about "a machine shop" --objective "cut defects in half"
 bento company open Brightdesk
 bento company drop Forgeline
+bento company edit Forgeline --about "a CNC machine shop" --objective "ship in two days"
+bento company edit Forgeline --rename "Forgeline Works"
 ```
 
 ## What it makes
@@ -493,7 +508,8 @@ bento company kit Sales crm=hubspot --yes      # give it to Sales
 
 ## The three faces
 
-- **GUI:** the Office's ▦ Company panel and the cards over the rooms. On a phone the
+- **GUI:** Settings → Companies for the companies themselves, and the Office's ▦ Company
+  panel and the cards over the rooms for their departments. On a phone the
   panel is a sheet and the cards shrink to fit the room. The company list, **＋ New
   company**, **Plan the work**, every tick and **Start it** are a fingertip wide.
 
@@ -501,7 +517,7 @@ bento company kit Sales crm=hubspot --yes      # give it to Sales
 - **TUI:** `@Department …` works in the terminal chat as it does everywhere.
   `bento company` shows, `setup` plans and makes, `objective` drafts and makes
   the work, `todo` and `start` list and start its tasks, `companies`, `new`, `open` and
-  `drop` keep several companies, `task` hands out work,
+  `drop` keep several companies, `edit` changes one's name, line or objective, `task` hands out work,
   `chain` shows and sets who reports to whom, `review` chooses who signs off,
   `audit on|off` switches the auditor and `check` asks it to check a task.
   `permissions`, `allow`, `block` and `ask` decide who may ask whom between departments,
