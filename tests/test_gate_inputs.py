@@ -697,11 +697,14 @@ def test_swarm_does_not_open_on_a_tainted_or_unattended_turn(tmp_path):
     assert _decide(tb, MAIN, "delegate", hand, surface="webhook").effect == "ask"
 
 
-def test_democracy_says_who_decides_on_every_door():
+def test_democracy_is_gone_and_reads_as_ask_me_first():
+    from agentos import policy
+    assert "democracy" not in policy.TALK_MODES
+    assert policy.team_talk({"team": {"talk": "democracy"}}) == "matrix"
     src = (ROOT / "agentos/agent.py").read_text()
-    assert "verdict" not in src, "no council answer stands in for a person"
-    assert "majority decides" not in (ROOT / "agentos/policy.py").read_text()
-    assert "majority decides" not in (ROOT / "agentos/ui/src/js/11-settings.js").read_text()
+    assert "council" not in src and "verdict" not in src, "no council answer stands in for a person"
+    fab = (ROOT / "agentos/fabric.py").read_text()
+    assert "def council" not in fab and "def ballot" not in fab
 
 
 # ---- S-66: automations ----

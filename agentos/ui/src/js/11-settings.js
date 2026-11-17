@@ -382,32 +382,14 @@ function setTab(body,all){
          more:'If none of them can run here (a provider off or with no key, an agent switched off), the agent uses your lead’s brain until that’s fixed.',
          f:'team agent model pin provider per agent'}),
     ],{f:'team agents providers models'}));
-    P.push(pGroup('Asking each other',[
-      /* Agents messaging each other mid-task (ask_agent). Matrix: each pair is a
-         permission, and an empty cell asks you — "Allow & remember" fills it. Swarm:
-         every cell you have not blocked is open, so they recruit each other freely,
-         still inside the loop, hop and budget limits. Off: no agent can message
-         another. It applies on the spot; `bento team talk` is the terminal's switch. */
-      pRow('Agents message each other',pSelect('s-team-talk',[
-          ['matrix','Ask me first (the matrix below)'],
-          ['swarm','Swarm: they work together freely'],
-          ['democracy','Democracy: you decide, with the team\'s view'],
-          ['off','Off']],(cfg.team&&cfg.team.talk)||'matrix'),
-        {desc:'Let an agent ask a colleague for help in the middle of a task.',
-         more:'The colleague answers with its own model and permissions. In Swarm your lead also hands your specialists work without asking. In Democracy you are asked for those same steps, and the card shows what three of your agents think. Their view is advice. Huddles end with their view too. Loops are refused and each task has a question limit.',
-         f:'team agents message talk each other swarm democracy vote quorum matrix permission ask'}),
-      pRow('Who may ask whom','<div id="s-team-matrix" class="team-matrix mut">loading…</div>',
-        {stack:true,desc:'Rows ask, columns answer. Tap a cell to switch between ask me, allow and block.',
-         more:'Allow and block are normal permissions, so you can also review them in the Permissions app.',
-         f:'team matrix who may ask whom agents grid permission'}),
-      /* The limits: how far a question travels, how many one task may send, how often a
-         colleague may ask back, and a huddle's size. Defaults are conservative; each has a
-         ceiling no setting passes, because every one multiplies model calls. */
-      pRow('Limits','<div id="s-team-limits" class="team-limits mut">loading…</div>',
-        {stack:true,desc:'How far agents can go when they ask each other.',more:'Limits count per task and apply from the next question.',
-         f:'team limits hops budget clarify ask back huddle rounds agents swarm'}),
-    ],{f:'team agents message ask each other matrix limits swarm democracy'}));
+    /* Who may ask whom moved to Companies → Working together (2026-11): the Default company
+       is every agent and holds the grid everyone starts from, and each company may set its own.
+       Asked for as "working together should be brought in the company". Huddles and free talk
+       stay here: they are things your agents do, not a company's rule. */
     P.push(pGroup('Huddles and free talk',[
+      pRow('Who may ask whom','<button class="endbtn" onclick="settingsGo(\'companies\',\'Working together\')">Open Working together</button>',
+        {desc:'Decided in Companies: the Default company for every agent, and each company for its own people.',
+         f:'team matrix who may ask whom agents grid permission swarm talk message each other limits'}),
       pRow('Huddle','<button class="endbtn" onclick="openApp(\'chat\');setTimeout(()=>{if(typeof chatNewHuddle===\'function\'){convTab(\'huddles\');chatNewHuddle()}},400)">Start a huddle</button>',
         {desc:'Two to four agents talk a question through, each on its own brain.',
          more:'Start a message with two or more names, like @researcher @writer. Every huddle is kept in Chat under Huddles.',
@@ -426,8 +408,6 @@ function setTab(body,all){
          f:'agent to agent chat talk log history conversation huddle ask transcript record'}),
     ],{f:'huddle free talk agents talk log'}));
     setTimeout(paintTeamBrains,0);
-    setTimeout(paintTeamMatrix,0);
-    setTimeout(paintTeamLimits,0);
     setTimeout(freeTalkPaint,0);
     setTimeout(talkLogPaint,0);
     P.push(`<div id="agents-list" data-f="agents specialists sub agents brain hands permissions skills soul new agent"><p class="mut">loading…</p></div>`);
@@ -444,7 +424,7 @@ function setTab(body,all){
     // every company you keep, its line and objective, its folders, its departments and
     // whether it is in your Brief (11k-companies.js). The Office's ▦ Company panel is where
     // departments are designed; this is where the companies themselves are managed.
-    P.push(`<h2>Companies</h2><p class="lead">Each company is its own setup: its people, missions, memory and folders. ${pInfo('Your own agent works for all of them. Open a company to work in it; the others are kept as they are.')}</p>`);
+    P.push(`<h2>Companies</h2><p class="lead">The Default company is every agent. Each company of yours is its own setup: its people, goal, missions, memory, folders and rules. ${pInfo('Your own agent works for all of them. Open a company to work in it; the others are kept as they are. A company’s rules apply while work is in it, and anything it leaves empty follows the Default company.')}</p>`);
     P.push(`<div id="co-set" class="co-set-wrap"><p class="mut">loading…</p></div>`);
   }
   if(want('network')){
@@ -1528,20 +1508,20 @@ async function paintTeamMatrix(){
   let d={};try{d=await (await fetch('/api/team/matrix')).json()}catch(e){}
   const names=d.agents||[], cells=d.cells||{}, talk=d.talk||'matrix';
   if(names.length<2){box.textContent='You need at least two specialists before they can message each other.';return}
-  if(talk==='off'){box.classList.add('mut');box.textContent='Off. Agents can’t message each other. Choose “Ask me first”, “Swarm” or “Democracy” above to turn it on.';return}
+  if(talk==='off'){box.classList.add('mut');box.textContent='Off. Agents can’t message each other. Choose “Ask me first” or “Swarm” above to turn it on.';return}
   box.classList.remove('mut');
   // the company can decide this per department instead (company.dept_matrix): one grid
   // of departments, colleagues free to ask each other, an agent-level block still holding
   const dm=d.departments||{},dn=dm.departments||[];
   if(dm.mode==='department'&&dn.length>=2){paintDeptMatrix(box,dm,talk);return}
-  const blank=talk==='swarm'?'swarm':talk==='democracy'?'vote':'ask';
+  const blank=talk==='swarm'?'swarm':'ask';
   const label=(v)=>v==='allow'?'allow':v==='deny'?'block':blank;
   box.innerHTML=`<table><tr><th></th>${names.map(n=>`<th>${avatarImg(n,'')}${esc(n)}</th>`).join('')}</tr>
     ${names.map(a=>`<tr><th class="tm-row">${avatarImg(a,'')}${esc(a)}</th>${names.map(b=>{
       if(a===b)return '<td><div class="tm-self" aria-hidden="true"></div></td>';
-      const v=cells[a+'>'+b]||'', cls=v==='allow'?'allow':v==='deny'?'deny':talk==='swarm'?'swarm':talk==='democracy'?'vote':'';
+      const v=cells[a+'>'+b]||'', cls=v==='allow'?'allow':v==='deny'?'deny':talk==='swarm'?'swarm':'';
       return `<td><button class="tm-cell ${cls}" data-a="${esc(a)}" data-b="${esc(b)}" data-v="${v}" title="${esc(a)} → ${esc(b)}: ${label(v)}" aria-label="${esc(a)} may ask ${esc(b)}: ${label(v)}">${label(v)}</button></td>`}).join('')}</tr>`).join('')}</table>
-    <div class="tm-legend">${talk==='swarm'?'Swarm: every cell you haven’t blocked is open.':talk==='democracy'?'Vote: you are asked for each empty cell, and the card shows what three of your agents think. Allow and block still win.':'Ask: you are asked the first time, and “Allow & remember” fills the cell.'}
+    <div class="tm-legend">${talk==='swarm'?'Swarm: every cell you haven’t blocked is open.':'Ask: you are asked the first time, and “Allow & remember” fills the cell.'}
       ${dn.length>=2?` <button class="co-link tm-level" data-mode="department">Decide it per department instead</button>`:''}</div>`;
   box.querySelector('.tm-level')?.addEventListener('click',e=>teamMatrixLevel(e.target.dataset.mode));
   box.querySelectorAll('.tm-cell').forEach(b=>b.onclick=async()=>{
@@ -1552,15 +1532,17 @@ async function paintTeamMatrix(){
     paintTeamMatrix();
   });
 }
+/* Repaint whichever grid is on screen: Companies → Working together, or the old one. */
+function talkRepaint(){if(typeof coTalkPaint==='function'&&document.getElementById('co-talk'))coTalkPaint();else paintTeamMatrix()}
 
 /* The department grid: the same cells, one level up. Rows ask, columns answer. */
 function paintDeptMatrix(box,dm,talk){
-  const names=dm.departments,cells=dm.cells||{},blank=talk==='swarm'?'swarm':talk==='democracy'?'vote':'ask';
+  const names=dm.departments,cells=dm.cells||{},blank=talk==='swarm'?'swarm':'ask';
   const label=v=>v==='allow'?'allow':v==='deny'?'block':blank;
   box.innerHTML=`<table><tr><th></th>${names.map(n=>`<th>▦ ${esc(n)}</th>`).join('')}</tr>
     ${names.map(a=>`<tr><th class="tm-row">▦ ${esc(a)}</th>${names.map(b=>{
       if(a===b)return '<td><div class="tm-self" title="Colleagues in one department may always ask each other" aria-hidden="true"></div></td>';
-      const v=cells[a+'>'+b]||'', cls=v==='allow'?'allow':v==='deny'?'deny':talk==='swarm'?'swarm':talk==='democracy'?'vote':'';
+      const v=cells[a+'>'+b]||'', cls=v==='allow'?'allow':v==='deny'?'deny':talk==='swarm'?'swarm':'';
       return `<td><button class="tm-cell ${cls}" data-a="${esc(a)}" data-b="${esc(b)}" data-v="${v}" title="${esc(a)} → ${esc(b)}: ${label(v)}" aria-label="${esc(a)} may ask ${esc(b)}: ${label(v)}">${label(v)}</button></td>`}).join('')}</tr>`).join('')}</table>
     <div class="tm-legend">Per department: people in one department may ask each other, and these cells decide between departments. A block between two agents still holds.
       <button class="co-link tm-level" data-mode="agent">Decide it per agent instead</button></div>`;
@@ -1570,7 +1552,7 @@ function paintDeptMatrix(box,dm,talk){
     const r=await fetch('/api/team/matrix',{method:'PUT',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({level:'department',from:b.dataset.a,to:b.dataset.b,effect:next})}).then(r=>r.json()).catch(()=>({error:'the server did not answer'}));
     if(r.error){toast(r.error);return}
-    paintTeamMatrix();
+    talkRepaint();
   });
 }
 async function teamMatrixLevel(mode){
@@ -1578,7 +1560,7 @@ async function teamMatrixLevel(mode){
     body:JSON.stringify({mode})}).then(r=>r.json()).catch(()=>({error:'the server did not answer'}));
   if(r.error){toast(r.error);return}
   toast(mode==='department'?'Departments decide who may ask whom':'Each pair of agents decides who may ask whom');
-  paintTeamMatrix();
+  talkRepaint();
 }
 /* One number per limit, with its range from the server (fabric.LIMITS). Saved on
    change; a value out of range is refused with the sentence that says the range. */

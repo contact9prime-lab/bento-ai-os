@@ -213,9 +213,11 @@ def test_team_and_communications_is_split_between_agents_and_network():
     assert "['team'," not in src and "want('team')" not in src
     assert "SETTAB_ALIAS={team:'network'}" in src, "an old link to the team tab still lands"
     agent = _tab("agent")
-    for piece in ("s-team-own", "s-team-list", "s-team-talk", "s-team-matrix", "s-team-limits",
-                  "s-team-freetalk", "s-team-talklog", "Start a huddle"):
+    for piece in ("s-team-own", "s-team-list", "s-team-freetalk", "s-team-talklog", "Start a huddle"):
         assert piece in agent, piece
+    # who may ask whom, its mode and its limits moved into Companies → Working together (2026-11)
+    co = (JS / "11k-companies.js").read_text()
+    assert 'id="co-talk"' in co and "s-team-limits" in co
     net = _tab("network")
     for piece in ("Discovery and linkage", "s-net", "s-prov", "s-team-links", "s-pool", "openApp(\\'teamchat\\')",
                   "Team to agent mapping", "s-net-mapping", "Maps", "s-net-maps"):

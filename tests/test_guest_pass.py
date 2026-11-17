@@ -174,9 +174,8 @@ def test_a_guest_sits_in_a_huddle_taints_the_room_and_does_not_vote(lent, monkey
     assert [t for n, t in taints if n == "researcher"][0][0]["tool"] == "linked team"
     guest = [e for e in said if e["speaker"] == "auditor@bob"]
     assert guest and guest[0]["look"] and guest[0]["provider"] == "guest from bob"
-    # a ballot never seats the guest
-    src = (ROOT / "agentos/fabric.py").read_text()
-    assert '[d for d in cast if not d.get("linked")]' in src
+    # there is no ballot any more (Democracy was removed), so a guest can never vote
+    assert out["vote"] is None and "def ballot" not in (ROOT / "agentos/fabric.py").read_text()
 
 
 def test_what_the_other_side_claims_is_held_to_the_ceiling():

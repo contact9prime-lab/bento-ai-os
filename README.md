@@ -302,12 +302,12 @@ go past. Settings → Agents has a map of who reaches what, and "Draft it" write
 specialist (persona, tools, skills and look) for you to check before saving.
 [Agents →](docs/agents.md) · [The team →](docs/team.md)
 
-### Huddles, swarm and democracy
+### Huddles and swarm
 
 Mention two or more agents in one message (`@researcher @validator should we…`) and they talk it
 through in a **huddle**, each on its own brain, in turns you can read.
 
-How agents may ask each other for help is a matrix you control, one cell per pair. There are four
+How agents may ask each other for help is a matrix you control, one cell per pair. There are three
 ways to run it:
 
 | Mode | What an empty cell does |
@@ -315,13 +315,10 @@ ways to run it:
 | **Off** | agents never message each other |
 | **Ask me first** | you're asked, and "Allow & remember" fills the cell |
 | **Swarm** | allowed, and the lead can hand work to your specialists freely |
-| **Democracy** | a council votes: your lead and two other agents, and **2 of 3 decide** |
 
-Allow and block cells always win over the mode. In democracy mode a huddle ends with a vote on the
-last thing said, and every vote is written to the ledger. Anything that must be a person's decision
-still goes to a person.
+Allow and block cells always win over the mode. Anything that must be a person's decision still goes
+to a person.
 
-![A huddle in the chat: the researcher and the validator each give their view, then "The team agreed · 2 of 2" with each vote](docs/screenshots/huddle-vote.png)
 
 ### The Office: watch them work
 

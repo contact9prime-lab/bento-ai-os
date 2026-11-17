@@ -312,26 +312,23 @@ llega a qué, y "Draft it" redacta un especialista nuevo completo (personalidad,
 habilidades y aspecto) para que lo revises antes de guardarlo.
 [Agentes →](../agents.md) · [El equipo →](../team.md)
 
-### Huddles, enjambre y democracia
+### Huddles y enjambre
 
 Menciona a dos o más agentes en un mensaje (`@researcher @validator should we…`) y lo hablarán en un
 **huddle** (reunión rápida), cada uno con su propio cerebro, por turnos que puedes leer.
 
 La forma en que los agentes pueden pedirse ayuda es una matriz que controlas tú, con una celda por
-pareja. Hay cuatro formas de gestionarla:
+pareja. Hay tres formas de gestionarla:
 
 | Modo | Qué hace una celda vacía |
 |---|---|
 | **Off** | los agentes nunca se escriben entre ellos |
 | **Ask me first** | se te pregunta a ti, y "Allow & remember" rellena la celda |
 | **Swarm** | permitido, y el agente principal puede pasar trabajo libremente a tus especialistas |
-| **Democracy** | vota un consejo: tu agente principal y otros dos agentes, y **deciden 2 de 3** |
 
-Las celdas de permitir y bloquear siempre mandan sobre el modo. En modo democracia, un huddle termina
-con una votación sobre lo último que se dijo, y cada voto queda escrito en el registro. Todo lo que
+Las celdas de permitir y bloquear siempre mandan sobre el modo. Todo lo que
 tenga que decidir una persona sigue yendo a una persona.
 
-![Un huddle en el chat: el investigador y el validador dan cada uno su opinión, y después "The team agreed · 2 of 2" con cada voto](../screenshots/huddle-vote.png)
 
 ### La Office: míralos trabajar
 

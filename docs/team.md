@@ -183,13 +183,12 @@ these commands asked every time.
 
 ![The matrix in Settings: four agents, one allowed pair and one blocked pair](screenshots/team-matrix.png)
 
-**The mode switch** (Settings, or `bento team talk`) has four settings:
+**The mode switch** (Settings → Companies → Working together, or `bento team talk`) has three settings:
 
 | | An empty cell | A cell you allowed | A cell you blocked |
 |---|---|---|---|
 | **Ask me** (the default) | asks you; nobody there = no | talks | refused |
 | **Swarm** | talks, without asking | talks | refused |
-| **Democracy** | you're asked, with the team's view on the card; nobody there = no | talks | refused |
 | **Off** | refused | refused | refused |
 
 Swarm is the matrix switched wide open. It is not a second system: every limit below still
@@ -203,37 +202,25 @@ outside. Blocking a specialist in Permissions
 still stops it. Under *Ask me* your lead asks once per specialist, and *Allow & remember*
 makes that stick.
 
-### Democracy: the team gives its view, and you decide
+### Each company decides for itself
 
-Democracy puts the team's opinion on your card. The steps swarm lets through without asking,
-a specialist asking a colleague and your lead handing work over or starting a huddle, come to
-you instead, and three agents say what they think first. A vote never opens anything: no
-security is controlled by AI, and with nobody there to answer the step is refused.
+The rules above belong to the **Default company**, which is every agent and everything outside a
+company. Each of your companies can set its own in Settings → Companies → **Working together**:
 
-- **Who is asked.** Your lead agent, when it has a brain to answer with and isn't the one
-  asking, plus your specialists, the one being asked included (it knows best whether it can
-  help). Agents on different brains get seats first, so the view isn't one model asked three
-  times. That is where a team of Claude Code, Gemini CLI and Codex is worth having. The one
-  proposing the step never votes.
-- **How it's read.** Each voter answers YES or NO with one reason. Anything else counts as
-  no. The tally and the reasons are on your card.
-- **When there's no council** (fewer than two agents to ask), you're asked with no view, as in
-  *Ask me*.
-- **After untrusted content, or unattended,** nobody votes and swarm doesn't open either. A page
-  the agent read must not get to recruit your team, so those turns ask you as *Ask me* does. A
-  linked team's agent and a mission are asked or refused exactly as before. A cell you blocked
-  stays blocked.
-- **Every vote is a ledger row** (`team.vote`, effect `advice`, with the tally), and each ballot is
-  a run of its own with no tools, so a vote can't act, message anyone or call another vote.
+- **Its own mode**: off, ask me first or swarm, or the Default company's (the default).
+- **Its own cells** for its own people. A cell left empty follows the Default company's and is
+  drawn faded; a cell you set decides inside that company, either way.
 
-**A huddle ends with a vote** in democracy mode. Everybody in the room votes on the last thing
-said, and the card shows whether the team agreed and who said what. It opens no gate: it's the
-team's answer to your question, and you read it.
+Which company's rules count is decided by where the work is: a chat in a company, or a run of its
+desk or one of its missions. So if the researcher may ask the writer in the Default company but not
+in Acme, then while you work in Acme the researcher can't ask the writer. The refusal says so, and
+says what to do: work in another company, or change the cell. In a terminal:
+`bento company talk Acme swarm`, `bento company talk Acme researcher writer block`, and
+`bento company talk` to list every company's mode and cells.
 
-![A huddle on Gemini CLI, Claude Code and Codex, ending "The team agreed · 2 of 3"](screenshots/huddle-vote.png)
-
-A view costs one short run per voter, so democracy spends a little more than *Ask me*. It is
-off unless you choose it.
+There used to be a fourth mode, Democracy, where three agents gave their view on your card and a
+huddle ended with a vote. It was removed: the vote never decided anything, and it cost a model call
+per voter. A machine that had it now asks you first.
 
 ### The shape of a conversation, and the limits you set
 
@@ -843,7 +830,7 @@ from your machine:
 
 A guest's words reach the other agents' prompts, so while a guest is in the room every
 local turn is treated like content from outside: a risky step needs a person. A guest
-gives advice; when the team votes (democracy), it does not get a ballot.
+gives advice and nothing more.
 
 The guest wears its own face, which travels with the pass, and stands in their World for as
 long as the pass lasts, with a card saying whose it is and how long is left:
@@ -907,8 +894,7 @@ the link's own name, which you chose, is what is verified.
 | A voice per agent | `agentVoice` / `speakAs` / `voiceAgentLine` in `08-wallpaper-jarvis-voice.js` |
 | A message | `ask_agent` → `agent.message` (the gate) → `ControlPlane.message` (loops, hops, budget, taint) — `agent_msg` events |
 | The matrix | `fabric.matrix` / `fabric.set_cell` (grant rows) — `GET/PUT /api/team/matrix`, `bento team matrix/allow/block/ask` |
-| The mode | `team.talk` = `matrix` \| `swarm` \| `democracy` \| `off` — `policy.team_talk`, Settings, `bento team talk` |
-| The vote | `ControlPlane.council` / `council_of` / `ballot`, `fabric.read_vote`; the agent loop puts its answer on the person's card for a `democracy` ask (`agent._council_ask`); a huddle's vote is `vote_line` |
+| The mode | `team.talk` = `matrix` \| `swarm` \| `off` — `policy.team_talk`; a company's own `talk` — `fabric.talk_mode_of`, `policy.PDP._talk_here`; Settings → Companies, `bento team talk`, `bento company talk` |
 | The limits | `team.limits` — `fabric.LIMITS` / `team_limits` / `set_limits`, `GET /api/team/limits`, `bento team limits` |
 | In a mission | `permissions.talk` — `flows.declared_grants` writes the roster's pairs; the gate counts only that mission's rows |
 | People on linked teams | `agentos/teamchat.py` (message shape, delivery, the mute and the ceiling) — the `team_messages` table; `/api/team/chat*`, Team Chat (`24c-teamchat.js`), `bento link say/chat` |

@@ -123,14 +123,16 @@ How they stay apart:
   missions move into it. Chats and memories made before that stay where they were,
   visible from every company.
 
-**Manage them in Settings → Companies.** Every company you keep is listed there, the open
-one marked. **Manage** shows one, open or not, so you can change its name, what it does and
-its objective. **Open** switches to it, and **Remove…** takes it off your list. **New company**
-starts another one. **Folders** sets the folders it works in. **Departments** lists who works
-where and opens the Office to design them. **Brief** leaves a company out of the Brief you are
-sent. The tab is split into those five sections, and the chips at the top choose one.
+**Manage them in Settings → Companies.** One picker at the top says what the page is about: the
+**Default company** (every agent, and everything outside a company) or one of yours, the open one
+marked. **＋ New company** starts another. For a company the sections are **About** (its name, what
+it does and its goal, with **Open it** and **Remove…**), **Working together** (who may ask whom in
+it), **Departments** (who works where, with a door to the Office to design them), **Folders** and
+**Brief** (leave it out of the Brief you are sent, or switch the Brief off). For the Default company
+they are About (your companies, each with **Settings**), Working together with the limits, and
+Brief.
 
-![Settings → Companies: every company, the open one marked](screenshots/settings-companies.png)
+![Settings → Companies: the picker, then About Acme with its name, line and goal](screenshots/settings-companies.png)
 
 ![A parked company's folders, set from Settings](screenshots/settings-companies-folders.png)
 
@@ -397,14 +399,33 @@ the same answer about who is in which department, so they never disagree.
 
 ![The department grid in Settings](screenshots/company-dept-grid.png)
 
-People in a company ask each other questions. By default each pair of agents is decided on
-its own in Settings → Agents. With many people that is a big grid, so a
-company can decide it **per department** instead: ▦ Company → **Who may ask whom** →
-**Per department**, or `bento company permissions department`.
+People in a company ask each other questions. Settings → Companies → **Working together** decides
+it. The **Default company** holds the grid every agent starts from. A company has its own mode
+and its own cells for its people; a cell it leaves empty follows the Default company's, drawn
+faded. While work is in a company (a chat in it, or a run of one of its desks or missions), its
+cells decide first, so a pair the Default company allows can be blocked inside one company.
+
+![Working together in Acme: sales-lead may not ask finance-lead here, and the faded cells follow the Default company](screenshots/settings-company-talk.png)
+
+![Working together in the Default company: every agent, ask me first](screenshots/settings-default-company-talk.png)
+
+The map in Settings → Agents draws the same rules: inside Acme it shows Acme's.
+
+![The map inside Acme's Sales: sales-lead's panel says it can't ask finance-lead](screenshots/settings-agents-map-company.png)
+
+```
+bento company talk                                   # every company's mode and own cells
+bento company talk Acme swarm                        # or off, matrix, default
+bento company talk Acme sales-lead finance-lead block   # or allow, default
+```
+
+With many people that is a big grid, so the open company can decide it **per department**
+instead: **Decide it per department instead** under its grid, ▦ Company → **Who may ask whom**
+→ **Per department**, or `bento company permissions department`.
 
 - Colleagues in one department may always ask each other.
 - Between departments, the department grid decides: allow, block, or empty. An empty cell
-  works the way the team's talk mode says (ask you, swarm or a vote).
+  works the way the talk mode says (ask you, or swarm).
 - A block you wrote between two agents still holds, so switching the level never reopens a
   pair you closed.
 - Inside a mission, only the mission's own permissions count, as before.

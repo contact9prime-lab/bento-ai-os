@@ -22,8 +22,8 @@
    scroll. */
 var SETSUBS={
   ai:[['In use','In use'],['Providers','Model providers'],['Installed agents','AI agents installed here'],['Images','Image generation'],['Voice','Voice']],
-  agent:[['Lead agent','Lead agent'],['Models','Models'],['Working together','Asking each other'],['Your agents','Your agents'],['Map','The map'],['Sharing','Share this agent']],
-  companies:[['Your companies','Your companies'],['New company','A new company'],['Folders','Folders'],['Departments','Departments'],['Brief','In your Brief']],
+  agent:[['Lead agent','Lead agent'],['Models','Models'],['Huddles','Huddles and free talk'],['Your agents','Your agents'],['Map','The map'],['Sharing','Share this agent']],
+  companies:[['About','About'],['Working together','Working together'],['Departments','Departments'],['Folders','Folders'],['Brief','In your Brief'],['New company','A new company']],
   network:[['Discovery','Discovery and linkage'],['Linked teams','Linked teams'],['Community','Community'],['Messages','Messages'],['Mapping','Team to agent mapping'],['Maps','Maps']],
   permissions:[['Autonomy','On their own'],['Security','Security'],['Ledger','The ledger']],
   channels:[['Overview','Ways to reach it'],['Remote browser','Remote browser'],['Telegram','Telegram'],['WhatsApp','WhatsApp'],['Built in','Built in']],

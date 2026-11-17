@@ -64,7 +64,7 @@ function placeCompany(){return ()=>{openApp('office');setTimeout(()=>{if(typeof 
 var PLACES=[
   ['AI providers','settings','Settings → AI providers',['provider','providers','model','models','brain','api key','key','openai','anthropic','claude','gemini','ollama','openrouter','llm'],placeSettings('ai')],
   ['Agents','settings','Settings → Agents',['agent','agents','specialist','specialists','lead','persona'],placeSettings('agent')],
-  ['Agents working together','settings','Settings → Agents',['team','swarm','huddle','talk','working together','democracy','matrix','who may ask whom','own providers','departments talk'],placeSettings('agent','Working together')],
+  ['Agents working together','settings','Settings → Agents',['team','swarm','huddle','talk','working together','matrix','who may ask whom','own providers','departments talk'],placeSettings('agent','Working together')],
   ['Network & Teams','settings','Settings → Network & Teams',['linked teams','link','team chat','messages','communications','teams and communication','mapping','talks to','topology','logical map','physical map'],placeSettings('network')],
   ['Permissions settings','settings','Settings → Permissions',['permissions','autonomy','paranoid','balanced','full autonomy','ledger','audit','untrusted','injection','grants','security'],placeSettings('permissions')],
   ['Free talk','settings','Settings → Agents',['free talk','let them talk','agent talk','agent to agent','agents talking','talk log','open floor'],placeSettings('agent','Working together')],

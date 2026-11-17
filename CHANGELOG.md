@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.9.33 — 2026-11-17
+
+**The Default company is every agent, each company decides who may ask whom in it, and Democracy is gone.**
+
+- **Settings → Companies** opens on one picker: the **Default company** (every agent, and everything
+  outside a company) or one of yours. A company's page is About (name, what it does, goal, Open,
+  Remove), Working together, Departments, Folders and Brief; ＋ New company starts another.
+- **Working together moved from Agents into Companies.** The Default company holds the talk mode,
+  the grid every agent starts from and the limits. A company can set its own mode and its own
+  cells for its people; an empty cell follows the Default company's (drawn faded). While work is
+  in a company (a chat in it, a run of its desk or mission) its cells decide first, so a pair the
+  Default company allows can be blocked there, and the refusal says to work in another company or
+  change the cell. `bento company talk [COMPANY] [off|matrix|swarm|default]`,
+  `bento company talk COMPANY A B allow|block|default`.
+- **The map** draws a company's own rules when you look inside it.
+- **"Everywhere" reads "Default company"** in the space picker and the menu bar.
+- **Democracy was removed**: the vote never decided anything and cost a model call per voter. A
+  machine that had it now asks you first. Huddles end on what was said.
+
 ## 0.9.32 — 2026-11-17
 
 **Each agent has backups in priority order, shows its company, and the map shows who may ask whom.**

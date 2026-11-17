@@ -34,7 +34,7 @@ function brainChip(model,provider){
 function huddleParse(text){
   const lines=String(text||'').split('\n'), out=[];
   lines.forEach(l=>{const m=l.match(/^@([\w-]+(?:@[\w.-]+)?) \(([^)]*)\): (.*)$/);if(m)out.push({speaker:m[1],model:m[2],text:m[3]});
-    // Democracy mode ends a huddle with a vote, one line (fabric.vote_line)
+    // A huddle from before Democracy was removed may end with a vote line (fabric.vote_line)
     const v=l.match(/^\[vote\] (.*)$/);if(v)out.push({vote:true,text:v[1]})});
   return out;
 }

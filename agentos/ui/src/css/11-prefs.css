@@ -266,3 +266,16 @@ body.dev-touch .prefs label:has(> input[type=checkbox]:not(.psw input)){min-heig
 .tb-up{display:inline-flex;align-items:center;gap:4px}
 .tb-x{background:none;border:0;color:var(--mut);cursor:pointer;min-width:var(--tap,32px);min-height:var(--tap,32px)}
 @media (max-width:600px){.tb-ups{padding-left:0}}
+
+/* Settings → Companies: one picker for the whole tab, and a company's grid over the Default's */
+.co-top{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;
+  margin:0 0 14px;padding:12px 16px;border:1px solid var(--line);border-radius:var(--r-lg,14px);
+  background:color-mix(in srgb,var(--bg2) 70%,transparent)}
+.co-top-pick{display:flex;align-items:center;gap:10px;flex:1 1 260px;min-width:0}
+.co-top-pick span{font-weight:600;white-space:nowrap}
+.co-top-pick select{flex:1;min-width:0;min-height:var(--tap,36px)}
+.co-top .endbtn{min-height:var(--tap,36px)}
+.co-grid{overflow-x:auto;padding:4px 16px}
+.tm-cell.inherited{opacity:.55;font-style:italic}
+.co-talk-off{padding:8px 16px}
+#co-talk .tm-legend{padding:6px 16px 12px}

@@ -589,26 +589,6 @@ def note_refusal(name: str, principal, dec) -> None:
         secevents.flag("gate.refused_burst", f"{name}: {dec.rule}"[:120], source=principal.label)
 
 
-def _council_ask(agent, name: str, args: dict) -> dict:
-    """What a council is asked about one tool call: who proposes it, in words, who it
-    involves (they do not vote on themselves) and the request it serves."""
-    who = (agent.principal.id if agent.principal.kind == "subagent"
-           else "@agent")                     # the lead: council_of never seats the proposer
-    if name == "ask_agent":
-        tgt = [str(args.get("agent") or "")]
-        what = f"ask {tgt[0]} this question: \"{str(args.get('question') or '')[:500]}\""
-    elif name == "delegate":
-        tgt = [str(args.get("subagent") or "")]
-        what = f"hand {tgt[0]} this task: \"{str(args.get('task') or '')[:500]}\""
-    else:
-        raw = args.get("agents") or []
-        tgt = [str(x).lstrip("@") for x in (raw if isinstance(raw, list) else str(raw).split(","))]
-        topic = args.get("topic") or args.get("question") or ""
-        what = f"start a huddle with {', '.join(tgt)} about: \"{str(topic)[:500]}\""
-    return {"proposer": who, "what": what, "targets": [t for t in tgt if t],
-            "request": str(getattr(agent, "_task_text", "") or "")[:600],
-            "conversation_id": agent.conversation_id or "", "space_id": agent.space_id or ""}
-
 class _Park:
     """An approver's third answer: nobody said yes or no, and this run can wait.
 
@@ -1282,18 +1262,6 @@ class Agent:
             await self.emit({"type": "tool_start", "call_id": call_id, "name": name,
                              "args": args, "detail": tool_detail(name, args),
                              "pending_approval": True})
-            if dec.rule == "democracy" and not must_person:
-                # Democracy mode: the person decides, with the team's view on the card. The
-                # vote decides nothing, and must_person means nothing but a person can say yes,
-                # so with nobody there the answer is no. The gate only says `democracy` on a
-                # clean turn somebody is at (_swarm_may), so no page's words reach a ballot.
-                must_person = "the team's view is advice"
-                if fab is not None:
-                    await self.emit({"type": "status", "message": "asking the team what it thinks"})
-                    view = await fab.council(**_council_ask(self, name, args))
-                    if view.get("heard"):
-                        await self.emit({"type": "status", "message": view["line"]})
-                        why = f"{why} {view['advice']}"
             from .policy import _NEEDS_PERSON, _SAID
             tok = _NEEDS_PERSON.set(must_person) if must_person else None
             # what the agent said it was doing, for the card's first line
