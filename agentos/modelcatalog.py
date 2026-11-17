@@ -22,29 +22,30 @@ from __future__ import annotations
 import datetime as _dt
 
 #: When these lists were last checked against the providers' own pages.
-CHECKED = "2026-09-27"
+CHECKED = "2026-11-17"
 #: `bento version bump` warns when the catalogue is older than this.
 STALE_DAYS = 45
 
 CATALOGUE: dict[str, dict] = {
     "anthropic": {
-        "default": "claude-sonnet-5",
-        "models": ["claude-opus-5-5", "claude-sonnet-5", "claude-haiku-4-5", "claude-fable-5-1"],
+        "default": "claude-sonnet-5-5",
+        "models": ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-fable-5-2"],
         "source": "https://platform.claude.com/docs/en/about-claude/models/overview",
     },
     "openai": {
         "default": "gpt-6-sol",
-        "models": ["gpt-6-sol", "gpt-6-luna", "gpt-5.6-terra"],
-        "source": "https://techcrunch.com/2026/09/22/openai-launches-gpt-6-sol-and-luna/",
+        "models": ["gpt-6-sol", "gpt-6-luna"],
+        "source": "https://developers.openai.com/api/docs/models",
     },
     "google": {
         "default": "gemini-3.8-flash",
-        "models": ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"],
+        "models": ["gemini-3.8-flash", "gemini-3.5-flash-lite"],
         "source": "https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash",
     },
     "openrouter": {
         "default": "google/gemini-3.8-flash",
-        "models": ["anthropic/claude-opus-5.5", "google/gemini-3.8-flash", "openai/gpt-6-luna"],
+        "models": ["anthropic/claude-sonnet-5.5", "anthropic/claude-opus-5.5", "google/gemini-3.8-flash",
+                   "openai/gpt-6-luna"],
         "source": "https://openrouter.ai/anthropic/claude-opus-5.5",
     },
     "deepseek": {
@@ -53,8 +54,8 @@ CATALOGUE: dict[str, dict] = {
         "source": "https://api-docs.deepseek.com/quick_start/pricing/",
     },
     "moonshot": {
-        "default": "kimi-k3",
-        "models": ["kimi-k3"],
+        "default": "kimi-k3.1-pro",
+        "models": ["kimi-k3.1-pro", "kimi-k3"],
         "source": "https://platform.kimi.ai/docs/models",
     },
 }

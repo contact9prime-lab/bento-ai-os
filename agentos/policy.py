@@ -71,6 +71,7 @@ STAGES = (
     ("hard", "Hard blocks", "Commands that would wreck the machine are always refused."),
     ("builtin", "Built-in protection", "Apps, agents and other machines may never change the OS's own rules."),
     ("reach", "Hands", "The tools, folders and sites this agent can reach at all."),
+    ("folders", "Company folders", "A company with folders of its own keeps its agents inside them."),
     ("channel", "Channel", "A read-only channel may look but not change anything."),
     ("taint", "Outside content", "After reading a web page or a mail, a change goes to you first."),
     ("rate", "Speed limit", "Too many calls in a short time and it waits in Quarantine."),
@@ -81,7 +82,7 @@ STAGES = (
 )
 _STAGE_OF_RULE = {
     "integrity-hold": "held", "hard-block": "hard", "audit-unavailable": "hard",
-    "builtin-deny": "builtin", "reach": "reach", "channel-read-only": "channel",
+    "builtin-deny": "builtin", "reach": "reach", "company-folders": "folders", "channel-read-only": "channel",
     "taint": "taint", "quarantined": "rate", "steered": "rate",
     "message-off": "team", "message-flow": "team", "department-same": "team",
     "swarm": "default", "democracy": "default", "io-gate": "rules", "device-ungranted": "default",
@@ -1549,6 +1550,23 @@ class PDP(usersmod.Scoped):
                 who = principal.id or (self.cfg.get("agent_name") or "your agent")
                 return Decision("deny", f"{who}'s hands do not reach this: {why} (executor "
                                         f"'{reach['name']}' — Settings → Executors)", rule="reach")
+        # 2a'. the company's own folders (company.py). A company that keeps a folder list of
+        # its own holds its people, desks and missions to it; one that says nothing leaves
+        # them on the account's. A ceiling like the hands: no grant reaches past it.
+        if principal.kind in ("subagent", "flow"):
+            from . import company as _company
+            try:
+                why = _company.folder_refusal(self.cfg, principal.kind, principal.id,
+                                              str(ctx.get("flow") or ""), ctx.get("tool", ""),
+                                              action, resource, ctx.get("args") or {},
+                                              probe=ctx.get("audit") is False)
+            except Exception:
+                # a company list that cannot be read keeps files shut, never open
+                why = "this agent's company folders could not be read" \
+                    if action in ("fs.read", "fs.write") else ""
+            if why:
+                return Decision("deny", f"{why} (its folders are in the Office → Company → Folders)",
+                                rule="company-folders")
         surface = ctx.get("surface", "")
         # 2b. the channel ceiling. A read-only channel refuses rather than asks,
         # and it is checked BEFORE grants on purpose: "read-only over Telegram"

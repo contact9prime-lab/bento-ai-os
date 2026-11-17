@@ -1200,7 +1200,7 @@ class ControlPlane(usersmod.Scoped):
 
     # -- data plane execution (L0) ----------------------------------------------
 
-    def _persona(self, defn: dict, context: str) -> str:
+    def _persona(self, defn: dict, context: str, flow: str = "") -> str:
         parts = ["=== You are a SUBAGENT ===",
                  f"You are '{defn['name']}', a specialist subagent of AgentOS. Do ONLY the task "
                  "you are given and return the result as your final message. No small talk. "
@@ -1216,6 +1216,8 @@ class ControlPlane(usersmod.Scoped):
                 parts.append(f"=== skill: {sk['name']} ===\n{sk['content'][:4000]}")
         if context:
             parts.append(f"=== context from the control plane ===\n{context[:6000]}")
+        from . import company as _company
+        parts.append(_company.folders_note(self.cfg, "subagent", defn["name"], flow))
         # the World scene's "agents feel it": empty unless that world is live and on
         from . import users as _users, world as _world
         parts.append(_world.inner_note(_users.current() or "", defn["name"]))
@@ -1255,11 +1257,16 @@ class ControlPlane(usersmod.Scoped):
             engine = brain["engine"]
             m = brain["model"].split("/", 1)[1] if "/" in brain["model"] else ""
             exec_model = "" if m in ("", "default") else m
-            if flow and not brain["fenced"]:
-                # a mission promises what every step can reach, and this CLI keeps a
-                # shell of its own; the mission runs this agent on the machine's brain
+            from . import company as _company
+            held = _company.folders_for(self.cfg, "subagent", defn["name"], flow or "")
+            if (flow or held) and not brain["fenced"]:
+                # a mission promises what every step can reach, and so does a company's
+                # folder list; this CLI keeps a shell of its own, so the agent runs on the
+                # machine's brain instead
                 cli_note = (f"{brain['provider_name']} keeps its own read-only shell, so this "
-                            f"mission runs {defn['name']} on the machine's brain instead")
+                            + (f"mission runs {defn['name']}" if flow else
+                               f"run keeps {defn['name']} inside {held[0]}'s folders")
+                            + " on the machine's brain instead")
                 engine, exec_model = self._executor(), None
         else:
             engine = "" if brain["own"] else self._executor()
@@ -1396,7 +1403,7 @@ class ControlPlane(usersmod.Scoped):
             # message a colleague or start another vote (free talk in talk mode too)
             tools = []
         agent = Agent(child_cfg, self.toolbox, model, emit, approver or headless_approver,
-                      extra_system=self._persona(defn, context), tool_filter=tools,
+                      extra_system=self._persona(defn, context, flow or ""), tool_filter=tools,
                       conversation_id=conversation_id, space_id=space_id,
                       principal=Principal("subagent", defn["name"]), flow=flow or "")
         agent.run_id = run_id            # brief_item stamps the run it was written in
@@ -3054,6 +3061,10 @@ class ControlPlane(usersmod.Scoped):
         return schemas, impls
 
     def _master_persona(self, flow: dict) -> str:
+        def _folders_note(cfg, name):
+            from . import company as _company
+            return _company.folders_note(cfg, "flow", name, name)
+
         roster = flow.get("roster") or []
         lines = []
         for r in roster:
@@ -3071,7 +3082,7 @@ class ControlPlane(usersmod.Scoped):
             soul = " ".join((defn.get("soul") or "").split())[:200]
             lines.append(f"  - {r['subagent']}: {soul}" + (f"  (use it for: {why})" if why else "")
                          + f"  [{_can_words(defn.get('tools') or SAFE_TOOLS)}]")
-        return "\n\n".join([
+        return "\n\n".join(p for p in [
             "=== You are the MASTER ORCHESTRATOR of a flow ===",
             f"Flow '{flow['name']}'. Mission:\n{flow.get('mission') or ''}",
             "Your roster — these are the only agents you may use:\n" + ("\n".join(lines) or "  (none)"),
@@ -3103,7 +3114,8 @@ class ControlPlane(usersmod.Scoped):
             "delegated to anyone on the roster, say so in `finish` rather than improvising.\n"
             "A denied or failed step is information, not the end: route around it if you can, "
             "and report it plainly if you cannot.",
-        ])
+            _folders_note(self.cfg, flow["name"]),
+        ] if p)
 
     def _fold_children(self, run_id: str, status: str, fault: str) -> tuple[str, str]:
         """A flow whose delegated steps all failed did not succeed, whatever the master
@@ -3883,7 +3895,7 @@ def seed_builtins(cfg: dict, store):
     if zeromod.runs_on_hub(cfg):
         return          # a Zero keeps no agents of its own: its work runs on the hub
     anthropic_on = (cfg.get("providers", {}).get("anthropic") or {}).get("enabled")
-    validator_model = "anthropic/claude-sonnet-5" if anthropic_on else ""
+    validator_model = "anthropic/claude-sonnet-5-5" if anthropic_on else ""
     store.save_subagent({
         "name": "researcher", "builtin": 1,
         "soul": "You research. Gather real information with your tools, verify it, and return "

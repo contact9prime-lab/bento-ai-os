@@ -71,7 +71,7 @@ def test_the_picker_offers_suggestions_after_your_own_only_when_the_provider_can
     # Anthropic cannot list: the person's pin first, then this release's suggestions
     ant = [i for i in ids if i.startswith("anthropic/")]
     assert ant[0] == "anthropic/claude-opus-4-8"
-    assert "anthropic/claude-sonnet-5" in ant
+    assert "anthropic/claude-sonnet-5-5" in ant
     # OpenAI listed its models: that list is the truth, no suggestions are invented
     oai = [i for i in ids if i.startswith("openai/")]
     assert oai == ["openai/gpt-4o", "openai/gpt-live-model"]

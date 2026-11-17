@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.9.9 — 2026-11-17
+
+**Each company can work in folders of its own.** In the Office, ▦ Company → Folders, a
+company either uses your account's folders, as before, or keeps a list of its own, each read
+only or read and write. **Make a folder for it** creates one named for the company in your
+workspace. Its department agents, desks and missions then read and write only there, and the
+code they run can write only in its read-and-write folders. Your own agent keeps the account's
+folders. A company can't reach further than your account: a folder your agents can't reach is
+refused when you save, and a folder shared with you read only stays read only. Every change is
+in the ledger, and Permissions shows a refusal at its own step. From a terminal it's
+`bento company folders`.
+
+**The suggested models are current.** The Anthropic list is Opus 5.5, Sonnet 5.5, Haiku 5.5
+and Fable 5.2, the deprecated Gemini 3.5 Flash is gone, and Kimi K3.1 Pro joins Moonshot's.
+Models you already chose are left as they are.
+
 ## 0.9.8 — 2026-11-15
 
 No release notes were written for this one; the commits since 0.9.7 are what changed (`bento update` lists them).

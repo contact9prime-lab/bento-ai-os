@@ -595,6 +595,7 @@ function companyOverviewPaint(el){
       ${(x.missions||[]).length?`<div class="co-desk mut">Missions: ${x.missions.map(m=>`<button class="co-link" data-desk="${esc(m.flow)}">${esc(m.title)}${m.on?'':' (off)'}</button>`).join(' ')}</div>`:''}
     </div>`).join('')}
     <div class="of-row"><button class="endbtn co-add">＋ Add departments</button></div>
+    ${companyFoldersHTML(d.folders)}
     <label class="co-audit co-signoff"><span>Who may ask whom</span><select class="co-perm" aria-label="Who may ask whom is decided per">
       ${[['agent','Per agent'],['department','Per department']].map(([k,l])=>`<option value="${k}"${(d.permissions||'agent')===k?' selected':''}>${l}</option>`).join('')}</select>
       <button class="co-link co-grid">${(d.permissions||'agent')==='department'?'Department grid':'Agent grid'}</button>${typeof pInfo==='function'?pInfo('Per department: people in one department may ask each other, and the grid decides between departments. A block between two agents still holds.'):''}</label>
@@ -649,6 +650,7 @@ function companyOverviewPaint(el){
     if(typeof fgWatch==='function')fgWatch(b.dataset.run)});
   q('.co-add').onclick=()=>{COMPANY.adding=true;COMPANY.arrival=null;companyPaint()};
   q('.co-plan').onclick=()=>{COMPANY.off={};COMPANY.arrival=null;COMPANY.work={goal:d.company.objective||'',draft:null};companyPaint()};
+  companyFoldersWire(el);
   el.querySelectorAll('[data-start]').forEach(b=>b.onclick=()=>companyTodo(b.dataset.start,false,b));
   el.querySelectorAll('[data-drop]').forEach(b=>b.onclick=()=>companyTodo(b.dataset.drop,true,b));
   companyCosWire(el);
@@ -723,6 +725,59 @@ async function companyPermMode(sel){
     companyLoad();
   }catch(e){toast(e.message||String(e),{kind:'err'});companyLoad()}
   finally{sel.disabled=false}
+}
+/* ---------------- the company's folders (company.py folders_state / set_folders) ----------------
+   Its own list, each read-only or read-write, or the account's. The server checks every folder
+   against what the account can reach and refuses the save in a sentence; nothing is judged here. */
+function companyFoldersHTML(F){
+  if(!F)return '';
+  const own=!F.inherit,rows=F.folders||[];
+  const err=COMPANY.ferr?`<div class="co-bad co-ferr" role="alert">${esc(COMPANY.ferr)}</div>`:'';
+  return `<div class="of-sec">Folders</div>
+    <label class="co-audit co-signoff"><span>Works in</span><select class="co-fmode" aria-label="Which folders this company works in">
+      <option value="inherit"${own?'':' selected'}>Your account's folders</option>
+      <option value="own"${own?' selected':''}>Folders of its own</option></select>${typeof pInfo==='function'?pInfo(F.say||''):''}</label>
+    ${own?`<div class="co-folders">${rows.length?rows.map((f,i)=>`<div class="co-frow">
+        <code class="co-fpath" title="${esc(f.real)}">${esc(f.label||f.real)}</code>
+        <select data-fmode="${i}" aria-label="${esc(f.real)} access">
+          <option value="rw"${f.mode==='rw'?' selected':''}>Read and write</option>
+          <option value="ro"${f.mode==='ro'?' selected':''}>Read only</option></select>
+        <button class="endbtn co-fdel" data-fdel="${i}" aria-label="Remove ${esc(f.real)}">Remove</button>
+        ${f.exists?'':'<span class="co-bad">missing</span>'}</div>`).join('')
+      :'<p class="mut co-small">No folders, so its agents can’t read or write files.</p>'}
+      <div class="co-frow co-fadd"><input class="co-fnew" placeholder="A folder, like ~/clients" aria-label="Folder to add" spellcheck="false">
+        <select class="co-fnewm" aria-label="Access for the new folder"><option value="rw">Read and write</option><option value="ro">Read only</option></select>
+        <button class="endbtn co-fadd-go">Add</button></div>
+      ${rows.some(f=>f.real===F.suggest)?'':`<button class="co-link co-fmake" title="${esc(F.suggest)}">Make a folder for it in your workspace</button>`}</div>`:''}
+    ${err}`;
+}
+function companyFoldersWire(el){
+  const F=COMPANY.data&&COMPANY.data.folders;if(!F)return;
+  const rows=()=>(F.folders||[]).map(f=>({path:f.path,mode:f.mode}));
+  const mode=el.querySelector('.co-fmode');
+  if(mode)mode.onchange=()=>mode.value==='inherit'?companyFolders({inherit:true},mode)
+    :companyFolders({folders:[],make:true},mode);
+  el.querySelectorAll('[data-fmode]').forEach(s=>s.onchange=()=>{const r=rows();r[+s.dataset.fmode].mode=s.value;companyFolders({folders:r},s)});
+  el.querySelectorAll('[data-fdel]').forEach(b=>b.onclick=()=>{const r=rows();r.splice(+b.dataset.fdel,1);companyFolders({folders:r},b)});
+  const inp=el.querySelector('.co-fnew'),go=el.querySelector('.co-fadd-go');
+  if(go)go.onclick=()=>{const p=(inp.value||'').trim();if(!p){inp.focus();return}
+    companyFolders({folders:[...rows(),{path:p,mode:el.querySelector('.co-fnewm').value}]},go)};
+  if(inp)inp.onkeydown=e=>{if(e.key==='Enter')go.click()};
+  const mk=el.querySelector('.co-fmake');
+  if(mk)mk.onclick=()=>companyFolders({folders:rows(),make:true},mk);
+}
+async function companyFolders(body,ctl){
+  if(ctl)ctl.disabled=true;
+  try{
+    const j=await apiJSON('/api/company/folders',{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({company:(COMPANY.data.folders||{}).id||'',...body})});
+    if(j.error)throw new Error(j.error);
+    COMPANY.ferr='';COMPANY.data.folders=j;
+    toast(j.inherit?`${j.company} uses your account's folders`
+      :`${j.company} works in ${j.folders.length} ${j.folders.length===1?'folder':'folders'}`);
+    companyPaint();
+  }catch(e){COMPANY.ferr=e.message||String(e);toast(COMPANY.ferr,{kind:'err'});companyPaint()}
+  finally{if(ctl)ctl.disabled=false}
 }
 /* ---------------- the independent auditor (company.py, fabric ControlPlane.audit) ---------------- */
 function companyFlagged(t){const v=(t.audit||{}).verdict;return v==='concerns'||v==='fail'}

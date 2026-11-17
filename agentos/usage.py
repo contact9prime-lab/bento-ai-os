@@ -33,20 +33,25 @@ import fnmatch
 
 # USD per million tokens, (input, output). Patterns are matched in order, most
 # specific first. These are a convenience, not an authority: refreshed with the model
-# catalogue (modelcatalog.CHECKED, 2026-09-27) from the providers' own pricing, and
+# catalogue (modelcatalog.CHECKED, 2026-11-17) from the providers' own pricing, and
 # providers change them without telling us. Override in Settings.
 DEFAULT_PRICING: list[tuple[str, tuple[float, float]]] = [
     ("ollama/*", (0.0, 0.0)),          # local: the electricity is not billed per token
     ("lmstudio/*", (0.0, 0.0)),
-    ("*claude-fable*", (10.0, 50.0)),
+    ("*claude-fable*", (8.0, 40.0)),
     ("*claude-opus-5*", (4.0, 20.0)),
     ("*claude-sonnet-5*", (2.0, 10.0)),
+    ("*claude-haiku-5*", (0.10, 0.50)),
     ("*gpt-6-sol*", (2.0, 10.0)),
     ("*gpt-6-luna*", (0.10, 0.50)),
     ("*gpt-5.6-sol*", (5.0, 30.0)),
     ("*gpt-5.6-terra*", (2.5, 15.0)),
     ("*gpt-5.6-luna*", (1.0, 6.0)),
     ("*deepseek-flash*", (0.14, 0.28)),
+    ("*kimi-k3.1-pro*", (2.0, 10.0)),
+    ("*kimi-k3*", (3.0, 15.0)),
+    ("*gemini-3.8-flash*", (0.75, 3.75)),
+    ("*gemini-3.5-flash-lite*", (0.30, 2.50)),
     ("*claude-opus*", (15.0, 75.0)),
     ("*claude-sonnet*", (3.0, 15.0)),
     ("*claude-haiku*", (1.0, 5.0)),

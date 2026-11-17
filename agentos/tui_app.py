@@ -296,7 +296,7 @@ class AgentTUI(App):
                     yield Input(id="cfg-ollama")
                     yield Checkbox("Anthropic (Claude)", id="cfg-ant-on")
                     yield Input(placeholder="sk-ant-… API key", id="cfg-ant-key")
-                    yield Input(placeholder="models, comma-separated (e.g. claude-sonnet-5)", id="cfg-ant-models")
+                    yield Input(placeholder="models, comma-separated (e.g. claude-sonnet-5-5)", id="cfg-ant-models")
                     yield Checkbox("OpenAI", id="cfg-oai-on")
                     yield Input(placeholder="sk-… API key", id="cfg-oai-key")
                     yield Input(placeholder="models (e.g. gpt-6-sol, gpt-6-luna)", id="cfg-oai-models")

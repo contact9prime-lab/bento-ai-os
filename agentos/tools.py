@@ -879,6 +879,10 @@ def sandbox_conf(cfg: dict) -> tuple[bool, str]:
 _jail_waived = contextvars.ContextVar("jail_waived", default=False)
 # The tools that run code on this machine, and so need a jail or a person's yes.
 JAILED_TOOLS = ("run_command", "run_python", "terminal_send")
+# A company agent's code runs inside its company's folders (company.py). The agent loop sets this
+# around the call from the principal it is running as, never from the model's arguments:
+# {"name": company, "rw": [real paths], "ro": [real paths]}.
+company_jail = contextvars.ContextVar("company_jail", default=None)
 
 
 def jail_gap(cfg: dict) -> str:
@@ -1206,6 +1210,16 @@ def _jail_path_ok(path: str) -> bool:
     home's pki folder would otherwise be a way round everything hidden above."""
     from . import protected
     return not protected.secret(path) and not protected.is_a_home(path)
+
+
+def account_refusal(cfg: dict, path, write: bool = False) -> str:
+    """Why this account's own agent could not reach a folder ('' when it can): the file
+    tools' own two checks (the tenant line and the sandbox), asked without a toolbox. A
+    company's folders are checked with it, so a company never reaches past its account."""
+    import types
+    ns = types.SimpleNamespace(cfg=cfg)
+    ns._tenant_deny = Toolbox._tenant_deny.__get__(ns)
+    return Toolbox._sandbox_deny(ns, path, write=write, flag=False) or ""
 
 
 def jail_root(root: str) -> str:
@@ -1631,7 +1645,50 @@ class Toolbox(usersmod.Scoped):
                 f"{'writable' if write else 'accessible'} "
                 f"(managed in Settings → Sandbox → Safe folders)")
 
+    async def _company_run(self, cj: dict, command: str, cwd: str, scratch: str) -> str:
+        """Run a company agent's command in a jail built on a throwaway folder, with only the
+        company's read-write folders writable and its read-only ones bound in (a folder under a
+        home has to be bound to exist in there at all). Each folder is checked against the
+        account again here, so a share taken away since the save is gone. With no jail
+        mechanism nothing runs: a folder list a shell can walk past is not one."""
+        mech = sandbox_mechanism()
+        if not mech:
+            return (f"[denied] {cj['name']} works only in its own folders, and keeping a command "
+                    f"inside them needs a jail. Install bubblewrap (Linux) and it will run.")
+        rw = [p for p in cj.get("rw") or [] if os.path.isdir(p) and not account_refusal(self.cfg, p, True)]
+        ro = [p for p in cj.get("ro") or [] if os.path.isdir(p) and not account_refusal(self.cfg, p, False)]
+        workdir = os.path.realpath(os.path.expanduser(cwd)) if cwd else (rw[0] if rw else scratch)
+        if not _under_any(workdir, [scratch, *rw, *ro]) or not os.path.isdir(workdir):
+            workdir = rw[0] if rw else scratch
+        hide = [os.path.realpath(str(usersmod.users_root()))] if usersmod.enabled() else None
+        if mech == "bwrap":
+            argv = bwrap_argv(scratch, ["/bin/bash", "-lc", command], chdir=workdir,
+                              hide=hide, extra=rw, ro_extra=ro)
+        else:
+            argv = sandbox_exec_argv(scratch, command, chdir=workdir, hide=hide, extra=rw, ro_extra=ro)
+        return await self._spawn(argv)
+
+    async def _spawn(self, argv: list[str]) -> str:
+        proc = await asyncio.create_subprocess_exec(
+            *argv, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+        try:
+            out, _ = await asyncio.wait_for(proc.communicate(), timeout=120)
+        except asyncio.TimeoutError:
+            proc.kill()
+            return "[error] command timed out after 120s"
+        text = out.decode(errors="replace")
+        code = proc.returncode
+        result = _truncate(text) if text.strip() else "(no output)"
+        return result if code == 0 else f"[exit code {code}]\n{result}"
+
     async def run_command(self, command: str, cwd: str = "") -> str:
+        cj = company_jail.get()
+        if cj is not None:
+            scratch = tempfile.mkdtemp(prefix="bento-company-")
+            try:
+                return await self._company_run(cj, command, cwd, scratch)
+            finally:
+                shutil.rmtree(scratch, ignore_errors=True)
         enabled, root = sandbox_conf(self.cfg)
         argv = None
         # Tenant jail. On a machine with accounts the shell must run inside the acting
@@ -5224,6 +5281,9 @@ class Toolbox(usersmod.Scoped):
         """
         if not (code or "").strip():
             return "[error] nothing to run"
+        cj = company_jail.get()
+        if cj is not None:
+            return await self._company_python(cj, code, folder)
         from . import edgecode
         enabled, root = sandbox_conf(self.cfg)
         jailed = enabled or usersmod.enabled()
@@ -5259,6 +5319,30 @@ class Toolbox(usersmod.Scoped):
         why = edgecode.stopped_by_limit(out) if hub and where != "here" else ""
         if why:
             return await edgecode.offload(self.cfg, code, Path(base), folder, why)
+        return out or "(no output)"
+
+    async def _company_python(self, cj: dict, code: str, folder: str) -> str:
+        """run_python for a company agent: the script sits in the throwaway folder the jail is
+        built on, and `folder` is one of the company's own (a full path, or one relative to its
+        first folder). It never goes to a hub: the hub does not know this company's folders."""
+        places = [*(cj.get("rw") or []), *(cj.get("ro") or [])]
+        cwd = ""
+        if folder:
+            d = os.path.realpath(os.path.join(places[0], folder) if places and not os.path.isabs(folder)
+                                 else os.path.expanduser(folder))
+            if not places or not _under_any(d, places) or not os.path.isdir(d):
+                return f"[error] '{folder}' is not one of {cj['name']}'s folders"
+            cwd = d
+        scratch = tempfile.mkdtemp(prefix="bento-company-")
+        try:
+            path = os.path.join(scratch, f".agentos-run-{uuid.uuid4().hex[:8]}.py")
+            with open(path, "w") as fh:
+                fh.write(code)
+            py = jail_python(sys.executable)
+            lead = f"cd {shlex.quote(cwd)} && " if cwd else ""
+            out = await self._company_run(cj, f"{lead}{shlex.quote(py)} {shlex.quote(path)}", cwd, scratch)
+        finally:
+            shutil.rmtree(scratch, ignore_errors=True)
         return out or "(no output)"
 
     # -- automations: named desktop sequences the user can replay -------------
@@ -6100,7 +6184,7 @@ TOOL_SCHEMAS = [
     {
         "name": "set_agent_brain",
         "description": "Choose which AI model one specialist agent answers on — any provider this "
-                       "machine has, as 'provider/model' (e.g. 'anthropic/claude-sonnet-5', "
+                       "machine has, as 'provider/model' (e.g. 'anthropic/claude-sonnet-5-5', "
                        "'openai/gpt-4o', 'ollama/qwen3.5:9b'), or '' for this machine's brain. "
                        "It changes who is billed for that agent's work.",
         "parameters": {
