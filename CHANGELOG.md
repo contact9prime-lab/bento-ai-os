@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.36 — 2026-11-17
+
+No release notes were written for this one; the commits since 0.9.35 are what changed (`bento update` lists them).
+
 ## 0.9.35 — 2026-11-18
 
 **Groups ask for approval, and one Authorization list holds every channel.**
