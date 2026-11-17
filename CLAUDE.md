@@ -4379,6 +4379,22 @@ steerable=)`; `tests/test_task_desktops.py`. Four rules:
 - **A panel must not repeat its own window title.** `panelShell` reads the title bar above
   it and drops the label when they match — and keeps it where there is no title bar.
 
+## What a reply claims is compared with what ran
+
+`agentos/claims.py`, the two branches in `Agent.run`; `tests/test_claimed_not_done.py`. Reported from Telegram on
+gemma4:12b: "I have called a huddle … the blueprint is now ready … a PDF on your phone", in a turn whose ledger has
+four `model.use` rows and nothing else; three more replies were built on it. The owner: "ask it once more, or tell
+the user the model is so and so and not equipped". Four rules:
+- **Only first-person claims of a finished step are read** (`CLAIMS`: huddle, blueprint or story, hand-over,
+  schedule, file, memory), each with the tools that would make it true. A plan, a refusal, a question and a turn
+  where the tool ran are left alone (`_NOT`); a guard that fires on ordinary sentences is one people ignore.
+- **Asked once, then said.** `nudge` names the call to make; a second reply that still claims it gets `note`
+  appended (nothing was made, the model's name, where to choose another), and a `unbacked` step in the record.
+- **Worked and then silent hands the work back** (`after_silence`, in the thinking-only give-up). Measured live on
+  gemma4:12b, twice: it DID call the huddle, then gave two thinking-only replies and the turn ended on an error
+  with an empty answer. The false claim itself did not reproduce on a clean home, so that half is tests only.
+- The person's own agent on the built-in loop only: a CLI's own tools never show in `steps`.
+
 ## A local model is shared, so every call says its size and no turn waits on it
 
 `providers.ollama_window`/`learn_window`/`learned_window`, `knowledge.quick_rank`; `tests/test_ollama_jam.py`.

@@ -11,6 +11,16 @@ folders. A company can't reach further than your account: a folder your agents c
 refused when you save, and a folder shared with you read only stays read only. Every change is
 in the ledger, and Permissions shows a refusal at its own step. From a terminal it's
 `bento company folders`.
+## 0.9.26 — 2026-11-16
+
+**A model that says it did something it never ran is caught.**
+
+- **Said, not done.** When your agent writes that it called a huddle, made a blueprint, saved a file
+  or set a schedule, and no tool ran for it, it is asked once to do it for real. If it still only
+  writes about it, the reply says so: nothing was made, which model it was, and where to pick a
+  stronger one.
+- **Worked, then silent.** When a model runs its tools and then gives no answer, you get what the
+  tools brought back instead of an error over nothing.
 
 ## 0.9.25 — 2026-11-16
 
