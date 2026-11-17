@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.35 — 2026-11-18
+
+**WhatsApp linked by QR code just works.**
+
+- After scanning the QR code, Settings → Channels no longer asks for a phone number ID, access token,
+  app secret or verify token, and no longer holds the switch off. Those four are the Business API's,
+  and now only show when that is the way you connect. The Meta walkthrough is hidden for a linked phone too.
+
 ## 0.9.34 — 2026-11-17
 
 **Video: short clips from a description, with the cost said before each one.**

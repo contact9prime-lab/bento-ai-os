@@ -325,3 +325,23 @@ def test_a_message_with_no_id_is_still_delivered():
     asyncio.run(t._inbound({"from": "91", "text": "one"}))
     asyncio.run(t._inbound({"from": "91", "text": "two"}))
     assert len(got) == 2
+
+
+def test_a_qr_linked_whatsapp_asks_for_nothing_to_type(monkeypatch):
+    """Reported as "connected by QR code, and then it asks for a token". The card
+    checked for a mode called `link`, which config never holds, so a linked phone
+    was still 'needs Phone number ID, Access token, Verify token'."""
+    from agentos import channels, wa_baileys
+    monkeypatch.setattr(wa_baileys, "paired", lambda: True)
+    cfg = {"channels": {"whatsapp": {"mode": "baileys", "enabled": True}}}
+    wa = next(c for c in channels.state(cfg) if c["id"] == "whatsapp")
+    assert wa["status"] == "on" and wa["detail"] == "connected"
+    assert [f["key"] for f in wa["fields"]] == ["allow"]
+    assert wa["setup"] == []
+    monkeypatch.setattr(wa_baileys, "paired", lambda: False)
+    wa = next(c for c in channels.state(cfg) if c["id"] == "whatsapp")
+    assert wa["detail"] == "needs a QR scan"
+    # the Business API still asks for its fields
+    cloud = {"channels": {"whatsapp": {"mode": "cloud", "enabled": True}}}
+    wa = next(c for c in channels.state(cloud) if c["id"] == "whatsapp")
+    assert "Access token" in wa["detail"] and len(wa["fields"]) == 5
