@@ -312,7 +312,7 @@ function setTab(body,all){
        11e-hands.js draws the list and the map. */
     P.push(`<h2>Agents</h2><p class="lead">Your lead agent and the agents it works with. ${pInfo('Each one gets a brain, an executor, permissions and skills. Everything they do is logged.')}</p>`);
     P.push(pGroup('Lead agent',[
-      pRow('Name',pText('s-name',cfg.agent_name||'Aria'),{desc:'What your agent is called everywhere.',f:'agent name'}),
+      pRow('Name',pText('s-name',cfg.agent_name||'Bento'),{desc:'What your agent is called everywhere.',f:'agent name'}),
       // the character is part of who the agent is, so it is edited HERE as well as in
       // Appearance — looking for it on the agent's own page and not finding it was the report
       pRow('Look',`<button class="endbtn av-set-btn" onclick="avatarEdit('@agent')" title="Change how your agent looks">${avatarImg('@agent','av-set')}Change…</button>`
@@ -574,10 +574,10 @@ function setTab(body,all){
          stated in the row, and so is the terminal's answer: none. */
       /* A small machine's own screen offers only the scenes it draws (01b-immersive.js
          liteScreen): a choice that changes nothing would be a dead control. */
-      pRow('Scene',pSelect('s-imm-scene',[['aurora','Aurora'],['movement','Movement'],['crew','Crew at work'],['office','Office'],['hq','Office HQ (3D)'],['world','World (experimental)'],['mind','Mind'],['island','Town'],['devices','Devices']]
+      pRow('Scene',pSelect('s-imm-scene',[['aurora','Aurora'],['movement','Movement'],['crew','Crew at work'],['office','Office'],['hq','Office HQ (3D)'],['world','World (experimental)'],['mind','Mind'],['island','Town'],['devices','Devices'],['apps','App Hub']]
             .filter(o=>!liteScreen()||LITE_SCENES[o[0]]),
           (typeof IMMERSIVE!=='undefined'&&immersiveSceneNow())||'aurora'),
-        {desc:liteScreen()?'This small machine shows Aurora, Office or Devices on its own screen.':'What this desktop shows behind your windows. Each desktop can show its own.',
+        {desc:liteScreen()?'This small machine shows Aurora, Office or Devices on its own screen.':'What this desktop shows behind your windows. Each desktop has its own, and the menu bar changes it too.',
          more:liteScreen()?'The other scenes draw in 3D or many times a second, which is too much for a machine this size. A phone or laptop that opens Bento here can show any of them. To draw them here anyway, run bento profile full.':'Aurora is a sky that follows the day. Office is the whole office behind your windows. Movement draws at most twenty times a second, pauses when hidden, holds still under reduced motion and uses no blur. Crew shows only the specialists you actually have. World is an experiment: your agents get feelings from what they really do, and all of it sleeps when you pick another scene. Mind draws every memory, fact, mission and run as a strand from your lead, and sparks only when something runs. Town puts your office in a place you choose, an island, a canal city, a castle or a forest. Each room is a building that opens while it works. Devices is every machine and sensor this hub looks after, live, with its alarms. Pick a scene on each desktop and switch between them from the desktop numbers.',
          f:'scene movement watch automatic aurora wallpaper live crew characters avatars figures specialists animated world sims feelings emotions experimental mind brain neural connections island town venice canal castle forest railroad train builder devices sensors alarms faults hub floor desktop'}),
       pRow('Wallpaper','<button class="endbtn" onclick="openApp(\'personalize\')">Personalize</button><button class="endbtn" onclick="wpSystem()">Use system</button>',
@@ -911,7 +911,7 @@ async function paintModelPicker(refresh){
         +'</option>').join('')+'</optgroup>';
     };
     const none=cur.executor?'':'<option value="" selected>Nothing set</option>';
-    ex.innerHTML=none+grp('Models, answered by '+((cfg&&cfg.agent_name)||'Aria'),'provider')
+    ex.innerHTML=none+grp('Models, answered by '+((cfg&&cfg.agent_name)||'Bento'),'provider')
                 +grp('Other agents','agent');
   }
   const chosen=list.find(e=>e.id===cur.executor);
@@ -978,7 +978,7 @@ async function saveSettings(){
   const patch={};
   put(patch,'workspace',val('s-workspace'));
   if(val('s-steps')!==undefined)patch.max_steps=+val('s-steps')||25;
-  if(val('s-name')!==undefined)patch.agent_name=(val('s-name')||'').trim()||'Aria';
+  if(val('s-name')!==undefined)patch.agent_name=(val('s-name')||'').trim()||'Bento';
   /* NOT folders: this page no longer edits them, and sending the key at all
      would send an empty list and silently unshare everything. */
   if(on('s-sb-on')!==undefined)patch.sandbox={enabled:on('s-sb-on'),root:(val('s-sb-root')||'').trim()};
@@ -1278,7 +1278,7 @@ function paintEngineSelect(d){
   const rows=((d&&d.roster)||[]);
   if(!rows.length)return;                       // leave "checking…" rather than lie
   sel.innerHTML=rows.map(r=>{
-    const label=r.builtin?((cfg.agent_name||'Aria')+' (the built-in agent)')
+    const label=r.builtin?((cfg.agent_name||'Bento')+' (the built-in agent)')
       :r.installed?(r.title+(r.version?' · '+r.version:''))
       :(r.title+' · '+(r.why_not||'not installed'));
     return `<option value="${esc(r.id)}"${r.id===cur?' selected':''}${

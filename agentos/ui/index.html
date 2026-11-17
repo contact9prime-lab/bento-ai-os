@@ -2320,6 +2320,23 @@ body.deck-dragging .deck-tile,body.deck-dragging .deck-gname{cursor:grabbing}
 .sec-card .sec-file{display:block;font:var(--fs-xs,12px) var(--mono,monospace);overflow-wrap:anywhere;margin-top:3px}
 .sec-card .sec-alert{margin-top:6px;overflow-wrap:anywhere}
 .sec-card .sec-alert small{display:block}
+
+/* Stop the voice: one pill while anything is being said, on every surface (speechPill).
+   Bottom left, clear of the "agent is working" bubble and the approval card on the right.
+   A real 44px target: it is pressed in a hurry. */
+#voicestop{position:fixed;left:16px;bottom:88px;z-index:9450;display:none;align-items:center;gap:8px;
+  min-height:var(--tap,44px);padding:0 16px 0 13px;border-radius:var(--r-full,999px);cursor:pointer;
+  font:600 13px/1 var(--font,inherit);color:var(--txt);
+  background:color-mix(in srgb,var(--bg2) 92%,transparent);
+  border:1px solid color-mix(in srgb,var(--err,#f87171) 55%,transparent);box-shadow:var(--el-3)}
+#voicestop.on{display:inline-flex}
+#voicestop .vs-sq{color:var(--err,#f87171);font-size:12px}
+#voicestop:hover{background:var(--bg3)}
+#voicestop:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+/* on a phone the bottom of the screen is the composer and the dock: at the bottom left the
+   pill sat on the attach button (seen in the first screenshot), so it goes under the menu bar */
+body.dev-mobile #voicestop{bottom:auto;top:calc(46px + env(safe-area-inset-top,0px));left:50%;
+  transform:translateX(-50%)}
 /* ================= cross-device layout =================
    AgentOS runs the same desktop on a phone, a tablet and a workstation. Nothing
    here changes what the OS *is* — the menu bar, the dock, the prompt bar, the
@@ -2659,7 +2676,8 @@ body.dev-mobile.has-win #omnibar,body.dev-mobile.has-win #omnicards{display:none
 #tb-more{display:none}
 body.dev-mobile #tb-more{display:inline-flex;flex:none;min-width:var(--tap)}
 body.dev-mobile #topbar:not(.more) #autosel,body.dev-mobile #topbar:not(.more) #ttsbtn,
-body.dev-mobile #topbar:not(.more) #clearses{display:none}
+body.dev-mobile #topbar:not(.more) #clearses,body.dev-mobile #topbar:not(.more) #phonebtn,
+body.dev-mobile #topbar:not(.more) #tracebtn{display:none}
 /* list → detail: one pane at a time, with a way back */
 .tp-back{display:none}
 body.dev-mobile .two-pane{flex-direction:column}
@@ -4988,7 +5006,12 @@ body.imm-mind .hm-greet,body.imm-mind .hm-chips,body.imm-mind .hm-play,body.imm-
 .mn-btn:hover{background:rgba(124,140,255,.3)}
 .mn-btn:focus-visible{outline:2px solid var(--acc,#8b5cf6);outline-offset:2px}
 .mn-say{position:absolute;left:50%;top:98px;transform:translateX(-50%);width:min(620px,calc(100vw - 32px));pointer-events:none;
-  text-align:center;font-size:15px;line-height:1.5;color:#fff;text-shadow:0 1px 10px rgba(0,0,0,.8)}
+  text-align:center;font-size:15px;line-height:1.5;color:#fff;text-shadow:0 1px 10px rgba(0,0,0,.8);
+  padding:8px 14px;border-radius:14px;background:rgba(8,10,28,.62);max-height:7.5em;overflow:hidden}
+/* while the lead says the panels the prompt bar steps aside (the words ran under it), and a
+   linked team's chip never sits on the ring */
+body.mind-telling:not(.has-win) #omnibar:not(.summoned):not(.pop){opacity:0;pointer-events:none}
+body.imm-mind .hm-links{display:none!important}
 
 .mn-tag{position:absolute;left:0;top:0;transform:translate(-50%,calc(-100% - var(--rh,40px)*.55 - 6px));pointer-events:auto;
   display:flex;align-items:center;justify-content:center;min-height:var(--tap,32px);min-width:var(--tap,32px);padding:0;border:0;background:none;cursor:pointer;font:inherit;color:#fff}
@@ -6091,6 +6114,14 @@ body.dev-mobile .st-main.now.with-chat>.st-chat{position:absolute;inset:0;width:
 .st-tree-in .st-tree-b{border-color:var(--line)}
 .st-tree-up{align-self:flex-start;border-color:var(--acc);color:var(--txt)}
 body.dev-mobile .st-tree-b{min-height:var(--tap,40px)}
+
+/* Save as: the story as a PowerPoint, a Word document or a PDF (stagedoc.py) */
+.st-savebox{display:flex;flex-direction:column;gap:2px}
+.stg-save-a{display:flex;flex-direction:column;gap:1px;min-height:var(--tap);justify-content:center;padding:8px 10px;border-radius:var(--r-sm);
+  color:var(--txt);text-decoration:none}
+.stg-save-a b{font-weight:600;font-size:var(--fs-sm)}
+.stg-save-a span{font-size:var(--fs-xs);color:var(--dim)}
+.stg-save-a:hover,.stg-save-a:focus-visible{background:color-mix(in srgb,var(--acc) 14%,transparent);outline:none}
 /* Permissions → Flow (20b-permflow.js): the gate's steps as a path a request walks.
    Colours are mixed from the theme's tokens, so it holds up on light themes too. */
 /* two columns that wrap into one when the window is narrow (no container query: that
@@ -6743,11 +6774,13 @@ body.has-win #devscene,body.deck-full #devscene,body.exposing #devscene{opacity:
 body.imm-devices .hm-greet,body.imm-devices .hm-chips,body.imm-devices .hm-play,body.imm-devices .hm-now,
   body.imm-devices .hm-links{display:none!important}
 #omnibar #omni-fold,#devchat{display:none}
+/* The docked chat is the App Hub's too (01i-apphub.js): every rule that is not about the board itself
+   names both scenes. */
 @media (min-width:901px){
   /* Folded: a small bar at the top right, over the end of a header that stays put, so nothing ever
      scrolls under it and the board has the full width. Open: a panel slides in and the board makes
      room in the same breath. */
-  body.imm-devices:not(.dev-mobile){--dvc-w:min(440px,34vw);--dvc-pill:min(290px,25vw);--dvc-t:300ms;
+  body:is(.imm-devices,.imm-apps):not(.dev-mobile){--dvc-w:min(440px,34vw);--dvc-pill:min(290px,25vw);--dvc-t:300ms;
     --dvc-top:calc(var(--mbh,28px) + 14px)}
   body.imm-devices:not(.dev-mobile) #devscene{padding-top:0;transition:right var(--dvc-t) var(--ease-out)}
   body.imm-devices.dvc-open:not(.dev-mobile) #devscene{right:calc(var(--dvc-w) + 30px)}
@@ -6756,20 +6789,20 @@ body.imm-devices .hm-greet,body.imm-devices .hm-chips,body.imm-devices .hm-play,
     padding-right:calc(var(--dvc-pill) + 26px);transition:padding-right var(--dvc-t) var(--ease-out)}
   body.imm-devices.dvc-open:not(.dev-mobile) .dvs-head{padding-right:14px}
 
-  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar,
-  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar.pop{top:calc(var(--dvc-top) + 11px);bottom:auto;
+  body.immersive:is(.imm-devices,.imm-apps):not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar,
+  body.immersive:is(.imm-devices,.imm-apps):not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar.pop{top:calc(var(--dvc-top) + 11px);bottom:auto;
     left:auto;right:28px;transform:none;width:var(--dvc-pill);height:44px;padding:0 6px 0 12px;gap:8px;
     transition:width var(--dvc-t) var(--ease-out),right var(--dvc-t) var(--ease-out),top var(--dvc-t) var(--ease-out),
       height var(--dvc-t) var(--ease-out),box-shadow var(--d-base) var(--ease-out),border-color var(--d-base) var(--ease-out)}
-  body.immersive.imm-devices.dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar,
-  body.immersive.imm-devices.dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar.pop{
+  body.immersive:is(.imm-devices,.imm-apps).dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar,
+  body.immersive:is(.imm-devices,.imm-apps).dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar.pop{
     top:calc(var(--dvc-top) + 10px);right:26px;width:calc(var(--dvc-w) - 20px);height:50px;padding:0 8px 0 14px}
-  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omni-in{font-size:var(--fs-base);min-width:0;text-overflow:ellipsis}
+  body.immersive:is(.imm-devices,.imm-apps):not(.has-win):not(.deck-full):not(.dev-mobile) #omni-in{font-size:var(--fs-base);min-width:0;text-overflow:ellipsis}
   /* what the small bar has room for: type, talk, open */
-  body.immersive.imm-devices:not(.dvc-open):not(.has-win):not(.deck-full):not(.dev-mobile) #omni-shot,
-  body.immersive.imm-devices:not(.dvc-open):not(.has-win):not(.deck-full):not(.dev-mobile) #omni-chat{display:none}
+  body.immersive:is(.imm-devices,.imm-apps):not(.dvc-open):not(.has-win):not(.deck-full):not(.dev-mobile) #omni-shot,
+  body.immersive:is(.imm-devices,.imm-apps):not(.dvc-open):not(.has-win):not(.deck-full):not(.dev-mobile) #omni-chat{display:none}
 
-  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar #omni-fold{display:flex;position:relative;
+  body.immersive:is(.imm-devices,.imm-apps):not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar #omni-fold{display:flex;position:relative;
     color:var(--txt);transition:background var(--d-fast) var(--ease-out)}
   #omni-fold svg{transition:transform var(--dvc-t,300ms) var(--ease-out)}
   body.dvc-open #omni-fold svg{transform:rotate(180deg)}
@@ -6777,39 +6810,39 @@ body.imm-devices .hm-greet,body.imm-devices .hm-chips,body.imm-devices .hm-play,
     box-shadow:0 0 0 2px var(--bg2);opacity:0;transform:scale(.4);transition:opacity var(--d-fast),transform var(--d-fast)}
   #omnibar.dvc-news #omni-fold i{opacity:1;transform:none}
 
-  body.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #devchat{display:block;position:absolute;z-index:6;
+  body:is(.imm-devices,.imm-apps):not(.has-win):not(.deck-full):not(.dev-mobile) #devchat{display:block;position:absolute;z-index:6;
     top:var(--dvc-top);right:16px;bottom:100px;width:var(--dvc-w);box-sizing:border-box;padding:76px 18px 16px;
     border-radius:var(--r-lg);border:1px solid var(--line);background:color-mix(in srgb,var(--bg2) 96%,transparent);
     box-shadow:var(--el-4);
     transform:translateX(calc(100% + 24px));opacity:0;visibility:hidden;
     transition:transform var(--dvc-t) var(--ease-out),opacity var(--dvc-t) var(--ease-out),visibility 0s linear var(--dvc-t)}
-  body.imm-devices.dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) #devchat{transform:none;opacity:1;visibility:visible;
+  body:is(.imm-devices,.imm-apps).dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) #devchat{transform:none;opacity:1;visibility:visible;
     transition:transform var(--dvc-t) var(--ease-out),opacity var(--dvc-t) var(--ease-out),visibility 0s}
   .dvc-hint{margin:0;color:var(--dim);font-size:var(--fs-sm);line-height:1.45}
   body:has(#omnicards .ocard) .dvc-hint{visibility:hidden}
 
   /* the answers follow the panel in a moment after it, and leave first */
-  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omnicards{top:calc(var(--dvc-top) + 74px);bottom:112px;
+  body.immersive:is(.imm-devices,.imm-apps):not(.has-win):not(.deck-full):not(.dev-mobile) #omnicards{top:calc(var(--dvc-top) + 74px);bottom:112px;
     left:auto;right:28px;transform:translateX(36px);width:calc(var(--dvc-w) - 24px);flex-direction:column;
     overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;opacity:0;visibility:hidden;
     transition:transform 180ms var(--ease-out),opacity 180ms var(--ease-out),visibility 0s linear 180ms}
-  body.immersive.imm-devices.dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile):not(.omni-pop) #omnicards{transform:none;opacity:1;visibility:visible;
+  body.immersive:is(.imm-devices,.imm-apps).dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile):not(.omni-pop) #omnicards{transform:none;opacity:1;visibility:visible;
     transition:transform var(--dvc-t) var(--ease-out) 90ms,opacity var(--dvc-t) var(--ease-out) 90ms,visibility 0s}
-  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omnicards .ocard{flex:none}
+  body.immersive:is(.imm-devices,.imm-apps):not(.has-win):not(.deck-full):not(.dev-mobile) #omnicards .ocard{flex:none}
   /* a window over the scene hides the board; a finished answer waits in the panel, not over the window */
-  body.imm-devices.has-win:not(.dev-mobile) #omnicards .ocard[data-done]{display:none}
+  body:is(.imm-devices,.imm-apps).has-win:not(.dev-mobile) #omnicards .ocard[data-done]{display:none}
 
   /* what floats keeps clear of the panel, and of the small bar */
-  body.immersive.imm-devices.dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) .approval.ap-float,
-  body.immersive.imm-devices.dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) #aibubble{right:calc(var(--dvc-w) + 32px)}
-  body.immersive.imm-devices:not(.dvc-open):not(.has-win):not(.deck-full):not(.dev-mobile) .approval.ap-float{top:calc(var(--dvc-top) + var(--mbh,28px) + 76px)}
+  body.immersive:is(.imm-devices,.imm-apps).dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) .approval.ap-float,
+  body.immersive:is(.imm-devices,.imm-apps).dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) #aibubble{right:calc(var(--dvc-w) + 32px)}
+  body.immersive:is(.imm-devices,.imm-apps):not(.dvc-open):not(.has-win):not(.deck-full):not(.dev-mobile) .approval.ap-float{top:calc(var(--dvc-top) + var(--mbh,28px) + 76px)}
   /* a Pi's own screen doesn't animate this; the board just takes its place */
   body.lite-screen.imm-devices{--dvc-t:0ms}
   body.lite-screen #omnibar,body.lite-screen #devchat,body.lite-screen #omnicards{transition-duration:0ms!important;transition-delay:0ms!important}
 }
 @media (max-width:900px){
   body.imm-devices #devscene{bottom:156px}
-  body.immersive.imm-devices:not(.has-win):not(.deck-full) #omnibar{top:auto;bottom:92px}
+  body.immersive:is(.imm-devices,.imm-apps):not(.has-win):not(.deck-full) #omnibar{top:auto;bottom:92px}
 }
 .dvs-wait{margin:18vh auto 0;max-width:520px;text-align:center;color:var(--txt);font-size:var(--fs-md);
   padding:14px 18px;border-radius:var(--r-lg);background:color-mix(in srgb,var(--bg2) 92%,transparent);border:1px solid var(--line)}
@@ -7611,6 +7644,256 @@ div.mdl-tags .mdl-tag.tiny::before{content:'';position:absolute;left:50%;top:cal
 .mdl-credit{position:absolute;left:12px;top:10px;max-width:60%;z-index:2;pointer-events:none;font:500 10.5px/1.35 var(--sans,system-ui);
   color:var(--mdl-ink);opacity:.72;text-shadow:0 0 3px var(--mdl-chip)}
 .stg-scene.k-3d .mdl-credit{top:64px;left:auto;right:14px;max-width:34%;text-align:right;color:#fff;text-shadow:0 1px 4px #000;opacity:.85}
+/* What a desktop shows, chosen on the desktop (03-virtual-desktops.js): the menu-bar button, its
+   menu, and the App Hub scene (01i-apphub.js). Colours are mixed from the theme's tokens, so it
+   reads on every theme, and nothing here blurs. */
+#deskbtn{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 7px;border-radius:var(--r-sm);
+  font-size:var(--fs-2xs);font-weight:650;color:var(--dim);border:1px solid transparent;white-space:nowrap;flex:none;max-width:210px}
+#deskbtn:hover,#deskbtn[aria-expanded=true]{background:color-mix(in srgb,var(--txt) 10%,transparent);color:var(--txt)}
+#deskbtn:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+#deskbtn .dkb-l{overflow:hidden;text-overflow:ellipsis}
+#deskbtn .dkb-c{opacity:.6;font-size:9px}
+/* A phone's menu bar is shorter than a fingertip, so there the button stands on the desktop,
+   under the bar, at full tap size. A window on a phone is a sheet over everything: it goes. */
+body.dev-mobile #deskbtn{position:fixed;z-index:6;top:calc(var(--mbh) + var(--safe-t,0px) + 6px);right:10px;
+  height:var(--tap);min-width:var(--tap);padding:0 12px;font-size:var(--fs-xs);max-width:62vw;color:var(--txt);
+  background:color-mix(in srgb,var(--bg2) 86%,transparent);border-color:color-mix(in srgb,var(--txt) 16%,transparent);border-radius:999px}
+body.dev-mobile.has-win #deskbtn,body.dev-mobile.deck-full #deskbtn,body.kiosk #deskbtn{display:none}
+body.dev-mobile.imm-devices #devscene{top:calc(var(--mbh) + var(--safe-t,0px) + var(--tap) + 14px)}
+
+
+#deskmenu{position:fixed;z-index:9000;width:min(340px,calc(100vw - 16px));max-height:calc(100vh - 80px);overflow:auto;
+  padding:12px 14px 14px;border-radius:var(--r-lg);background:var(--bg2);color:var(--txt);
+  border:1px solid color-mix(in srgb,var(--txt) 14%,transparent);box-shadow:var(--el-4);font-family:var(--sans)}
+#deskmenu h3{margin:0 0 2px;font-size:var(--fs-md);font-weight:700}
+#deskmenu h4{margin:12px 0 6px;font-size:var(--fs-2xs);font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
+#deskmenu .dkm-main{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+#deskmenu .dkm-more,#deskmenu .dkm-co{display:flex;flex-wrap:wrap;gap:6px}
+#deskmenu .dkm-s,#deskmenu .dkm-c{display:flex;align-items:center;gap:6px;min-height:32px;padding:5px 10px;border-radius:var(--r-md);
+  border:1px solid color-mix(in srgb,var(--txt) 14%,transparent);background:color-mix(in srgb,var(--txt) 5%,transparent);
+  color:var(--txt);font-size:var(--fs-sm);text-align:left}
+#deskmenu .dkm-main .dkm-s{flex-direction:column;justify-content:center;gap:3px;padding:10px 4px;text-align:center}
+#deskmenu .dkm-main .dkm-s i{font-style:normal;font-size:20px;line-height:1}
+#deskmenu .dkm-more .dkm-s i{font-style:normal;opacity:.75}
+#deskmenu .dkm-s:hover,#deskmenu .dkm-c:hover{background:color-mix(in srgb,var(--txt) 11%,transparent)}
+#deskmenu .dkm-s.on,#deskmenu .dkm-c.on{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 18%,transparent);font-weight:650}
+#deskmenu .dkm-s:focus-visible,#deskmenu .dkm-c:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+#deskmenu .dkm-c small{color:var(--dim);font-size:var(--fs-2xs);font-weight:500}
+#deskmenu .dkm-note{margin:8px 0 0;font-size:var(--fs-xs);color:var(--dim);line-height:1.4}
+#deskmenu .dkm-rm{margin-top:14px}
+body.dev-touch #deskmenu .dkm-s,body.dev-touch #deskmenu .dkm-c,body.dev-touch #deskmenu .endbtn{min-height:var(--tap)}
+
+/* ---- the App Hub scene ----
+   Widgets first, as a board; the apps under them; the chat docked on the right (the Devices scene's
+   panel, 39-devscene.css, open by default here). */
+#apphub{position:absolute;z-index:4;left:16px;right:16px;top:calc(var(--mbh,28px) + 14px);bottom:100px;overflow:auto;
+  overscroll-behavior:contain;display:flex;flex-direction:column;gap:22px;color:var(--txt);font-family:var(--sans);
+  scrollbar-width:thin;padding:2px 4px 12px 2px;container-type:inline-size}
+#apphub[hidden],body:not(.imm-apps) #apphub{display:none}
+body.has-win #apphub,body.deck-full #apphub,body.exposing #apphub{opacity:0;pointer-events:none}
+body.imm-apps .hm-greet,body.imm-apps .hm-chips,body.imm-apps .hm-play,body.imm-apps .hm-now,body.imm-apps .hm-links{display:none!important}
+@media (min-width:901px){
+  /* the folded bar sits over the top right corner, so the first heading keeps clear of it */
+  body.imm-apps:not(.dev-mobile) #apphub{transition:right var(--dvc-t) var(--ease-out)}
+  body.imm-apps:not(.dev-mobile) #apphub>section:first-child>header{padding-right:calc(var(--dvc-pill) + 26px);min-height:66px}
+  body.imm-apps.dvc-open:not(.dev-mobile) #apphub{right:calc(var(--dvc-w) + 30px)}
+  body.imm-apps.dvc-open:not(.dev-mobile) #apphub>section:first-child>header{padding-right:0;min-height:34px}
+  body.lite-screen.imm-apps{--dvc-t:0ms}
+}
+@media (max-width:900px){
+  body.imm-apps #apphub{bottom:156px;left:10px;right:10px}
+}
+#apphub section>header{display:flex;align-items:center;gap:10px;margin:0 2px 10px;min-height:34px}
+#apphub h2{margin:0;font-size:var(--fs-lg);font-weight:700}
+#apphub section>header .endbtn{margin-left:auto}
+#apphub section>header .mut{color:var(--dim);font-size:var(--fs-sm)}
+/* the board: every widget a card on one grid, a large one two columns wide */
+#apphub .ah-board{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px;align-items:start;grid-auto-flow:dense}
+#apphub .ah-board .deck-group{width:auto;padding:0;gap:0;overflow:hidden;border-radius:var(--r-lg);
+  background:color-mix(in srgb,var(--bg2) 90%,transparent);border:1px solid color-mix(in srgb,var(--txt) 12%,transparent)}
+#apphub .ah-board .deck-group:has(.db-l){grid-column:span 2}
+#apphub .ah-board .deck-gname{padding:9px 12px;font-size:var(--fs-sm);font-weight:650;letter-spacing:0;text-transform:none;color:var(--txt)}
+#apphub .ah-board .deck-wframe{border-radius:0;border:0;border-top:1px solid color-mix(in srgb,var(--txt) 10%,transparent)}
+@container (max-width:560px){#apphub .ah-board .deck-group:has(.db-l){grid-column:auto}}
+#apphub .deck-empty{grid-column:1/-1;margin:0;display:flex;flex-direction:column;gap:8px;padding:18px;border-radius:var(--r-lg);
+  border:1px dashed color-mix(in srgb,var(--txt) 22%,transparent);background:color-mix(in srgb,var(--bg2) 70%,transparent);
+  color:var(--dim);font-size:var(--fs-sm);line-height:1.45}
+#apphub .deck-empty b{color:var(--txt);font-size:var(--fs-md)}
+#apphub .deck-empty .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+/* the apps: every group on one sheet, side by side while there is room */
+#apphub .ah-groups{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;align-items:start}
+#apphub .ah-g{width:auto;background:color-mix(in srgb,var(--bg2) 82%,transparent)}
+#apphub .deck-tiles{grid-template-rows:none;grid-auto-flow:row;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:6px 4px}
+#apphub .deck-tile{width:auto;min-width:0;padding:10px 4px 8px;gap:7px}
+#apphub .deck-tile span{max-width:100%;font-size:var(--fs-xs)}
+body.dev-mobile #apphub{top:calc(var(--mbh) + var(--safe-t,0px) + var(--tap) + 14px)}
+
+/* the Devices scene: which company a machine is for, and which company a board is for */
+.dvs-m h2 .dvs-co{font-size:var(--fs-xs);max-width:150px;height:24px;padding:0 6px;border-radius:var(--r-sm);
+  border:1px solid color-mix(in srgb,var(--txt) 16%,transparent);background:color-mix(in srgb,var(--txt) 6%,transparent);color:var(--txt)}
+body.dev-touch .dvs-m h2 .dvs-co{height:var(--tap)}
+.dvs-head h1 .dvs-for{font-size:var(--fs-sm);font-weight:600;color:var(--dim);margin-left:6px;vertical-align:middle}
+#pager .pgb[data-scene=apps] .pgs{color:var(--acc)}
+
+/* a voice print (24h-kiosk.js voicePrintHTML): the setup step and Settings → Voice draw one block */
+.vp{margin-top:14px;padding-top:12px;border-top:1px solid color-mix(in srgb,var(--txt) 12%,transparent);display:flex;flex-direction:column;gap:8px}
+.vp>b{font-size:var(--fs-md)}
+.vp p{margin:0}
+.vp .sp-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.vp-dots{display:flex;gap:8px}
+.vp-dots i{width:14px;height:14px;border-radius:50%;border:2px solid color-mix(in srgb,var(--txt) 34%,transparent)}
+.vp-dots i.on{background:var(--acc);border-color:var(--acc)}
+.vp-only{display:inline-flex;align-items:center;gap:8px;font-weight:600}
+body.dev-touch .vp-only{min-height:var(--tap)}
+/* in Settings the block lines up with the card's rows (16px), like every other row there */
+#s-vp{padding:0 16px 14px}
+#s-vp .vp{margin-top:0}
+/* `.whotab`, never `.ctab`: that is Chat's pill tabs, and on a phone it drew a 999px oval round the table.
+   Who may talk to the agent: Telegram's people and groups, WhatsApp's people (16b-chantables.js).
+   A table on a wide window; under 560px of its own width each row is a card with labelled values,
+   because a six-column table on a phone either scrolls sideways or cuts its buttons off. */
+.whotw{container-type:inline-size;margin:6px 0 4px}
+.whotab{width:100%;border-collapse:collapse;font-size:var(--fs-sm)}
+.whotab th{padding:4px 8px;text-align:left;font-size:var(--fs-2xs);font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--dim);border-bottom:1px solid var(--line);white-space:nowrap}
+.whotab td{padding:8px;vertical-align:middle;border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.whotab td small{display:block;color:var(--dim);font-size:var(--fs-2xs)}
+.whotab .badge{white-space:nowrap}
+.ct-act{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
+.ct-act .endbtn,.ct-sel{min-height:var(--tap,28px)}
+.ct-sel{max-width:100%;font:inherit;font-size:var(--fs-sm)}
+.ct-empty{margin:6px 0}
+.whotab tr.ct-sub>td{padding:0 8px 10px 22px;border-bottom:1px solid var(--line)}
+.whotab tr.ct-sub summary{cursor:pointer;color:var(--dim);font-size:var(--fs-xs);padding:6px 0;min-height:var(--tap,28px);display:flex;align-items:center}
+.whotab tr.ct-sub .whotab th{border-bottom-style:dashed}
+.tg-head{display:flex;align-items:center;gap:8px;margin:14px 0 2px;font-weight:600}
+@container (max-width:560px){
+  .whotab thead{display:none}
+  .whotab,.whotab tbody,.whotab tr,.whotab td{display:block;width:auto}
+  .whotab tr{padding:8px 0;border-bottom:1px solid var(--line)}
+  .whotab td{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:3px 0;border:0;text-align:right}
+  .whotab td::before{content:attr(data-l);color:var(--dim);font-size:var(--fs-2xs);text-transform:uppercase;letter-spacing:.05em;text-align:left;flex:none}
+  .whotab td{flex-wrap:wrap}
+  .whotab td small{flex-basis:100%;text-align:right}
+  .whotab td:first-child{display:block;text-align:left}
+  .whotab td:first-child small{text-align:left}
+  .whotab td:first-child::before,.whotab td[data-l=""]::before{content:none}
+  .whotab tr.ct-sub{padding:0}
+  .whotab tr.ct-sub>td{display:block;padding:0 0 8px 10px;text-align:left}
+  .ct-act{width:100%}
+}
+/* Send to your phone (10e-phonesend.js) and a phone chat's sessions in Chat's list */
+.dlg.psend{width:440px;max-width:calc(100vw - 32px);max-height:calc(100dvh - 32px);overflow:auto;text-align:left;padding:20px 18px 16px}
+.psend .dlg-m{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.psend-h{font-size:var(--fs-2xs);font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--dim2);margin:10px 2px 6px}
+.psend-list{display:flex;flex-direction:column;gap:6px}
+.psend-row{display:flex;flex-direction:column;gap:2px;text-align:left;width:100%;min-height:var(--tap,40px);padding:8px 12px;
+  border-radius:var(--r-md);border:1px solid var(--line);background:var(--bg3);color:var(--txt)}
+.psend-row b{font-size:var(--fs-sm);font-weight:600;overflow-wrap:anywhere}
+.psend-row span{font-size:var(--fs-xs);color:var(--dim);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.psend-row.on{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 14%,var(--bg3))}
+.psend-row:disabled{opacity:.55;cursor:default}
+.psend-none{font-size:var(--fs-sm);color:var(--dim);margin:0;line-height:1.5}
+.psend-link{color:var(--acc);text-decoration:underline;min-height:var(--tap,32px)}
+.psend-said{min-height:1.4em;font-size:var(--fs-xs);color:var(--dim);margin:10px 2px}
+.psend-said.err{color:var(--err)}
+.psend .dlg-b{justify-content:flex-end}
+.psend .dlg-b .dlg-ok{max-width:none;flex:0 1 auto;padding:8px 16px;color:var(--on-acc,#fff)}
+.psend .dlg-b .dlg-ok:disabled{opacity:.5}
+.convgrp.phone{display:flex;align-items:center;gap:6px}
+.convgrp.phone span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.convgrp.phone button{flex:none;min-width:var(--tap,26px);min-height:var(--tap,26px);border-radius:var(--r-sm);color:var(--dim);font-size:var(--fs-base);line-height:1}
+.convgrp.phone button:hover{color:var(--txt);background:var(--bg4)}
+.conv .onphone{flex:none;font-size:var(--fs-2xs);color:var(--acc);border:1px solid color-mix(in srgb,var(--acc) 50%,transparent);border-radius:var(--r-full);padding:1px 6px}
+.psend .dlg-b button{min-height:var(--tap,36px)}
+/* ---- the menu bar fits its screen (04g-menubar-fit.js) ----
+   Nothing in the bar shrinks or wraps: a squeezed item slid under its neighbour (the
+   space chip over Window and Help at 1366 wide) and a wrapped one changed the band's
+   height. The spacer is the only thing that gives; past that, menubarFit hides in order. */
+#menubar>*,#tray>*{flex-shrink:0;white-space:nowrap}
+#menubar>#mb-spacer{flex:1 1 0;min-width:0}
+#menubar #mbmenus{min-width:auto}
+.spchip .spname{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#mbmenus .mbm-all{display:none;font-size:var(--fs-md)}
+#menubar.f1 #tbclock .dt{display:none}
+#menubar.f2 #mb-name{display:none}
+#menubar.f3 #mb-user .badge,#menubar.f3 #fwdchip .fwdmdl{display:none}
+#menubar.f4 .spchip .spname{max-width:150px}
+#menubar.f5 #tray-ctl .pct,#menubar.f5 #mb-user .nm{display:none}
+#menubar.f5 #mb-user{padding-right:3px}
+#menubar.f6 .spchip .spname{max-width:72px}
+#menubar.f7 #mbapp{display:none}
+#menubar.f8 #mbmenus button:not(.mbm-all){display:none}
+#menubar.f8 #mbmenus .mbm-all{display:inline-block}
+/* past here only a phone-sized bar: the brain becomes its dot (a tap still opens it), the
+   space chip goes (the Spaces app has it), then your own chip (the power menu says who) */
+#menubar.f9 #fwdchip{font-size:0;gap:0;padding:4px 7px}
+#menubar.f9 #fwdchip::before{margin:0}
+body:not(.immersive) #menubar.f9 #fwdchip::after{content:'';width:7px;height:7px;border-radius:50%;background:currentColor}
+#menubar.f10 #mbspace{display:none}
+#menubar.f11 #mb-user{display:none}
+/* a heading inside one list (the folded menus) */
+#ctxmenu .mh{padding:6px 10px 2px;font-size:var(--fs-2xs);font-weight:700;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--dim2)}
+
+/* ---- the network button and its panel (22b-traynet.js) ---- */
+#tray-net{display:flex;align-items:center;gap:5px;padding:2px 6px;border-radius:var(--r-sm);color:var(--txt)}
+#tray-net[hidden]{display:none}
+#tray-net:hover{background:rgba(255,255,255,.1)}
+#tray-net.off{color:var(--warn,#f5a524)}
+#tray-net .tn-off{font-size:var(--fs-2xs);font-weight:700}
+#netpop{position:fixed;z-index:9600;display:none;width:300px;max-height:70vh;overflow:auto;right:8px;
+  top:calc(var(--mbh) + 4px);background:var(--glass);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+  border:1px solid var(--line);border-radius:var(--r-md);padding:8px;box-shadow:var(--el-4)}
+#netpop.show{display:block}
+#netpop .tn-head{display:flex;align-items:center;gap:8px;padding:2px 4px 6px;font-size:var(--fs-sm)}
+#netpop .tn-head b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#netpop .tn-scan{font-size:var(--fs-xs);color:var(--dim);padding:3px 8px;border-radius:var(--r-sm)}
+#netpop .tn-scan:hover{background:var(--bg4);color:var(--txt)}
+#netpop .tn-note{font-size:var(--fs-xs);color:var(--dim);margin:4px 4px 6px}
+#netpop .tn-warn{font-size:var(--fs-xs);margin:2px 4px 8px;padding:7px 9px;border-radius:var(--r-sm);
+  color:var(--txt);background:color-mix(in srgb,var(--warn,#f5a524) 16%,transparent);
+  border:1px solid color-mix(in srgb,var(--warn,#f5a524) 40%,transparent)}
+#netpop .tn-list{display:flex;flex-direction:column;gap:2px}
+#netpop .tn-n{display:flex;align-items:center;gap:9px;width:100%;min-height:34px;padding:6px 8px;
+  border-radius:var(--r-sm);text-align:left;color:var(--txt);font-size:var(--fs-sm)}
+#netpop .tn-n:not([disabled]):hover{background:var(--bg4)}
+#netpop .tn-n[disabled]{cursor:default}
+#netpop .tn-n.on{background:color-mix(in srgb,var(--acc) 14%,transparent)}
+#netpop .tn-n:not(.on)[disabled]{opacity:.6}
+#netpop .tn-s{display:flex;color:var(--dim)}
+#netpop .tn-nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#netpop .tn-n small{color:var(--dim);font-size:var(--fs-2xs)}
+#netpop .tn-join{display:flex;flex-direction:column;gap:8px;padding:4px}
+#netpop .tn-name{font-weight:600}
+#netpop .tn-pw{width:100%}
+#netpop .tn-row{display:flex;gap:8px;justify-content:flex-end}
+#netpop .tn-err{color:var(--err);font-size:var(--fs-xs);margin:0}
+body.dev-mobile #netpop{left:8px;right:8px;width:auto}
+body.dev-mobile #tray-net{min-width:var(--tap,40px);min-height:var(--tap,40px);justify-content:center}
+
+/* ---- the rail: the menu bar continued down the right edge (04g-menubar-fit.js) ---- */
+:root{--railw:46px}
+#mbrail{position:fixed;z-index:8999;top:var(--mbh);right:0;bottom:0;width:var(--railw);
+  display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 0;
+  background:rgba(13,16,21,.72);backdrop-filter:blur(24px) saturate(1.5);-webkit-backdrop-filter:blur(24px) saturate(1.5);
+  border-left:1px solid var(--hairline);color:var(--txt);font-size:var(--fs-sm)}
+#mbrail[hidden]{display:none}
+:root[data-theme=light] #mbrail{background:rgba(255,255,255,.72)}
+body.mb-rail #desktop{right:var(--railw)}
+#mbrail>*{flex-shrink:0;white-space:nowrap}
+#mbrail>button,#mbrail #tray-ctl{width:34px;min-height:32px;justify-content:center;padding:4px 0;border-radius:var(--r-sm)}
+#mbrail #tray-ctl{flex-direction:column;gap:6px;padding:6px 0}
+#mbrail #tray-ctl>span{flex-direction:column;gap:2px!important}
+#mbrail #tray-ctl .pct{font-size:9px!important;opacity:.8}
+#mbrail #mb-user .nm,#mbrail #mb-user .badge,#mbrail #tray-net .tn-off{display:none}
+#mbrail #mb-user{padding:0;border-radius:999px;width:auto;min-height:0;background:none;border:none}
+#mbrail #mb-user .ini{width:26px;height:26px}
+#mbrail #fwdchip{font-size:0;gap:0;padding:0;width:26px;height:26px;min-height:0;border-radius:999px;justify-content:center}
+#mbrail #fwdchip::before{margin:0}
+body:not(.immersive) #mbrail #fwdchip::after{content:'';width:8px;height:8px;border-radius:50%;background:currentColor}
+#mbrail #tray-net.off{background:color-mix(in srgb,var(--warn,#f5a524) 18%,transparent)}
+/* what opens from the rail opens beside it, not over it */
+body.mb-rail #ccpop,body.mb-rail #netpop,body.mb-rail #notifpanel,body.mb-rail #powermenu{right:calc(var(--railw) + 8px)}
 </style>
 </head>
 <body>
@@ -7630,8 +7913,11 @@ div.mdl-tags .mdl-tag.tiny::before{content:'';position:absolute;left:50%;top:cal
   <span id="mbspace"></span>
   <div id="mb-spacer"></div>
   <div id="pager" title="Virtual desktops — click to switch, right-click to move the active window here"></div>
+  <button id="deskbtn" type="button" aria-haspopup="dialog" title="What this desktop shows"></button>
   <div id="tray">
     <button id="tray-voice" title="Voice mode — Alt+J"></button>
+    <!-- the machine's network: drawn only where NetworkManager can answer (22b-traynet.js) -->
+    <button id="tray-net" type="button" hidden title="Network"></button>
     <button id="tray-ctl" title="Sound & battery — click for Quick Settings"></button>
     <button id="tray-bell" title="Notifications"></button>
     <div id="spin" title="agent is working"></div>
@@ -7651,6 +7937,8 @@ div.mdl-tags .mdl-tag.tiny::before{content:'';position:absolute;left:50%;top:cal
     <button id="tray-power" data-ic="power" title="Power &amp; session — lock, log out, restart, power off">⏻</button>
   </div>
 </div>
+<!-- the menu bar's right edge, used when the bar runs out of room (04g-menubar-fit.js) -->
+<div id="mbrail" role="toolbar" aria-label="Menu bar, continued" hidden></div>
 <div id="powermenu">
   <!-- Only shown on a machine that has accounts. "Sign out" on a single-user
        install would be a button that locks you out of your own laptop with
@@ -9717,7 +10005,7 @@ function zeroScreen(){
    the Devices scene (01h-devscene.js), and on a browser that never chose, desktop 1 does and
    desktop 2 is the Town. Desktop 1's choice is still `immersive.scene`, as before desktops had
    scenes; the others are `immersive.scene.d<n>`. curDesk and DESKS are `let`s in a later file. */
-var IMMERSIVE_NAMES={aurora:'Aurora',movement:'Movement',crew:'Crew',office:'Office',hq:'Office HQ',world:'World',mind:'Mind',island:'Town',devices:'Devices'};
+var IMMERSIVE_NAMES={aurora:'Aurora',movement:'Movement',crew:'Crew',office:'Office',hq:'Office HQ',world:'World',mind:'Mind',island:'Town',devices:'Devices',apps:'App Hub'};
 function deskNow(){try{return curDesk}catch(e){try{return +localStorage.getItem('curDesk')||1}catch(e2){return 1}}}
 function deskCount(){try{return DESKS}catch(e){try{return +localStorage.getItem('desks')||2}catch(e2){return 2}}}
 function deviceHub(){
@@ -9789,6 +10077,7 @@ function applyImmersive(){
   document.body.classList.toggle('imm-world',IMMERSIVE.on&&scene==='world');
   document.body.classList.toggle('imm-mind',IMMERSIVE.on&&scene==='mind');
   document.body.classList.toggle('imm-devices',IMMERSIVE.on&&scene==='devices');
+  document.body.classList.toggle('imm-apps',IMMERSIVE.on&&scene==='apps');
   immersiveParallax(IMMERSIVE.on);
   immersiveIcons(IMMERSIVE.on);
   homeRender();
@@ -9814,6 +10103,8 @@ function applyImmersive(){
   if(typeof MIND!=='undefined'){if(IMMERSIVE.on&&scene==='mind')mindStart();else mindStop()}
   // the Devices scene (01h): the floor, live, with its alarms
   if(typeof DEVSCENE!=='undefined'){if(IMMERSIVE.on&&scene==='devices')devSceneStart();else devSceneStop()}
+  // the App Hub (01i): your apps and your widgets, as the desktop
+  if(typeof APPHUB!=='undefined'){if(IMMERSIVE.on&&scene==='apps')appHubStart();else appHubStop()}
 }
 /* Which scene: 'aurora' (a sky that follows the day), 'movement' (a watch movement
    that shows what is running) or 'crew' (the roster, drawn, working). Per browser,
@@ -9821,7 +10112,7 @@ function applyImmersive(){
    this value comes out of localStorage, which outlives any release that renames a
    scene, and a desktop that fails to paint because of a stale string is not a
    trade worth making. */
-var IMMERSIVE_SCENES=['aurora','movement','crew','office','hq','world','mind','island','devices'];
+var IMMERSIVE_SCENES=['aurora','movement','crew','office','hq','world','mind','island','devices','apps'];
 /* The scene of the desktop in front. A browser choosing for the first time keeps what every other
    desktop showed until then, so choosing on desktop 2 never moves desktop 1. */
 function setImmersiveScene(scene){
@@ -9843,6 +10134,7 @@ function immersiveWinChange(){
   if(!IMMERSIVE.on)return;
   const inp=document.getElementById('omni-in'),bar=document.getElementById('omnibar');
   if(!inp||!bar)return;
+  if(typeof appHubSync==='function')appHubSync();
   if(document.body.classList.contains('has-win')&&document.activeElement===inp&&!bar.classList.contains('summoned')&&!bar.classList.contains('pop'))inp.blur();
 }
 /* The brain chip's text, as words. Its two spans (executor, model) have no
@@ -9937,7 +10229,7 @@ function homeRender(){
       inp.value=chips[i];inp.dispatchEvent(new Event('input'));inp.focus();
       const n=inp.value.length;try{inp.setSelectionRange(n,n)}catch(e){}});}
   const n=(typeof RUNNING!=='undefined')?RUNNING.size:0;
-  const who=(typeof agentName==='function')?agentName():'Aria';
+  const who=(typeof agentName==='function')?agentName():'Bento';
   const brain=immersiveBrainText();
   const line=h.querySelector('.hm-now');
   const br=(typeof BRIEF!=='undefined'&&BRIEF.page&&BRIEF.page.open)?BRIEF.page.headline:'';
@@ -10259,7 +10551,7 @@ function movementDraw(dt){
   ctx.beginPath();ctx.arc(cx,cy,R*.16,0,Math.PI*2);ctx.strokeStyle=`rgba(${ink.brass},${.14+.22*breath})`;ctx.lineWidth=1;ctx.stroke();
   if(running){ctx.beginPath();ctx.arc(cx,cy,R*.16*(1+.06*breath),0,Math.PI*2);ctx.fillStyle=`rgba(${ink.brass},${.03+.05*breath})`;ctx.fill()}
   ctx.beginPath();ctx.arc(cx,cy,3,0,Math.PI*2);ctx.fillStyle=`rgba(${ink.ruby},${running?.95:.6})`;ctx.fill();
-  const who=(typeof agentName==='function')?agentName():'Aria';
+  const who=(typeof agentName==='function')?agentName():'Bento';
   const brain=(typeof immersiveBrainText==='function'?immersiveBrainText():'').split(' · ')[0];
   movementText(ctx,'SOUL · '+who.toUpperCase(),cx,cy+R*.16+16,10,ink.brass,.5,600);
   if(brain)movementText(ctx,'CAL. '+brain.toUpperCase(),cx,cy+R*.16+31,9,ink.brass,.3,500);
@@ -10697,7 +10989,7 @@ function crewDraw(dt){
   const W=C.W,H=C.H,ink=crewInk(),now=performance.now();
   ctx.setTransform(C.dpr,0,0,C.dpr,0,0);ctx.clearRect(0,0,W,H);
   const running=(typeof RUNNING!=='undefined'&&RUNNING.size)>0||!!C.busy['@agent'];
-  const who=(typeof agentName==='function')?agentName():'Aria';
+  const who=(typeof agentName==='function')?agentName():'Bento';
   const portrait=H>W;
   // the stage: a shallow line across the lower third, with the work line above it
   const ground=portrait?H*.80:H*.76;
@@ -12422,7 +12714,7 @@ function mindStop(){
   if(MIND.telling&&typeof speechStop==='function')speechStop();
   document.body.classList.remove('mind-peace');
   if(MIND.host)MIND.host.remove();if(MIND.ui)MIND.ui.remove();
-  MIND.host=MIND.ui=MIND.cv=MIND.ctx=null;MIND.snap=null;MIND.sparks=[];MIND.glints=[];MIND.ripples=[];MIND.layout=null;MIND.bg=null;MIND.open='';MIND.telling=false;
+  document.body.classList.remove('mind-telling');MIND.host=MIND.ui=MIND.cv=MIND.ctx=null;MIND.snap=null;MIND.sparks=[];MIND.glints=[];MIND.ripples=[];MIND.layout=null;MIND.bg=null;MIND.open='';MIND.telling=false;
 }
 /* The picture, once now, again a second or so after things happen, and once a minute
    so a memory saved from a phone shows up without an event of its own. */
@@ -12739,31 +13031,41 @@ function mindVoice(t,state){
   A.lvl+=(lvl-A.lvl)*(lvl>A.lvl?.55:.18);
   // a syllable's onset sends a ripple out of the core and a few signals down the fibres
   const now=performance.now();
-  if(rise>.14&&now-MIND.lastPk>150&&!MIND.still){MIND.lastPk=now;
-    MIND.ripples.push({at:now,dur:1100,k:A.lvl});if(MIND.ripples.length>8)MIND.ripples.shift();
+  if(rise>.14&&now-MIND.lastPk>260&&!MIND.still){MIND.lastPk=now;
+    MIND.ripples.push({at:now,dur:1100,k:A.lvl});if(MIND.ripples.length>MIND_CORE.rings)MIND.ripples.shift();
     for(let i=0;i<2+Math.round(A.lvl*2);i++)mindGlint(true)}
   return {level:A.lvl,bins:A.bins};
 }
+/* How far the core reaches, in multiples of its radius, and the radius itself: energy (0 to 1)
+   and the voice's level (0 to 1) may add at most 13px to a 30px core. */
+var MIND_CORE={base:30,energy:8,voice:5,halo:3.4,ring:2.85,edge:.32,rings:4};
+function mindCoreR(e,level){return MIND_CORE.base+Math.max(0,Math.min(1,e))*MIND_CORE.energy+Math.max(0,Math.min(1,level))*MIND_CORE.voice}
 function mindCore(g,cx,cy,t,state,v){
   const e=MIND.energy,still=MIND.still,ph=mindPhone()?.8:1,now=performance.now();
-  const R=(30+e*20+v.level*24)*ph,T=still?0:t/1000;
+  // The voice moves the EDGE of the core, never its size. Reported with a screenshot ("the mind
+  // animation is so screwed"): speaking, the radius went from 35 to 74, the halo to 325px at
+  // 80% white and the rings to 318px, all added together, so the middle of the picture was one
+  // white disc with lumpy rings across the clusters. MIND_CORE holds every reach to a bound a
+  // test checks: the core stays under 50px, its glow under 160, a ring under 130.
+  const R=mindCoreR(e,v.level)*ph,T=still?0:t/1000,HR=R*MIND_CORE.halo;
   g.globalCompositeOperation='lighter';
-  const halo=g.createRadialGradient(cx,cy,0,cx,cy,R*4.4);
-  halo.addColorStop(0,`rgba(255,244,230,${.5+e*.3})`);
-  halo.addColorStop(.12,`rgba(255,196,140,${.32+e*.3+v.level*.2})`);
-  halo.addColorStop(.35,`rgba(150,120,255,${.12+e*.12})`);
+  const halo=g.createRadialGradient(cx,cy,0,cx,cy,HR);
+  halo.addColorStop(0,`rgba(255,244,230,${.34+e*.12})`);
+  halo.addColorStop(.12,`rgba(255,196,140,${.2+e*.14+v.level*.1})`);
+  halo.addColorStop(.35,`rgba(150,120,255,${.1+e*.08})`);
   halo.addColorStop(1,'rgba(40,60,160,0)');
-  g.fillStyle=halo;g.beginPath();g.arc(cx,cy,R*4.4,0,Math.PI*2);g.fill();
+  g.fillStyle=halo;g.beginPath();g.arc(cx,cy,HR,0,Math.PI*2);g.fill();
   // ripples: out of the core on a spoken syllable, in towards it while listening
   MIND.ripples=MIND.ripples.filter(r=>now-r.at<r.dur);
   if(state==='listening'&&!still&&(!MIND.ripples.length||now-MIND.ripples[MIND.ripples.length-1].at>700))
     MIND.ripples.push({at:now,dur:1400,k:.5,inward:true});
   MIND.ripples.forEach(r=>{
-    const u=(now-r.at)/r.dur,rr=r.inward?R*(3.4-u*2.2):R*(1.1+u*3.2);
-    g.strokeStyle=`rgba(255,${r.inward?'220,190':'205,160'},${(1-u)*(.18+r.k*.28)})`;g.lineWidth=1+r.k*1.2;
+    const u=(now-r.at)/r.dur,far=MIND_CORE.ring,rr=r.inward?R*(far-u*(far-1.15)):R*(1.15+u*(far-1.15));
+    g.strokeStyle=`rgba(255,${r.inward?'220,190':'205,160'},${(1-u)*(.1+r.k*.16)})`;g.lineWidth=1+r.k*.6;
     g.beginPath();
-    for(let k=0;k<=48;k++){const th=k/48*Math.PI*2,w=1+.05*Math.sin(th*5+u*6+r.at)+.04*Math.sin(th*3-u*4);
-      const x=cx+Math.cos(th)*rr*w,y=cy+Math.sin(th)*rr*w*.92;k?g.lineTo(x,y):g.moveTo(x,y)}
+    // a ring is nearly round: the 9% wobble and the squash read as a lumpy blob at this size
+    for(let k=0;k<=48;k++){const th=k/48*Math.PI*2,w=1+.025*Math.sin(th*5+u*6+r.at)+.02*Math.sin(th*3-u*4);
+      const x=cx+Math.cos(th)*rr*w,y=cy+Math.sin(th)*rr*w;k?g.lineTo(x,y):g.moveTo(x,y)}
     g.stroke();
   });
   // the soma: a cell body, never a perfect circle. Speaking, its edge is the voice
@@ -12775,16 +13077,16 @@ function mindCore(g,cx,cy,t,state,v){
     // the edge is a curve and not a staircase
     const th=k/72*Math.PI*2,h=k<=36?k/36:(72-k)/36,f=h*(N-1),i0=Math.floor(f),fr=f-i0;
     const bin=(bins[i0]||0)*(1-fr)+(bins[Math.min(N-1,i0+1)]||0)*fr;
-    const r=R*(1+.08*Math.sin(3*th+T*.9)+.06*Math.sin(5*th-T*1.3)+(state==='thinking'?.05*Math.sin(7*th+T*6):0)+bin*.6);
+    const r=R*(1+.08*Math.sin(3*th+T*.9)+.06*Math.sin(5*th-T*1.3)+(state==='thinking'?.05*Math.sin(7*th+T*6):0)+bin*MIND_CORE.edge);
     const x=cx+Math.cos(th)*r,y=cy+Math.sin(th)*r;k?g.lineTo(x,y):g.moveTo(x,y);
   }
   const body=g.createRadialGradient(cx,cy,0,cx,cy,R*1.5);
-  body.addColorStop(0,'rgba(255,250,240,.95)');body.addColorStop(.45,`rgba(255,200,150,${.55+v.level*.3})`);
+  body.addColorStop(0,'rgba(255,250,240,.95)');body.addColorStop(.45,`rgba(255,200,150,${.5+v.level*.2})`);
   body.addColorStop(1,'rgba(160,120,255,.05)');
   g.fillStyle=body;g.fill();
   g.strokeStyle=`rgba(255,220,190,${.12+e*.12+v.level*.2})`;g.lineWidth=1;g.stroke();
   // the nucleus, and a flicker inside it while thinking
-  const nk=still?1:1+(state==='thinking'?.12*Math.sin(t/90):0)+v.level*.25;
+  const nk=still?1:1+(state==='thinking'?.12*Math.sin(t/90):0)+v.level*.1;
   g.drawImage(mindSprite(28,100,70),cx-R*1.3*nk,cy-R*1.3*nk,R*2.6*nk,R*2.6*nk);
   g.drawImage(mindSprite(40,40,90),cx-R*.7*nk,cy-R*.7*nk,R*1.4*nk,R*1.4*nk);
   g.globalCompositeOperation='source-over';
@@ -12888,10 +13190,11 @@ function mindStateText(state){
 function mindNum(n){n=+n||0;return n>=1e6?(n/1e6).toFixed(1).replace(/\.0$/,'')+'M':n>=1e4?Math.round(n/1e3)+'k':n>=1e3?(n/1e3).toFixed(1).replace(/\.0$/,'')+'k':String(n)}
 function mindPaintUI(){
   const S=MIND.snap,U=MIND.ui;if(!S||!U)return;
-  const st=S.stats,b=S.brief||{},agents=S.team.length,depts=S.hubs.filter(h=>h.kind==='dept');
+  const st=S.stats,b=S.brief||{},agents=S.team.length,groups=S.hubs.filter(h=>h.kind==='dept'),
+    depts=groups.filter(h=>!h.company&&!h.loose),cos=groups.filter(h=>h.company);
   U.querySelector('.mn-top').innerHTML=
     `<span class="mn-dot"></span><b class="mn-state">Quiet</b><span class="mn-sep">·</span>`+
-    `<span class="mn-sum">${esc(S.lead)} and ${agents} specialist${agents===1?'':'s'}${depts.length?` in ${depts.length} department${depts.length===1?'':'s'}`:''}</span>`+
+    `<span class="mn-sum">${esc(S.lead)} and ${agents} specialist${agents===1?'':'s'}${depts.length?` in ${depts.length} department${depts.length===1?'':'s'}`:''}${cos.length?`, and ${cos.length} other compan${cos.length===1?'y':'ies'}`:''}</span>`+
     `<button class="mn-btn" onclick="mindTell()">Tell me</button>`+
     `<button class="mn-btn" onclick="mindTalk()" aria-label="Talk to ${esc(S.lead)}">🎙 Talk</button>`+
     `<button class="mn-btn mn-peace" onclick="mindPeace()" aria-pressed="${MIND.peace?'true':'false'}" title="${MIND.peace?'Show the panels':'Peace: only the mind'}">${MIND.peace?'Show all':'Peace'}</button>`;
@@ -12913,11 +13216,11 @@ function mindPaintUI(){
   const busyLead=typeof RUNNING!=='undefined'&&RUNNING.size>0;
   U.querySelector('.mn-right').innerHTML=`<section class="mn-panel mn-team"><h3>Team</h3>`+
     `<div class="mn-agent lead${busyLead?' busy':''}"><span class="mn-pip"></span><b>${esc(S.lead)}</b><i>${busyLead?'working':'your lead'}</i></div>`+
-    depts.map(h=>{const ppl=S.team.filter(a=>a.dept===h.label),busy=ppl.filter(a=>a.busy).length,
+    groups.map(h=>{const ppl=S.team.filter(a=>a.hub===h.id),busy=ppl.filter(a=>a.busy).length,
       runs=ppl.reduce((n,a)=>n+(a.runs||0),0);
       return `<button class="mn-agent${busy?' busy':''}" data-hub="${esc(h.id)}"><span class="mn-pip" style="--mh:${h.hue}"></span>`+
-        `<b>${esc(h.label)}</b><i>${busy?busy+' working':runs?runs+' run'+(runs===1?'':'s')+' this week':'idle'} · ${ppl.length} ${ppl.length===1?'person':'people'}</i></button>`}).join('')+
-    (S.team.length?S.team.filter(a=>!a.dept).map(a=>`<button class="mn-agent${a.busy?' busy':''}" data-hub="agent:${esc(a.name)}">`+
+        `<b>${esc(h.label)}</b><i>${h.company?'company · ':''}${busy?busy+' working':runs?runs+' run'+(runs===1?'':'s')+' this week':'idle'} · ${ppl.length} ${ppl.length===1?'person':'people'}</i></button>`}).join('')+
+    (S.team.length?S.team.filter(a=>(a.hub||'').indexOf('agent:')===0).map(a=>`<button class="mn-agent${a.busy?' busy':''}" data-hub="agent:${esc(a.name)}">`+
       `<span class="mn-pip" style="--mh:${(S.hubs.find(h=>h.id==='agent:'+a.name)||{}).hue||200}"></span><b>${esc(a.name)}</b>`+
       `<i>${a.busy?'working':a.runs?a.runs+' run'+(a.runs===1?'':'s')+' this week':'idle'}${a.brain?' · '+esc(a.brain):''}</i></button>`).join('')
       :'<p class="mn-quiet">No specialists yet.</p>')+`</section>`;
@@ -12971,7 +13274,11 @@ function mindCard(id,refresh){
     body=`<p>${busy.length?esc(busy.join(', '))+' working now.':runs.length?`${runs.length} run${runs.length===1?'':'s'} this week.`:'Nothing this week.'}</p>`+
       li(ppl.map(n=>`<li>${n.head?'★ ':''}${esc(n.label)}${n.title?` <i>${esc(n.title)}</i>`:''}</li>`))+
       li(runs.slice(0,4).map(n=>`<li>${esc(n.label)} <i>${esc(n.status||'')}</i></li>`));
-    go=`<button class="endbtn" data-dept="${esc(h.label)}">Give ${esc(h.label)} a task</button>`;
+    // a task goes to a department of the company that is open; another company's people
+    // and the ones on their own are reached from the Office and Missions
+    go=h.company?`<button class="endbtn" onclick="openApp('office')">Open the Office to switch company</button>`
+      :h.loose?`<button class="endbtn" onclick="openApp('jobs')">Open in Missions</button>`
+      :`<button class="endbtn" data-dept="${esc(h.label)}">Give ${esc(h.label)} a task</button>`;
   }else{
     const name=h.label,a=S.team.find(x=>x.name===name)||{},talk=S.links.filter(k=>k.kind==='talk'&&(k.a===id||k.b===id));
     const skills=nodes.filter(n=>n.kind==='skill'),runs=nodes.filter(n=>n.kind==='run');
@@ -12996,8 +13303,12 @@ function mindTell(){
   const S=MIND.snap;if(!S||typeof speakAs!=='function')return;
   const say=MIND.ui.querySelector('.mn-say');
   say.textContent=S.spoken;say.hidden=false;
+  // the prompt bar steps aside while it is said: the words were running under it
+  document.body.classList.add('mind-telling');
+  // a caret the page left in the bar would keep it up; typing brings it back (it is summoned)
+  const oi=document.getElementById('omni-in');if(oi&&document.activeElement===oi)oi.blur();
   MIND.telling=true;mindKick();
-  speakAs('@agent',S.spoken,()=>{MIND.telling=false;if(say)say.hidden=true;mindKick()});
+  speakAs('@agent',S.spoken,()=>{MIND.telling=false;document.body.classList.remove('mind-telling');if(say)say.hidden=true;mindKick()});
 }
 /* Talking to the lead: Jarvis, with this scene's core as its orb (26-mind.css). */
 function mindTalk(){if(typeof jarvisMode==='function')jarvisMode(true);mindKick()}
@@ -13057,16 +13368,24 @@ function devSceneStop(){
    bar stays under the board. TUI: not applicable, `bento chat` already is the whole screen. SUI: the
    same page, nothing here touches the compositor. */
 var DEVCHAT={open:false,read:false};
-function devChatWide(){return !!DEVSCENE.on&&innerWidth>900&&!document.body.classList.contains('dev-mobile')}
+/* The App Hub scene (01i) has the same panel, open unless you fold it there: each scene keeps its
+   own choice, because a board wants the room and a hub wants the chat. */
+function devChatHub(){return typeof APPHUB!=='undefined'&&!!APPHUB.on}
+function devChatKey(){return devChatHub()?'apphub.chat':'devscene.chat'}
+function devChatWide(){return (!!DEVSCENE.on||devChatHub())&&innerWidth>900&&!document.body.classList.contains('dev-mobile')}
 function devChatKeeps(){return devChatWide()}
 function devChatMount(){
-  if(!DEVCHAT.read){DEVCHAT.read=true;
-    try{DEVCHAT.open=localStorage.getItem('devscene.chat')==='open'}catch(e){}}
+  DEVCHAT.read=true;
+  let v=null;try{v=localStorage.getItem(devChatKey())}catch(e){}
+  DEVCHAT.open=v?v==='open':devChatHub();
   let p=document.getElementById('devchat');
   if(!p){const bar=document.getElementById('omnicards');if(!bar)return;
     p=document.createElement('aside');p.id='devchat';
-    p.innerHTML='<p class="dvc-hint">Ask about a machine, an alarm or a reading. Answers stay here until you close them.</p>';
+    p.innerHTML='<p class="dvc-hint"></p>';
     bar.parentNode.insertBefore(p,bar)}
+  const h=p.querySelector('.dvc-hint');
+  if(h)h.textContent=devChatHub()?'Ask anything, or ask for an app or a widget. Answers stay here until you close them.'
+    :'Ask about a machine, an alarm or a reading. Answers stay here until you close them.';
   devChatPaint();
 }
 function devChatPaint(){
@@ -13078,7 +13397,7 @@ function devChatPaint(){
 }
 function devChatSet(open){
   DEVCHAT.open=open;
-  try{localStorage.setItem('devscene.chat',open?'open':'fold')}catch(e){}
+  try{localStorage.setItem(devChatKey(),open?'open':'fold')}catch(e){}
   devChatPaint();
 }
 function devChatOpen(){if(devChatWide()&&!DEVCHAT.open)devChatSet(true)}
@@ -13100,7 +13419,9 @@ function devChatNews(){
 async function devSceneLoad(){
   if(!DEVSCENE.on||DEVSCENE.busy)return;
   DEVSCENE.busy=true;
-  try{const r=await fetch('/api/devices/board');const d=await r.json();
+  // a desktop that opens one company shows that company's machines (03 deskCompanyOf)
+  const co=!DEVSCENE.every&&typeof deskCompanyOf==='function'&&typeof deskNow==='function'?deskCompanyOf(deskNow()):'';
+  try{const r=await fetch('/api/devices/board'+(co?'?company='+encodeURIComponent(co):''));const d=await r.json();
     if(!r.ok)throw new Error(d.error||'The board could not be read');DEVSCENE.d=d;DEVSCENE.err=''}
   catch(e){DEVSCENE.err=String(e.message||e)}
   DEVSCENE.busy=false;
@@ -13148,7 +13469,8 @@ function devScenePaint(){
   const hot={};al.forEach(a=>{if(a.item)hot[a.machine.toLowerCase()+'|'+a.item]=a.state==='active'?a.level:'pending'});
   const mHot={};al.forEach(a=>{if(a.state==='active'){const k=a.machine.toLowerCase();mHot[k]=mHot[k]==='alarm'?'alarm':a.level}});
   const head=`<header class="dvs-head">
-      <div><h1>Devices</h1><p class="dvs-sum">${ms.length} machine${ms.length===1?'':'s'} · ${things} thing${things===1?'':'s'} ·
+      <div><h1>Devices${d.company?` <small class="dvs-for">${esc(((d.companies||[]).find(c=>c.id===d.company)||{}).name||'')}</small>`
+        :DEVSCENE.every?` <button type="button" class="endbtn dvs-for" data-dvs="every" data-v="0">Every company · show this desktop's</button>`:''}</h1><p class="dvs-sum">${ms.length} machine${ms.length===1?'':'s'} · ${things} thing${things===1?'':'s'} ·
         <b class="${loud.length?'bad':raised.length?'warn':'ok'}">${raised.length?`${raised.length} alarm${raised.length===1?'':'s'}`:'all clear'}</b>
         ${DEVSCENE.err?`<span class="bad"> · ${esc(DEVSCENE.err)}</span>`:''}</p></div>
       <div class="dvs-acts">
@@ -13167,7 +13489,10 @@ function devScenePaint(){
     const st=m.up===false?'down':mHot[ml]||'ok';
     return `<article class="dvs-m ${st}" aria-label="${esc(m.machine)}">
       <h2><i class="dvs-dot" aria-hidden="true"></i>${esc(m.machine)}
-        <span>${m.demo?'warehouse demo · ':''}${m.up===false?'not answering':m.here?'this hub':m.live?'live':'every minute'}</span></h2>
+        <span>${m.demo?'warehouse demo · ':''}${m.up===false?'not answering':m.here?'this hub':m.live?'live':'every minute'}</span>
+        ${(d.companies||[]).length>1&&m.ckey?`<select class="dvs-co" data-ck="${esc(m.ckey)}" aria-label="Company ${esc(m.machine)} is for"
+          title="Which of your companies this machine is for">
+          <option value="">Every company</option>${d.companies.map(c=>`<option value="${esc(c.id)}"${c.id===m.company?' selected':''}>${esc(c.name)}</option>`).join('')}</select>`:''}</h2>
       ${groups.map(g=>`<div class="dvs-g"><h3>${esc(g.name)}</h3>${g.list.map(t=>{
         const h=hot[ml+'|'+t.id]||'';
         return `<button type="button" class="dvs-t${h?' '+h:''}${t.onoff&&t.value?' lit':''}${t.trend?' has-tr':''}" data-dvs="hist"
@@ -13177,10 +13502,14 @@ function devScenePaint(){
           ${t.trend?`<small class="dvs-tr">${devSceneTrendWords(t)}</small>`:''}</button>`}).join('')}</div>`).join('')
         ||'<p class="mut">Nothing on this machine can be read yet.</p>'}
     </article>`}).join('')
+    :d.company&&d.elsewhere?`<p class="dvs-wait">No machine is for ${esc(((d.companies||[]).find(c=>c.id===d.company)||{}).name||'this company')} yet.
+        ${d.elsewhere} of your machine${d.elsewhere===1?' is':'s are'} for another company.
+        <button type="button" class="endbtn" data-dvs="every">Show every machine</button></p>`
     :`<p class="dvs-wait">No devices yet. Machines this hub sets up, and ESP32 boards it holds, show here. ${pInfo('Set a Raspberry Pi up from Devices, or add ESP32 boards to this hub. The warehouse demo in Devices has three zones to try.')}</p>`;
   el.innerHTML=head+(page==='rules'?devRulesHTML(d)
     :devSceneStatsHTML(d.analytics||{})+alarms+`<div class="dvs-grid">${cards}</div>`);
   el.querySelectorAll('[data-dvs]').forEach(b=>b.onclick=()=>devSceneAct(b.dataset.dvs,b));
+  el.querySelectorAll('select.dvs-co').forEach(sel=>sel.onchange=()=>devSceneCompany(sel));
   if(page==='rules')devRulesWire(el,devScenePaint,devSceneLoad);
 }
 /* ---- the analytics: what the floor did, not only what it reads now ----
@@ -13296,8 +13625,21 @@ function devAlarmsHTML(d){
     ${gone.length>cap?`<button class="linkbtn" data-dvs="morepast">Show ${gone.length-cap} more</button>`:''}
   </section>`;
 }
+/* Which company a machine is for (devboard.company_map). A view: a board asked for one company
+   leaves the others' machines out. What an agent may read or switch is still the gate's. */
+async function devSceneCompany(sel){
+  sel.disabled=true;
+  try{const r=await fetch('/api/devices/company',{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({machine:sel.dataset.ck,company:sel.value})});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(j.error||'could not be saved');
+    toast(j.company_name?`Saved. It shows on ${j.company_name}'s desktops.`:'Saved. It shows for every company.');
+  }catch(e){toast('Could not change the company: '+(e.message||e),{kind:'err'})}
+  sel.blur();devSceneLoad();
+}
 async function devSceneAct(act,b){
   if(act==='desk')return switchDesk(+b.dataset.n);
+  if(act==='every'){DEVSCENE.every=b.dataset.v!=='0';return devSceneLoad()}
   if(act==='app')return openApp('devices');
   if(act==='view'){DEVSCENE.view=b.dataset.v;return devAlarmsRepaint()}
   if(act==='morepast'){DEVSCENE.allPast=true;return devAlarmsRepaint()}
@@ -13645,6 +13987,96 @@ function devSceneAlarm(ev){
 }
 // first paint: 01b ran before this file existed, so the scene starts itself (as 01c and 01g do)
 if(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on&&immersiveSceneNow()==='devices')setTimeout(devSceneStart,0);
+/* ================= the App Hub scene: your apps and your widgets, as the desktop =================
+   Asked for as "every desktop I add, I can change the scene: Town, Device, App Hub (with widgets)".
+   The wall (06a-deck.js) already has both faces, but it is an overlay you open and leave. This is
+   the same two things at rest: every widget you have, live, laid out as a board, then the groups
+   of your deck, with the chat docked on the right ("App hub should be organizing widgets with the
+   Chat on the right side"). A desktop set to it is a glance board, a launcher and a place to ask.
+
+   Nothing here is a second list. The groups are DECK.groups (deckShown hides what you hid), the
+   widgets are deckBoardHTML's cards, a tile opens with openApp and its menu is the deck's.
+   Widget frames are the deck's own sandboxed frames, built by deckBoardHTML, mounted only while the
+   desktop is bare: a hidden frame left running is a timer nobody can see. No frame loop and no
+   blur of its own. It is not in LITE_SCENES: what its widgets cost on a Pi's own screen has not
+   been measured, so that screen shows Aurora and a phone or laptop looking at it shows the hub.
+
+   TUI: not applicable, a terminal has no desktop; `bento apps` lists the apps. SUI: words and
+   frames in the desktop layer, like the Devices scene; nothing touches the compositor. */
+var APPHUB={on:false,el:null,live:false,sig:''};
+function appHubStart(){
+  if(APPHUB.on)return;
+  APPHUB.on=true;
+  const desk=document.getElementById('desktop'),home=document.getElementById('home');
+  if(!desk)return;
+  let el=document.getElementById('apphub');
+  if(!el){el=document.createElement('div');el.id='apphub';el.setAttribute('role','region');
+    el.setAttribute('aria-label','Your apps and widgets');desk.insertBefore(el,home?home.nextSibling:null)}
+  APPHUB.el=el;el.hidden=false;
+  // the chat on the right is the Devices scene's panel (01h devChat*), open here unless folded
+  if(typeof devChatMount==='function')devChatMount();
+  appHubPaint();
+}
+function appHubStop(){
+  if(!APPHUB.on)return;
+  APPHUB.on=false;APPHUB.live=false;APPHUB.sig='';
+  const el=document.getElementById('apphub');if(el){el.hidden=true;el.textContent=''}
+  // leaving gives the bar back: answers kept for the panel have nowhere to stay
+  const wrap=document.getElementById('omnicards');
+  if(wrap)[...wrap.children].forEach(c=>{if(c.dataset.done&&c._close)c._close()});
+  const bar=document.getElementById('omnibar');if(bar)bar.classList.remove('dvc-news');
+  // the Devices scene may be the one starting: it reads its own choice for the panel
+  if(typeof DEVSCENE!=='undefined'&&DEVSCENE.on&&typeof devChatMount==='function')devChatMount();
+}
+function appHubBare(){
+  const b=document.body.classList;
+  return !document.hidden&&!b.contains('has-win')&&!b.contains('deck-full')&&!b.contains('exposing');
+}
+/* A window opened or closed, or the wall did: the widgets run only while they can be seen. */
+function appHubSync(){
+  if(!APPHUB.on)return;
+  if(appHubBare()!==APPHUB.live)appHubPaint();
+}
+function appHubPaint(){
+  const el=APPHUB.el;if(!APPHUB.on||!el)return;
+  // the deck and the app table are `let`s in later files: until they exist there is nothing to draw
+  let ready=false;try{ready=!!(DECK&&APPS)}catch(e){}
+  if(!ready)return;
+  if(!appHubBare()){if(APPHUB.live){el.textContent='';APPHUB.live=false;APPHUB.sig=''}return}
+  const groups=DECK.groups.map(g=>({g,ids:deckShown(g)})).filter(x=>x.ids.length);
+  const apps={};(typeof USERAPPS!=='undefined'?USERAPPS:[]).forEach(a=>apps[a.id]=a);
+  const wid=(typeof WIDGETS!=='undefined'?WIDGETS:[]).filter(w=>apps[w.app_id]);
+  // the deck rebuilds often (a fold, a window): only a real change redraws, or every frame reloads
+  const sig=JSON.stringify([groups.map(x=>[x.g.name,x.ids]),wid.map(w=>[w.app_id,w.place||'',apps[w.app_id].widget_size||'m'])]);
+  if(APPHUB.live&&sig===APPHUB.sig)return;
+  APPHUB.live=true;APPHUB.sig=sig;
+  el.innerHTML=`<section class="ah-wid" aria-label="Widgets">
+      <header><h2>Widgets</h2><span class="mut">${wid.length?wid.length+' live':''}</span></header>
+      <div class="ah-board">${deckBoardHTML()}</div></section>
+    <section class="ah-apps" aria-label="Apps">
+      <header><h2>Apps</h2><button type="button" class="endbtn ah-all">All apps</button></header>
+      <div class="ah-groups">${groups.map(({g,ids})=>`<div class="deck-group ah-g">
+        <div class="deck-gname">${esc(g.name)}</div>
+        <div class="deck-tiles">${ids.map(id=>`<button type="button" class="deck-tile" data-app="${esc(id)}"
+          title="${esc(APPS[id].desc||APPS[id].title)}">${appIcon(id,46)}<span>${esc(APPS[id].title)}</span></button>`).join('')}</div>
+      </div>`).join('')}</div></section>`;
+  el.querySelector('.ah-all').onclick=()=>deckFull(true,'apps');
+  el.querySelectorAll('.deck-tile[data-app]').forEach(t=>{
+    t.onclick=()=>openApp(t.dataset.app);
+    t.oncontextmenu=e=>{e.preventDefault();deckTileMenu(e,t.dataset.app)};
+  });
+  el.querySelectorAll('.deck-board').forEach(c=>{
+    const id=c.dataset.w;
+    c.querySelector('.db-open').onclick=()=>openApp('ua_'+id);
+    c.querySelector('.deck-gname').oncontextmenu=e=>{e.preventDefault();deckBoardMenu(e,id)};
+  });
+  const st=el.querySelector('.de-studio'),so=el.querySelector('.de-store');
+  if(st)st.onclick=()=>openApp('studio');
+  if(so)so.onclick=()=>openApp('store');
+}
+document.addEventListener('visibilitychange',()=>appHubSync());
+// the first paint runs before this file exists (01b applyImmersive), so the scene starts itself
+if(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on&&immersiveSceneNow()==='apps')setTimeout(appHubStart,0);
 /* ================= themes ================= */
 // A theme is not just colors — it can carry a web font and extra CSS that restyles the whole
 // desktop (taskbar, windows, icons, widgets). Built-in themes:
@@ -14062,10 +14494,146 @@ function buildPager(){
   // the wheel over the pager scrolls the desktops, one notch at a time
   if(!p._wheel){p._wheel=1;p.addEventListener('wheel',e=>{e.preventDefault();
     const now=Date.now();if(now-(p._wt||0)<220)return;p._wt=now;switchDeskBy(e.deltaY>0||e.deltaX>0?1:-1)},{passive:false})}
+  // a new desktop is somewhere to put something: go there and ask what it shows
   if(DESKS<6){const a=document.createElement('button');a.className='pgb add';a.textContent='+';a.title='add a desktop';
-    a.onclick=()=>{DESKS++;localStorage.setItem('desks',DESKS);buildPager()};p.appendChild(a)}
+    a.onclick=()=>deskAdd();p.appendChild(a)}
+  deskBtnPaint();
 }
-var DESK_SCENE_GLYPH={island:'⌂',devices:'▦',aurora:'✦',movement:'◷',crew:'☺',office:'▤',hq:'▤',world:'❀',mind:'✺'};
+var DESK_SCENE_GLYPH={island:'⌂',devices:'▦',apps:'⊞',aurora:'✦',movement:'◷',crew:'☺',office:'▤',hq:'▤',world:'❀',mind:'✺'};
+/* ---- what a desktop shows, chosen on the desktop ----
+   Asked for as "every desktop I add, I can change the scene of the desktop: Town, Device, App Hub
+   (with widgets). That option should be available on the desktop itself. Also I should be able to
+   have a different company in different desktops". The scenes were already per desktop
+   (01b immersiveSceneOf), but the only picker was in Settings. #deskbtn in the menu bar names
+   the scene of the desktop in front and opens the menu; a new desktop opens it by itself.
+   A desktop may also OPEN one of your companies when you come to it (desk.company.d<n>, this
+   browser's). The open company is the account's, so another browser signed in as you moves too.
+   TUI: not applicable, a terminal has no desktops or scenes; `bento company open` switches
+   companies there. SUI: a page control inside the menu-bar band, whose height it never changes. */
+var DESK_MAIN_SCENES=['island','devices','apps'];
+var DESKCO={list:[],at:0};
+function deskCompanyOf(n){try{return localStorage.getItem('desk.company.d'+n)||''}catch(e){return ''}}
+function deskCompanyName(id){const c=DESKCO.list.find(x=>x.id===id);return c?c.name:''}
+async function deskCompaniesLoad(){
+  try{const r=await fetch('/api/companies',{quiet:true});if(!r.ok)return;
+    const j=await r.json();DESKCO.list=(j.companies||[]).filter(c=>c.id);DESKCO.at=Date.now();deskBtnPaint()}catch(e){}
+}
+function deskCompanySet(n,id){
+  try{id?localStorage.setItem('desk.company.d'+n,id):localStorage.removeItem('desk.company.d'+n)}catch(e){}
+  deskBtnPaint();
+  if(n===curDesk){deskCompanySync(n);deskCompanyChanged()}
+}
+/* The desktop's company differs from the one the scene was drawn for: the Devices board asks again. */
+function deskCompanyChanged(){if(typeof DEVSCENE!=='undefined')DEVSCENE.every=false;if(typeof DEVSCENE!=='undefined'&&DEVSCENE.on&&typeof devSceneLoad==='function')devSceneLoad()}
+/* Coming to a desktop opens its company. A desktop with none keeps whichever is open. */
+async function deskCompanySync(n){
+  const id=deskCompanyOf(n);if(!id)return;
+  if(!DESKCO.at)await deskCompaniesLoad();
+  const c=DESKCO.list.find(x=>x.id===id);
+  if(!c){if(DESKCO.at)deskCompanySet(n,'');return}      // a company you no longer keep
+  if(c.active||n!==curDesk)return;
+  try{
+    const r=await fetch('/api/companies/active',{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id,surface:'gui'})});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok)return toast(`Desktop ${n} could not open ${c.name}: ${j.error||'the server refused'}`,{kind:'err'});
+    DESKCO.list=(j.companies||[]).filter(x=>x.id);DESKCO.at=Date.now();
+    toast(`Desktop ${n} · ${c.name}`);deskBtnPaint();
+  }catch(e){toast(`Desktop ${n} could not open ${c.name}`,{kind:'err'})}
+}
+function deskAdd(){
+  if(DESKS>=9)return;
+  DESKS++;localStorage.setItem('desks',DESKS);
+  // a number used before starts clean: no scene or company left from a desktop removed earlier
+  try{localStorage.removeItem('immersive.scene.d'+DESKS);localStorage.removeItem('desk.company.d'+DESKS)}catch(e){}
+  buildPager();switchDesk(DESKS);
+  setTimeout(()=>deskMenu(),240);
+}
+/* Desktop n is going: every desktop after it takes the number before, with its scene and company. */
+function deskShift(n){
+  const get=k=>{try{return localStorage.getItem(k)}catch(e){return null}};
+  const put=(k,v)=>{try{v?localStorage.setItem(k,v):localStorage.removeItem(k)}catch(e){}};
+  const im=typeof immersiveSceneOf==='function',sc=[],co=[];
+  for(let i=n+1;i<=DESKS;i++){sc.push(im?immersiveSceneOf(i):'');co.push(deskCompanyOf(i))}
+  for(let i=n;i<DESKS;i++){
+    const s=sc[i-n];
+    if(i===1){if(im&&IMMERSIVE.chosen&&s){put('immersive.scene',s);IMMERSIVE.scene=s}}
+    else put('immersive.scene.d'+i,s);
+    put('desk.company.d'+i,co[i-n]);
+  }
+  put('immersive.scene.d'+DESKS,'');put('desk.company.d'+DESKS,'');
+}
+function deskBtnPaint(){
+  const b=document.getElementById('deskbtn');if(!b)return;
+  const on=typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on;
+  const sc=on&&typeof immersiveSceneNow==='function'?immersiveSceneNow():'';
+  const co=deskCompanyName(deskCompanyOf(curDesk));
+  b.textContent='';
+  const g=document.createElement('span');g.className='dkb-g';g.setAttribute('aria-hidden','true');g.textContent=sc?(DESK_SCENE_GLYPH[sc]||'·'):'▪';
+  const l=document.createElement('span');l.className='dkb-l';l.textContent=(sc?(IMMERSIVE_NAMES[sc]||sc):'Desktop '+curDesk)+(co?' · '+co:'');
+  const c=document.createElement('span');c.className='dkb-c';c.setAttribute('aria-hidden','true');c.textContent='▾';
+  b.append(g,l,c);
+  b.setAttribute('aria-label',`Desktop ${curDesk} shows ${sc?(IMMERSIVE_NAMES[sc]||sc):'no scene'}${co?', company '+co:''}. Change it`);
+  b.onclick=()=>deskMenu();
+}
+function deskMenuClose(){
+  const m=document.getElementById('deskmenu');if(m)m.remove();
+  document.removeEventListener('pointerdown',deskMenuOutside,true);document.removeEventListener('keydown',deskMenuKey,true);
+  const b=document.getElementById('deskbtn');if(b)b.setAttribute('aria-expanded','false');
+}
+function deskMenuOutside(e){const m=document.getElementById('deskmenu');
+  if(m&&!m.contains(e.target)&&!(e.target.closest&&e.target.closest('#deskbtn')))deskMenuClose()}
+function deskMenuKey(e){if(e.key==='Escape'){e.stopPropagation();deskMenuClose();const b=document.getElementById('deskbtn');if(b)b.focus()}}
+/* The menu for the desktop in front. Built with text nodes: a company's name is the person's words. */
+function deskMenu(){
+  if(document.getElementById('deskmenu'))return deskMenuClose();
+  const n=curDesk,m=document.createElement('div');m.id='deskmenu';m.setAttribute('role','dialog');m.setAttribute('aria-label',`Desktop ${n}`);
+  const el=(tag,cls,text)=>{const x=document.createElement(tag);if(cls)x.className=cls;if(text!==undefined)x.textContent=text;return x};
+  const paint=()=>{
+    m.textContent='';
+    m.append(el('h3','',`Desktop ${n}`));
+    const on=typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on,now=on?immersiveSceneNow():'';
+    m.append(el('h4','','Scene'));
+    if(!on){
+      const p=el('p','dkm-note','Scenes come with the immersive look, which is off in this browser.');
+      const t=el('button','endbtn','Turn it on');t.type='button';
+      t.onclick=()=>{if(typeof setImmersive==='function')setImmersive(true);paint();deskBtnPaint()};
+      m.append(p,t);
+    }else{
+      const lite=typeof liteScreen==='function'&&liteScreen(),ok=s=>!lite||LITE_SCENES[s];
+      const row=(list,cls)=>{const r=el('div',cls);r.setAttribute('role','group');
+        list.filter(ok).forEach(s=>{const b=el('button','dkm-s'+(s===now?' on':''));b.type='button';b.setAttribute('aria-pressed',String(s===now));
+          b.append(el('i','',DESK_SCENE_GLYPH[s]||'·'),el('span','',IMMERSIVE_NAMES[s]||s));
+          b.onclick=()=>{setImmersiveScene(s);paint()};r.append(b)});
+        return r};
+      m.append(row(DESK_MAIN_SCENES,'dkm-main'));
+      const rest=IMMERSIVE_SCENES.filter(s=>DESK_MAIN_SCENES.indexOf(s)<0&&ok(s));
+      if(rest.length){m.append(el('h4','','More scenes'),row(rest,'dkm-more'))}
+      if(lite)m.append(el('p','dkm-note','This small machine draws only the light scenes on its own screen.'));
+    }
+    if(DESKCO.list.length>1){
+      m.append(el('h4','','Company'));
+      const cur=deskCompanyOf(n),r=el('div','dkm-co');r.setAttribute('role','radiogroup');r.setAttribute('aria-label','Company on this desktop');
+      [{id:'',name:'Whichever is open'}].concat(DESKCO.list).forEach(c=>{
+        const b=el('button','dkm-c'+(c.id===cur?' on':''));b.type='button';b.setAttribute('role','radio');b.setAttribute('aria-checked',String(c.id===cur));
+        b.append(el('span','',c.name));if(c.id&&c.active)b.append(el('small','','open now'));
+        b.onclick=()=>{deskCompanySet(n,c.id);paint()};r.append(b)});
+      m.append(r,el('p','dkm-note','Coming to this desktop opens that company, everywhere you are signed in.'));
+    }
+    if(DESKS>1){const x=el('button','endbtn dkm-rm','Remove this desktop');x.type='button';
+      x.onclick=()=>{deskMenuClose();removeDesk(n)};m.append(x)}
+  };
+  paint();
+  document.body.append(m);
+  const b=document.getElementById('deskbtn');
+  if(b){b.setAttribute('aria-expanded','true');const r=b.getBoundingClientRect();
+    m.style.top=Math.round(r.bottom+6)+'px';
+    m.style.right=Math.max(8,Math.round(innerWidth-r.right))+'px'}
+  document.addEventListener('pointerdown',deskMenuOutside,true);document.addEventListener('keydown',deskMenuKey,true);
+  const first=m.querySelector('button.on')||m.querySelector('button');if(first)first.focus();
+  // the list may be older than a company made in another window
+  deskCompaniesLoad().then(()=>{if(document.getElementById('deskmenu')===m)paint()});
+}
 function deskScenesDiffer(){
   if(typeof immersiveSceneOf!=='function')return false;
   const s=new Set();for(let i=1;i<=DESKS;i++)s.add(immersiveSceneOf(i));return s.size>1;
@@ -14090,6 +14658,8 @@ function switchDesk(n){
   curDesk=n;localStorage.setItem('curDesk',n);
   // each desktop shows its own scene: the Town on one, the Devices board on another
   if(typeof immersiveDeskChanged==='function')immersiveDeskChanged(sceneWas);
+  // a desktop may open one of your companies (deskCompanySync), and its board follows
+  deskMenuClose();deskCompanySync(n);deskCompanyChanged();
   // In session mode a desktop is a real sway workspace, so external windows move
   // with it instead of following you everywhere. The shell comes along too.
   if(typeof PLATFORM!=='undefined'&&PLATFORM.mode==='de')
@@ -14128,6 +14698,9 @@ function moveActiveToDesk(n){
   toast('moved "'+act.app.title+'" to Desktop '+n);
 }
 
+
+// which companies a desktop can open (the menu asks again when it opens)
+setTimeout(()=>{deskCompaniesLoad()},1200);
 /* ================= motion =================
    One motion vocabulary for the whole shell (WAAPI). Everything routes through
    Motion so prefers-reduced-motion is honored in one place. Durations/curves
@@ -14212,6 +14785,8 @@ function showCtxItems(e,items,opts){
   m.innerHTML='';
   items.forEach((it,i)=>{
     if(it===null){m.appendChild(document.createElement('hr'));return}
+    // a heading inside one list (the folded menu bar's menus): words, not a button
+    if(it.head){const h=document.createElement('div');h.className='mh';h.textContent=it.label;m.appendChild(h);return}
     const b=document.createElement('button');b.dataset.i=i;
     if(it.danger)b.style.color='var(--err)';
     b.textContent=it.label;
@@ -15567,6 +16142,11 @@ function raiseShell(on){
   return fetch('/api/shell/raise',{method:'POST',quiet:true,headers:{'Content-Type':'application/json'},
     body:JSON.stringify({on:on!==false})}).catch(()=>{});
 }
+function mbFolded(menus){
+  const out=[];
+  menus.forEach(([title,items],i)=>{if(i)out.push(null);out.push({label:title,head:true});out.push(...items)});
+  return out;
+}
 /* ---- the menu bar renders the focused window's menus ---- */
 function buildAppMenus(){
   const box=$('#mbmenus');if(!box)return;
@@ -15592,7 +16172,10 @@ function buildAppMenus(){
   paintMenuBar(box,menus,()=>(activeWin()===w?menuStd(w):menus));
 }
 function paintMenuBar(box,menus,live){
-  box.innerHTML=menus.map(([title],i)=>`<button data-i="${i}">${esc(title)}</button>`).join('');
+  // The last button is the same menus folded into one list. CSS shows it only when the
+  // bar has run out of room (menubarFit's last step), so folding never repaints the bar.
+  box.innerHTML=menus.map(([title],i)=>`<button data-i="${i}">${esc(title)}</button>`).join('')
+    +`<button class="mbm-all" data-all="1" aria-label="Menus" title="Menus">☰</button>`;
   /* The dropdown is a popover with the title as its anchor. Before the manager,
      the title's click opened the menu and the document-level "click outside the
      context menu" listener closed it in the SAME event — so no menu ever opened
@@ -15606,7 +16189,7 @@ function paintMenuBar(box,menus,live){
       box.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
       let set=menus;
       try{set=live()||menus}catch(e){}
-      const items=(set[+b.dataset.i]||menus[+b.dataset.i])[1];
+      const items=b.dataset.all?mbFolded(set):(set[+b.dataset.i]||menus[+b.dataset.i])[1];
       showCtxItems({clientX:r.left,clientY:r.bottom+2,preventDefault(){}},items,
         {anchor:b,close:()=>b.classList.remove('on')});
     };
@@ -16098,6 +16681,95 @@ function renderAppWindow(body,w){
     onMessage:m=>{if(m.type==='ended'){body.innerHTML=emptyBox('This app has closed','Open it again from the Apps launcher.')}},
     onError:t=>{body.innerHTML=emptyBox('This app is not open any more',esc(t))}});
 }
+/* ================= the menu bar fits its screen =================
+   Reported with a 1366x768 screenshot: the space chip sat on top of Window and Help,
+   "Bento Box AI" wrapped onto two lines and the clock onto three. Every part of the bar
+   was a flex item that could shrink, so the menus shrank under their neighbours instead
+   of anything giving way.
+
+   Now nothing in the bar shrinks or wraps (44-menubar-fit.css). When it does not fit, the
+   icon controls move to a rail on the right edge first (below), and only if the bar still
+   does not fit does it let go of things in ONE order, least useful first, each step a class on #menubar:
+     f1 the date beside the clock          f5 battery percent, your name (initial stays)
+     f2 the words "Bento Box AI"            f6 the space name shortened further
+     f3 the ADMIN tag and the model name    f7 the focused app's name (its menus stay)
+     f4 the space name, to 150px            f8 the app's menus folded into one ☰ list
+   and on a phone-sized bar: f9 the brain chip as its dot, f10 the space chip, f11 your chip.
+   Every one is still a tooltip or a click away; nothing is removed from the machine.
+
+   Measured, never guessed: each pass starts from nothing hidden and adds a step while
+   the bar is wider than the screen. It runs on resize and when anything in the bar
+   changes (a window takes focus, the clock ticks, a chip appears); it only changes
+   classes on #menubar itself, which the observer does not watch, so it cannot loop.
+
+   SUI: the bar's height is reported to the compositor (00-sui.js); nowrap keeps it one
+   line, which is the same height on every screen. TUI: not applicable, a terminal has
+   no menu bar. A phone keeps its own layout (15-responsive.css); this only ever hides. */
+/* The right edge first (asked for as "use the right part of the screen, like the tool bar
+   extending to the right on the edge"): before anything is hidden, the bar's icon controls
+   (mic, network, sound and battery, notifications, your account, the brain) move into a rail
+   down the right edge of the screen, and the top bar keeps the menus, the space and the
+   brand. The desktop gives the rail its width (body.mb-rail #desktop), so a window, a
+   maximised one too, stops at the rail instead of lying under it. The elements are MOVED,
+   not copied: same ids, same handlers, one of each.
+   Only where the page owns the screen's edges: not in SUI (the compositor reserves the top
+   and bottom bands only, so native windows would cover a rail; there the bar hides instead),
+   not on a phone (its own layout, 15-responsive.css) and not in the kiosk. */
+/* Two stages: the plain icons go first; your chip and the brain chip keep their words in the
+   top bar and move only if the bar still does not fit (the first cut moved all six at once,
+   and a 1366 screen showed a P and a dot beside 330px of empty bar). */
+var MBRAIL_STAGES=[['tray-voice','tray-net','tray-ctl','tray-bell'],['mb-user','fwdchip']];
+var MBRAIL_IDS=MBRAIL_STAGES[0].concat(MBRAIL_STAGES[1]);
+var MBFIT={n:0,max:11,raf:0,rail:0,obs:null};
+function menubarRailAllowed(){
+  const b=document.body.classList;
+  if(b.contains('dev-mobile')||b.contains('kiosk'))return false;
+  try{if(typeof suiActive==='function'&&suiActive())return false}catch(e){}
+  try{if(localStorage.getItem('menubar.rail')==='0')return false}catch(e){}
+  return !!document.getElementById('mbrail');
+}
+function menubarRail(stage){
+  const on=stage>0,ids=on?MBRAIL_STAGES.slice(0,stage).flat():[];
+  const rail=document.getElementById('mbrail'),tray=document.getElementById('tray');
+  if(!rail||!tray)return;
+  ids.forEach(id=>{const e=document.getElementById(id);if(e&&e.parentNode!==rail)rail.appendChild(e)});
+  {
+    const spin=document.getElementById('spin'),dot=document.getElementById('statdot');
+    MBRAIL_IDS.filter(id=>!ids.includes(id)).forEach(id=>{const e=document.getElementById(id);if(!e||e.parentNode===tray)return;
+      const before=(id==='mb-user'||id==='fwdchip')?dot:spin;
+      tray.insertBefore(e,before&&before.parentNode===tray?before:null)});
+  }
+  rail.hidden=!on;
+  document.body.classList.toggle('mb-rail',on);
+  MBFIT.rail=stage;
+}
+function menubarFit(){
+  MBFIT.raf=0;
+  const mb=document.getElementById('menubar');if(!mb)return;
+  const set=n=>{for(let i=1;i<=MBFIT.max;i++)mb.classList.toggle('f'+i,i<=n)};
+  const over=()=>mb.scrollWidth>mb.clientWidth+1;
+  let n=0;set(0);
+  menubarRail(0);
+  // the icons to the edge, then the date, then the two chips, then the steps above
+  const rail=menubarRailAllowed();
+  if(rail&&over())menubarRail(1);
+  if(over()){n=1;set(1)}
+  if(rail&&over())menubarRail(2);
+  while(n<MBFIT.max&&over()){n++;set(n)}
+  MBFIT.n=n;
+  // what this pass moved is not news: drop it, or the observer would run the fit again
+  if(MBFIT.obs)MBFIT.obs.takeRecords();
+}
+function menubarFitSoon(){if(!MBFIT.raf)MBFIT.raf=requestAnimationFrame(menubarFit)}
+(function(){
+  const mb=document.getElementById('menubar');if(!mb)return;
+  try{new ResizeObserver(menubarFitSoon).observe(mb)}catch(e){addEventListener('resize',menubarFitSoon)}
+  const opts={childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['hidden']};
+  try{MBFIT.obs=new MutationObserver(menubarFitSoon);MBFIT.obs.observe(mb,opts);
+    const rail=document.getElementById('mbrail');if(rail)MBFIT.obs.observe(rail,opts)}catch(e){}
+  if(document.fonts&&document.fonts.ready)document.fonts.ready.then(menubarFitSoon);
+  menubarFitSoon();
+})();
 /* ================= apps ================= */
 const APPS={
   chat:{id:'chat',title:'Agent Chat',icon:'',w:920,h:620,desc:'Talk to your machine',
@@ -17022,6 +17694,8 @@ function buildDeck(fresh){
   if(DECKFULL&&!board)deckFilter(DECKQ,true);   // a rebuild must not drop the query
   if(open&&(fresh||!DECK_LASTOPEN))deckStagger();
   DECK_LASTOPEN=open;
+  // the App Hub scene (01i) draws the same groups and widgets: one seam keeps it current
+  if(typeof appHubPaint==='function')appHubPaint();
 }
 /* ---- the wall's header: two tabs, a search box, and the way out ----
    The count is on the tab rather than beside a title because the tabs are what
@@ -18005,7 +18679,7 @@ function micToggle(){
   rec.onerror=e=>toast('mic: '+e.error);
   rec.start();recOn=true;$('#mic')?.classList.add('rec');
 }
-function agentName(){return (cfg&&cfg.agent_name)||'Aria'}
+function agentName(){return (cfg&&cfg.agent_name)||'Bento'}
 
 /* ================= a voice per agent =================
    With voice on, or in Jarvis mode, a huddle, a free talk and one agent asking another
@@ -18050,7 +18724,43 @@ function speechStop(){
   SPEECH.gen++;SPEECH.chain=Promise.resolve();SPEECH.pending=0;
   try{SPEECH.audio&&SPEECH.audio.pause()}catch(e){}
   try{window.speechSynthesis&&speechSynthesis.cancel()}catch(e){}
+  speechPill();
 }
+/* ---- Stop the voice ----
+   Reported as "if I want to stop the voice in the chat I should be able to do that, I have
+   no idea how to stop the voice". The only way was the header's "Voice on" button, which
+   reads as a setting, is not on the Office's chat panel or the prompt bar at all, and
+   turns the voice off for good. So while anything is being said there is one pill on
+   screen, on every surface, that stops THIS reply: what is being said, what is queued,
+   and the rest of a reply still arriving. The voice stays on for the next one. Esc does
+   the same. Not shown in Jarvis, whose own screen is the voice.
+   GUI and SUI: this pill. TUI: the terminal does not speak. Kiosk: the pill is there too. */
+function speechHush(){
+  // the reply being read as it arrives says nothing more (speechLiveFeed / speechLiveEnd)
+  if(SPEECH_LIVE&&SPEECH_LIVE.cid)SPEECH_LIVE.hushed=true;
+  SPEECH.hushedAt=Date.now();
+  speechStop();
+}
+function speechSpeaking(){return SPEECH.pending>0}
+function speechPill(){
+  if(typeof document==='undefined'||!document.body)return;
+  let el=document.getElementById('voicestop');
+  const on=speechSpeaking()&&!(typeof JARVIS!=='undefined'&&JARVIS.on);
+  if(!on){if(el)el.classList.remove('on');return}
+  if(!el){
+    el=document.createElement('button');el.id='voicestop';el.type='button';
+    el.setAttribute('aria-label','Stop the voice');el.title='Stop the voice (Esc)';
+    const sq=document.createElement('span');sq.className='vs-sq';sq.textContent='■';
+    const tx=document.createElement('span');tx.className='vs-tx';tx.textContent='Stop voice';
+    el.appendChild(sq);el.appendChild(tx);
+    el.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();speechHush()});
+    document.body.appendChild(el);
+  }
+  el.classList.add('on');
+}
+if(typeof document!=='undefined')document.addEventListener('keydown',e=>{
+  // Esc stops what is being said; whatever else Esc closes still closes
+  if(e.key==='Escape'&&speechSpeaking()&&!(typeof JARVIS!=='undefined'&&JARVIS.on))speechHush()},true);
 function speechWho(name){return name&&name!=='@agent'?name:agentName()}
 function browserSay(name,clean){
   return new Promise(res=>{
@@ -18067,8 +18777,8 @@ function speakAs(name,text,done){
   const clean=voiceClean(text);
   if(!clean){if(done)done();return}
   if(!SPEECH.loaded){speechLoad().then(()=>speakAs(name,text,done));return}
-  SPEECH.pending++;
-  const settle=()=>{SPEECH.pending=Math.max(0,SPEECH.pending-1)};
+  SPEECH.pending++;speechPill();
+  const settle=()=>{SPEECH.pending=Math.max(0,SPEECH.pending-1);speechPill()};
   if(SPEECH.engine==='browser'){
     // queued behind whatever is still being said, like every other engine
     const g0=SPEECH.gen;
@@ -18129,7 +18839,9 @@ function speechLiveStart(L){
 }
 function speechLiveFeed(cid,full){
   if(!speechLiveOk())return;
-  const L=speechLiveFor(cid),rest=speechLiveText(full).slice(L.said);
+  const L=speechLiveFor(cid);
+  if(L.hushed)return;                 // the person stopped this reply's voice
+  const rest=speechLiveText(full).slice(L.said);
   let end=-1,m;const re=/[.!?…](?=["')\]]?\s)|\n/g;
   while((m=re.exec(rest)))end=m.index+m[0].length;
   if(end<0)return;
@@ -18145,6 +18857,9 @@ function speechLiveFeed(cid,full){
    been said. False when this turn was not being spoken live (the caller speaks it whole). */
 function speechLiveEnd(cid,full,done){
   const L=SPEECH_LIVE;
+  if(L.cid===cid&&L.hushed){
+    // stopped by the person: the rest is not said, and neither is the whole reply
+    SPEECH_LIVE={cid:null,said:0,on:false,lastAt:0};if(done)done();return true}
   if(L.cid!==cid||!L.on){SPEECH_LIVE={cid:null,said:0,on:false,lastAt:0};return false}
   const rest=speechLiveText(full).slice(L.said);
   SPEECH_LIVE={cid:null,said:0,on:false,lastAt:0};
@@ -18157,6 +18872,7 @@ function speechLiveTool(cid,ev){
   if(!speechLiveOk()||!ev||ev.pending_approval)return;
   let w=SPEECH_TOOL_WORDS[ev.name];if(!w)return;
   const L=speechLiveFor(cid);
+  if(L.hushed)return;
   // one line at a time, and not more than one every eight seconds
   if(SPEECH.pending>0||Date.now()-L.lastAt<8000)return;
   const a=ev.args||{};
@@ -19087,11 +19803,18 @@ function handle(ev){
     // somebody new wrote to the bot: the owner decides here as well as on their phone
     case 'telegram_request':
       toast('📩 '+(ev.title||'Someone')+' wants to talk to '+agentName()+' on Telegram: “'+(ev.text||'')+'”',
-        {kind:'warn',ms:60000,label:'Allow',go:()=>{tgAllow(ev.chat_id,1);toast((ev.title||'They')+' can talk to '+agentName()+' now')}});
+        {kind:'warn',ms:60000,label:'Allow',go:()=>{if(ev.member)tgMember(ev.chat_id,ev.member,'allowed');else tgAllow(ev.chat_id,1);
+          toast((ev.title||'They')+' can talk to '+agentName()+' now')}});
       refreshApp('telegram');break;
+    // the same question for WhatsApp: this account's desktop is one of the places it is asked
+    case 'whatsapp_request':
+      toast('📩 '+(ev.title||'Someone')+' wants to talk to '+agentName()+' on WhatsApp: “'+(ev.text||'')+'”',
+        {kind:'warn',ms:60000,label:'Allow',go:()=>{waAllow(ev.wa_id,1);toast((ev.title||'They')+' can talk to '+agentName()+' now')}});
+      if(typeof waPanel==='function')waPanel();break;
+    case 'whatsapp_chats': if(typeof waPanel==='function')waPanel(); break;
     case 'knowledge_update': refreshApp('memory'); refreshApp('kg'); refreshApp('profile'); break;
     case 'assets_update': refreshApp('gallery'); refreshApp('timeline'); break;
-    case 'spaces_update': loadSpaces(true).then(paintSpaceChip); refreshApp('spaces'); break;
+    case 'spaces_update': loadSpaces(true).then(paintSpaceChip); refreshApp('spaces'); if(typeof deskCompaniesLoad==='function')deskCompaniesLoad(); break;
     case 'fabric_event':
       // a flow moved: its mark lights on the dial (heartbeats are not movement)
       if(typeof movementPulse==='function'&&ev.event!=='heartbeat')movementPulse('flow',ev.flow||ev.agent||ev.event,ev);
@@ -19415,6 +20138,7 @@ function renderChat(body){
           <option value="full">Full autonomy</option>
         </select>
         <button id="ttsbtn" class="endbtn" title="Speak replies aloud"></button>
+        <button id="phonebtn" class="endbtn" title="Carry this chat on in Telegram or WhatsApp, or send its last answer or its story there" onclick="phoneSend()">➤ Phone</button>
         <button id="tracebtn" class="endbtn" title="Download everything this chat did as one JSON file: messages, every run, the gate's decisions, the office and who had which tools (secrets masked). Give it to an AI to find what went wrong." onclick="chatTrace()">⤓ JSON</button>
         <button id="clearses" class="endbtn" title="Wipe this conversation's messages and start fresh">Clear session</button>
         ${/* phone only: the three controls past the brain go behind one button —
@@ -19622,7 +20346,11 @@ async function loadConvs(){
   const row=c=>{
     const el=document.createElement('div');el.className='conv'+(c.id===currentConv?' active':'');
     el.innerHTML=`<span class="t"></span><button class="del">✕</button>`;
-    el.querySelector('.t').textContent=(RUNNING.has(c.id)?'● ':'')+(c.title||'untitled');
+    // a phone chat's session is named for the session: its chat is the group's heading
+    const ph=CONVTAB==='channels'&&c.phone;
+    el.querySelector('.t').textContent=(RUNNING.has(c.id)?'● ':'')+(ph?(c.phone.label||c.title||'untitled'):(c.title||'untitled'));
+    if(ph&&c.phone.open){const o=document.createElement('span');o.className='onphone';o.textContent='on the phone';
+      o.title='The session that chat is in now';el.insertBefore(o,el.querySelector('.del'))}
     if(chatFromMachine(c))el.classList.add('conv-machine',c.origin==='zero'?'zero':'team');
     if(RUNNING.has(c.id))el.querySelector('.t').style.color='var(--acc,#5eead4)';
     el.onclick=e=>{if(!e.target.classList.contains('del'))openConv(c.id)};
@@ -19641,7 +20369,19 @@ async function loadConvs(){
     :[['',()=>true]];
   if(CONVTAB==='huddles'){const nb=document.createElement('button');nb.className='endbtn conv-new-huddle';
     nb.textContent='＋ New huddle';nb.onclick=chatNewHuddle;box.appendChild(nb)}
-  groups.forEach(([label,test])=>{
+  // Channels: every session of one phone chat under that chat, with a way to start another here
+  if(CONVTAB==='channels'){
+    const seen=new Map();
+    items.forEach(c=>{const k=c.phone?c.phone.channel+':'+c.phone.to:'';if(!seen.has(k))seen.set(k,[]);seen.get(k).push(c)});
+    seen.forEach((its,k)=>{
+      if(k){const p=its[0].phone,h=document.createElement('div');h.className='convgrp phone';
+        const s=document.createElement('span');s.textContent=(p.channel==='telegram'?'Telegram':'WhatsApp')+' · '+p.chat+(its.length>1?' · '+its.length+' sessions':'');
+        const nb=document.createElement('button');nb.textContent='＋';nb.title='Start another session for this chat';nb.setAttribute('aria-label','New session for '+p.chat);
+        nb.onclick=()=>phoneNewSession(p.channel,p.to);h.append(s,nb);box.appendChild(h)}
+      else if(seen.size>1){const h=document.createElement('div');h.className='convgrp';h.textContent='Other';box.appendChild(h)}
+      its.forEach(c=>box.appendChild(row(c)))});
+  }
+  else groups.forEach(([label,test])=>{
     const its=items.filter(test);
     if(!its.length)return;
     if(label){const h=document.createElement('div');h.className='convgrp';h.textContent=label;box.appendChild(h)}
@@ -19922,8 +20662,8 @@ function paintForwardChip(){
   chip.innerHTML=(agent?'⇥ ':'▲ ')+esc(name)+'<span class="fwdmdl">'+esc(model)+'</span>';
   chip.title=(agent
       ?'Every turn on this machine is answered by '+name
-        +' — apps and App Studio still use '+((cfg&&cfg.agent_name)||'Aria')
-      :((cfg&&cfg.agent_name)||'Aria')+' answers, running on '+(cur.model||'no model yet'))
+        +' — apps and App Studio still use '+((cfg&&cfg.agent_name)||'Bento')
+      :((cfg&&cfg.agent_name)||'Bento')+' answers, running on '+(cur.model||'no model yet'))
     +'. Click to change it.';
   chip.classList.toggle('engine',agent);
 }
@@ -20387,10 +21127,11 @@ function fileChips(root){
     fileChipWire(b);
   });
 }
-/* ---------------- @ suggestions: an agent or a department, by name ----------------
+/* ---------------- @ suggestions: an agent, a department or a company, by name ----------------
    Typing @ at the start of a message offers the people and the departments it can
    reach: `@nora …` is the specialist answering itself (fabric.parse_mention), `@Sales …`
-   is a run of that department's desk (company.parse_department), `@a @b …` a huddle.
+   is a run of that department's desk (company.parse_department), `@a @b …` a huddle,
+   and `@Acme …` asks to open another of your companies and answers there.
    One list from the server (/api/chat/addresses → company.addresses), one popup, and
    every composer gets it by delegation: Chat (#input), the prompt bar (#omni-in) and
    every app's agent panel, the Office's included (.cp-in). Nothing is sent by picking;
@@ -20425,6 +21166,9 @@ function atsMatch(d,q){
     sub:(x.head?'head '+x.head+' · ':'')+x.people+' '+(x.people===1?'person':'people'),hex:x.hex,head:x.head,desk:x.desk})});
   (d.agents||[]).forEach(x=>{if(!k||has(x.name)||has(x.title))out.push({kind:'agent',name:x.name,
     sub:[x.title,x.dept].filter(Boolean).join(' · ')||'specialist'})});
+  // another of your companies: '@Acme' asks whether to open it (company.parse_company)
+  (d.companies||[]).forEach(x=>{if(!k||has(x.name))out.push({kind:'co',name:x.name,
+    sub:'company · asks to open it'+(x.about?' · '+x.about:'')})});
   return out.slice(0,8);
 }
 function atsClose(){if(ATS.box){ATS.box.remove();ATS.box=null}ATS.items=[];ATS.el=null}
@@ -20437,8 +21181,9 @@ function atsPaint(){
       e.preventDefault();atsPick(+r.dataset.i)})}
   ATS.box.innerHTML=ATS.items.map((x,i)=>`<div class="ats-row${i===ATS.sel?' on':''}" data-i="${i}" role="option" aria-selected="${i===ATS.sel}">
     ${x.kind==='dept'?`<span class="ats-dot" style="background:${esc(x.hex||'#64748b')}">▦</span>`
+      :x.kind==='co'?'<span class="ats-dot">⌂</span>'
       :(typeof avatarImg==='function'&&avatarImg(x.name,'ats-av'))||'<span class="ats-dot">@</span>'}
-    <span class="ats-name">${x.kind==='dept'?esc(x.name):'@'+esc(x.name)}</span>
+    <span class="ats-name">${x.kind==='agent'?'@'+esc(x.name):esc(x.name)}</span>
     <span class="ats-sub">${x.kind==='dept'?(x.desk?'department · ':'department, no desk · '):''}${esc(x.sub)}</span></div>`).join('');
   const r=el.getBoundingClientRect(),w=Math.min(360,innerWidth-32);
   ATS.box.style.width=w+'px';
@@ -20480,6 +21225,93 @@ document.addEventListener('keydown',e=>{
 },true);
 document.addEventListener('focusout',e=>{if(e.target===ATS.el)setTimeout(()=>{if(document.activeElement!==ATS.el)atsClose()},120)},true);
 addEventListener('resize',()=>{if(ATS.box)atsPaint()});
+/* Send to your phone (phoneforward.py): carry a chat on in Telegram or WhatsApp, or send one
+   answer or one story there. Asked for as "a chat response to continue in the Telegram, send the
+   stage to Telegram or WhatsApp … the user can decide which chat".
+   The list is this account's own chats, from the server; the page never names a chat itself.
+   Names are other people's words, so everything here is text nodes.
+   GUI and SUI: this dialog (a page, nothing native). TUI: nothing here; the phone's own
+   /sessions and /resume reach a carried-on chat, and sending from a terminal is not built. */
+var PHONE_SEND={what:'',to:''};
+function psEl(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=String(text);return e}
+async function phoneSend(o){
+  o=o||{};
+  const cid=o.cid||(typeof currentConv!=='undefined'?currentConv:'');
+  if(!cid){toast('Open a chat first.');return}
+  let d;
+  try{d=await apiJSON('/api/phone/options?conversation='+encodeURIComponent(cid))}
+  catch(e){toast('Could not load your phone chats: '+(e.message||e));return}
+  document.querySelectorAll('.dlg-scrim.psend-scrim').forEach(x=>x.remove());
+  const scr=psEl('div','dlg-scrim psend-scrim'),dlg=psEl('div','dlg psend');
+  dlg.setAttribute('role','dialog');dlg.setAttribute('aria-modal','true');dlg.setAttribute('aria-label','Send to your phone');
+  dlg.append(psEl('div','dlg-t','Send to your phone'));
+  dlg.append(psEl('div','dlg-m',d.title?('From “'+d.title+'”'):'From this chat'));
+  const stories=d.stories||[];
+  const story=o.answer_to?stories.find(s=>s.answer_to===o.answer_to):stories[stories.length-1];
+  const whats=[
+    ['continue','Carry the chat on there','The phone picks up here, with everything said so far.',true],
+    ['reply','The last answer',d.reply||'No answer in this chat yet.',!!d.reply],
+    ['stage','The story',story?((story.scenes+' scene'+(story.scenes===1?'':'s'))+(story.question?' · '+story.question:'')):'This chat has shown no story.',!!story]];
+  let what=o.what||PHONE_SEND.what||'continue';
+  if(!(whats.find(w=>w[0]===what)||[])[3])what='continue';
+  try{const last=JSON.parse(localStorage.getItem('phone.send')||'{}');if(!PHONE_SEND.to&&last.to)PHONE_SEND.to=last.channel+':'+last.to}catch(e){}
+  const ts=d.targets||[];
+  let to=(ts.find(t=>t.ready&&t.channel+':'+t.to===PHONE_SEND.to)||ts.find(t=>t.ready)||{});
+  to=to.channel?to.channel+':'+to.to:'';
+  dlg.append(psEl('div','psend-h','What'));
+  const wbox=psEl('div','psend-list');wbox.setAttribute('role','radiogroup');wbox.setAttribute('aria-label','What to send');
+  whats.forEach(w=>{const b=psEl('button','psend-row');b.type='button';b.dataset.w=w[0];b.setAttribute('role','radio');
+    b.append(psEl('b','',w[1]),psEl('span','',w[2]));if(!w[3])b.disabled=true;wbox.append(b)});
+  dlg.append(wbox);
+  dlg.append(psEl('div','psend-h','Where'));
+  const tbox=psEl('div','psend-list');tbox.setAttribute('role','radiogroup');tbox.setAttribute('aria-label','Which chat');
+  if(!ts.length){const p=psEl('p','psend-none','Telegram and WhatsApp are not set up for your account yet. ');
+    const a=psEl('button','psend-link','Open Channels');a.type='button';
+    a.onclick=()=>{scr.remove();if(typeof placeSettings==='function')placeSettings('channels')()};p.append(a);tbox.append(p)}
+  ts.forEach(t=>{const b=psEl('button','psend-row');b.type='button';b.dataset.t=t.channel+':'+t.to;b.setAttribute('role','radio');
+    const kind=t.kind==='you'?'you':t.kind==='group'?'group, everyone in it sees it':'someone you let in';
+    b.append(psEl('b','',(t.channel==='telegram'?'Telegram':'WhatsApp')+' · '+t.name),psEl('span','',t.ready?kind:(t.why||'cannot be reached right now')));
+    if(!t.ready)b.disabled=true;tbox.append(b)});
+  dlg.append(tbox);
+  const said=psEl('div','psend-said');said.setAttribute('aria-live','polite');dlg.append(said);
+  const bar=psEl('div','dlg-b'),no=psEl('button','','Cancel'),ok=psEl('button','dlg-ok','Send');
+  no.type=ok.type='button';bar.append(no,ok);dlg.append(bar);scr.append(dlg);document.body.append(scr);
+  const paint=()=>{
+    wbox.querySelectorAll('.psend-row').forEach(b=>{const on=b.dataset.w===what;b.classList.toggle('on',on);b.setAttribute('aria-checked',on)});
+    tbox.querySelectorAll('.psend-row').forEach(b=>{const on=b.dataset.t===to;b.classList.toggle('on',on);b.setAttribute('aria-checked',on)});
+    ok.disabled=!to;ok.textContent=what==='continue'?'Carry on there':'Send'};
+  wbox.querySelectorAll('.psend-row').forEach(b=>b.onclick=()=>{what=b.dataset.w;paint()});
+  tbox.querySelectorAll('.psend-row').forEach(b=>b.onclick=()=>{to=b.dataset.t;paint()});
+  const close=()=>{scr.remove();document.removeEventListener('keydown',key)};
+  const key=e=>{if(e.key==='Escape')close()};
+  document.addEventListener('keydown',key);
+  no.onclick=close;scr.onclick=e=>{if(e.target===scr)close()};
+  ok.onclick=async()=>{
+    if(!to)return;
+    const i=to.indexOf(':'),channel=to.slice(0,i),chat=to.slice(i+1);
+    ok.disabled=true;said.className='psend-said';
+    said.textContent=what==='stage'?'Drawing the story and sending it… this can take a minute.':'Sending…';
+    let r;
+    try{r=await apiJSON('/api/phone/send',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({channel,to:chat,what,conversation_id:cid,answer_to:what==='stage'&&story?story.answer_to:''})})}
+    catch(e){r={ok:false,message:e.message||String(e)}}
+    if(!r.ok){said.className='psend-said err';said.textContent=r.message||'It could not be sent.';ok.disabled=false;return}
+    PHONE_SEND.what=what;PHONE_SEND.to=to;
+    try{localStorage.setItem('phone.send',JSON.stringify({channel,to:chat}))}catch(e){}
+    close();toast(r.message||'Sent.',{kind:'ok'});
+    if(typeof loadConvs==='function')loadConvs();
+  };
+  paint();(ok.disabled?no:ok).focus();
+}
+/* A new session for one phone chat, started here. The phone stays where it is. */
+async function phoneNewSession(channel,to){
+  let r;
+  try{r=await apiJSON('/api/phone/session',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({channel,to})})}
+  catch(e){toast('Could not start a session: '+(e.message||e));return}
+  if(!r.ok){toast(r.message||'Could not start a session.');return}
+  if(typeof loadConvs==='function')await loadConvs();
+  if(typeof openConv==='function')openConv(r.id);
+}
 /* ================= settings app ================= */
 /* ---- preference primitives: every row is label+description left, control right ---- */
 function pGroup(title,rows,o){
@@ -20794,7 +21626,7 @@ function setTab(body,all){
        11e-hands.js draws the list and the map. */
     P.push(`<h2>Agents</h2><p class="lead">Your lead agent and the agents it works with. ${pInfo('Each one gets a brain, an executor, permissions and skills. Everything they do is logged.')}</p>`);
     P.push(pGroup('Lead agent',[
-      pRow('Name',pText('s-name',cfg.agent_name||'Aria'),{desc:'What your agent is called everywhere.',f:'agent name'}),
+      pRow('Name',pText('s-name',cfg.agent_name||'Bento'),{desc:'What your agent is called everywhere.',f:'agent name'}),
       // the character is part of who the agent is, so it is edited HERE as well as in
       // Appearance — looking for it on the agent's own page and not finding it was the report
       pRow('Look',`<button class="endbtn av-set-btn" onclick="avatarEdit('@agent')" title="Change how your agent looks">${avatarImg('@agent','av-set')}Change…</button>`
@@ -21056,10 +21888,10 @@ function setTab(body,all){
          stated in the row, and so is the terminal's answer: none. */
       /* A small machine's own screen offers only the scenes it draws (01b-immersive.js
          liteScreen): a choice that changes nothing would be a dead control. */
-      pRow('Scene',pSelect('s-imm-scene',[['aurora','Aurora'],['movement','Movement'],['crew','Crew at work'],['office','Office'],['hq','Office HQ (3D)'],['world','World (experimental)'],['mind','Mind'],['island','Town'],['devices','Devices']]
+      pRow('Scene',pSelect('s-imm-scene',[['aurora','Aurora'],['movement','Movement'],['crew','Crew at work'],['office','Office'],['hq','Office HQ (3D)'],['world','World (experimental)'],['mind','Mind'],['island','Town'],['devices','Devices'],['apps','App Hub']]
             .filter(o=>!liteScreen()||LITE_SCENES[o[0]]),
           (typeof IMMERSIVE!=='undefined'&&immersiveSceneNow())||'aurora'),
-        {desc:liteScreen()?'This small machine shows Aurora, Office or Devices on its own screen.':'What this desktop shows behind your windows. Each desktop can show its own.',
+        {desc:liteScreen()?'This small machine shows Aurora, Office or Devices on its own screen.':'What this desktop shows behind your windows. Each desktop has its own, and the menu bar changes it too.',
          more:liteScreen()?'The other scenes draw in 3D or many times a second, which is too much for a machine this size. A phone or laptop that opens Bento here can show any of them. To draw them here anyway, run bento profile full.':'Aurora is a sky that follows the day. Office is the whole office behind your windows. Movement draws at most twenty times a second, pauses when hidden, holds still under reduced motion and uses no blur. Crew shows only the specialists you actually have. World is an experiment: your agents get feelings from what they really do, and all of it sleeps when you pick another scene. Mind draws every memory, fact, mission and run as a strand from your lead, and sparks only when something runs. Town puts your office in a place you choose, an island, a canal city, a castle or a forest. Each room is a building that opens while it works. Devices is every machine and sensor this hub looks after, live, with its alarms. Pick a scene on each desktop and switch between them from the desktop numbers.',
          f:'scene movement watch automatic aurora wallpaper live crew characters avatars figures specialists animated world sims feelings emotions experimental mind brain neural connections island town venice canal castle forest railroad train builder devices sensors alarms faults hub floor desktop'}),
       pRow('Wallpaper','<button class="endbtn" onclick="openApp(\'personalize\')">Personalize</button><button class="endbtn" onclick="wpSystem()">Use system</button>',
@@ -21393,7 +22225,7 @@ async function paintModelPicker(refresh){
         +'</option>').join('')+'</optgroup>';
     };
     const none=cur.executor?'':'<option value="" selected>Nothing set</option>';
-    ex.innerHTML=none+grp('Models, answered by '+((cfg&&cfg.agent_name)||'Aria'),'provider')
+    ex.innerHTML=none+grp('Models, answered by '+((cfg&&cfg.agent_name)||'Bento'),'provider')
                 +grp('Other agents','agent');
   }
   const chosen=list.find(e=>e.id===cur.executor);
@@ -21460,7 +22292,7 @@ async function saveSettings(){
   const patch={};
   put(patch,'workspace',val('s-workspace'));
   if(val('s-steps')!==undefined)patch.max_steps=+val('s-steps')||25;
-  if(val('s-name')!==undefined)patch.agent_name=(val('s-name')||'').trim()||'Aria';
+  if(val('s-name')!==undefined)patch.agent_name=(val('s-name')||'').trim()||'Bento';
   /* NOT folders: this page no longer edits them, and sending the key at all
      would send an empty list and silently unshare everything. */
   if(on('s-sb-on')!==undefined)patch.sandbox={enabled:on('s-sb-on'),root:(val('s-sb-root')||'').trim()};
@@ -21760,7 +22592,7 @@ function paintEngineSelect(d){
   const rows=((d&&d.roster)||[]);
   if(!rows.length)return;                       // leave "checking…" rather than lie
   sel.innerHTML=rows.map(r=>{
-    const label=r.builtin?((cfg.agent_name||'Aria')+' (the built-in agent)')
+    const label=r.builtin?((cfg.agent_name||'Bento')+' (the built-in agent)')
       :r.installed?(r.title+(r.version?' · '+r.version:''))
       :(r.title+' · '+(r.why_not||'not installed'));
     return `<option value="${esc(r.id)}"${r.id===cur?' selected':''}${
@@ -22406,7 +23238,7 @@ async function waPanel(){
   if(!d){box.innerHTML='';return}
   // Two transports, one card. Which one is showing is decided by cfg, not by
   // guessing from which fields happen to be filled in.
-  if((d.mode||'cloud')==='baileys'){box.innerHTML=waLinkPanel(d);return}
+  if((d.mode||'cloud')==='baileys'){box.innerHTML=waLinkPanel(d)+((d.chats||[]).length?waPeopleTable(d):'');return}
   const reach=d.reach||{};
   const hook=reach.reachable
     ? `<div class="wa-hook"><b>Callback URL</b>
@@ -22425,14 +23257,7 @@ async function waPanel(){
         ? `<div class="wa-line ok">The ${d.window_hours}-hour window is open, so it can message you now.</div>`
         : `<div class="wa-line warn">The ${d.window_hours}-hour window has closed. Send the number anything to reopen it. ${pInfo('WhatsApp only lets a business message you first within a day of your last message.')}</div>`)
     : '';
-  const chats=(d.chats||[]).filter(c=>c.wa_id!==d.owner_wa_id);
-  const others=chats.length
-    ? `<div class="wa-line"><b>Other numbers that wrote in</b></div>`
-      +chats.map(c=>`<div class="item wa-row"><div class="grow">
-          <code>+${esc(c.wa_id)}</code> ${esc(c.name||'')}</div>
-        <button class="endbtn" onclick="waAllow('${jsq(c.wa_id)}',${c.allowed?0:1})">
-          ${c.allowed?'Block':'Allow'}</button></div>`).join('')
-    : '';
+  const others=(d.chats||[]).length?waPeopleTable(d):'';
   // The way back. Without it, choosing the Business API once is a one-way door:
   // the four fields are the only thing on screen and nothing offers the QR again.
   const modeSwitch=`<div class="wa-line mut" style="margin-top:10px">
@@ -24251,8 +25076,10 @@ async function loadSpaces(force){
 function spaceChipHTML(){
   const id=activeSpace(),s=spaceById(id);
   const dot=s&&s.colour?`<span class="spdot" style="background:${esc(s.colour)}"></span>`:'';
-  return `<button class="spchip" onclick="spaceMenu(event)" title="Which project you are working in. Memory and facts you save belong to it; what is true everywhere stays shared.">
-    ${dot}${esc(s?((s.icon?s.icon+' ':'')+s.name):'Everywhere')}</button>`;
+  const name=s?((s.icon?s.icon+' ':'')+s.name):'Everywhere';
+  // the name is its own span: on a narrow bar it is shortened with an ellipsis (menubarFit)
+  return `<button class="spchip" onclick="spaceMenu(event)" title="${esc(name)}: the project you are working in. Memory and facts you save belong to it; what is true everywhere stays shared.">
+    ${dot}<span class="spname">${esc(name)}</span></button>`;
 }
 
 async function paintSpaceChip(){
@@ -25200,7 +26027,7 @@ async function renderFabFlows(body,w){
       <span style="color:${dot};font-size:9px;margin-right:6px">●</span>
       <div class="grow"><b>${esc(f.name)}</b>
         <div class="sub">${f.enabled?'live':(f.draft&&f.draft.model?'drafted':'off')}${
-          run?' · last '+esc(run.status):''}</div></div></div>`;
+          run?' · last '+esc(run.status):''}${f.company?' · '+esc(f.company.name):''}</div></div></div>`;
   }).join('')||'<p class="mut" style="padding:6px">nothing yet</p>';
 
   /* `.two-pane`: list beside detail on a desktop; on a phone one at a time — the
@@ -25252,7 +26079,8 @@ function flowDetail(f,run){
   const allow=gr.filter(g=>g.effect!=='deny');
   return `<div class="ptitle" style="margin-top:0">${esc(f.name)}
       ${drafted?'<span class="lbadge" title="drafted by '+esc(f.draft.model)+'">✦ drafted</span>':''}
-      <span class="sub">· ${f.enabled?'live':'not enabled'}</span>
+      <span class="sub">· ${f.enabled?'live':'not enabled'}${f.company?' · a mission of '+esc(f.company.name)
+        +(f.company.active?'':', run by its people while another company is open'):''}</span>
       <span style="float:right">
         <button class="save" style="margin:0;display:inline-block;width:auto;padding:4px 12px"
           onclick="enableFlow('${jsq(f.name)}',${f.enabled?'false':'true'})">${f.enabled?'Turn off':'Enable'}</button>
@@ -26158,7 +26986,7 @@ function docsAsk(text){
    over: each remaining question arrives as a streamed in-character message
    (POST /api/setup/say) with inline choice chips. Offline-safe end to end —
    every line has a canned fallback baked in here too. */
-let WIZ={agent_name:'Aria',autonomy:'balanced',default_model:'',providers:{},autostart:true,
+let WIZ={agent_name:'Bento',autonomy:'balanced',default_model:'',providers:{},autostart:true,
   open_at_login:true,wallpaper_preset:'',voice:false,locale:null,step:1,info:null,convo:[],convoAt:0};
 async function checkSetup(){
   try{
@@ -26167,7 +26995,7 @@ async function checkSetup(){
     // the wizard branches on PLATFORM.mode (de vs hosted); init loads it in
     // parallel with us, so fetch it ourselves if it hasn't landed yet
     try{if(!Object.keys(PLATFORM.capabilities||{}).length)PLATFORM=await(await fetch('/api/platform')).json()}catch(e){}
-    WIZ.info=s;WIZ.agent_name=s.agent_name||'Aria';
+    WIZ.info=s;WIZ.agent_name=s.agent_name||'Bento';
     // The arc, not the old four-question form. One component for the first run and
     // for Settings → Run setup again, so the two can never drift.
     if(typeof obShow==='function'){obShow({});return}
@@ -26278,7 +27106,7 @@ function wizRender(){
 }
 function wizDots(on){return `<div class="wiz-dots">${[1,2,3].map(n=>`<span class="${n<=on?'on':''}"></span>`).join('')}</div>`}
 function wizCollect(){
-  if(WIZ.step===1&&$('#wz-name'))WIZ.agent_name=$('#wz-name').value.trim()||'Aria';
+  if(WIZ.step===1&&$('#wz-name'))WIZ.agent_name=$('#wz-name').value.trim()||'Bento';
   if(WIZ.step===2&&document.querySelector('input[name="wz-model"]')){
     const v=document.querySelector('input[name="wz-model"]:checked')?.value||'';
     if(v==='cloud'){const p=$('#wz-prov').value,k=$('#wz-key').value.trim(),m=$('#wz-cmodel').value.trim();
@@ -27203,7 +28031,7 @@ var OB_PANES={
     <div id="ob-co-out"></div>`,
 
   name:()=>`<label class="job-q"><span>What should it be called?</span>
-      <input id="ob-name" value="${esc((typeof cfg!=='undefined'&&cfg.agent_name)||'Aria')}"
+      <input id="ob-name" value="${esc((typeof cfg!=='undefined'&&cfg.agent_name)||'Bento')}"
         spellcheck="false" autocomplete="off">
       <em>It answers to this, signs its work with it, and it is what the menu bar says.</em>
     </label>
@@ -27364,7 +28192,7 @@ var OB_CLOUD=[
    where:'console.anthropic.com'},
   {id:'google',label:'Google (Gemini)',model:'gemini-3.8-flash',
    where:'aistudio.google.com'},
-  {id:'openai',label:'OpenAI',model:'gpt-6-sol',where:'platform.openai.com'},
+  {id:'openai',label:'OpenAI',model:'gpt-6.1-sol',where:'platform.openai.com'},
   {id:'deepseek',label:'DeepSeek',model:'deepseek-flash',where:'platform.deepseek.com'},
   {id:'moonshot',label:'Moonshot (Kimi)',model:'kimi-k3.1-pro',
    where:'platform.moonshot.ai'},
@@ -27981,7 +28809,13 @@ var OB_WIRE={
         <div class="ob-meter"><i id="ob-voice-meter"></i></div>
         <p class="mut" id="ob-voice-out" aria-live="polite">${f.heard&&f.heard.at?`Last heard: “${esc(f.heard.text||'')}”`:''}</p>
       </div>
-      <div class="job-go"><button class="wiz-next" id="ob-voice-go" ${hear.engine?'':'disabled'}>Listen now</button></div>`;
+      <div class="job-go"><button class="wiz-next" id="ob-voice-go" ${hear.engine?'':'disabled'}>Listen now</button></div>
+      <div id="ob-vp"></div>`;
+    // your voice print: the same wake word, recorded three times, so only your voice wakes it
+    const vpPaint=async()=>{const el=$('#ob-vp');if(!el)return;
+      el.innerHTML=voicePrintHTML(await voicePrintLoad(),first);
+      voicePrintWire(el,async()=>{await vpPaint();if(typeof obRefresh==='function')obRefresh(true)})};
+    vpPaint();
     const put=async body=>{
       const r=await fetch('/api/face',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
       const d=await r.json().catch(()=>({}));
@@ -28959,7 +29793,7 @@ async function renderTelegram(body){
     <div class="provbox">
       <div class="ptitle">Pairing</div>
       <p class="mut" style="margin-top:6px">${d.owner_chat_id
-        ?`Owner chat: <b>${d.owner_chat_id}</b>. Commands: <code>/clear</code> resets a session, <code>/status</code> pings.`
+        ?`Owner chat: <b>${d.owner_chat_id}</b>. From that chat, <code>/people</code>, <code>/groups</code> and <code>/members</code> show these lists.`
         :(d.bot_username?`Not paired yet — send any message to <a href="https://t.me/${esc(d.bot_username)}" target="_blank" style="color:var(--acc2)">@${esc(d.bot_username)}</a>; the first private chat becomes the owner.`:'Not paired yet — save a token first.')}</p>
       <div class="row" style="margin-top:10px">
         <button class="save" style="margin:0" onclick="tgTest()">Send test message</button>
@@ -28968,18 +29802,16 @@ async function renderTelegram(body){
     </div>
     <div class="provbox">
       <div class="ptitle">Chats, groups &amp; channels</div>
-      <p class="mut" style="margin:6px 0 10px">Every user, group or channel that reaches the bot registers here — connect more by adding the bot
-        to a group (as a member) or a channel (as an admin). New arrivals start <b>blocked</b>; only chats you enable can talk to the agent.
-        Telegram is an IO gate of the permission framework: scope any grant to the <code>telegram</code> surface in the Permissions app
-        and it applies (only) here — blocked IO is denied and logged.</p>
-      ${(d.chats||[]).map(c=>`<div class="item">
-        <span class="lbadge">${c.type==='private'?'user':c.type==='channel'?'channel':'group'}</span>
-        <div class="grow"><b>${esc(c.title||c.chat_id)}</b>${c.username?` <span class="mut">@${esc(c.username)}</span>`:''}${c.chat_id===d.owner_chat_id?' <span class="badge ok">owner</span>':''}
-          <div class="sub">${esc(c.type)} · ${c.msg_count} msg · last ${new Date(c.last_seen*1000).toLocaleString()}</div></div>
-        <span class="badge ${c.allowed?'ok':'err'}">${c.allowed?'enabled':'blocked'}</span>
-        <button title="${c.allowed?'disable':'enable'}" onclick="tgAllow(${+c.chat_id},${c.allowed?0:1})">${c.allowed?'⏸':'▶'}</button>
-        <button onclick="tgDelChat(${+c.chat_id})">✕</button>
-      </div>`).join('')||'<p class="mut">No chats registered yet.</p>'}
+      <p class="mut" style="margin:6px 0 10px">Everybody who wrote to the bot, and when each was let in. New arrivals start blocked.
+        ${pInfo('Add the bot to a group to connect it. In a group you can answer everybody, or only the people you pick.')}</p>
+      <label class="tg-groups" style="display:flex;align-items:center;gap:8px;margin:0 0 10px">
+        <input type="checkbox" id="tg-groups" style="width:auto" ${d.groups?'checked':''} onchange="tgGroups(this.checked)">
+        Answer in group chats ${pInfo('Off, the agent answers in no group or channel. On, it answers only in the ones you enable below. Everybody in an enabled group can talk to it.')}
+      </label>
+      <div class="tg-head">People</div>
+      ${tgPeopleTable(d)}
+      <div class="tg-head">Groups and channels</div>
+      ${tgGroupsTable(d)}
     </div>
   </div>`;
   $('#tg-token').addEventListener('input',e=>{if(e.target.value.trim())$('#tg-on').checked=true});
@@ -28996,6 +29828,10 @@ async function tgTest(){
 async function tgAllow(id,allowed){
   await fetch('/api/telegram/chats/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({allowed:!!allowed})});
   refreshApp('telegram');
+}
+async function tgGroups(on){
+  await fetch('/api/telegram',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({groups:!!on})});
+  toast(on?'Group chats are on. Enable the groups to answer in.':'Group chats are off.');refreshApp('telegram');
 }
 async function tgDelChat(id){
   await fetch('/api/telegram/chats/'+id,{method:'DELETE'});refreshApp('telegram');
@@ -29061,6 +29897,102 @@ async function loadLogs(w){
 function logExpand(tr){const p=tr.querySelector('.log-full');if(p)p.style.display=p.style.display==='none'?'block':'none'}
 async function logsClear(){await fetch('/api/logs',{method:'DELETE'});refreshApp('logs')}
 
+/* ================= who may talk to the agent, as tables =================
+   Telegram's people and groups and WhatsApp's people, drawn by one helper: who,
+   whether they are answered, when that was decided and by whom, and for a group
+   the people who wrote in it, each with their own allow or block. Asked for as "the
+   groups list and the people list should come in form of a table that we can see
+   when it was validated and who all … in the group also you can restrict".
+   Every name here is somebody else's words, so every cell goes through esc(). On a
+   narrow window the rows become cards (43b-chantables.css), each value labelled.
+   GUI and SUI draw this; the phone's /people, /groups and /members say the same. */
+function chanWhen(ts){
+  if(!ts)return '';
+  const d=new Date(ts*1000);
+  return d.toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'})+', '
+    +d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'});
+}
+function chanDecided(r){
+  if(!r.decided_at)return '<span class="mut">not recorded</span>';
+  return esc(chanWhen(r.decided_at))+(r.decided_by?`<small>${esc(r.decided_by)}</small>`:'');
+}
+function chanBadge(ok,word){return `<span class="badge ${ok?'ok':'err'}">${esc(word)}</span>`}
+function chanTable(heads,rows,empty){
+  if(!rows.length)return `<p class="mut ct-empty">${esc(empty)}</p>`;
+  return `<div class="whotw"><table class="whotab"><thead><tr>${heads.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead>
+    <tbody>${rows.join('')}</tbody></table></div>`;
+}
+function chanCells(heads,cells){
+  return cells.map((c,i)=>`<td data-l="${esc(heads[i]||'')}">${c}</td>`).join('');
+}
+
+/* ---- Telegram ---- */
+var TG_PEOPLE_H=['Who','Status','Decided','Messages','Last wrote',''];
+var TG_GROUP_H=['Group','Status','Who may talk','Decided','Wrote',''];
+var TG_MEMBER_H=['Person','Answered','Decided','Messages','Last wrote',''];
+function tgPeopleTable(d){
+  const rows=(d.people||[]).map(c=>`<tr>${chanCells(TG_PEOPLE_H,[
+    `<b>${esc(c.title||c.chat_id)}</b>${c.username?` <span class="mut">@${esc(c.username)}</span>`:''}${c.owner?' <span class="badge ok">owner</span>':''}<small>${esc(c.chat_id)}</small>`,
+    chanBadge(c.allowed,c.allowed?'let in':'blocked'),
+    chanDecided(c),
+    esc(c.msg_count||0),
+    esc(chanWhen(c.last_seen)),
+    c.owner?'':`<span class="ct-act"><button class="endbtn" onclick="tgAllow(${+c.chat_id},${c.allowed?0:1})">${c.allowed?'Block':'Allow'}</button>
+      <button class="endbtn" title="Forget this chat" onclick="tgDelChat(${+c.chat_id})">Forget</button></span>`])}</tr>`);
+  return chanTable(TG_PEOPLE_H,rows,'Nobody has written yet.');
+}
+function tgGroupsTable(d){
+  const on=!!d.groups_on;
+  const rows=(d.group_rows||[]).map(g=>{
+    const ms=g.members||[],picked=ms.filter(m=>m.state==='allowed').length;
+    const status=!g.allowed?chanBadge(false,'blocked'):on?chanBadge(true,'answered'):chanBadge(false,'groups are off');
+    const who=`<select class="ct-sel" aria-label="Who may talk in ${esc(g.title||g.chat_id)}" onchange="tgMembersOnly(${+g.chat_id},this.value==='1')">
+        <option value="0"${g.members_only?'':' selected'}>Everybody in it</option>
+        <option value="1"${g.members_only?' selected':''}>Only people I pick${g.members_only?' ('+picked+')':''}</option></select>`;
+    const head=`<tr>${chanCells(TG_GROUP_H,[
+      `<b>${esc(g.title||g.chat_id)}</b><small>${esc(g.type)} · ${esc(g.chat_id)}</small>`,
+      status,who,chanDecided(g),esc(ms.length)+(ms.length===1?' person':' people'),
+      `<span class="ct-act"><button class="endbtn" onclick="tgAllow(${+g.chat_id},${g.allowed?0:1})">${g.allowed?'Stop':'Allow'}</button>
+        <button class="endbtn" title="Forget this group" onclick="tgDelChat(${+g.chat_id})">Forget</button></span>`])}</tr>`;
+    const mrows=ms.map(m=>`<tr>${chanCells(TG_MEMBER_H,[
+      `<b>${esc(m.name||m.member_id)}</b>${m.username?` <span class="mut">@${esc(m.username)}</span>`:''}${m.owner?' <span class="badge ok">owner</span>':''}`,
+      chanBadge(m.talks,m.talks?'yes':(m.state==='blocked'?'blocked':'not picked')),
+      m.state?chanDecided(m):'<span class="mut">the group’s rule</span>',
+      esc(m.msg_count||0),esc(chanWhen(m.last_seen)),
+      m.owner?'':`<span class="ct-act"><button class="endbtn" onclick="tgMember(${+g.chat_id},'${jsq(m.member_id)}','${m.talks?'blocked':'allowed'}')">${m.talks?'Block':'Allow'}</button>
+        ${m.state?`<button class="endbtn" title="Back to the group’s rule" onclick="tgMember(${+g.chat_id},'${jsq(m.member_id)}','')">Reset</button>`:''}</span>`])}</tr>`);
+    const inner=ms.length?chanTable(TG_MEMBER_H,mrows,''):'<p class="mut ct-empty">Nobody has written to the agent in this group yet.</p>';
+    return head+`<tr class="ct-sub"><td colspan="${TG_GROUP_H.length}"><details${g.allowed&&ms.length?' open':''}>
+      <summary>Who wrote in ${esc(g.title||g.chat_id)}</summary>${inner}</details></td></tr>`;
+  });
+  return chanTable(TG_GROUP_H,rows,'No group has written yet. Add the bot to a group and write to it there.');
+}
+async function tgMembersOnly(id,on){
+  await fetch('/api/telegram/chats/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({members_only:!!on})});
+  toast(on?'Only the people you pick are answered there.':'Everybody in that group is answered.');refreshApp('telegram');
+}
+async function tgMember(id,member,state){
+  const r=await fetch('/api/telegram/chats/'+id+'/members/'+encodeURIComponent(member),
+    {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({state})});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok||d.ok===false)toast('Could not change that: '+(d.message||d.error||r.status));
+  refreshApp('telegram');
+}
+
+/* ---- WhatsApp ---- */
+var WA_PEOPLE_H=['Who','Status','Decided','Messages','Last wrote',''];
+function waPeopleTable(d){
+  const rows=(d.chats||[]).map(c=>{
+    const own=c.wa_id===d.owner_wa_id;
+    return `<tr>${chanCells(WA_PEOPLE_H,[
+      `<b>${esc(c.name||'+'+c.wa_id)}</b>${own?' <span class="badge ok">owner</span>':''}<small>+${esc(c.wa_id)}</small>`,
+      chanBadge(c.allowed,c.allowed?'let in':'blocked'),
+      chanDecided(c),esc(c.msg_count||0),esc(chanWhen(c.last_seen)),
+      own?'':`<span class="ct-act"><button class="endbtn" onclick="waAllow('${jsq(c.wa_id)}',${c.allowed?0:1})">${c.allowed?'Block':'Allow'}</button></span>`])}</tr>`;
+  });
+  return `<div class="wa-line"><b>Who may talk to the agent here</b> ${pInfo('Everybody who wrote in. A new number is blocked until you allow it, here or from your phone.')}</div>`
+    +chanTable(WA_PEOPLE_H,rows,'Nobody has written yet.');
+}
 /* ================= soul app ================= */
 // A Zero's mind is on its hub (zeromind.py): on the Zero this page says where; on the hub,
 // "Whose soul" picks this machine's or one of its Zeros', each kept in that Zero's section.
@@ -31031,6 +31963,132 @@ async function takeScreenshot(area){
   const d=await r.json();toast(d.ok?'📸 saved: '+d.path.split('/').pop():(d.error||'screenshot failed'));
 }
 
+/* ================= the network, on the menu bar =================
+   Asked for as "it is not showing a wifi option on the top". The kiosk could already join
+   Wi-Fi (24h-kiosk.js) and Quick Settings only sent you to the system's own settings, so a
+   desktop running Bento, where the system's network menu may not exist, had no way to see
+   or change its network. This is the same /api/wifi (wifi.py, NetworkManager) on the bar.
+
+   What it says, all read from the machine:
+     - the signal of the network it is on, or wired, or Offline in amber. Offline also
+       says what that costs: a cloud brain cannot answer until it is back.
+     - when it comes back, one toast naming the network, so a dropped link is noticed both
+       ways without anybody watching the icon.
+   Joining is the admin's (the route checks; the page says it before asking for a
+   password). From another device it warns first: that device reaches Bento over the
+   network being changed, so it may lose the page.
+
+   It is the MACHINE's network, so a phone or laptop looking at Bento sees the server's
+   Wi-Fi, and the panel says so. No nmcli here (a Mac, a container) and the button is not
+   drawn at all: there is nothing it could do. TUI: `bento wifi`. SUI: a page element,
+   nothing touches the compositor. Polled once a minute while the page is visible; a scan
+   happens only while the panel is open. */
+var TRAYNET={st:null,nets:null,open:false,pick:'',err:'',busy:false,t:0,was:null,scanning:false};
+var TRAYNET_MS=60000;
+function trayNetIcon(st){
+  const w=st&&st.wifi,on=w&&w.state==='connected';
+  if(st&&!st.online&&!(st.wired))return `<svg width="16" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2.5 9.5a14 14 0 0 1 19 0M6 13a9 9 0 0 1 12 0M9.5 16.5a4 4 0 0 1 5 0" opacity=".45"/><path d="M4 3l16 18"/></svg>`;
+  if(!on&&st&&st.wired)return `<svg width="16" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="3" width="10" height="8" rx="1"/><path d="M12 11v4M5 21v-3h14v3M12 15v3"/></svg>`;
+  const s=on&&w.signal!=null?w.signal:70;
+  const lit=s>=67?3:s>=34?2:1;
+  const arc=(d,i)=>`<path d="${d}" opacity="${i<=lit?1:.3}"/>`;
+  return `<svg width="16" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">${arc('M9.5 16.5a4 4 0 0 1 5 0',1)}${arc('M6 13a9 9 0 0 1 12 0',2)}${arc('M2.5 9.5a14 14 0 0 1 19 0',3)}<circle cx="12" cy="20" r="1.2" fill="currentColor" stroke="none"/></svg>`;
+}
+function trayNetLine(st){
+  if(!st)return '';
+  const w=st.wifi;
+  if(w&&w.state==='connected')return `Wi-Fi · ${w.connection}${w.signal!=null?' · '+w.signal+'%':''}`;
+  if(st.wired)return 'Wired';
+  if(!st.online)return 'Offline';
+  return 'Online';
+}
+async function trayNetLoad(scan){
+  clearTimeout(TRAYNET.t);
+  const b=document.getElementById('tray-net');if(!b)return;
+  let st=null;
+  try{st=await apiJSON('/api/wifi'+(scan?'?scan=1':''))}catch(e){st=null}
+  if(!st||(!st.ok&&!st.devices?.length&&st.why)){b.hidden=true;TRAYNET.st=st;trayNetSoon();return}
+  if(st.networks)TRAYNET.nets=st.networks;
+  // back online after being off: say where, once
+  if(TRAYNET.was===false&&st.online)toast('✓ Back online'+(st.wifi&&st.wifi.state==='connected'?' · '+st.wifi.connection:''),{kind:'ok'});
+  TRAYNET.was=!!st.online;TRAYNET.st=st;
+  const off=!st.online;
+  b.hidden=false;b.classList.toggle('off',off);
+  b.innerHTML=trayNetIcon(st)+(off?'<span class="tn-off">Offline</span>':'');
+  b.title=trayNetLine(st)+' · click for networks';
+  b.setAttribute('aria-label',trayNetLine(st));
+  if(TRAYNET.open)trayNetPaint();
+  trayNetSoon();
+}
+function trayNetSoon(){
+  TRAYNET.t=setTimeout(()=>{if(document.hidden){trayNetSoon();return}trayNetLoad(false)},TRAYNET_MS);
+}
+function trayNetAdmin(){
+  try{const m=USERS&&USERS.me;return !(m&&m.multiuser&&!m.admin)}catch(e){return true}
+}
+function toggleTrayNet(){
+  let p=document.getElementById('netpop');
+  if(!p){p=document.createElement('div');p.id='netpop';p.setAttribute('role','dialog');
+    p.setAttribute('aria-label','Network');document.body.appendChild(p)}
+  if(p.classList.contains('show')){popClose(p);return}
+  TRAYNET.open=true;TRAYNET.pick='';TRAYNET.err='';
+  popOpen(p,{anchor:document.getElementById('tray-net'),close:()=>{TRAYNET.open=false}});
+  trayNetPaint();
+  if(typeof popIn==='function')popIn(p,{origin:'top right'});
+  TRAYNET.scanning=true;trayNetPaint();
+  trayNetLoad(true).finally(()=>{TRAYNET.scanning=false;if(TRAYNET.open)trayNetPaint()});
+}
+function trayNetPaint(){
+  const p=document.getElementById('netpop');if(!p||!TRAYNET.open)return;
+  const st=TRAYNET.st||{},list=TRAYNET.nets||[];
+  const where=(typeof remoteClient==='function'&&remoteClient())
+    ?`<p class="tn-note">This is the network of ${esc(typeof hostName==='function'?hostName():'the machine')}, the machine Bento runs on, not of this device.</p>`:'';
+  const head=`<div class="tn-head"><b>${esc(trayNetLine(st)||'Network')}</b>
+    <button type="button" class="tn-scan" title="Look again">${TRAYNET.scanning?'Looking…':'↻'}</button></div>`
+    +(!st.online?`<p class="tn-warn">This machine is offline. Cloud brains can't answer until it's back on a network.</p>`:'')+where;
+  if(TRAYNET.pick){
+    const n=list.find(x=>x.ssid===TRAYNET.pick)||{secure:true};
+    p.innerHTML=head+`<form class="tn-join"><div class="tn-name">${esc(TRAYNET.pick)}</div>
+      ${n.secure?`<input class="tn-pw" type="text" autocomplete="off" data-lpignore="true" data-1p-ignore placeholder="Password" aria-label="Wi-Fi password">`:''}
+      <div class="tn-row"><button type="button" class="endbtn tn-back">Back</button>
+      <button type="submit" class="endbtn pri"${TRAYNET.busy?' disabled':''}>${TRAYNET.busy?'Joining…':'Join'}</button></div>
+      ${TRAYNET.err?`<p class="tn-err">${esc(TRAYNET.err)}</p>`:''}</form>`;
+    const pw=p.querySelector('.tn-pw');if(pw&&!TRAYNET.busy)pw.focus();
+    p.querySelector('.tn-back').onclick=()=>{TRAYNET.pick='';TRAYNET.err='';trayNetPaint()};
+    p.querySelector('form').onsubmit=e=>{e.preventDefault();trayNetJoin(pw?pw.value:'')};
+  }else{
+    const admin=trayNetAdmin();
+    p.innerHTML=head+(list.length?`<div class="tn-list">${list.map(n=>`<button type="button" class="tn-n${n.in_use?' on':''}" data-ssid="${esc(n.ssid)}"${n.in_use||!admin?' disabled':''}>
+        <span class="tn-s">${trayNetIcon({online:true,wifi:{state:'connected',signal:n.signal}})}</span>
+        <span class="tn-nm">${esc(n.ssid)}</span><small>${n.in_use?'connected':(n.secure?'🔒 ':'')+n.signal+'%'}</small></button>`).join('')}</div>`
+      :`<p class="tn-note">${TRAYNET.scanning?'Looking for networks…':'No Wi-Fi networks in range.'}</p>`)
+      +(admin?'':`<p class="tn-note">Only an admin can change this machine's network.</p>`);
+    p.querySelectorAll('.tn-n:not([disabled])').forEach(b=>b.onclick=()=>{TRAYNET.pick=b.dataset.ssid;TRAYNET.err='';trayNetPaint()});
+  }
+  const sc=p.querySelector('.tn-scan');
+  if(sc)sc.onclick=()=>{if(TRAYNET.scanning)return;TRAYNET.scanning=true;trayNetPaint();
+    trayNetLoad(true).finally(()=>{TRAYNET.scanning=false;trayNetPaint()})};
+}
+async function trayNetJoin(password){
+  if(TRAYNET.busy)return;
+  const ssid=TRAYNET.pick;
+  // a phone or laptop reaches Bento over the network being changed
+  if(typeof remoteClient==='function'&&remoteClient()&&typeof osConfirm==='function'){
+    const ok=await osConfirm(`Switch ${typeof hostName==='function'?hostName():'the machine'} to ${ssid}?`,
+      'You are reaching Bento over its network. If the new one is different, this page may stop answering until you join it too.');
+    if(!ok)return;
+  }
+  TRAYNET.busy=true;TRAYNET.err='';trayNetPaint();
+  try{
+    const r=await fetch('/api/wifi/connect',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ssid,password})});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(d.error||'could not join');
+    TRAYNET.pick='';toast('✓ Joined '+(d.ssid||ssid),{kind:'ok'});
+    if(d.status){TRAYNET.st=d.status}
+  }catch(e){TRAYNET.err=String(e.message||e)}
+  TRAYNET.busy=false;trayNetPaint();trayNetLoad(false);
+}
 /* ================= System Settings (the DE's own control center) ================= */
 const SYS={tab:0};
 const SYS_TABS=['Network','Remote access','Bluetooth','Displays','Keyboard & Mouse','Sound','Power','Session','Components'];
@@ -32350,7 +33408,7 @@ async function updateTray(){
     const a=d.audio||{},b=d.battery||{};
     const el=$('#tray-ctl');if(!el)return;
     el.innerHTML=`<span title="volume ${a.volume??'?'}%">${svgSpeaker(a.muted)}</span>`+
-      (b.percent!=null?`<span title="battery ${b.percent}% · ${esc(b.state||'')}" style="display:flex;align-items:center;gap:5px">${svgBattery(b.percent)}<span style="font-size:11.5px">${b.percent}%</span></span>`:'');
+      (b.percent!=null?`<span title="battery ${b.percent}% · ${esc(b.state||'')}" style="display:flex;align-items:center;gap:5px">${svgBattery(b.percent)}<span class="pct" style="font-size:11.5px">${b.percent}%</span></span>`:'');
   }catch(e){}
 }
 
@@ -33191,7 +34249,7 @@ function officeSeat(){
   O.L.rooms.forEach(r=>{
     if(r.kind==='lead'){
       const hx=r.x+r.w*.36, hy=r.y+OF_WALL+84+(r.grow||0)*.4;
-      seen['@agent']=officePerson(keep['@agent'],'@agent',(typeof agentName==='function'?agentName():'Aria'),r,hx,hy,true);
+      seen['@agent']=officePerson(keep['@agent'],'@agent',(typeof agentName==='function'?agentName():'Bento'),r,hx,hy,true);
     }
     if(r.kind!=='dept'&&r.kind!=='floor')return;
     const slot=Math.min(OF_DESK_W+30,(r.w-20)/Math.min(r.per,Math.max(1,r.members.length)));
@@ -36080,6 +37138,13 @@ async function kioskSend(wav){
     const d=await r.json().catch(()=>({}));
     if(!r.ok){KIOSK.sending=false;kioskSay(d.error||('could not understand that ('+r.status+')'),'listening');return}
     text=String(d.text||'').trim();
+    // Only an enrolled voice wakes this screen (voiceprint.py): the server says whether this
+    // one matched. A voice it does not know is ignored, and one too short to judge is told so.
+    if(d.voice&&d.voice.match!==true&&text){
+      KIOSK.sending=false;
+      kioskSay(d.voice.match===false?'That is not a voice I know, so I did not act on it.'
+        :'I could not tell whose voice that was. Say a little more.','listening');
+      return}
   }catch(e){KIOSK.sending=false;kioskSay('The machine could not be reached.','listening');return}
   KIOSK.sending=false;
   kioskHeard(text);
@@ -36228,6 +37293,61 @@ function micOnce(opts){
 }
 /* Record one utterance and ask this machine whether it heard its wake word.
    Shared by the voice step and Settings' Test button, so both prove the same thing. */
+/* A voice print (voiceprint.py), for whoever is signed in: say the wake word three times. Each
+   recording becomes numbers on the server and is thrown away; the print stays in that person's
+   own home. Used by the setup step and by Settings → Voice. `fresh` starts the print over.
+   TUI: `bento face print`. SUI: the same page; the host grants the microphone to it. */
+var VOICEPRINT={busy:false};
+async function voicePrintLoad(){try{return await apiJSON('/api/voiceprint')}catch(e){return {available:false,line:String(e.message||e),samples:0,need:3}}}
+async function voicePrintSample(out,meter,fresh){
+  const say=(t,c)=>{if(out){out.textContent=t;out.className='mut '+(c||'')}};
+  say('Listening… say it now.');
+  let wav;
+  try{wav=await micOnce({onLevel:v=>{if(meter)meter.style.width=Math.round(v*100)+'%'}})}
+  catch(e){say(String(e.message||e),'warn');return null}
+  say('Taking your voice print…');
+  const lang=String((typeof VOICE!=='undefined'&&VOICE.lang)||'').slice(0,5);
+  let d;
+  try{const r=await fetch('/api/voiceprint/enroll?lang='+encodeURIComponent(lang)+(fresh?'&fresh=1':''),
+      {method:'POST',headers:{'Content-Type':'audio/wav'},body:wav});
+    d=await r.json().catch(()=>({}));if(!r.ok){say(d.error||('could not use that ('+r.status+')'),'warn');return null}}
+  catch(e){say('The machine could not be reached.','warn');return null}
+  say(d.enrolled?`✓ Saved. ${d.samples} recordings make your voice print.`:`✓ ${d.samples} of ${d.need}. Say it again.`,'ok');
+  return d;
+}
+/* The block both faces draw. `again` repaints whoever asked. */
+function voicePrintHTML(v,word){
+  const n=v.samples||0,need=v.need||3;
+  if(!v.available)return `<div class="vp"><b>Your voice print</b>
+    <p class="mut">Lets only your voice wake this screen. It needs a speaker model on this machine first.</p>
+    <div class="sp-row"><button class="endbtn" data-vp="install">Install it here</button>
+      <span class="mut">about 70 MB, Apache-2.0, runs on this machine</span></div></div>`;
+  return `<div class="vp"><b>Your voice print</b>
+    <p class="mut">${esc(v.line||'')} ${typeof pInfo==='function'?pInfo('It filters who can wake the screen. It never signs anybody in, and a recording of you could pass it. The print is kept in your own home on this machine; the recordings are not kept.'):''}</p>
+    <div class="vp-dots" role="img" aria-label="${n} of ${need} recordings">${Array.from({length:need},(_,i)=>`<i class="${i<n?'on':''}"></i>`).join('')}</div>
+    <p>Press the button and say: <b>“${esc(word)}, good morning.”</b></p>
+    <div class="ob-meter"><i data-vp-meter></i></div>
+    <p class="mut" data-vp-out aria-live="polite"></p>
+    <div class="sp-row"><button class="wiz-next" data-vp="record">${n>=need?'Record once more':n?'Record again':'Record my voice'}</button>
+      ${n?`<button class="endbtn" data-vp="fresh">Start over</button><button class="endbtn" data-vp="forget">Delete my voice print</button>`:''}</div>
+    ${v.enrolled?`<label class="ck vp-only"><input type="checkbox" data-vp="only" ${v.only?'checked':''}> Only my voice wakes this screen</label>`:''}
+    ${v.idle?'<p class="mut warn">The filter is on, but it is not running yet.</p>':''}</div>`;
+}
+function voicePrintWire(box,again){
+  const q=s=>box.querySelector(s),out=q('[data-vp-out]'),meter=q('[data-vp-meter]');
+  const rec=async fresh=>{if(VOICEPRINT.busy)return;VOICEPRINT.busy=true;
+    const d=await voicePrintSample(out,meter,fresh);VOICEPRINT.busy=false;
+    if(d)setTimeout(again,d.enrolled?1600:900)};
+  box.querySelectorAll('[data-vp]').forEach(b=>{const a=b.dataset.vp;
+    if(a==='install')b.onclick=async()=>{b.disabled=true;b.textContent='Installing… (a minute or two)';
+      try{await installComponent('voice-print')}finally{again()}};
+    if(a==='record')b.onclick=()=>rec(false);
+    if(a==='fresh')b.onclick=()=>rec(true);
+    if(a==='forget')b.onclick=async()=>{await fetch('/api/voiceprint',{method:'DELETE'});toast('Your voice print was deleted.');again()};
+    if(a==='only')b.onchange=async()=>{const r=await fetch('/api/voiceprint',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({only:b.checked})});
+      const d=await r.json().catch(()=>({}));if(!r.ok)toast(d.error||'could not change that',{kind:'err'});again()};
+  });
+}
 async function voiceWakeTest(out,meter){
   const say=(t,c)=>{if(out){out.textContent=t;out.className='mut '+(c||'')}};
   const f=kioskFace(),hear=f.hear||{};
@@ -36361,7 +37481,13 @@ async function hearSettingsPaint(){
        f:'speech to text whisper openai elevenlabs google transcribe hearing stt'}),
     hear.engine?'':pRow('Make it hear',hearFixHTML(hear,'s-hear'),
       {desc:'Add a voice key above, or understand speech on this machine.',f:'install whisper voice key hear'}),
+    '<div class="ghint" id="s-vp"></div>',
   ].join('');
+  // your voice print (voiceprint.py): the same block the setup step draws
+  const vpPaint=async()=>{const el=document.getElementById('s-vp');if(!el)return;
+    const words=(d.wake_words||[]).filter(Boolean);
+    el.innerHTML=voicePrintHTML(await voicePrintLoad(),words[0]||agentName());voicePrintWire(el,vpPaint)};
+  vpPaint();
   box.querySelector('#s-face-hear').onchange=async e=>{
     const r=await fetch('/api/face',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({hear:e.target.value})});
     const j=await r.json().catch(()=>({}));
@@ -37237,7 +38363,7 @@ function of3Seat(){
   O.L.rooms.forEach(r=>{
     if(r.kind==='lead'){
       const at=of3LeadSeat(r);
-      seen['@agent']=officePerson(keep['@agent'],'@agent',(typeof agentName==='function'?agentName():'Aria'),r,at.x,at.y,true);
+      seen['@agent']=officePerson(keep['@agent'],'@agent',(typeof agentName==='function'?agentName():'Bento'),r,at.x,at.y,true);
       Object.assign(seen['@agent'].home,{fx:at.fx,fy:at.fy,boss:1});
       seen['@agent'].bench=false;
     }
@@ -38588,9 +39714,14 @@ async function stageAttach(cid){
     const u=st.answer_to&&feed.querySelector('.msg.user[data-mid="'+CSS.escape(st.answer_to)+'"]');
     let host=u&&u.nextElementSibling;
     while(host&&!host.classList.contains('assistant')&&!host.classList.contains('user'))host=host.nextElementSibling;
+    /* A story whose question is not in this chat any more (wiped by /clear, or not loaded)
+       gets no chip. It used to go at the END of the feed, so an old story sat under the
+       newest answer: "Weather for Bangalore" below a question about the market. It is
+       still in the Stage's library. */
+    if(!u)return;
     const chip=stageChip(cid,st.answer_to,st.scenes.length);
     if(host&&host.classList.contains('assistant'))host.appendChild(chip);
-    else if(u)u.after(chip);else feed.appendChild(chip);
+    else u.after(chip);
   });
 }
 
@@ -38742,12 +39873,34 @@ function stageNow(main){
   if(!STAGE.cur.xray){const keep=sEl('button','stg-b','★');keep.append(sEl('span','stg-long',' Keep'));
     keep.title='Keep this story as a board, and refresh it if you like';keep.setAttribute('aria-label','Keep');
     keep.onclick=()=>stageKeepMenu(keep);bar.append(keep)}
+  if(!STAGE.cur.xray&&STAGE.cur.cid)bar.append(stageSaveMenu('conv='+encodeURIComponent(STAGE.cur.cid)+'&answer='+encodeURIComponent(STAGE.cur.answer_to||'')));
+  if(!STAGE.cur.xray&&STAGE.cur.cid&&typeof phoneSend==='function'){const ph=sEl('button','stg-b','➤');ph.append(sEl('span','stg-long',' Phone'));
+    ph.title='Send this story to Telegram or WhatsApp';ph.setAttribute('aria-label','Send to your phone');
+    ph.onclick=()=>phoneSend({cid:STAGE.cur.cid,what:'stage',answer_to:STAGE.cur.answer_to||''});bar.append(ph)}
   if(STAGE.cur.cid){const chat=sEl('button','stg-b','Chat');chat.title='Open the conversation';
     chat.onclick=()=>{if(typeof openConv==='function'){openApp('chat');openConv(STAGE.cur.cid)}};
     bar.append(chat)}
   th.append(bar);
   if(STAGE.awaiting)th.append(stageWaiting());
   stageMusicMood(sc.kind);
+}
+/* The story as a file to keep or pass on (stagedoc.py): a deck, a document, a PDF. Plain links with
+   `download`, so the browser saves them and a remote browser gets the file where the person is.
+   `which` names the story: conv=…&answer=…, or sid=… for one of its scenes. */
+var STAGE_FILES=[['pptx','PowerPoint','A slide for each scene'],['docx','Word','A document with each picture and its words'],['pdf','PDF','Pages ready to print or send']];
+function stageSaveMenu(which,cls){
+  const b=sEl('button',cls||'stg-b','⤓');b.append(sEl('span','stg-long',' Save as'));b.type='button';
+  b.title='Save this story as a PowerPoint, a Word document or a PDF';b.setAttribute('aria-label','Save as');b.setAttribute('aria-haspopup','true');
+  // the list is put in the Stage itself, as Keep's is: inside the bar it was cut off by the bar's own scrolling
+  b.onclick=()=>{const host=b.closest('.stg')||b.closest('.st-main');if(!host)return;
+    const old=host.querySelector('.st-savebox');if(old){old.remove();return}
+    host.querySelectorAll('.st-keepbox').forEach(x=>x.remove());
+    const box=sEl('div','st-keepbox st-savebox');box.append(sEl('div','st-keep-h','Save this story as'));
+    STAGE_FILES.forEach(f=>{const a=document.createElement('a');a.className='stg-save-a';a.href='/api/stage/story/file?format='+f[0]+'&'+which;
+      a.setAttribute('download','');a.append(sEl('b','',f[1]),sEl('span','',f[2]));
+      a.onclick=()=>{box.remove();if(typeof toast==='function')toast('Making the '+f[1]+' file… it downloads in a moment')};box.append(a)});
+    const no=sEl('button','endbtn','Cancel');no.onclick=()=>box.remove();box.append(no);host.append(box)};
+  return b;
 }
 /* Every story a chat showed, outside the deeper ones, is a version of its Stage: asking
    "add Japan to the map" in the chat shows the story again with the change, and the one
@@ -40922,7 +42075,7 @@ async function topoMappingPaint(){
 function topoTargetSelect(t){
   const tt=t.talks_to||{to:'lead'},cur=tt.to==='department'?`d|${tt.company||''}|${tt.department}`:'lead';
   const T=TOPO.targets||{companies:[]};
-  const opts=[`<option value="lead"${cur==='lead'?' selected':''}>${esc(T.lead||'Aria')}: everything (all departments)</option>`];
+  const opts=[`<option value="lead"${cur==='lead'?' selected':''}>${esc(T.lead||'Bento')}: everything (all departments)</option>`];
   (T.companies||[]).forEach(c=>{if(!(c.departments||[]).length)return;
     opts.push(`<optgroup label="${esc(c.name)}">`+c.departments.map(d=>{const v=`d|${c.id}|${d.name}`;
       return `<option value="${esc(v)}"${v===cur||(tt.to==='department'&&!tt.company&&c.open&&tt.department===d.name)?' selected':''}${d.desk?'':' disabled'}>${esc(d.name)}${d.desk?'':' (no desk yet)'}</option>`}).join('')+'</optgroup>')});
@@ -41234,9 +42387,9 @@ function zmLogical(tree){
         children:[...zmTieGroup(d.ties,d.name,`t:${ci}:${di}`),...(d.people||[]).map(p=>person(p,`p:${ci}:${di}`))]})),
       ...(c.people||[]).map(p=>person(p,`p:${ci}`)),
       ...(c.auditor?[person({...c.auditor,label:c.auditor.name+' (auditor)'},`a:${ci}`)]:[])]}));
-  return {id:'lead',label:L.name||'Aria',kind:'lead',kindWord:'lead agent',big:true,img:zmAvatar('@agent'),
+  return {id:'lead',label:L.name||'Bento',kind:'lead',kindWord:'lead agent',big:true,img:zmAvatar('@agent'),
     detail:()=>zmPersonDetail({...L,lead:true}),
-    children:[...zmTieGroup(L.ties,L.name||'Aria','tl'),...companies]};
+    children:[...zmTieGroup(L.ties,L.name||'Bento','tl'),...companies]};
 }
 function zmPhysical(v){
   const rows=(v.rows||[]).filter(r=>!r.ignored),ties=(v.ties||[]).filter(t=>!t.stale);
@@ -43090,6 +44243,10 @@ function bpCrumbs(st){
       const a=document.createElement('a');a.className='bp-exp-a';a.href='/api/stage/scene/'+encodeURIComponent(st.sid)+'/export?format='+f;
       a.setAttribute('download','');a.title=t;a.append(sEl('b','',w),sEl('span','',t));
       a.onclick=()=>{d.open=false;if(typeof toast==='function')toast(f==='pdf'?'Printing the blueprint… it downloads in a moment':'Downloading the blueprint')};m.append(a)});
+    // and as a deck or a Word document, with the pictures a phone gets (stagedoc.py)
+    if(typeof STAGE_FILES!=='undefined')STAGE_FILES.filter(f=>f[0]!=='pdf').forEach(f=>{const a=document.createElement('a');a.className='bp-exp-a';
+      a.href='/api/stage/story/file?format='+f[0]+'&sid='+encodeURIComponent(st.sid);a.setAttribute('download','');a.title=f[2];
+      a.append(sEl('b','',f[1]),sEl('span','',f[2]));a.onclick=()=>{d.open=false;if(typeof toast==='function')toast('Making the '+f[1]+' file… it downloads in a moment')};m.append(a)});
     d.append(m);c.append(d)}
   if(st.path.length){const up=sEl('button','bp-up','↥ Up');up.title='Back up one level (Esc)';up.onclick=()=>bpGo(st,st.path.slice(0,-1),'back');c.append(up)}
   // the legend: what a dashed or dotted line means
@@ -44384,7 +45541,7 @@ async function mdlGL(host,model,style,opts){
     // the eye: over the sheet while it is drawn, then down and round it
     const k=holo?1:ease((t-RISE0+.5)/3.2);
     const EL=model.el||.46,AZ=model.az||1.95;
-    const elA=holo?Math.max(.4,EL*.8):1.44+(EL-1.44)*k,azA=(holo?AZ-.05:AZ-.55+.55*k)+(st.user?0:Math.max(0,t-END)*.04)+(holo&&!st.user?t*.1:0);
+    const elA=holo?Math.max(.4,EL*.8):1.44+(EL-1.44)*k,azA=model.map?AZ:(holo?AZ-.05:AZ-.55+.55*k)+(st.user?0:Math.max(0,t-END)*.04)+(holo&&!st.user?t*.1:0);
     const el=Math.max(.06,Math.min(1.5,elA+st.elU)),az=azA+st.azU;
     const cy=(holo?B.H*.45-lift*.3:B.H*.42*k)+(tall?B.H*.25*st.explode:0);
     // far enough that every corner of its box is on the sheet, and no farther
@@ -44398,10 +45555,14 @@ async function mdlGL(host,model,style,opts){
     st.fit+=(fit-st.fit)*(st.fit>1?.12:1);
     // a tour, or a tapped name, brings the eye to one thing and back
     const goal=st.focus?1:0;st.fk+=(goal-st.fk)*.07;if(Math.abs(goal-st.fk)>.003)moving=true;else st.fk=goal;
-    if(st.focus)st.fp=st.focus;
+    // from one thing to the next the eye travels, and pulls back on a long way: a cut from Thailand to Portugal says nothing of where either is
+    let hop=0;
+    if(st.focus){const f=st.focus,q=st.fp&&st.fk>.05?st.fp:(st.fp={x:f.x,y:f.y,z:f.z,r:f.r});
+      hop=Math.hypot(f.x-q.x,f.z-q.z);const e=hop>.02?.11:1;
+      q.x+=(f.x-q.x)*e;q.y+=(f.y-q.y)*e;q.z+=(f.z-q.z)*e;q.r+=(f.r-q.r)*e;if(hop>.02)moving=true}
     const fp=st.fp||{x:0,y:cy,z:0,r:B.R},fk=ease(st.fk);
     const tx=fp.x*fk,ty=cy+(fp.y-cy)*fk,tz=fp.z*fk;
-    const dist=(st.fit+(Math.max(fp.r/tv/.46,2)-st.fit)*fk)*st.zoom*(holo?.88:1);
+    const dist=Math.min(st.fit*1.02,(st.fit+(Math.max(fp.r/tv/.46,2)-st.fit)*fk+hop*.9*fk))*st.zoom*(holo?.88:1);
     cam.position.set(tx+dx*dist,ty+dy*dist,tz+dz*dist);cam.lookAt(tx,ty,tz);
     if(walls.length&&life>=1){walls.forEach(o=>{const wl=o.wall;o.away=(cam.position.x*wl[0]+cam.position.z*wl[1])>wl[2]&&(dx*wl[0]+dz*wl[1])>.12});
       solids.forEach(o=>{const gone=o.wall?o.away:o.hung?o.hung.away:false;if(gone){o.real.visible=false;o.lines.visible=false;if(o.asset)o.asset.visible=false}else if(o.wall||o.hung)o.lines.visible=!o.asset})}
@@ -44476,7 +45637,8 @@ async function mdlGL(host,model,style,opts){
       const cl=(x,m)=>Math.max(-m,Math.min(m,x));
       st.focus=o?{x:cl(o.grp.position.x,B.W*.6),y:Math.min((o.s.lo[1]+o.s.hi[1])/2,B.H),z:cl(o.grp.position.z,B.D*.6),
         // a river or a range of hills is wider than the sheet: the eye comes in to a part of it, never out
-        r:Math.min(Math.max(Math.max(o.s.hi[0]-o.s.lo[0],o.s.hi[1]-o.s.lo[1],o.s.hi[2]-o.s.lo[2])/2,B.R*(model.whole?.3:.1)),B.R*(model.whole?.5:.34))}:null;st.sel=o?i:-1;wake()},
+        // on a map the eye stops at a region: closer, the coast is the few points it was drawn from
+        r:model.map?B.R*.14:Math.min(Math.max(Math.max(o.s.hi[0]-o.s.lo[0],o.s.hi[1]-o.s.lo[1],o.s.hi[2]-o.s.lo[2])/2,B.R*(model.whole?.3:.1)),B.R*(model.whole?.5:.34))}:null;st.sel=o?i:-1;wake()},
     named:tags.filter(tg=>!tg.o.s.so._quiet).map(tg=>({i:tg.o.s.i,text:tg.text,so:tg.o.s.so})),
     dispose,state:st};
 }
@@ -44677,7 +45839,7 @@ function mdlOfChart(sc){
         :rk===0?'The highest of '+all.length+'.':mdlOrd(rk+1)+' of '+all.length+', '+Math.round((1-Math.abs(v)/top)*100)+'% below '+first+'.';
       solids.push({shape:'box',at:[-W/2+slot*(i+.5),0,D/2-bd/2-r*gap],size:[bw,Math.max(Math.abs(v)*ky,Hh*.004),bd],
         color:signed?(v<0?'red':'green'):rows>1?MDL_SERIES[r%8]:rk===0?'gold':'blue',
-        label:label.has(p)?who+' '+(signed&&v<0?'▼ ':signed&&v>0?'▲ ':'')+stageFmtS(v,unit,signed):'',note})}));
+        label:label.has(p)?who+' '+(signed&&v<0?'▼ ':signed&&v>0?'▲ ':'')+stageFmtS(v,unit,signed):'',note,_name:who,_val:stageFmtS(v,unit,signed),_v:v})}));
     if(!signed)yOf=v=>v*ky;
   }else{
     const Hh=7.5;let lo=Math.min(...vals),hi=Math.max(...vals);
@@ -44722,7 +45884,7 @@ function mdlOfMap(sc,world){
   else{const nw=bh*asp/kx,mid=(lo0+lo1)/2;lo0=mid-nw/2;lo1=mid+nw/2}
   const Wm=60,S=Wm/((lo1-lo0)*kx),mx=(lo0+lo1)/2,mz=(la0+la1)/2,Dm=(la1-la0)*S,th=.14;
   const X=lon=>(Math.max(lo0,Math.min(lo1,lon))-mx)*kx*S,Z=lat=>-(Math.max(la0,Math.min(la1,lat))-mz)*S;
-  const span=lo1-lo0,cap=span>150?48:span>60?90:160;
+  const span=lo1-lo0,cap=span>150?150:span>60?240:360;   // a country cut to 48 points left gaps between neighbours, seen in a phone's video
   // an outline is cut at the sheet's edge (never pulled to it: that drew a wedge of land across the sea)
   const cut=P=>{[[0,lo0,1],[0,lo1,-1],[1,la0,1],[1,la1,-1]].forEach(e=>{const ax=e[0],lim=e[1],sg=e[2],inn=q=>(q[ax]-lim)*sg>=0,o=[];
     for(let i=0;i<P.length;i++){const a=P[i],b=P[(i+1)%P.length],ia=inn(a),ib=inn(b);
@@ -44756,14 +45918,15 @@ function mdlOfMap(sc,world){
   pts.forEach(p=>{const t=p.value!=null&&pv.length>1?(pm(p.value)-p0)/((p1-p0)||1):.5,h=pv.length?2.4+t*7.5:3.4;
     const x=X(p.lon),z=Z(p.lat),col=ps&&p.value?(p.value<0?'red':'green'):'red',n=noted.indexOf(p);
     solids.push({shape:'cylinder',at:[x,th,z],size:[.26,h,.26],color:'black',_tp:1.6});
-    solids.push({shape:'sphere',at:[x,th+h-.15,z],size:[1.15,1.15,1.15],color:col,note:p.note||'',
+    solids.push({shape:'sphere',at:[x,th+h-.15,z],size:[1.15,1.15,1.15],color:col,note:p.note||'',_name:String(p.label||'').split(',')[0].trim(),_val:p.value!=null?stageFmtS(p.value,sc.unit,ps):'',_v:p.value!=null?p.value:null,
       label:(n>=0?(n+1)+' · ':'')+String(p.label||'').split(',')[0].trim()+(p.value!=null?' '+stageFmtS(p.value,sc.unit,ps):'')});
     tops.push([x,th+h+.4,z])});
   // a journey: an arc in the air from each place to the next
   if(sc.route&&tops.length>=2&&tops.length<=12)for(let i=1;i<tops.length;i++){const a=tops[i-1],b=tops[i],d=Math.hypot(b[0]-a[0],b[2]-a[2]),arc=[];
     for(let k=0;k<=24;k++){const u=k/24;arc.push([a[0]+(b[0]-a[0])*u,a[1]+(b[1]-a[1])*u+Math.sin(u*Math.PI)*d*.22,a[2]+(b[2]-a[2])*u])}
     lines.push({late:1,p:arc})}
-  return {solids,lines,ground:'water',style:sc.style,el:.8,az:1.7,sun:[-.5,.62,.4]};
+  // north is up and stays up: a map turned 40 degrees (az drifted as the clip ran) is a map nobody recognises
+  return {solids,lines,ground:'water',style:sc.style,el:.95,az:Math.PI/2,map:true,sun:[-.5,.62,.4]};
 }
 /* Whether this screen builds charts and maps in 3D, and the person's choice to keep them flat. */
 function stageD3ok(){return !(window.STAGE_REPORT&&!window.MDL_THREE)&&!window.STAGE_STILL&&!stageReduced()&&!mdlLite()&&mdlGLok()}
@@ -44787,13 +45950,17 @@ function stageD3(art,sc,model,redraw,before){
    names over it and the tour's caption, and that canvas is recorded with a soundtrack made
    here (a held chord, the pen, a swell as it rises, a bell when it stands) and, when the caller
    has one, the story read aloud. Real time: a clip of N seconds takes N seconds to make.
-   o: {title, say, narr (a URL of audio), w, h, stops, style}. Resolves {blob, mime, seconds}. */
+   o: {title, say, narr (a URL of audio), w, h, stops, style, kind, line}. Resolves {blob, mime, seconds}.
+   A map or a chart (o.kind) is told as a count: its line first, then EVERY place or bar in turn with its
+   number, and all of them on one board at the end. Reported from a phone as "there are 10 of these places,
+   it has only sneak-peeked these": the tour stopped at five and never showed the whole. */
 async function mdlClip(box,draw,o){
   o=o||{};const W=o.w||720,H=o.h||1280,TOP=150,BOT=190;
   box.style.cssText='position:fixed;left:-9999px;top:0;width:'+W+'px;height:'+(H-TOP-BOT)+'px;contain:strict';
   const art=sEl('div','stg-art');art.style.cssText='position:absolute;inset:0;display:flex;flex-direction:column';box.append(art);
   const cv=document.createElement('canvas');cv.width=W;cv.height=H;const g=cv.getContext('2d');
-  let cap=null,capAt=0,done=false,frames=0;
+  let cap=null,capAt=0,done=false,frames=0,list=null,board=0,intro=0;
+  const count=o.kind==='map'||o.kind==='chart',bare=x=>String(x||'').replace(/^\d+ · /,'');
   const wrap=(text,maxW,font)=>{g.font=font;const out=[];let line='';String(text||'').split(/\s+/).forEach(w=>{const t=line?line+' '+w:w;
     if(g.measureText(t).width>maxW&&line){out.push(line);line=w}else line=t});if(line)out.push(line);return out};
   const paint=(src,tags,host)=>{
@@ -44804,7 +45971,18 @@ async function mdlClip(box,draw,o){
     g.textBaseline='middle';g.textAlign='center';
     // the names over it
     g.font='600 19px ui-monospace,Menlo,monospace';
-    tags.forEach(t=>{if(!t.on)return;const w=g.measureText(t.text).width+22,x=Math.max(w/2+4,Math.min(W-w/2-4,t.x)),y=TOP+t.y-16;
+    // counted: each thing wears its number, and only the one being told wears its name
+    if(count&&list){const cur=cap?cap.k:-1;let curT=null;
+      tags.forEach(t=>{const k=list.findIndex(n=>n.text===t.text);if(k<0||!(t.x>8&&t.x<W-8))return;const y=TOP+t.y+(t.lead||9)-9-14;if(y<TOP+12||y>H-BOT-6)return;
+        if(k===cur){curT={t,y};return}
+        g.fillStyle=dark?'rgba(6,24,46,.92)':'rgba(32,24,15,.88)';g.beginPath();g.arc(t.x,y,13,0,7);g.fill();
+        g.fillStyle='#f4ead6';g.font='700 15px ui-monospace,Menlo,monospace';g.fillText(String(k+1),t.x,y+1)});
+      if(curT){const t=curT.t,tx=(cur+1)+'  '+list[cur].name+(list[cur].val?'  '+list[cur].val:'');g.font='700 22px system-ui,sans-serif';
+        const w=g.measureText(tx).width+30,x=Math.max(w/2+6,Math.min(W-w/2-6,t.x)),y=curT.y-8;
+        g.fillStyle='#ffd98a';g.beginPath();g.roundRect(x-w/2,y-19,w,38,8);g.fill();
+        g.beginPath();g.moveTo(t.x-7,y+18);g.lineTo(t.x+7,y+18);g.lineTo(t.x,y+28);g.fill();
+        g.fillStyle='#20180f';g.fillText(tx,x,y+1)}}
+    else tags.forEach(t=>{if(!t.on)return;const w=g.measureText(t.text).width+22,x=Math.max(w/2+4,Math.min(W-w/2-4,t.x)),y=TOP+t.y-16;
       g.fillStyle=dark?'rgba(6,24,46,.9)':'rgba(248,238,216,.94)';g.beginPath();g.roundRect(x-w/2,y-15,w,30,6);g.fill();
       g.strokeStyle=dark?'rgba(200,235,255,.5)':'rgba(32,24,15,.4)';g.lineWidth=1;g.stroke();
       g.beginPath();g.moveTo(t.x,y+15);g.lineTo(t.x,y+15+(t.lead||9));g.stroke();
@@ -44812,7 +45990,30 @@ async function mdlClip(box,draw,o){
     // the title above, the caption below
     g.fillStyle='#f4ead6';const tl=wrap(o.title,W-70,'700 34px system-ui,sans-serif').slice(0,2);
     tl.forEach((l,i)=>g.fillText(l,W/2,TOP/2+(i-(tl.length-1)/2)*42));
-    if(cap){const a=Math.min(1,(performance.now()-capAt)/350);g.globalAlpha=a;
+    if(count&&list){const now=performance.now(),n=list.length,gap=5,sw=(W-36-gap*(n-1))/n;
+      // where it is in the count
+      list.forEach((u,i)=>{const sx=18+i*(sw+gap);g.fillStyle='rgba(244,234,214,.2)';g.beginPath();g.roundRect(sx,14,sw,5,2.5);g.fill();
+        if(board||(cap&&i<=cap.k)){g.fillStyle='#ffd98a';g.beginPath();g.roundRect(sx,14,sw,5,2.5);g.fill()}});
+      const vmax=Math.max(0,...list.map(u=>u.v==null?0:Math.abs(u.v)));
+      if(board){   // every one of them, on one sheet: the frame worth keeping
+        const rh=Math.min(44,Math.floor(400/n)),hl=wrap(o.line,W-96,'500 20px system-ui,sans-serif').slice(0,2),hh=hl.length?hl.length*26+18:8,bh=hh+n*rh+18,by=H-34-bh,a=Math.min(1,(now-board)/400);
+        g.globalAlpha=a;g.fillStyle='rgba(20,15,10,.9)';g.beginPath();g.roundRect(18,by,W-36,bh,14);g.fill();
+        g.fillStyle='rgba(244,234,214,.78)';g.font='500 20px system-ui,sans-serif';hl.forEach((l,i)=>g.fillText(l,W/2,by+22+i*26));
+        list.forEach((u,i)=>{const ra=Math.max(0,Math.min(1,(now-board-250-i*110)/300));if(!ra)return;g.globalAlpha=a*ra;const y=by+hh+i*rh+rh/2;
+          if(vmax&&u.v!=null){g.fillStyle='rgba(255,217,138,.16)';g.beginPath();g.roundRect(72,y-rh/2+4,(W-72-40)*Math.abs(u.v)/vmax,rh-8,5);g.fill()}
+          g.fillStyle='#ffd98a';g.font='700 17px ui-monospace,Menlo,monospace';g.textAlign='center';g.fillText(String(i+1),50,y+1);
+          g.fillStyle='#f4ead6';g.font='600 '+(rh>36?23:19)+'px system-ui,sans-serif';g.textAlign='left';g.fillText(u.name.slice(0,30),84,y+1);
+          g.textAlign='right';g.font='700 '+(rh>36?23:19)+'px ui-monospace,Menlo,monospace';g.fillText(u.val,W-52,y+1);g.textAlign='center'});
+        g.globalAlpha=1}
+      else if(cap){const a=Math.min(1,(now-capAt)/300),u=list[cap.k];g.globalAlpha=a;
+        g.fillStyle='#ffd98a';g.font='700 19px ui-monospace,Menlo,monospace';g.fillText((cap.k+1)+' OF '+n,W/2,H-BOT+26);
+        g.fillStyle='#f4ead6';g.font='700 34px system-ui,sans-serif';g.fillText((u.name+(u.val?'   '+u.val:'')).slice(0,36),W/2,H-BOT+66);
+        if(vmax&&u.v!=null){const bw=W-200,f=Math.abs(u.v)/vmax*Math.min(1,(now-capAt)/700);g.fillStyle='rgba(244,234,214,.18)';g.beginPath();g.roundRect(100,H-BOT+92,bw,7,3.5);g.fill();
+          g.fillStyle='#ffd98a';g.beginPath();g.roundRect(100,H-BOT+92,Math.max(7,bw*f),7,3.5);g.fill()}
+        const ls=wrap(u.note,W-80,'500 25px system-ui,sans-serif').slice(0,2);ls.forEach((l,i)=>g.fillText(l,W/2,H-BOT+126+i*31));g.globalAlpha=1}
+      else if(intro&&o.line){const a=Math.min(1,(now-intro)/500);g.globalAlpha=a;g.fillStyle='#f4ead6';   // what the numbers are, before any of them
+        const ls=wrap(o.line,W-80,'500 27px system-ui,sans-serif').slice(0,3);ls.forEach((l,i)=>g.fillText(l,W/2,H-BOT+52+i*34));g.globalAlpha=1}}
+    else if(cap){const a=Math.min(1,(performance.now()-capAt)/350);g.globalAlpha=a;
       g.fillStyle='#ffd98a';g.font='700 22px ui-monospace,Menlo,monospace';g.fillText(cap.name.toUpperCase().slice(0,44),W/2,H-BOT+38);
       g.fillStyle='#f4ead6';const ls=wrap(cap.note,W-80,'500 27px system-ui,sans-serif').slice(0,3);
       ls.forEach((l,i)=>g.fillText(l,W/2,H-BOT+76+i*33));g.globalAlpha=1}
@@ -44826,7 +46027,15 @@ async function mdlClip(box,draw,o){
     // the drawing mounts at once or after its data arrives (a map waits for the world)
     let M=null;for(let i=0;i<80&&!(M&&M.gl);i++){await wait(100);const h=box.querySelector('.mdl');M=h&&h._mdl}
     if(!M||!M.gl)return null;
+    // the drawing takes the whole frame: a map's notes and source line shared it, and the picture was stretched back to fit, its names off their pins
+    {const h=box.querySelector('.mdl'),f=h.closest('.stg-d3,.stg-model')||h;f.style.cssText+=';position:absolute;inset:0;width:auto;height:auto;min-height:0;flex:none;z-index:5';
+      if(f!==h)h.style.height='100%';await wait(120)}
     if(o.style&&MDL_LOOK[o.style]&&M.style!==o.style){M.style=o.style;M.gl.style(o.style)}else M.gl.replay();
+    // a counted clip opens on the thing standing, not on eight seconds of it being drawn
+    const SKIP=count&&M.style!=='hologram'?4.2:0;if(SKIP)M.gl.state.t0-=SKIP*1000;
+    if(count){list=M.gl.named.slice(0,o.stops||12).map(n=>({i:n.i,text:n.text,so:n.so,name:n.so._name||bare(n.text),val:n.so._val||'',v:n.so._v==null?null:n.so._v,note:M.note(n.so)}));
+      if(list.length<2)list=null}
+    intro=performance.now();
     // the sound
     const AC=window.AudioContext||window.webkitAudioContext;ctx=new AC();try{await ctx.resume()}catch(e){}
     const out=ctx.createMediaStreamDestination(),t0=ctx.currentTime+.05,master=ctx.createGain();master.gain.value=1.7;master.connect(out);
@@ -44856,19 +46065,30 @@ async function mdlClip(box,draw,o){
     rec.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};
     const ended=new Promise(r=>{rec.onstop=r});rec.start(500);const began=performance.now();
     // the build, then round its named things, then the whole once more
-    const keep=setInterval(()=>{try{M.gl.zoom(1)}catch(e){}},3000);
-    const built=holo?5.2:M.style==='real'?10.8:8.6;await wait(built*1000);
-    const stops=M.gl.named.slice(0,o.stops||5);
-    for(const n of stops){const note=M.note(n.so);cap={name:n.text,note};capAt=performance.now();M.gl.focus(n.i);
-      await wait(Math.max(2700,(n.text.length+note.length)*68+1300))}
-    cap=null;M.gl.focus(null);
-    await wait(Math.max(2200,(speak-(performance.now()-began)/1000)*1000+600));
+    const keep=setInterval(()=>{try{M.gl.zoom(1)}catch(e){}},list?400:3000);   // a drawing at rest paints nothing, and the board is painted with it
+    const built=(holo?5.2:M.style==='real'?10.8:8.6)-SKIP;await wait(built*1000);
+    const stops=list||M.gl.named.slice(0,o.stops||5);let k=0;
+    for(const n of stops){const note=M.note(n.so);cap={name:n.text,note,k:k++};capAt=performance.now();M.gl.focus(n.i);
+      await wait(list?Math.max(3000,note.length*62+2400):Math.max(2700,(n.text.length+note.length)*68+1300))}
+    cap=null;intro=0;M.gl.focus(null);
+    if(list){await wait(1100);board=performance.now();await wait(1200+list.length*110+3200)}
+    await wait(Math.max(list?300:2200,(speak-(performance.now()-began)/1000)*1000+600));
     clearInterval(keep);const secs=(performance.now()-began)/1000;
     master.gain.linearRampToValueAtTime(0,ctx.currentTime+.4);await wait(450);
+    await mdlClipDrain(rec,chunks);
     rec.stop();await ended;done=true;
     return {blob:new Blob(chunks,{type:mime.split(';')[0]}),mime:mime.split(';')[0],seconds:secs,frames};
   }catch(e){return null}
   finally{done=true;if(window.MDL_ONFRAME===paint)window.MDL_ONFRAME=null;try{if(rec&&rec.state!=='inactive')rec.stop()}catch(e){}try{if(ctx)ctx.close()}catch(e){}}
+}
+/* Stopping a recorder drops the pictures it has not encoded yet. On a machine drawing in software the encoder
+   ran ten seconds behind a forty second clip (measured: 43 s of sound, 33 s of picture), so every video lost its
+   ending. The recorder is paused, which takes no new pictures, and stopped once nothing more comes out of it. */
+async function mdlClipDrain(rec,chunks){
+  try{rec.pause()}catch(e){return}
+  const size=()=>chunks.reduce((a,c)=>a+c.size,0);let last=size(),still=0;
+  for(let i=0;i<60&&still<3;i++){await new Promise(r=>setTimeout(r,500));try{rec.requestData()}catch(e){}
+    await new Promise(r=>setTimeout(r,60));const n=size();still=n-last<600?still+1:0;last=n}
 }
 /* A blueprint's walk-through as a video (stage.walk_html): its pictures one after another on the sheet, each
    moved through from top to bottom, its words under it and read over it. slides: [{img, head, text, narr}].
@@ -44940,7 +46160,7 @@ async function mdlWalk(slides,o){
       await wait(x.dur*1000)}
     const secs=(performance.now()-began)/1000;
     master.gain.linearRampToValueAtTime(0,ctx.currentTime+.4);await wait(450);
-    clearInterval(tick);rec.stop();await ended;
+    clearInterval(tick);await mdlClipDrain(rec,chunks);rec.stop();await ended;
     return {blob:new Blob(chunks,{type:mime.split(';')[0]}),mime:mime.split(';')[0],seconds:secs,frames};
   }catch(e){return null}
   finally{clearInterval(tick);try{if(rec&&rec.state!=='inactive')rec.stop()}catch(e){}try{if(ctx)ctx.close()}catch(e){}}
@@ -44954,7 +46174,7 @@ function stageWalk(slides,o){return mdlWalk(slides,o).then(stageClipLeave)}
 /* A scene's clip, for the page a phone's video is made on (stage.clip_html): the answer is left on window. */
 function stageClip(sc,o){
   const box=sEl('div','mdl-clipbox');document.body.append(box);
-  return mdlClip(box,art=>stageDraw(art,sc),Object.assign({title:sc.title||sc.subject||''},o||{})).then(stageClipLeave);
+  return mdlClip(box,art=>stageDraw(art,sc),Object.assign({title:sc.title||sc.subject||'',kind:sc.kind,line:sc.caption||sc.say||''},o||{})).then(stageClipLeave);
 }
 /* ================= file manager app ================= */
 async function renderFiles(body,w){
@@ -47625,13 +48845,22 @@ function exposeSpaces(){
     };
   });
   const add=$('#sp-add');
-  if(add)add.onclick=()=>{DESKS++;localStorage.setItem('desks',DESKS);buildPager();exposeSpaces()};
+  if(add)add.onclick=()=>{DESKS++;localStorage.setItem('desks',DESKS);
+    try{localStorage.removeItem('immersive.scene.d'+DESKS);localStorage.removeItem('desk.company.d'+DESKS)}catch(e){}
+    buildPager();exposeSpaces()};
 }
 function removeDesk(n){
   if(DESKS<=1)return;
   deskWins(n).forEach(w=>{w.desk=Math.max(1,n-1)});     // never orphan a window
+  // the desktops after it move down one, and what each showed moves with it
+  WM.wins.forEach(w=>{if((w.desk||1)>n)w.desk=(w.desk||1)-1});
+  if(typeof deskShift==='function')deskShift(n);
   DESKS--;localStorage.setItem('desks',DESKS);
+  if(curDesk>n){curDesk--;localStorage.setItem('curDesk',curDesk)}
   if(curDesk>DESKS)switchDesk(DESKS);
+  // the desktop in front may be another one now: its scene and its company
+  if(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on){applyImmersive();if(typeof loadWallpaper==='function')loadWallpaper()}
+  if(typeof deskCompanySync==='function')deskCompanySync(curDesk);
   applyDeskVisibility();buildPager();exposeSpaces();exposeGrid();
   toast('desktop removed');
 }
@@ -48044,6 +49273,8 @@ deckLoad();buildDeck();
 paintSpaceChip();
 /* the tray opens Control Center as a popover (macOS-style), not an app window */
 $('#tray-ctl').onclick=e=>{e.stopPropagation();toggleControlCenter()};
+$('#tray-net').onclick=e=>{e.stopPropagation();toggleTrayNet()};
+trayNetLoad(false);
 $('#tray-voice').onclick=()=>jarvisMode(!JARVIS.on);
 $('#tray-voice').innerHTML=svgMic(14);
 /* power & session menu — AgentOS as the desktop environment carries real session

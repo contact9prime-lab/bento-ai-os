@@ -635,11 +635,11 @@ NOT_MACHINE = {
     "git_remote_set", "git_status", "huddle", "kg_add", "kg_query", "launch_native_app", "linked_teams", "list_assets",
     "list_automations", "list_dir", "list_flows", "list_folders", "list_notifications", "list_openclaw_plugins",
     "list_spaces", "list_themes", "list_windows", "llm_generate", "mail_read", "mail_search", "mail_send", "manage_window",
-    "notify", "open_app", "openclaw_report", "pin_widget", "pool_task", "port_openclaw_plugin", "read_app_data",
+    "new_company", "notify", "open_app", "open_company", "openclaw_report", "pin_widget", "pool_task", "port_openclaw_plugin", "read_app_data",
     "read_file", "read_skill", "read_source", "recall", "remember", "request_capability", "run_automation", "run_command",
     "run_flow", "run_python", "save_asset", "save_automation", "save_report", "save_skill", "schedule_task", "screen_face",
     "search_docs", "search_files", "set_agent_brain", "set_avatar", "set_brightness", "set_office", "set_wallpaper",
-    "show_scene", "system_control", "system_info", "take_screenshot", "telegram_send", "terminal_read", "terminal_send",
+    "show_scene", "stage_file", "system_control", "system_info", "take_screenshot", "telegram_send", "terminal_read", "terminal_send",
     "terminal_sessions", "timeline", "train_autopilot", "train_datasets", "train_job", "train_model", "update_app_data",
     "use_skill", "verify_openclaw_port", "whatsapp_send", "write_file",
     # refused by their own lists, tested where those live

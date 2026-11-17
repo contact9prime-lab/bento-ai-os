@@ -573,6 +573,31 @@ user." Six rules:
   and then set up from ticked departments lost the line. Removing a company switches its desks
   and missions off (nothing would sign their work off) and keeps its agents and space.
 
+**A company is addressed by name, and the lead decides who does the work** (`company.parse_company`/
+`open_here`/`route_note`/`others_note`/`of_flow`/`place_mission`, `ControlPlane.open_company`, `fabric.company_turn`,
+the `open_company` and `new_company` tools; `docs/company.md`, `tests/test_at_company.py`). Asked for as "@company in
+the chat asks the user to switch", "a stock market question to the kids channel: it can say the context is
+different, create a company or switch", "Aria does all the heavy lifting … it needs to take that cognitive
+decision", "memory should be company specific, and a generic memory". Six rules:
+- **`@Acme …` is `company.switch`, decided by the gate and then asked of a person** at every autonomy, on every
+  chat surface, through one door (`company_turn`, called after `parse_mention` and `parse_department`). What
+  follows the name is parsed again in that company, so `@Acme @Sales …` reaches its Sales.
+- **The lead's two tools are ALWAYS_ASK and refused to everybody else** (`_NO_COMPANY` in every `BUILTIN_DENY`
+  row). The surface and the chat are injected by the loop. They are on the team door.
+- **Who does the work is ONE decision near the top** (`route_note`, before `finish_line` in the door, before the
+  company note in `_system`), written from what the machine has: alone, specialists only, departments, other
+  companies. Measured with real Claude Code on the owner's pattern (a quick look, then "do the end to end
+  backtests" in the same chat): before, it tried with its own Read and gave up; after, `department_task` to Tech.
+  A one-turn "run this Python" was handed to Tech before and after, so that case alone proves nothing.
+- **A question counts.** Told a quick fact is never a reason to switch, the lead answered a Nifty question in the
+  kids channel and offered the switch afterwards. `others_note` now says not even the quick part.
+- **A mission is the company's whose space it is in** (`of_flow`; `cfg_for(…, space_id)` for the bosses and the
+  auditor). `place_mission` stamps a new one and refuses somebody ADDED from another company, at the lead's
+  `create_flow` and the editor's save; `flows.save` keeps the space on a re-save that names none.
+- **A company's memory is its space; `everywhere` is what goes with the agents** (`agent.memory_text` says which
+  shelf is which). The chat moves to the company that was opened (`set_conversation_space`), and a chat held in a
+  parked company asks to open it before it carries on, or becomes the open company's.
+
 **A department at work is seen where it was asked, and the desk master keeps the scope** (`fabric._can_words`,
 `_master_persona`, flow_start's `conversation_id`/`department`/`head`, `officeLive` over `O.runs`, the
 `department_task` branch in `officePulse`, `deptCardLive` in 10a-handoff.js; `tests/test_department_routing.py`).
@@ -588,6 +613,20 @@ Office showed nothing for six minutes. Four rules:
   A step's tool and detail, or a line of thinking, is said over the worker's desk.
 - **The chat card follows the desk's run**: flow_start names the chat, the department and the head; the page binds the
   open `department_task` card to that run and writes each hand-over, step, finish and sign-off into it.
+
+**What is handed back is whole, and a run that stops keeps what it finished** (`tools.handed_back`/`HANDBACK`,
+`company._shown`/`REVIEW_CHARS`, `fabric._salvage`/`SALVAGED`; `tests/test_desk_handback.py`). Reported as "the company
+delegation is not very great, the answers fall short". Read from the owner's record and then measured live:
+- **Five doors back were cut at 3,500 characters with no mark**: `delegate`, `run_flow`, `department_task` (tools.py),
+  a colleague's answer and a linked team's (fabric.py). Every desk deliverable on the owner's machine (4,140 to 5,759
+  characters) reached the lead cut mid-sentence. With real Claude Code as the lead and 60 numbered items asked of a
+  specialist, 21 and 27 arrived; after, all 60. A cut is at a paragraph and is SAID, with the run to read.
+- **A boss read 6,000 characters and a send-back showed 4,000.** Both read `_shown` now.
+- **A run that ends without `finish` hands back its board**: each finished step in full, the master's notes, what did
+  not finish, said to be unfinished and unchecked. Status stays `error`/`timeout`, so no boss or auditor signs it. A
+  Research desk had worked 39 minutes and handed back "the executor exited with 143".
+- `fabric_runs.output` stays 8,000: the runs list is a summary, the board holds the whole thing.
+- The first fix passed its tests and changed nothing live: it had been written into another worktree. Run it live.
 
 **A phone turn is its owner's, on every screen** (`server._owner_send`, `users.OWN_CHANNELS`;
 `tests/test_telegram_owner.py`). Reported as "the instruction given by Telegram to the tied user is accepted by Aria in
@@ -709,6 +748,10 @@ server's `_world_org`; none of the three pages asks `/api/company` or decides me
 - **Crew:** one figure per department (its head, in the department's shirt), up to
   `CREW_MAX_ORG`; `crewMatch` answers for any member, so a member's work lights its
   department's figure and `crewWorker` names who.
+- **Mind, other companies:** each PARKED company is one hub too (`co:<id>`, kind `dept` with `company`), its
+  people titled with their department there, and agents in no company share one hub (`free`) past `MAX_OWN`.
+  Reported with a screenshot of 47 clusters; measured on that data, 50 hubs became 12 and no tags overlap. The
+  Team panel is one row per hub (`team[].hub`). A task button is offered only for a department of the open company.
 - **Mind:** a department is ONE hub (`dept:<name>`, `DEPT_HUES` from the room's colour);
   its people are `person` nodes and their runs and skills sit on that hub; `where` maps a
   name to its hub so a spark finds it. Roster and talk links are per hub, and talk inside
@@ -897,6 +940,30 @@ things rather than presenting the chart". Six rules:
   pictures already photographed. `PHONE_LINE` says a blueprint is a video. A blueprint's form may stand in `space`;
   mounted `whole`, the eye stays outside it and glass is seen through (measured: the tour went inside the horizon, a
   glass ergosphere hid it, and the middle sphere glowed like a sun). WhatsApp plays only mp4 and takes 16 MB.
+- **A map's or a chart's video is a count, north up, on the graphics card** (`mdlClip`'s `count`/`list`/`board`,
+  `model.map`, `mdlClipDrain`, `stage.CLIP_COUNT`, `stageclip.GL_FLAGS`; `tests/test_stage_3d.py`). Reported from
+  Telegram with the owner's eight-place map, "5 on 10": the azimuth drifted .04 rad a second so the map was turned
+  40 degrees by the second place, the tour stopped at five, the map's notes list shared the clip's frame so the
+  picture was stretched back tall with its names off their pins, and nothing showed all of them. Now the map's eye
+  is due south and never turns, the drawing is given the whole frame, the clip opens on the line that says what the
+  numbers are, visits every place (twelve at most) with its number, flies between them (`st.fp` travels, pulled
+  back by the distance left), and ends on a board of all of them. The board is painted from the drawing's frames,
+  so the clip keeps the drawing awake. Measured: drawn in software the picture was 9 frames a second and the
+  encoder ran ten seconds behind the sound, cutting every ending; pausing the recorder did not bring it back.
+  Vulkan gives 30 frames a second in step with the sound. ANGLE's GL backends are faster too but the copied
+  frame was sometimes half drawn (no land, or no pins): do not use them.
+- **A story leaves as a file, and the file is the phone's pictures** (`agentos/stagedoc.py`, `stage_file`,
+  `/api/stage/story/file`, `stageSaveMenu`, `bento stage export --as`, `stage.FILE_LINE`; `tests/test_stage_files.py`).
+  Asked for as "have word documents, pdf and ppt in the stage". One page per `still_items` view, photographed by
+  stagestill, so a file never shows what the Stage did not draw. The .pptx and .docx are written here as zipped
+  XML (no python-pptx, no python-docx); the PDF is a page printed by bpdoc's printer. A picture taller than
+  `BAND` times its width is shown in overlapping bands with the format's own crop (`a:srcRect`): fitted whole,
+  a blueprint's sheet was a few points high. No browser: words only, said in the file, and a PDF is refused in
+  a sentence. The tool is safe but asked for when paranoid, writes only `<workspace>/stage` and never through a
+  link, and is not in a board's door (`STAGE_FILE_TOOLS`, apart from `STAGE_DOOR_TOOLS`). Measured with real
+  Claude Code: told "show the story, then call stage_file", it started researching the numbers again before
+  saving; told an existing story is saved straight away, it called the tool first and named the path. The list
+  is put in the Stage as Keep's is: as a menu inside the bar it was cut off by the bar's own scrolling.
 - **Labels never overlap and the panel holds the rest.** Labels compress, then drop their second line; the
   title block, "you are here" and the links of a tower live in the spec panel. Sized from `clientWidth`, a
   ResizeObserver dropped when the drawing leaves; on a phone the scene scrolls and a tap brings a sheet that
@@ -1392,6 +1459,36 @@ Three things that will bite whoever touches this next:
   `default_tools_approval_mode="approve"` (its parser refuses unknown values, so it was
   tried); it reached `tools/list` before failing on a dummy key. A CLI with no door (none
   today) still gets `team_hint()`.
+
+**One chat turn, read end to end, had six seams; each is one function now** (`tests/test_chat_stitch.py`).
+Found by reading `server._run_chat` and both phone bridges, then measured live with real Claude Code:
+- **What the built-in lead's prompt carries, a forwarded lead carries** (`agent.memory_text`/`skills_text`/
+  `mcp_text`, read by `Agent._system` and `executors.mind_note`). On a Claude Code brain the lead had its
+  soul and no memory, graph, skill list or server list, and no tool to keep anything: the owner's record
+  has a reply saying it "recorded these rules in memory", which was the CLI's own files.
+  `MIND_DOOR_TOOLS` (remember, recall, forget, kg_add, kg_query) are on the team door, so each is the
+  gate's decision and a ledger row. `mind_rule` is short and near the top; the memory itself goes last
+  (data needs no priority, and `MAX_CONTEXT` cuts from the end). A linked team's or a Zero's task
+  (`taint`/`only`) is given none of it; a schedule reads it and has no tool.
+- **Both leads are told to finish** (`executors.finish_line`, in `SYSTEM_PROMPT` and the door's context
+  after the identity). Measured on the owner's record: 21 of 133 Claude Code replies ended on an offer
+  ("message me at 9:45 and I'll…") with `schedule_task` in reach. The WhatsApp note said "keep it short".
+- **Pictures reach a CLI** (`Envelope.images`, `image_blocks`, `_attach`). Claude Code takes image blocks
+  in its stream input's first message (measured: a red square came back "Red"), so a turn with pictures
+  uses the stream input even when it was not steerable. Gemini CLI and Codex get files under
+  `<workspace>/.attachments` named in the prompt: not measured, neither is installed here.
+  `sanitized()` must carry the field (the `steerable` lesson).
+- **A CLI turn's reply is whatever it had said** (`_exec_result`, built in the inner `finally`): a stop
+  or a failure used to save `""` while the session was stamped as having seen the turn.
+- **Whoever is addressed by name reads the thread** (`executors.thread_note`: `context=` for a
+  specialist, appended to a department's task and a huddle's topic).
+- **Telegram and WhatsApp answer through `phoneturn.answer`**, never their own copy: fallback
+  (`fallback.after`, also the chat's and the scheduler's), huddles, the thread, usage, a Telegram photo.
+  A test that patches the Agent for a phone turn patches `agentos.agent.Agent`.
+- **A CLI's bill is recorded as it reported it** (`usage.record(cost_usd=)`, tokens from `Run`): chat,
+  phones and schedules. This OS has no price list for a CLI's models and never works one out.
+Still open: `/api/chat` forwards with no team door and no session; WhatsApp answers a photo with a
+sentence; a specialist addressed by name does not see pictures.
 
 ## The run bridge: an executor's model, this OS's hands
 
@@ -1961,6 +2058,57 @@ poller swallowed the NameError, so nothing was sent and nothing said why.
 after a boot with nobody signed in no account's bot polled. One poller per token, first account wins.
 `/allow` on a chat that never wrote goes on the channel's allow-list (`channels.save`), because
 `tg_set_allowed` only updates a row that exists.
+
+**A phone chat keeps several sessions** (`agentos/phonesessions.py`, `conversations.channel_ref`/`channel_name`,
+`/new [name]`, `/sessions`, `/resume <n|name>`, Telegram's `ss:` buttons; `tests/test_phone_sessions.py`). Asked for as
+"an option of starting new session or reverting to existing sessions": a chat had one conversation and /clear deleted
+it. A session is a conversation row, so going back brings its messages and the CLI's own session (`exec_session`).
+A chat lists and reopens only rows carrying its own `channel_ref` (never matched on the title; a button's id is
+checked by `reopen`), the `ss:` callback is decided by the chat it sits in, before the owner-only buttons, and no
+switch happens under a running turn. One implementation for both channels; WhatsApp has no buttons for it.
+
+**A group is answered only when the owner switched group chats on AND picked it** (`TelegramBridge.groups_on`/
+`set_groups`/`groups`, `telegram.groups`, `/groups [on|off]`, the Telegram app's switch; `tests/test_telegram_groups.py`).
+Off, nothing is said in a group (the bot can be added to groups nobody asked about) and the allow-list written ahead
+does not pass one; the owner hears of each new group once, with Allow this group / Block. Allowing a group turns the
+switch on, or it would read enabled and never answer. Unset, the switch is on only where a group was already enabled.
+
+**A story whose question is gone gets no chip** (`stageAttach`). /clear deletes messages and keeps scenes, and the
+chip of a story with no message in the feed was appended at the END: on the owner's thread the 18 Oct Bengaluru
+story sat under the newest answer about the market. It stays in the Stage's library.
+
+**Who may talk is a table with its decision on it, and a group has people** (`decided_at`/`decided_by` on
+`telegram_chats` and `whatsapp_chats`, table `chat_members`, `TelegramBridge.member_rule`/`_member_ok`/
+`decide_member`/`set_members_only`/`table`, `/members`, `16b-chantables.js`, `43b-chantables.css`;
+`tests/test_channel_tables.py`). Asked for as "a table that we can see when it was validated and who all … in the
+group also you can restrict". Every allow or block passes `by` in words (pairing, the allow-list, the owner on a
+channel, an account at the desktop): a new caller of `tg_set_allowed`/`wa_set_allowed` must say who. Inside an
+enabled group everybody who writes is recorded; the owner is always answered, a blocked person never, the rest by
+the group's rule (`members_only`). The session buttons ask the same rule. The tables are one helper for both
+channels, every cell escaped, cards under 560px of their own width. `info()`'s `groups` is the switch; the rows are
+`group_rows` (a `groups` list once replaced the switch in the same dict).
+
+**A request to let somebody in goes to the account that owns the channel** (`ask_owner_about` on both bridges,
+`WhatsAppBridge.decide_newcomer`/`_owner_command`, Telegram's `wan:` button, `whatsapp_request` on the page).
+Its owner chat on that channel, its desktop (`_owner_send`), and for a WhatsApp newcomer its Telegram when that
+is polling. WhatsApp told the newcomer to find Settings and told the owner nothing. WhatsApp groups are not read
+(bridge.js drops `@g.us`; a linked device would see every group the person is in).
+
+**A chat, an answer or a story is sent to a phone by a person, to a chat of their own** (`agentos/phoneforward.py`,
+`/api/phone/options|send|session`, `10e-phonesend.js`, Chat's ➤ Phone and the Stage's ➤, `send_stage(ans=)`;
+`tests/test_phone_forward.py`). Asked for as "a chat response to continue in the Telegram, send the stage to Telegram or
+WhatsApp … only users' chats to their own accounts, the user decides which chat". Five rules:
+- **No agent tool.** A forwarded chat is outward-facing; a page an agent read must never be able to ask for it.
+- **The chat is looked up again** (`targets`: the owner's chat, a person let in, an answered group, from the caller's
+  own bridges and store). An id from the page is a caller's word. WhatsApp's closed 24-hour window is shown as the
+  reason on a greyed row.
+- **Carry on is a session move** (`claim_conversation` + `tg_set_conversation`/`wa_set_conversation`): the chat becomes
+  that phone chat's session and the phone is pointed at it, after the message got there and never while that chat
+  is being answered. A session of one chat is never moved to another; its answer or story can still be sent.
+- **Every send is a `phone.send` ledger row.**
+- **Channels lists every session under its chat** (`phoneforward.mark` → `phone` on each conversation: chat, label,
+  `open`), with ＋ to start one at the desk (the phone stays where it is). A desktop chat that was carried on is
+  under Desktop and Channels (`chattabs.tag`). TUI: not built; the phone's `/sessions` reaches a carried-on chat.
 
 **A phone turn is saved first and shown like a desk turn** (`TelegramBridge._handle` `built_history`/`emit`,
 `WhatsAppBridge._turn_in`; `tests/test_telegram_turns.py`). The history rebuild (which can compact with a model
@@ -2843,6 +2991,11 @@ pins what follows; `docs/mind.md` is the story.
   asked for "neurons in standby sending signals anyway", so `mindGlint` sends pale glints along
   the real fibres at a few a second: scenery like the fibres' drift, small and white, and it
   never flares a cluster or touches `MIND.sparks`. Keep the two apart or a glint reads as news.
+- **The voice moves the core's EDGE, never its size** (`MIND_CORE`, `mindCoreR`). Reported with a screenshot:
+  speaking, the radius went 35 to 74, the halo to 325px at 80% white and the rings to 318px, all additive, so
+  the centre was a white disc about 220px across. Measured after on the same data: 81px. Every reach is a
+  multiple of the radius and a Node test bounds them. `mindTell` adds `body.mind-telling`, which moves the
+  prompt bar aside (the words ran under it); `mindStop` takes it off.
 - **The core speaks with the SOUND.** `mindTap` puts an analyser on `SPEECH.audio` and
   `mindVoice` shapes the soma's edge from its bands and sends a ripple on each syllable. It was
   a timer ("the centre is just beeping"). The tap routes the voice through an AudioContext,
@@ -2957,6 +3110,16 @@ Full story in `docs/team.md`. Two features, five rules.
   dies mid-talk keeps what was said), then a broadcast. The start and end are `team.freetalk`
   ledger rows carrying the session's `run_id`. `fabric.talk_log` reads every agent-to-agent
   conversation (free talks, huddles, asks) back out of `fabric_runs`, never a table of its own.
+
+**The voice is stopped where it is heard** (`speechHush`/`speechPill`/`speechSpeaking`, `#voicestop`;
+`tests/test_voice_stop.py`). Reported as "I have no idea how to stop the voice": the only way was the chat
+header's Voice on button, which reads as a setting, is not on the Office's panel or the prompt bar, and turns
+the voice off for good. One pill while `SPEECH.pending` is over zero, and Esc. It stops what is said and
+queued, marks the live reply `hushed` so `speechLiveFeed`/`speechLiveEnd` say no more of it (End returns true,
+or the whole reply was read at the turn's end), and leaves `VOICE.tts` alone. Not in Jarvis: a stopped line
+never calls its `done`, and Jarvis waits on that. On a phone it sits under the menu bar: at the bottom left
+it covered the composer's attach button, seen in the first screenshot. A headless browser has no voice and
+finishes a line at once, so the picture holds one open with a stand-in.
 
 **A voice per agent, on any engine, and it never cuts anyone off.** Every line goes through ONE
 door on the page, `speakAs(name, text)` (08-wallpaper-jarvis-voice.js): the Jarvis reply, huddle,
@@ -3696,6 +3859,30 @@ device hub instead of the town … the desktops could be used for switching". Fi
 - **Words and numbers, no frame loop**: a 4 s refresh that skips while hidden or covered, values moved in place by
   `device_live`. It is in `LITE_SCENES`, so a Pi's own screen can show it.
 
+**What a desktop shows is chosen on the desktop: its scene, and the company it opens** (`deskMenu`/`deskBtnPaint`/
+`deskAdd`/`deskShift`/`deskCompanySync` in 03-virtual-desktops.js, `#deskbtn` in shell.html, `01i-apphub.js`,
+`43-desks.css`, `devboard.company_map`/`mark_companies`, `/api/devices/company`, `bento network company`;
+`docs/desktop.md`, `docs/network.md`, `tests/test_desktop_scenes.py`). Asked for as "every desktop I add, I can
+change the scene: Town, Device, App Hub (with widgets) … on the desktop itself. Also a different company in
+different desktops. Check if the devices are locked to the company". Six rules:
+- **The menu acts on the desktop in front**, and a new desktop opens it. On a phone the button is fixed under the
+  menu bar: the bar is 33px tall and a fingertip is not. Built with text nodes (a company's name is the person's).
+- **The App Hub is a scene** (`apps`): widgets first as a board, the deck's groups under them, the chat docked on the
+  right. Nothing is a second list (`deckBoardHTML`, `deckShown`), and `buildDeck` is the one seam that repaints it,
+  skipped when nothing changed (`APPHUB.sig`) or every rebuild reloaded the frames. Widgets are mounted only on a bare
+  desktop (`appHubSync` from `immersiveWinChange`). It is NOT in `LITE_SCENES`: nobody measured its frames on a Pi.
+- **The docked chat is one panel for two scenes**: 39-devscene.css names both (`:is(.imm-devices,.imm-apps)`), and
+  each scene keeps its own choice (`devChatKey`): Devices folded by default, the hub open.
+- **A desktop's company is this browser's** (`desk.company.d<n>`), opened on arrival through `/api/companies/active`.
+  No company means "whichever is open", never a switch back. The open company is the account's, so other browsers
+  follow, and the menu says so. A company that is gone is let go.
+- **A machine belongs to an account, never to a company; `device_companies` (a USER_KEY) is a VIEW.** A board asked
+  `?company=` leaves out other companies' machines with their alarms, history and rules; a machine for none stays;
+  an id that is not theirs filters nothing. It writes no grant: reading and switching are still `device.get`/
+  `device.set`. An empty company board says how many machines are elsewhere (`elsewhere`), never "no devices yet".
+- **Removing a desktop moves the later ones down** with windows, scene and company (`deskShift`). Before, a window on
+  a later desktop kept a number that no longer existed.
+
 **A Zero belongs to an account, and is light** (`provision.zero_key(owner)`, `enable(owner=)`,
 `server._zero_for`, `00k-zeroface.js`, `face.buddy`; `tests/test_zero_accounts.py`, live run
 `packaging/dev/provision-e2e/zero_accounts_run.py`). Asked as "integrations per user, each with their
@@ -3987,6 +4174,32 @@ be on and agents would be working in the office". Five rules:
   or `_step_voice`. A wake word of the person's own (`face.wake_word`) never replaces the
   agent's name.
 
+**A voice print filters who can wake the screen, per signed-in person, and the agent is named Bento**
+(`agentos/voiceprint.py`, components `voice-print`, `/api/voiceprint*`, the `voice` verdict on `/api/speech/hear`,
+`voicePrintHTML`/`voicePrintWire` in 24h-kiosk.js, `bento face print`, `setup_tui._voice_print`,
+`config.OLD_DEFAULT_NAME`; `docs/small-screens.md`, `tests/test_voiceprint.py`). Asked for as "when onboarding change
+the name from Aria to Bento, also ask the user to record the recognition word for waking, by getting the signature
+voice print, done by the system for the user signed in". The owner chose: only an enrolled voice wakes it, and the
+speaker model is an install. Seven rules:
+- **A filter, never a key.** A match signs nobody in, enters no account and writes no grant (the test greps the
+  routes). `users.current()` is still the cookie's. A recording of the person passes it, and every face says so.
+- **The print is the person's**: `voiceprint.json`, 0600, in `users.home_for(current)`; numbers only, the recordings
+  are thrown away; no route, verb or tool returns it, and an agent can't read it (the home is closed by allow-list,
+  so `protected.py` needed no edit). `voiceprint` is a USER_KEY holding only the switch.
+- **Asked for, never shipped.** sherpa-onnx and the CAM++ model (both Apache-2.0) go into
+  `~/.local/share/bento/voiceprint` with `--target`, never into Bento's environment (`uv sync` would empty it) and
+  never into pyproject. Until then `status()` says so and offers the install; a filter that is on but cannot run is
+  `idle` and said.
+- **Measured**: same speaker 0.67 to 0.91, different speakers at most 0.46, `THRESHOLD` 0.55, 40 to 90 ms a
+  recording, about 100 MB loaded (`release()` when nothing filters). Not measured on a Pi's microphone.
+- **A recording unlike the others is refused at enrolment** (`OUTLIER`), never averaged in, and one that can't be
+  judged (under `MIN_S`, silent) is `match: None` with the reason: the kiosk says "say a little more".
+- **One recording does both** when the machine understands speech: it must contain a wake word, and an admin's
+  also marks `face.heard`. The third switches the filter on. A non-admin's saved print completes the voice step.
+- **Bento is the default name for a NEW machine.** A config file that exists without `agent_name` keeps "Aria"
+  (`load_config`): a default that changes must never rename somebody's agent. `onboarding.DEFAULT_NAME` moved with it,
+  so "Aria" now reads as a chosen name.
+
 **Opening on its screen at start is a separate thing from the kiosk face** (`agentos/screen.py`,
 `bento screen`, `/api/screen`, Appearance → Open at start, install.sh `--screen`, the Install form's
 "Open on its screen"; `tests/test_screen.py`). Asked for as "when the Pi has been installed, it opens
@@ -4165,6 +4378,27 @@ steerable=)`; `tests/test_task_desktops.py`. Four rules:
   second `box-shadow` layer so it costs no layout and does not clip at the radius.
 - **A panel must not repeat its own window title.** `panelShell` reads the title bar above
   it and drops the label when they match — and keeps it where there is no title bar.
+
+## A local model is shared, so every call says its size and no turn waits on it
+
+`providers.ollama_window`/`learn_window`/`learned_window`, `knowledge.quick_rank`; `tests/test_ollama_jam.py`.
+Reported with two screenshots: Claude Code chats sat on "sent — waking the agent", and gemma4 read "loading
+model" for minutes. Measured on that machine: Ollama held qwen3.5:9b at a 262,144 window (13.3 of 16 GB), its
+log showed that window on ~1,000-token requests, and one embedding call took 2 min 30 s. Three rules:
+- **Every call to Ollama carries `num_ctx`.** `providers.complete` (extraction, summaries) sent none, and this
+  Ollama then loads the model at its own default. One size for all calls (`ollama_num_ctx`, or the model's
+  kept one), because a model asked for at two sizes is unloaded and loaded again each time.
+- **Nothing a turn waits on calls `semantic_rank`.** `quick_rank` gives it `QUICK_WAIT` seconds, falls back to
+  the newest memories, and backs off for `QUICK_BACKOFF`. `memory_text` runs BEFORE `turn_start` on a forwarded
+  turn (so does `mind_note`), which is why a brain that needs no local model waited 120 s on one. Replayed
+  against the jammed Ollama: 120.1 s to `turn_start` before, 3.1 s after. A status is sent before that wait.
+- **A model in memory is used as it is loaded** (`fit_loaded`, `ollama_loaded` over `/api/ps`, cached `LOADED_TTL`,
+  a 1.5 s wait, never an error). Asked for as "if the local model is already loaded it should not be loaded
+  again". A call that needs no more than the loaded window asks for exactly that window; only one that needs
+  more reloads. A model loaded past the ceiling is not kept that way. `tests/conftest.py` stands "nothing
+  loaded" in for every test, or the developer's real Ollama decided a test's window.
+- **A window that grows is kept per model** (`ollama_windows`, a USER_KEY like `default_model`): by the agent
+  loop's "filled the window" retry and by `ollama_window`. It only grows, under `OLLAMA_WINDOW_CEILING`.
 
 ## The footprint is a feature: this may be a Raspberry Pi
 

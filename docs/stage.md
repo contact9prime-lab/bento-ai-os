@@ -176,6 +176,27 @@ the nearer the faster.
 
 ![The solar system: a glowing sun, eight planets on their orbits lit from the middle, Saturn with its ring, stars behind](screenshots/stage-model-solar.png)
 
+### As a file: PowerPoint, Word or PDF
+
+**Save as** on the Stage saves the story you are looking at as a PowerPoint deck, a Word document or
+a PDF. Each scene is a slide or a page with its picture, its words and where its numbers came from.
+A blueprint's **Export** menu offers Word and PowerPoint beside its drawing sheets.
+
+![Save as on the Stage, on a desktop and on a phone](screenshots/stage-save-as.png)
+
+You can also ask for it. "Give me that as a deck" or "send it as a Word file" makes your agent save the
+story and name the file, which shows as a file chip in the chat and is sent to you on Telegram or
+WhatsApp. From a terminal, `bento stage export --as pptx` (or `docx`, `pdf`) saves the newest story
+into the workspace's `stage` folder.
+
+![The first pages of a story saved as a PDF](screenshots/stage-story-pdf.png)
+
+The pictures are the ones a phone gets, so they are tall. One that is much taller than it is wide is
+shown over several slides or pages. The text beside a picture can be edited in PowerPoint and Word; the
+charts are pictures, not editable charts. The files need a browser on this machine to draw the
+pictures. Without one, the deck and the document carry the scenes in words and say so, and a PDF
+can't be made.
+
 ### As a video
 
 **Clip** records the build as a video with sound and saves it as a file: the plan being inked,
@@ -188,6 +209,15 @@ the chat goes back to pictures only. It needs a browser on this machine. A brows
 record webm has it turned into mp4 by ffmpeg when ffmpeg is installed; Telegram then gets it as a
 file otherwise, and WhatsApp, which plays only mp4, gets none. WhatsApp takes 16 MB, so a bigger
 video is made smaller first, which also needs ffmpeg.
+
+**A map and a chart are counted.** Their video opens on the whole thing with the line that says
+what the numbers are, then goes to every place or bar in turn (up to twelve) with its number, value
+and note, and ends on a board that lists them all. A map keeps north up.
+
+![A map's video: the fourth place of eight, then the board that lists them all](screenshots/stage-map-video.png)
+
+The video is drawn on this machine's graphics card when it has one. Without one it is drawn in
+software, which is slower: the picture can fall behind the sound and lose its last seconds.
 
 **A blueprint always gets one.** When the agent shows a blueprint of a thing without a 3D form,
 Bento asks for one while the parts fill in, so it opens in 3D on your screen and goes to your

@@ -50,7 +50,9 @@ def test_telegram_works_side_by_side(tmp_path):
     assert "Still working on your previous message" not in src
     fin = src[src.index("self._busy_chats.discard(chat_id)"):][:600]
     assert "asyncio.create_task(self._handle(nxt))" in fin, "what waited runs next"
-    assert "run=self._runs[chat_id], steerable=True" in src
+    # the run is handed to the bridge by the one turn both phones share (phoneturn.py)
+    assert "on_run=lambda run: self._runs.__setitem__(chat_id, run), steerable=True" in src
+    assert "run=run, steerable=steerable" in (ROOT / "agentos/phoneturn.py").read_text()
     fw = (ROOT / "agentos/executors.py").read_text()
     assert 'env.steerable = bool(steerable) and engine == "claude-code"' in fw
     assert "run = run or Run(engine=engine)" in fw

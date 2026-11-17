@@ -503,6 +503,20 @@ bento company kit Sales crm=hubspot --yes      # give it to Sales
   tapped; the Mind's and the World's tags can be.
 
 
+## What comes back
+
+A department's answer goes back to your agent whole, up to 20,000 characters. A longer one is
+cut at a paragraph, and the cut says how much is missing and which run in Missions → History
+has the rest. The same holds for a specialist your agent hands work to, a mission it runs and a
+colleague one agent asks.
+
+The heads who sign a department's work off, and the auditor, read up to 20,000 characters of it.
+
+If a task stops before it is finished (an error, out of time, its process ended), you still get
+what was done: each finished step in full, the notes the department's lead kept, and what did
+not finish. It says plainly that nobody put the pieces together or checked them, and the task
+still shows as failed.
+
 ## When a department cannot do a step
 
 A department may lack what a step needs: Research cannot run code until it is allowed to. Nobody stops at
@@ -517,3 +531,41 @@ saying so:
 - **A specialist built for one job** is offered to you under the answer: Keep makes it one of your
   specialists; Remove, or a day without an answer, takes it away. Every new agent asks you the first time it is
   given work.
+
+## More than one company: which one a request belongs to
+
+If you keep several companies, each has its own people, missions and memory. Three things
+keep them apart.
+
+**Name a company to open it.** Start a message with `@` and the company's name, in Chat, the
+prompt bar, the terminal chat, Telegram or WhatsApp. You're asked on a card whether to open
+it. After a yes, the rest of your message is answered there, by that company's departments:
+`@Bhav Capital @Tech rerun last week's backtest` reaches Tech in Bhav Capital. Typing `@`
+lists your other companies under the people and departments. An agent's name or a
+department of the open company wins when the names clash.
+
+![The card that asks before a company is opened](screenshots/company-at-ask.png)
+
+![The card that asks to open a company, on a phone](screenshots/company-at-ask-phone.png)
+
+**Your agent notices the wrong company.** Ask the kids' channel a stock market question and
+it says the question belongs to another business, then asks to open that company and
+answers there. When none of your companies fits, it asks whether to start one, and starts
+it after your yes. Both are asked every time; a no means it answers where you are.
+
+**Your agent hands work on.** Before any real piece of work it decides who does it: is it
+this company's, does a department do it, is it a specialist's job, should a specialist be
+built for it. It does the work itself only when it is alone, or for a quick answer. Its own
+shell and files are for looking, not for the job, so "run this backtest" goes to the
+department that can run code.
+
+**A mission belongs to the company it was made in.** It runs with that company's people,
+and keeps running with them while another company is open. Nobody from another company can
+be put on its roster. Missions → Build shows whose each mission is.
+
+**Memory has two shelves.** What your agent learns about a business is kept in that
+company and read only there. What is about you (who you are, how you like to work) is
+saved for every company, so it goes with your agent wherever you switch. A chat goes with
+the company it was moved to; carry on an old chat from another company and you're asked
+whether to open that company first.
+

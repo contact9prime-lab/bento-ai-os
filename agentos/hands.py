@@ -56,7 +56,7 @@ GROUPS = {
             "git_remote_set", "git_push", "git_pull", "git_clone", "export_app_to_git"],
     "Memory": ["remember", "recall", "forget", "kg_add", "kg_query", "timeline"],
     "Mail & calendar": ["mail_search", "mail_read", "mail_send", "calendar_events"],
-    "Messages": ["notify", "telegram_send", "whatsapp_send", "brief_item", "show_scene"],
+    "Messages": ["notify", "telegram_send", "whatsapp_send", "brief_item", "show_scene", "stage_file"],
     "Images & assets": ["generate_image", "list_assets", "get_asset", "save_asset", "delete_asset",
                         "generate_wallpaper"],
     "Desktop": ["open_app", "launch_native_app", "list_windows", "focus_window", "manage_window",
@@ -67,7 +67,7 @@ GROUPS = {
     "Apps & missions": ["create_app", "read_app_data", "update_app_data", "create_flow", "enable_flow", "list_flows",
                         "run_flow", "schedule_task", "create_trigger", "list_automations",
                         "run_automation", "save_automation"],
-    "Team": ["delegate", "huddle", "ask_agent", "create_subagent", "request_capability", "set_agent_brain", "set_avatar", "set_office"],
+    "Team": ["delegate", "huddle", "ask_agent", "create_subagent", "request_capability", "open_company", "new_company", "set_agent_brain", "set_avatar", "set_office"],
     "Skills & tools": ["use_skill", "save_skill", "delete_skill", "find_tools", "search_docs",
                        "add_mcp_server", "discover_mcp_servers", "install_mcp_server", "llm_generate"],
 }

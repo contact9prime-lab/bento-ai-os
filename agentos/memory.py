@@ -32,7 +32,12 @@ CREATE TABLE IF NOT EXISTS conversations (
     -- quietly become a stranger; it is in the per-user database, so it is
     -- isolated like everything else; and it is deleted with the conversation
     -- instead of leaking.
-    exec_session TEXT DEFAULT ''
+    exec_session TEXT DEFAULT '',
+    -- The phone chat this is a session of ('telegram:<chat id>', 'whatsapp:<number>'),
+    -- and the name the person gave it. A chat lists and reopens only its own
+    -- (phonesessions.py); matched on this, never on the title.
+    channel_ref TEXT DEFAULT '',
+    channel_name TEXT DEFAULT ''
 );
 -- The Brief: what the missions produced, as ITEMS a person acts on — not prose.
 -- One living page per day. A mission's next run updates an item (keyed by
@@ -218,6 +223,22 @@ CREATE TABLE IF NOT EXISTS themes (
     name TEXT PRIMARY KEY,
     data TEXT,
     created_at REAL
+);
+-- Who wrote in a group, and whether the owner allowed or blocked that one person
+-- there. A group's row decides the group; this decides people inside it.
+CREATE TABLE IF NOT EXISTS chat_members (
+    channel TEXT,                -- telegram | whatsapp
+    chat_key TEXT,               -- the group's id on that channel
+    member_id TEXT,
+    name TEXT,
+    username TEXT,
+    state TEXT DEFAULT '',       -- '' (the group's rule) | allowed | blocked
+    msg_count INTEGER DEFAULT 0,
+    first_seen REAL,
+    last_seen REAL,
+    decided_at REAL,
+    decided_by TEXT DEFAULT '',
+    PRIMARY KEY (channel, chat_key, member_id)
 );
 CREATE TABLE IF NOT EXISTS telegram_chats (
     chat_id INTEGER PRIMARY KEY,
@@ -943,9 +964,18 @@ class Store:
         for col, ddl in (("summary", "TEXT DEFAULT ''"),
                          ("summary_upto", "TEXT DEFAULT ''"),   # last message id it covers
                          ("summary_msgs", "INTEGER DEFAULT 0"),
-                         ("exec_session", "TEXT DEFAULT ''")):
+                         ("exec_session", "TEXT DEFAULT ''"),
+                         ("channel_ref", "TEXT DEFAULT ''"),    # phonesessions.py
+                         ("channel_name", "TEXT DEFAULT ''")):
             if col not in ccols:
                 self.db.execute(f"ALTER TABLE conversations ADD COLUMN {col} {ddl}")
+        # when a chat was let in or blocked, and by whom; a group may answer only picked people
+        for table, extra in (("telegram_chats", (("members_only", "INTEGER DEFAULT 0"),)),
+                             ("whatsapp_chats", ())):
+            have = {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})").fetchall()}
+            for col, ddl in (("decided_at", "REAL"), ("decided_by", "TEXT DEFAULT ''"), *extra):
+                if have and col not in have:
+                    self.db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
         tcols = {r["name"] for r in self.db.execute("PRAGMA table_info(tasks)").fetchall()}
         for col, ddl in (('"trigger"', "TEXT DEFAULT ''"),
                          ("trigger_config", "TEXT DEFAULT '{}'"),
@@ -1108,6 +1138,28 @@ class Store:
             "UPDATE memories SET space_id=? WHERE scope='session' AND conversation_id=?",
             (space_id or "", cid))
         self.db.commit()
+
+    def claim_conversation(self, cid: str, ref: str, name: str | None = None) -> None:
+        """Mark a conversation as a session of one phone chat (phonesessions.py). A
+        conversation that already belongs to a chat is never moved to another."""
+        self.db.execute("UPDATE conversations SET channel_ref=? WHERE id=? AND "
+                        "COALESCE(channel_ref,'') IN ('', ?)", (ref, cid, ref))
+        if name is not None:
+            self.db.execute("UPDATE conversations SET channel_name=? WHERE id=? AND channel_ref=?",
+                            (name, cid, ref))
+        self.db.commit()
+
+    def channel_conversations(self, ref: str, limit: int = 10) -> list[dict]:
+        """One phone chat's sessions, newest first, with how much is in each."""
+        if not ref:
+            return []
+        rows = self.db.execute(
+            "SELECT c.*, (SELECT COUNT(*) FROM messages m WHERE m.conversation_id=c.id) AS msgs, "
+            "(SELECT m.content FROM messages m WHERE m.conversation_id=c.id AND m.role='user' "
+            " ORDER BY m.created_at LIMIT 1) AS first "
+            "FROM conversations c WHERE c.channel_ref=? ORDER BY c.updated_at DESC LIMIT ?",
+            (ref, int(limit))).fetchall()
+        return [dict(r) for r in rows]
 
     def list_conversations(self, limit: int = 100, space: str = "") -> list[dict]:
         sql, params = "SELECT * FROM conversations WHERE 1=1", []
@@ -2391,9 +2443,44 @@ class Store:
         rows = self.db.execute("SELECT * FROM telegram_chats ORDER BY last_seen DESC").fetchall()
         return [dict(r) for r in rows]
 
-    def tg_set_allowed(self, chat_id: int, allowed: int):
-        self.db.execute("UPDATE telegram_chats SET allowed=? WHERE chat_id=?", (allowed, chat_id))
+    def tg_set_allowed(self, chat_id: int, allowed: int, by: str = ""):
+        """`by` is who decided, in words (the tables show it): the owner on Telegram, an
+        account at the desktop, the allow-list, pairing."""
+        self.db.execute("UPDATE telegram_chats SET allowed=?, decided_at=?, decided_by=? WHERE chat_id=?",
+                        (allowed, time.time(), by or "", chat_id))
         self.db.commit()
+
+    def tg_set_members_only(self, chat_id: int, on: bool):
+        self.db.execute("UPDATE telegram_chats SET members_only=? WHERE chat_id=?", (1 if on else 0, chat_id))
+        self.db.commit()
+
+    # -- people inside a group ---------------------------------------------------
+
+    def member_seen(self, channel: str, chat_key, member_id, name: str = "", username: str = "") -> dict:
+        now, key, mid = time.time(), str(chat_key), str(member_id)
+        self.db.execute(
+            "INSERT INTO chat_members (channel, chat_key, member_id, name, username, state, msg_count, "
+            "first_seen, last_seen) VALUES (?,?,?,?,?,'',1,?,?) "
+            "ON CONFLICT(channel, chat_key, member_id) DO UPDATE SET name=excluded.name, "
+            "username=excluded.username, msg_count=msg_count+1, last_seen=excluded.last_seen",
+            (channel, key, mid, name or "", username or "", now, now))
+        self.db.commit()
+        return dict(self.db.execute("SELECT * FROM chat_members WHERE channel=? AND chat_key=? AND member_id=?",
+                                    (channel, key, mid)).fetchone())
+
+    def members(self, channel: str, chat_key) -> list[dict]:
+        rows = self.db.execute("SELECT * FROM chat_members WHERE channel=? AND chat_key=? "
+                               "ORDER BY last_seen DESC", (channel, str(chat_key))).fetchall()
+        return [dict(r) for r in rows]
+
+    def member_set(self, channel: str, chat_key, member_id, state: str, by: str = "") -> bool:
+        if state not in ("", "allowed", "blocked"):
+            return False
+        cur = self.db.execute("UPDATE chat_members SET state=?, decided_at=?, decided_by=? "
+                              "WHERE channel=? AND chat_key=? AND member_id=?",
+                              (state, time.time(), by or "", channel, str(chat_key), str(member_id)))
+        self.db.commit()
+        return cur.rowcount > 0
 
     def tg_set_conversation(self, chat_id: int, cid: str):
         self.db.execute("UPDATE telegram_chats SET conversation_id=? WHERE chat_id=?", (cid, chat_id))
@@ -2401,6 +2488,7 @@ class Store:
 
     def tg_delete_chat(self, chat_id: int):
         self.db.execute("DELETE FROM telegram_chats WHERE chat_id=?", (chat_id,))
+        self.db.execute("DELETE FROM chat_members WHERE channel='telegram' AND chat_key=?", (str(chat_id),))
         self.db.commit()
 
     # -- whatsapp chats -------------------------------------------------------
@@ -2432,8 +2520,9 @@ class Store:
             "SELECT * FROM whatsapp_chats ORDER BY last_seen DESC").fetchall()
         return [dict(r) for r in rows]
 
-    def wa_set_allowed(self, wa_id: str, allowed: int):
-        self.db.execute("UPDATE whatsapp_chats SET allowed=? WHERE wa_id=?", (allowed, wa_id))
+    def wa_set_allowed(self, wa_id: str, allowed: int, by: str = ""):
+        self.db.execute("UPDATE whatsapp_chats SET allowed=?, decided_at=?, decided_by=? WHERE wa_id=?",
+                        (allowed, time.time(), by or "", wa_id))
         self.db.commit()
 
     def wa_set_conversation(self, wa_id: str, cid: str):

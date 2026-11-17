@@ -59,6 +59,8 @@ def tag(store, convs: list[dict]) -> list[dict]:
     for c in convs:
         home = home_of(c, apps)
         tabs = [home] + (["huddles"] if c["id"] in hud and home != "huddles" else [])
+        if c.get("channel_ref") and "channels" not in tabs:
+            tabs.append("channels")     # a desktop chat carried on from a phone is found there too
         out.append({**c, "tab": home, "tabs": tabs})
     return out
 

@@ -141,6 +141,141 @@ def _recalled(text) -> str:
     return " ".join(str(text or "").split()).replace("===", "= = =")
 
 
+def _finish_line() -> str:
+    from .executors import finish_line
+    return finish_line("`schedule_task`")
+
+
+async def memory_text(cfg: dict, store, space_id: str = "", conversation_id: str = "",
+                      query: str = "") -> tuple:
+    """What the lead remembers, for its prompt: the person's durable memory, this
+    conversation's notes and the knowledge graph's latest facts, in the space the turn
+    happens in. Returns (text, a Zero's answer from its hub or None).
+
+    ONE reading, for the built-in lead (`Agent._system`) and for a lead forwarded to an
+    agent CLI (`executors.mind_note`). It was written inside `_system`, so on a machine
+    whose brain is Claude Code the lead had its soul and none of its memory: it answered
+    without what the person had told it, and kept notes in the CLI's own files instead."""
+    mc = (cfg or {}).get("memory") or {}
+    mem_text = ""
+    n_user = int(mc.get("inject_user", 15))
+    from . import zeromind
+    zctx = None
+    if zeromind.on_hub(cfg):
+        # A Zero's memory, graph and soul are on its hub, in its own section: asked for
+        # once a turn, and said plainly when the hub can't be reached.
+        zctx = await zeromind.context(cfg, store, query, conversation_id or "")
+        mem_text = zeromind.mem_text(zctx, (zeromind.hub_link(cfg) or {}).get("label") or "the hub") \
+            + MEMORY_IS_DATA
+        return mem_text, zctx
+    # Scoped to the space this turn happens in: what is true here, plus what is
+    # true everywhere. Injecting three clients' constraints into one answer is
+    # exactly what spaces exist to stop.
+    user_mems = store.search_memories("", limit=500, scope="user", space=space_id)
+    if len(user_mems) > n_user:
+        # over budget: pinned always make the cut; the rest of the slots go to the
+        # memories most relevant to the user's message (semantic), else most recent
+        pinned = [m for m in user_mems if m.get("pinned")]
+        rest = [m for m in user_mems if not m.get("pinned")]
+        take = max(0, n_user - len(pinned))
+        picked = rest[:take]
+        if query and take > 0:
+            try:
+                from . import knowledge
+                ranked = await knowledge.quick_rank(cfg, rest, query)   # never holds the turn
+                if ranked is not None:
+                    picked = ranked[:take]
+            except Exception:
+                pass
+        user_mems = pinned + picked
+    if space_id:
+        # The agent has to know which space it is in, or it cannot decide where
+        # to file what it learns, and "save this" becomes ambiguous.
+        try:
+            from . import spaces as spacemod
+            info = spacemod.describe(store, space_id)
+            desc = f" — {info['description']}" if info.get("description") else ""
+            co = None
+            try:
+                from . import company as _company
+                co = _company.of_space(cfg, space_id)
+            except Exception:
+                co = None
+            if co:
+                # A company's memory is its own, and what is about the PERSON goes with them
+                # (and with every agent) into each company. Asked for as "the context, KB and
+                # memory should be company specific, and a generic memory that helps to move
+                # around the agents": the two shelves are a space's rows and the global ones.
+                mem_text += (f"\n=== Memory of the company {co['name']} ===\n"
+                             f"Memory has two shelves. What you learn about THIS business (its "
+                             f"customers, products, numbers, plans, decisions) is saved as it "
+                             f"comes: it belongs to {co['name']} and is read only here, never in "
+                             f"the person's other companies. What is about the person themselves "
+                             f"(who they are, how they like to work, a rule for all their work) "
+                             f"is saved with everywhere: true, so it follows you and every agent "
+                             f"into each of their companies. Memory and facts below are "
+                             f"{co['name']}'s plus what is true everywhere.\n")
+            else:
+                mem_text += (f"\n=== Current space: {info['name']}{desc} ===\n"
+                             "What you remember and produce belongs to this space unless it "
+                             "would still be true after this project ends. Memory and facts "
+                             "below are this space's plus what is true everywhere.\n")
+        except Exception:
+            pass
+    if user_mems:
+        mem_text += "\n=== User memory (durable facts about your user & machine) ===\n" + "\n".join(
+            f"- {'📌 ' if m.get('pinned') else ''}{_recalled(m['content'])}" for m in user_mems) + \
+            "\n=== end user memory ===\n"
+    if conversation_id:
+        sess_mems = store.search_memories("", limit=int(mc.get("inject_session", 10)),
+                                          scope="session", conversation_id=conversation_id)
+        if sess_mems:
+            mem_text += "\n=== Session memory (context of THIS conversation) ===\n" + "\n".join(
+                f"- {_recalled(m['content'])}" for m in sess_mems) + "\n=== end session memory ===\n"
+    n_facts = int(mc.get("inject_facts", 12))
+    if n_facts > 0:
+        facts = store.kg_query("", limit=10**6, space=space_id)
+        if facts:
+            mem_text += ("\n=== Knowledge graph highlights (query more with kg_query) ===\n"
+                         + "\n".join(f"- {_recalled(f)}" for f in facts[-n_facts:])
+                         + "\n=== end knowledge graph ===\n")
+    if mem_text.strip():
+        mem_text += MEMORY_IS_DATA
+    return mem_text, zctx
+
+
+def skills_text(store, tool: str = "`use_skill(name)`") -> str:
+    """The skills installed here, by name, for whoever leads the turn."""
+    skills = store.list_skills()
+    if not skills:
+        return ""
+    return (f"\n\nSkills — proven procedures. Load one with {tool} BEFORE starting "
+            "a task that matches its description, and follow it:\n" + "\n".join(
+                f"- {s['name']}: {s['description'] or '(no description)'}" for s in skills[:30]))
+
+
+def mcp_text(toolbox, how: str = "prefer their tools (mcp_<server>_<tool>)",
+             native: str = "all available as native tools") -> str:
+    """The MCP servers connected right now and what each offers."""
+    if not getattr(toolbox, "mcp", None):
+        return ""
+    conn = [s for s in toolbox.mcp.status() if s["status"] == "connected"]
+    if not conn:
+        return ""
+    lines = []
+    for s in conn:
+        lines.append(f"- {s['name']} ({len(s['tools'])} tools):")
+        for t in s["tools"][:12]:
+            desc = (t["description"] or "").split("\n")[0][:110]
+            lines.append(f"    · {t['name']}" + (f" — {desc}" if desc else ""))
+        if len(s["tools"]) > 12:
+            lines.append(f"    · … {len(s['tools']) - 12} more ({native})")
+        if s.get("instructions"):
+            lines.append(f"    usage notes: {s['instructions'][:400]}")
+    return (f"\n\nConnected MCP servers — {how} whenever "
+            "a task touches their domain:\n" + "\n".join(lines))
+
+
 def fence(source: str, content: str) -> str:
     """Wrap third-party content so the model can see where the user's words end.
 
@@ -224,7 +359,8 @@ Guidelines:
   git repos (git_init/git_commit as you go); `export_app_to_git` turns an app you built into a real
   project folder, and `git_push` (with create_github_repo) publishes to the user's GitHub using the
   token from Settings. Prefer these structured tools over raw `git` shell commands.
-- Be concise and concrete. Show real output, not guesses.
+- {finish}
+- Show real output, not guesses.
 
 === Your soul (persistent identity — written by you and your user) ===
 {soul}
@@ -591,12 +727,19 @@ class Agent:
     def _gen_options(self) -> dict:
         # num_ctx must comfortably exceed the system prompt (memories + KG + skills +
         # MCP catalog + tool schemas can reach ~15k tokens) PLUS the reply
+        mid = str(getattr(self, "model_id", "") or "")
+        local = mid.split("/", 1)[1] if mid.startswith("ollama/") else ""
         opts = {
-            "num_ctx": int(self.cfg.get("ollama_num_ctx", 24576)),
+            # what this local model was found to need before, when that is more (ollama_windows)
+            "num_ctx": max(int(self.cfg.get("ollama_num_ctx", 24576)),
+                           providers.learned_window(self.cfg, local) if local else 0),
             "max_tokens": int(self.cfg.get("max_output_tokens", 16384)),
         }
         if getattr(self, "_ctx_up", False):
             opts["num_ctx"] = min(CTX_CEILING, max(opts["num_ctx"] * 2, int(getattr(self, "_ctx_need", 0) or 0)))
+            if local:
+                # kept in the config for this model, so the next long turn starts there
+                providers.learn_window(self.cfg, local, opts["num_ctx"])
         if self.cfg.get("ollama_think") is not None:
             opts["think"] = bool(self.cfg["ollama_think"])
         if getattr(self, "_think_off", False):
@@ -805,70 +948,8 @@ class Agent:
 
     async def _system(self, query: str = "") -> str:
         store = self.toolbox.store
-        mc = self.cfg.get("memory") or {}
-        mem_text = ""
-        n_user = int(mc.get("inject_user", 15))
         from . import zeromind
-        zctx = None
-        if zeromind.on_hub(self.cfg):
-            # A Zero's memory, graph and soul are on its hub, in its own section: asked for
-            # once a turn, and said plainly when the hub can't be reached.
-            zctx = await zeromind.context(self.cfg, store, query, self.conversation_id or "")
-            mem_text = zeromind.mem_text(zctx, (zeromind.hub_link(self.cfg) or {}).get("label") or "the hub") \
-                + MEMORY_IS_DATA
-        else:
-            # Scoped to the space this turn happens in: what is true here, plus what is
-            # true everywhere. Injecting three clients' constraints into one answer is
-            # exactly what spaces exist to stop.
-            user_mems = store.search_memories("", limit=500, scope="user", space=self.space_id)
-            if len(user_mems) > n_user:
-                # over budget: pinned always make the cut; the rest of the slots go to the
-                # memories most relevant to the user's message (semantic), else most recent
-                pinned = [m for m in user_mems if m.get("pinned")]
-                rest = [m for m in user_mems if not m.get("pinned")]
-                take = max(0, n_user - len(pinned))
-                picked = rest[:take]
-                if query and take > 0:
-                    try:
-                        from . import knowledge
-                        ranked = await knowledge.semantic_rank(self.cfg, rest, query)
-                        if ranked is not None:
-                            picked = ranked[:take]
-                    except Exception:
-                        pass
-                user_mems = pinned + picked
-            if self.space_id:
-                # The agent has to know which space it is in, or it cannot decide where
-                # to file what it learns, and "save this" becomes ambiguous.
-                try:
-                    from . import spaces as spacemod
-                    info = spacemod.describe(store, self.space_id)
-                    desc = f" — {info['description']}" if info.get("description") else ""
-                    mem_text += (f"\n=== Current space: {info['name']}{desc} ===\n"
-                                 "What you remember and produce belongs to this space unless it "
-                                 "would still be true after this project ends. Memory and facts "
-                                 "below are this space's plus what is true everywhere.\n")
-                except Exception:
-                    pass
-            if user_mems:
-                mem_text += "\n=== User memory (durable facts about your user & machine) ===\n" + "\n".join(
-                    f"- {'📌 ' if m.get('pinned') else ''}{_recalled(m['content'])}" for m in user_mems) + \
-                    "\n=== end user memory ===\n"
-            if self.conversation_id:
-                sess_mems = store.search_memories("", limit=int(mc.get("inject_session", 10)),
-                                                  scope="session", conversation_id=self.conversation_id)
-                if sess_mems:
-                    mem_text += "\n=== Session memory (context of THIS conversation) ===\n" + "\n".join(
-                        f"- {_recalled(m['content'])}" for m in sess_mems) + "\n=== end session memory ===\n"
-            n_facts = int(mc.get("inject_facts", 12))
-            if n_facts > 0:
-                facts = store.kg_query("", limit=10**6, space=self.space_id)
-                if facts:
-                    mem_text += ("\n=== Knowledge graph highlights (query more with kg_query) ===\n"
-                                 + "\n".join(f"- {_recalled(f)}" for f in facts[-n_facts:])
-                                 + "\n=== end knowledge graph ===\n")
-            if mem_text.strip():
-                mem_text += MEMORY_IS_DATA
+        mem_text, zctx = await memory_text(self.cfg, store, self.space_id, self.conversation_id or "", query)
         if self.principal is MAIN and self.tool_filter is None:
             # The lead knows WHO its specialists are, not only that `delegate` exists:
             # asked to "build a tool" with a toolsmith on the roster, it built the tool
@@ -882,7 +963,8 @@ class Agent:
                 # how they are organised first, when the person set up a company: which
                 # department does what is the first decision about any piece of work
                 from . import company as _company
-                mem_text += _company.note(self.cfg, store)
+                # who does the work is one decision, said before the lists it chooses from
+                mem_text += _company.route_note(self.cfg, store) + _company.note(self.cfg, store)
             except Exception:
                 pass
             try:
@@ -918,26 +1000,7 @@ class Agent:
             note = _world.inner_note(_users.current() or "", _world.LEAD)
             if note:
                 mem_text += "\n\n" + note
-        skills = self.toolbox.store.list_skills()
-        if skills:
-            mem_text += ("\n\nSkills — proven procedures. Load one with `use_skill(name)` BEFORE starting "
-                         "a task that matches its description, and follow it:\n" + "\n".join(
-                f"- {s['name']}: {s['description'] or '(no description)'}" for s in skills[:30]))
-        if self.toolbox.mcp:
-            conn = [s for s in self.toolbox.mcp.status() if s["status"] == "connected"]
-            if conn:
-                lines = []
-                for s in conn:
-                    lines.append(f"- {s['name']} ({len(s['tools'])} tools):")
-                    for t in s["tools"][:12]:
-                        desc = (t["description"] or "").split("\n")[0][:110]
-                        lines.append(f"    · {t['name']}" + (f" — {desc}" if desc else ""))
-                    if len(s["tools"]) > 12:
-                        lines.append(f"    · … {len(s['tools']) - 12} more (all available as native tools)")
-                    if s.get("instructions"):
-                        lines.append(f"    usage notes: {s['instructions'][:400]}")
-                mem_text += ("\n\nConnected MCP servers — prefer their tools (mcp_<server>_<tool>) whenever "
-                             "a task touches their domain:\n" + "\n".join(lines))
+        mem_text += skills_text(self.toolbox.store) + mcp_text(self.toolbox)
         from .tools import jail_gap, sandbox_conf, shares_for
         sb_on, sb_root = sandbox_conf(self.cfg)
         shared = shares_for(self.cfg)
@@ -958,6 +1021,7 @@ class Agent:
                              for s in shared))
         base = SYSTEM_PROMPT.format(
             name=self.cfg.get("agent_name") or "Aria",
+            finish=_finish_line(),
             now=localeinfo.now_string(self.cfg),
             locale=localeinfo.describe(self.cfg),
             workspace=self.cfg["workspace"],
@@ -1074,8 +1138,15 @@ class Agent:
             # who is asking: the agent's own name, never the model's, so "me" means this agent
             args = {**{k: v for k, v in args.items() if k != "_from"},
                     "_from": self.principal.id if self.principal.kind == "subagent" else ""}
+        if name in ("open_company", "new_company"):
+            # which surface moves and which chat goes with it: the turn's, never the model's
+            args = {**{k: v for k, v in args.items() if not str(k).startswith("_")},
+                    "_surface": self.surface or "gui", "_conv": self.conversation_id or ""}
         if name == "create_subagent":
             # the chat a temporary agent was built in, where its "Keep it?" is asked
+            args = {**{k: v for k, v in args.items() if k != "_conv"}, "_conv": self.conversation_id or ""}
+        if name == "stage_file":
+            # the chat whose story is saved as a file: the agent's, never the model's
             args = {**{k: v for k, v in args.items() if k != "_conv"}, "_conv": self.conversation_id or ""}
         if name == "show_scene":
             # the chat the scene is shown in and kept with: the agent's, never the model's

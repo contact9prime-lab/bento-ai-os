@@ -42,6 +42,9 @@ HEARTBEAT_PERSIST_EVERY = 6  # persist 1 of every N beats (avoid write spam)
 # What the master orchestrator is allowed to hold itself (see _master_tools). It plans
 # and aggregates; the roster acts. An orchestrator with hands does the work itself and
 # the roster never runs.
+# a run that stopped without `finish` still hands back what its steps finished (_salvage)
+SALVAGED = ("error", "timeout")
+SALVAGE_CHARS = 24000
 MASTER_READONLY = ["recall", "kg_query", "brief_item"]
 # Appended to the system prompt of a run on the bridge: the executor sees our tools
 # under its MCP naming, and it must not go looking for the native ones it has not got.
@@ -1619,7 +1622,8 @@ class ControlPlane(usersmod.Scoped):
             except Exception:
                 pass
         head = f"[{target} · {res['model']}]\n"
-        return (TAINTED_REPLY if res.get("tainted") else "") + head + text[:3500]
+        from .tools import handed_back      # a colleague's answer arrives whole, or says it was cut
+        return (TAINTED_REPLY if res.get("tainted") else "") + head + handed_back(text, res.get("run_id") or "")
 
     def _flow_run_of(self, run_id: str) -> str:
         """The mission run a run belongs to, walking up parent_run ('' outside one)."""
@@ -1768,7 +1772,8 @@ class ControlPlane(usersmod.Scoped):
                 audit_team(self.store, "link.files", f"link:{lk['label']}",
                            f"received {len(paths)} file(s) from {lk['label']}: "
                            + ", ".join(p.name for p in paths))
-        return TAINTED_REPLY + f"[{target} · {model}]\n" + text[:3500] + came
+        from .tools import handed_back
+        return TAINTED_REPLY + f"[{target} · {model}]\n" + handed_back(text) + came
 
     def mission_card(self, flow: dict, label: str, deleted: bool = False) -> dict:
         """What the other team records about one of OUR missions: its name, which of
@@ -1850,7 +1855,7 @@ class ControlPlane(usersmod.Scoped):
             # ONLY the agents this link may ask. Listing everybody — names and the
             # provider each runs on — was the one thing a link granted without a cell.
             allowed = set(link_access(self.store, lk["label"])["theirs_may_ask"])
-            lead = ([{"name": self.cfg.get("agent_name") or "Aria", "lead": True, "provider": ""}]
+            lead = ([{"name": self.cfg.get("agent_name") or "Bento", "lead": True, "provider": ""}]
                     if LEAD in allowed else [])
             return {"ok": True, "agents": lead + [
                 {"name": sa["name"], "provider": agent_brain(self.cfg, sa)["provider_name"]}
@@ -2089,7 +2094,7 @@ class ControlPlane(usersmod.Scoped):
         from . import teamlink
         from . import executors as execmod
         from . import zero as zeromod
-        name = self.cfg.get("agent_name") or "Aria"
+        name = self.cfg.get("agent_name") or "Bento"
         who = f"{frm}@{lk['label']}"
         question = teamlink.plain(req.get("question"), 4000, newlines=True)
         key = f"link:{lk.get('id')}:{req.get('root') or ''}"
@@ -2207,7 +2212,7 @@ class ControlPlane(usersmod.Scoped):
         if not text:
             return {"ok": False, "error": "nothing was said"}
         job = bool(req.get("_job"))      # a schedule made at its screen, firing (scheduler.zero_job)
-        name = self.cfg.get("agent_name") or "Aria"
+        name = self.cfg.get("agent_name") or "Bento"
         label = lk["label"]
         space = zeromind.section(self.store, lk)
         # one conversation here per conversation on the Zero, found again by its id
@@ -2376,6 +2381,48 @@ class ControlPlane(usersmod.Scoped):
                                   space_id=space_id)
         return {"department": dept["name"], "head": dept.get("lead") or "",
                 "flow": flow["name"], "result": res}
+
+    async def open_company(self, ref: str, surface: str = "gui", approver=None,
+                           conversation_id: str = "") -> dict:
+        """'@Acme' typed in a chat: ask the person whether to open that company, and open
+        it on a yes. The lead's open_company tool is the same switch (company.open_here);
+        this is the door for a message that names the company itself, in Chat, the prompt
+        bar, the terminal, Telegram and WhatsApp. Decided by the gate as `company.switch`
+        (a ledger row), then asked of a person whatever the autonomy.
+
+        Returns {"company", "opened", "declined"}; ValueError when there is no such
+        company, PermissionError on a deny."""
+        from . import company as _company
+        from .policy import MAIN, _NEEDS_PERSON
+        hit = _company.find(self.cfg, ref)
+        if not hit:
+            names = ", ".join(c["name"] for c in _company.companies(self.cfg)) or "none yet"
+            raise ValueError(f"no company called '{ref}'. Yours: {names}")
+        if hit["active"]:
+            return {"company": hit, "opened": False, "declined": False}
+        why = "You named this company with @."
+        pdp = getattr(self.toolbox, "pdp", None) if self.toolbox is not None else None
+        if pdp:
+            dec = pdp.decide(MAIN, "company.switch", f"company:{hit['name'].lower()}",
+                             {"surface": surface, "risk": "risky", "tool": "open_company",
+                              "conversation_id": conversation_id})
+            if dec.effect == "deny":
+                raise PermissionError(dec.reason or f"{hit['name']} may not be opened here")
+        ok = False
+        if approver is not None:
+            tok = _NEEDS_PERSON.set("confirmed every time")
+            try:
+                ok = bool(await approver("open_company", {"company": hit["name"]}, why, None))
+            finally:
+                _NEEDS_PERSON.reset(tok)
+        if not ok:
+            return {"company": hit, "opened": False, "declined": True}
+        row = _company.open_here(self.cfg, self.store, hit["id"], surface=surface,
+                                 conversation_id=conversation_id)
+        moved = getattr(self.toolbox, "_company_moved", None)
+        if moved:
+            await moved()
+        return {"company": row, "opened": True, "declined": False}
 
     async def huddle(self, names: list, topic: str, rounds: int = 2,
                      conversation_id: str = "", space_id: str = "", say=None,
@@ -3117,6 +3164,43 @@ class ControlPlane(usersmod.Scoped):
             _folders_note(self.cfg, flow["name"]),
         ] if p)
 
+    def _salvage(self, run_id: str, status: str, fault: str) -> str:
+        """What a run had finished when it stopped without `finish`: each completed step in
+        full, the master's notes, and the steps that did not finish. Found in the owner's
+        record: a Research desk worked 39 minutes, three steps came back (11.8 kB) and a note
+        was kept, then the master's process was killed while a card waited; the run handed
+        back nothing but "the executor exited with 143". The work was on the board the whole
+        time. It is handed back as what it is: unfinished, put together by nobody, checked by
+        nobody (a stopped run is not in company.AUDITED, so no boss or auditor signs it)."""
+        done, notes, lost = [], [], []
+        for a in self.store.artifact_index(run_id):
+            if a.get("kind") == "note":
+                full = self.store.artifact_get(run_id, a["handle"]) or {}
+                notes.append(" ".join(str(full.get("content") or a.get("preview") or "").split()))
+            elif a.get("kind") == "output":
+                (done if a.get("status") == "ok" and a.get("bytes") else lost).append(a)
+        if not done and not notes:
+            return ""
+        left = SALVAGE_CHARS
+        parts = [f"This task stopped before it was finished ({status}: {fault or 'no reason recorded'}). "
+                 f"Nobody put the pieces together and nobody checked them. "
+                 f"{len(done)} step{'' if len(done) == 1 else 's'} had finished:"]
+        for n, a in enumerate(done, 1):
+            body = str((self.store.artifact_get(run_id, a["handle"]) or {}).get("content") or "").strip()
+            take = max(0, min(len(body), left))
+            left -= take
+            parts.append(f"--- {n}. {a.get('agent') or 'a specialist'}: "
+                         f"{' '.join(str(a.get('task') or '').split())[:200]} ---\n"
+                         + (body[:take] if take else "")
+                         + (f"\n[… {len(body) - take:,} more characters, on the run's board as "
+                            f"{a['handle']}]" if take < len(body) else ""))
+        if notes:
+            parts.append("Notes the lead of the task kept:\n" + "\n".join(f"- {x[:600]}" for x in notes[:12]))
+        if lost:
+            parts.append("Did not finish: " + "; ".join(
+                f"{a.get('agent') or 'a step'} ({a.get('status') or 'unknown'})" for a in lost[:12]))
+        return "\n\n".join(parts)
+
     def _fold_children(self, run_id: str, status: str, fault: str) -> tuple[str, str]:
         """A flow whose delegated steps all failed did not succeed, whatever the master
         says; one that lost some is partial. Reviews and audits are not steps."""
@@ -3138,7 +3222,7 @@ class ControlPlane(usersmod.Scoped):
         back = review["sent_back"][-1]
         fixes = "\n".join(f"- {x}" for x in back.get("notes") or []) or "- (no reason given)"
         return (f"{opening}\n\n=== your last answer, which {back['who']} sent back ===\n"
-                f"{str(content or '').strip()[:4000] or '(nothing)'}\n\n"
+                f"{_company._shown(content) or '(nothing)'}\n\n"
                 f"=== what {back['who']} wants fixed ===\n{fixes}\n\n"
                 f"Fix exactly that. Your earlier work is still on the board (read_handle), so "
                 f"delegate only what has to be redone, then `finish` with the corrected "
@@ -3378,6 +3462,8 @@ class ControlPlane(usersmod.Scoped):
                     "delivered": [], "brief_id": brief_id,
                     "board": self.store.artifact_index(run_id)}
         status, fault = self._fold_children(run_id, status, fault)
+        if not content and status in SALVAGED:
+            content = self._salvage(run_id, status, fault)
         self.store.fabric_run_finish(run_id, status, output=content, fault=fault,
                                      tokens_in=usage["in"], tokens_out=usage["out"],
                                      steps=state["delegations"])
@@ -3445,7 +3531,7 @@ class ControlPlane(usersmod.Scoped):
         if status not in companymod.AUDITED:
             return None
         # a parked company's mission is signed off by ITS bosses (company.cfg_for)
-        ccfg = companymod.cfg_for(self.cfg, flow["name"])
+        ccfg = companymod.cfg_for(self.cfg, flow["name"], flow.get("space_id") or "")
         dept = companymod.audit_scope(ccfg, self.store, flow["name"])
         if not dept:
             return None
@@ -3573,7 +3659,7 @@ class ControlPlane(usersmod.Scoped):
         from . import company as companymod, brief as briefmod
         run = self.store.fabric_run(run_id) or {}
         status = status or run.get("status") or ""
-        ccfg = companymod.cfg_for(self.cfg, flow["name"])
+        ccfg = companymod.cfg_for(self.cfg, flow["name"], flow.get("space_id") or "")
         if not force and not companymod.audit_on(ccfg):
             return None
         if status not in companymod.AUDITED:
@@ -3872,6 +3958,35 @@ async def department_reply(control, department: str, task: str, conversation_id:
             + (res["content"] or res["fault"] or "(no output)"))
 
 
+async def company_turn(control, cfg: dict, store, text: str, surface: str, approver,
+                       conversation_id: str) -> dict | None:
+    """'@Acme …' at the start of a message, for every chat surface. None when the message
+    names no company. Otherwise {"reply": a sentence, or "" to carry on, "rest": what is
+    left to answer in that company, "company"}: an agent's name and a department of the
+    open company were checked first by the caller."""
+    from . import company as _company
+    hit = _company.parse_company(cfg, text)
+    if not hit or control is None:
+        return None
+    co, rest = hit
+    try:
+        got = await control.open_company(co["id"] or co["name"], surface=surface, approver=approver,
+                                         conversation_id=conversation_id)
+    except (ValueError, PermissionError) as e:
+        return {"reply": f"▦ {co['name']}: {e}", "rest": "", "company": co["name"]}
+    row = got["company"]
+    if got["declined"]:
+        cur = next((c["name"] for c in _company.companies(cfg) if c["active"]), "")
+        return {"reply": f"▦ {co['name']} wasn't opened" + (f", so you're still in {cur}" if cur else "")
+                         + (". Nothing was sent." if rest else "."), "rest": "", "company": co["name"]}
+    words = _company.opened_words(cfg, store, row)
+    if rest:
+        return {"reply": "", "rest": rest, "company": row["name"],
+                "status": f"{row['name']} is open" if got["opened"] else ""}
+    return {"reply": "▦ " + (words if got["opened"] else words.replace(" is open", " is already open", 1)),
+            "rest": "", "company": row["name"]}
+
+
 def parse_mention(store, text: str):
     """'@researcher find X' → (subagent_defn, 'find X') when the name matches a
     subagent; None otherwise. Lets any chat surface (web, Telegram, TUI) address a
@@ -3895,7 +4010,9 @@ def seed_builtins(cfg: dict, store):
     if zeromod.runs_on_hub(cfg):
         return          # a Zero keeps no agents of its own: its work runs on the hub
     anthropic_on = (cfg.get("providers", {}).get("anthropic") or {}).get("enabled")
-    validator_model = "anthropic/claude-sonnet-5-5" if anthropic_on else ""
+    # this release's suggested Claude (modelcatalog.py), so a new machine's validator is never seeded on an old one
+    from . import modelcatalog
+    validator_model = f"anthropic/{modelcatalog.default('anthropic')}" if anthropic_on else ""
     store.save_subagent({
         "name": "researcher", "builtin": 1,
         "soul": "You research. Gather real information with your tools, verify it, and return "

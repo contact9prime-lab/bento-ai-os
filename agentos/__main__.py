@@ -4757,6 +4757,74 @@ def _faces_cli(cfg, rest):
     print("  bento face faces use ID · add NAME LAYOUT W1,W2 · remove ID")
 
 
+def _voiceprint_cli(cfg, rest):
+    """`bento face print`: a voice print from a terminal (voiceprint.py). It is the print of
+    whoever owns this home: on a machine with accounts each person records theirs on the
+    screen, signed in, because a terminal has no sign-in and a print must not be made for
+    somebody else."""
+    from . import config as _cfgmod
+    from . import hearing, users as _users, voiceprint
+    if _users.enabled():
+        sys.exit("  This machine has accounts, and a voice print is each person's own. Record it on the "
+                 "screen while signed in: Settings → Voice → Listening.")
+    home = _cfgmod.AGENTOS_HOME
+    a = (rest[0].lower() if rest else "status")
+
+    def show():
+        st = voiceprint.status(cfg, home)
+        print(f"  {st['line']}")
+        print(f"  recordings: {st['samples']} of {st['need']}" + ("   only your voice wakes it" if st["only"] and st["enrolled"] else ""))
+    if a == "status":
+        return show()
+    if a == "install":
+        from . import setup_tui
+        setup_tui._offer_component(voiceprint.COMPONENT)
+        return show()
+    if a == "forget":
+        print("  deleted" if voiceprint.forget(home) else "  there was no voice print")
+        cfg["voiceprint"] = {"only": False}
+        return _cfgmod.save_config(cfg)
+    if a == "only":
+        on = (rest[1].lower() if len(rest) > 1 else "") in ("on", "yes", "true", "1")
+        if on and not voiceprint.enrolled(home):
+            sys.exit("  Record your voice first: bento face print record")
+        cfg["voiceprint"] = {"only": on}
+        _cfgmod.save_config(cfg)
+        return show()
+    if a != "record":
+        sys.exit("  bento face print [install | record [FILE.wav] | only on|off | forget]")
+    if not voiceprint.ready():
+        sys.exit("  " + voiceprint.why_not())
+    files = rest[1:]
+    try:
+        if files:
+            for f in files:
+                got = voiceprint.enroll(home, Path(f).expanduser().read_bytes())
+                print(f"  ✓ {f}: {got['samples']} of {got['need']}")
+        else:
+            if not hearing.recorder():
+                sys.exit("  There is no recorder here (arecord, rec or parecord). Give recordings instead: "
+                         "bento face print record one.wav two.wav three.wav")
+            word = (cfg.get("agent_name") or "Bento")
+            while not voiceprint.enrolled(home):
+                input(f"  Press Enter, then say “{word}, good morning.” ")
+                print("  ● listening for 4 seconds…")
+                try:
+                    got = voiceprint.enroll(home, hearing.record(4))
+                except (voiceprint.PrintError, hearing.HearError) as e:
+                    print(f"  {e}")
+                    continue
+                print(f"  ✓ {got['samples']} of {got['need']}")
+    except voiceprint.PrintError as e:
+        sys.exit(f"  {e}")
+    except OSError as e:
+        sys.exit(f"  could not read that file ({e})")
+    if voiceprint.enrolled(home):
+        cfg["voiceprint"] = {"only": True}
+        _cfgmod.save_config(cfg)
+    show()
+
+
 def _face_cli(args):
     """`bento face` — this machine's own screen: one agent drawn, and the kiosk face.
 
@@ -4770,6 +4838,8 @@ def _face_cli(args):
     cfg = _cfgmod.load_config()
     if args.action == "faces":
         return _faces_cli(cfg, list(args.args or []))
+    if args.action == "print":
+        return _voiceprint_cli(cfg, list(args.args or []))
     a, rest = args.action, [x.lower() for x in (args.args or [])]
     val = rest[0] if rest else ""
     if a in ("show", "status"):
@@ -5038,6 +5108,8 @@ def _network_cli(args):
         return _esp_cli(rest, args)
     if a == "alarms":
         return _alarm_rules_cli(rest, args)
+    if a == "company":
+        return _device_company_cli(rest)
     if a == "board":
         # the Devices scene in a terminal: the running server holds the newest readings
         import json as _json
@@ -5837,6 +5909,60 @@ def _device_rule_problem(cfg: dict, c: dict) -> str:
     if c.get("item") and c["item"] not in items:
         return f"{m} has nothing called {c['item']} on its hardware list (Devices → its row → Hardware)"
     return ""
+
+
+def _device_company_cli(rest):
+    """`bento network company [MACHINE [COMPANY|none]]`: which of your companies each machine is
+    for. The Devices scene's company picker in a terminal; a view, never a permission."""
+    import json as _json
+    import urllib.error
+    import urllib.request
+    from . import config as _cfgmod
+    base = f"http://127.0.0.1:{_cfgmod.load_config().get('port', 8321)}"
+
+    def ask(path, method="GET", body=None):
+        req = urllib.request.Request(base + path, method=method, data=_json.dumps(body).encode() if body else None,
+                                     headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=10) as r:
+                return _json.loads(r.read() or b"{}")
+        except urllib.error.HTTPError as e:
+            if e.code == 401:
+                sys.exit("  this machine has accounts, so this needs a sign-in: it is on the Devices scene on the desktop")
+            try:
+                sys.exit("  " + str(_json.loads(e.read() or b"{}").get("error") or f"the server said {e.code}"))
+            except ValueError:
+                sys.exit(f"  the server said {e.code}")
+        except OSError as e:
+            sys.exit(f"  the running server keeps this, and it isn't answering at {base} ({e})")
+
+    board = ask("/api/devices/board")
+    cos, ms = board.get("companies") or [], board.get("machines") or []
+    if not rest:
+        if not ms:
+            print("  no devices yet")
+        for m in ms:
+            print(f"  {m.get('machine'):<28} {m.get('company_name') or 'every company'}")
+        if len(cos) < 2:
+            print("\n  A machine can be given to a company once you keep two: bento company new NAME")
+        else:
+            print("\n  bento network company MACHINE COMPANY   (or: none)   companies: "
+                  + ", ".join(c["name"] for c in cos))
+        return
+    m = next((x for x in ms if str(x.get("machine") or "").lower() == rest[0].lower()), None)
+    if not m:
+        sys.exit(f"  no machine called '{rest[0]}': " + (", ".join(x["machine"] for x in ms) or "there are none yet"))
+    want = " ".join(rest[1:]).strip().lower()
+    if not want:
+        sys.exit("  bento network company MACHINE COMPANY   (or: none)")
+    cid = ""
+    if want not in ("none", "any", "every"):
+        c = next((x for x in cos if want in (x["id"].lower(), x["name"].lower())), None)
+        if not c:
+            sys.exit(f"  you keep no company called '{want}': " + (", ".join(x["name"] for x in cos) or "none yet"))
+        cid = c["id"]
+    got = ask("/api/devices/company", "PUT", {"machine": m.get("ckey"), "company": cid})
+    print(f"  {m['machine']} is for {got.get('company_name') or 'every company'}")
 
 
 def _alarm_rules_cli(rest, args):
@@ -7728,6 +7854,24 @@ def _stage_cli(args) -> int:
         from . import config as _cfgmod
         _cfgmod.save_config(cfg)
         print(f"Answer BIG is {what}. A running server reads it on the next turn.")
+        return 0
+    if act == "export" and getattr(args, "fmt", ""):
+        # a story as a file to pass on (stagedoc.py): the newest one, or the chat id given
+        import asyncio as _aio
+        from . import executors as _ex, stagedoc
+        try:
+            fmt = stagedoc.fmt_of(args.fmt)
+            cid = what or (stagemod.library(store, 1) or [{}])[0].get("conversation_id") or ""
+            ans = stagedoc.newest(store, cid)
+            p = _aio.run(stagedoc.to_file(store, cfg, cid, ans, fmt, _ex.default_workspace(cfg),
+                                          cfg.get("agent_name") or ""))
+        except KeyError:
+            print("No story there yet. Ask something worth showing, then: bento stage export --as pptx")
+            return 1
+        except (ValueError, RuntimeError) as e:
+            print(str(e))
+            return 1
+        print(f"The story as a {stagedoc.FORMATS[fmt][0]} file: {p}")
         return 0
     if act == "export":
         # a blueprint as drawing sheets (bpdoc.py): the newest one, or the scene id given
@@ -10096,6 +10240,9 @@ def main():
     p_st.add_argument("--answer", default="", help="xray: the question (message id) to take apart; the last by default")
     p_st.add_argument("--every", default="", choices=["", "hour", "day", "week"],
                       help="keep: ask the question again this often (needs the server running)")
+    p_st.add_argument("--as", dest="fmt", default="", metavar="FORMAT",
+                      help="export: pptx (PowerPoint), docx (Word) or pdf, the newest story or the chat id given; "
+                           "without it, export is a blueprint's drawing sheets")
     p_st.add_argument("--user", default="", help="whose stage, on a machine with users")
     p_tr = verb("trace", help="one execution as one JSON file: what happened, the office, what ran (secrets masked)")
     p_tr.add_argument("id", nargs="?", default="", help="a chat id or a run id (the last chat by default)")
@@ -10141,7 +10288,7 @@ def main():
     p_net.add_argument("action", nargs="?", default="list",
                        choices=["list", "look", "install", "check", "secure", "letin", "disconnect", "label",
                                 "forget", "hide", "show", "rekey", "firewall", "controls", "switch", "remove", "update", "ties",
-                                "events", "map", "talks", "hardware", "readings", "board", "alarms", "get", "set", "permit", "esp"],
+                                "events", "map", "talks", "hardware", "readings", "board", "alarms", "company", "get", "set", "permit", "esp"],
                        metavar="ACTION",
                        help="list | ties [LINK [sessions|memory|knowledge|logs|update]] | events [MACHINE] | map | "
                             "talks [LINK [lead|DEPARTMENT --company ID]] | "
@@ -10156,7 +10303,7 @@ def main():
                             "remove MACHINE --user U (Bento off it, its data kept) | update MACHINE --user U | "
                             "hardware [MACHINE] [--check] (what a Zero has, down to each sensor) | "
                             "readings MACHINE ITEM [--range day|week|month|quarter] (one sensor over time) | "
-                            "board (every device live, with its alarms) | alarms [add MACHINE ITEM WHEN [VALUE] [for S] [warning] | remove N] | "
+                            "board (every device live, with its alarms) | company [MACHINE COMPANY|none] | alarms [add MACHINE ITEM WHEN [VALUE] [for S] [warning] | remove N] | "
                             "get MACHINE [ITEM] (read it now) | set MACHINE ITEM 1|0 | permit MACHINE [ITEM read|set|off] | "
                             "esp MACHINE [find | add NAME ADDRESS [PORT] [--user U] | look | remove NAME] (its ESP32 nodes)")
     p_net.add_argument("args", nargs="*", help="the machine (its address, name or MAC) and a value")
@@ -10215,10 +10362,11 @@ def main():
     p_pool.add_argument("--wifi-country", default="", help="sdcard: two letters, like GB or IN")
     p_face = verb("face", help="this machine's screen: one agent drawn, and the kiosk that listens")
     p_face.add_argument("action", nargs="?", default="show",
-                        choices=["show", "status", "buddy", "kiosk", "wake", "word", "test", "hear", "faces"],
+                        choices=["show", "status", "buddy", "kiosk", "wake", "word", "test", "hear", "faces", "print"],
                         metavar="ACTION",
                         help="show | buddy auto|on|off | kiosk on|off | wake name|always | "
-                             "word [WAKE WORD] | test | hear ENGINE | faces [use ID | add NAME LAYOUT W1,W2 | remove ID]")
+                             "word [WAKE WORD] | test | hear ENGINE | faces [use ID | add NAME LAYOUT W1,W2 | remove ID] | "
+                             "print [install | record [FILE.wav] | only on|off | forget]")
     p_face.add_argument("args", nargs="*", help="the value")
     p_hw = verb("hardware", help="what this machine has: the board, cameras, sensors, pins, buses and ports")
     p_hw.add_argument("--json", action="store_true", help="the whole answer as JSON")

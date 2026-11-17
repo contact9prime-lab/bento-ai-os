@@ -1224,6 +1224,258 @@ def parse_department(cfg: dict, store, text: str):
     return best
 
 
+def parse_company(cfg: dict, text: str):
+    """'@Acme' or '@Acme draft the offer' → (company, 'draft the offer') when the words
+    after the @ name one of the person's companies, open or parked; None otherwise. The
+    longest name wins. An agent's name and a department of the open company are checked
+    before this (fabric.parse_mention, parse_department): those are addressed far more
+    often, and a company called Sales must not take the Sales department's work."""
+    t = (text or "").strip()
+    if not t.startswith("@"):
+        return None
+    best = None
+    for c in companies(cfg):
+        if not c.get("name"):
+            continue
+        m = re.match(r"@" + _dept_pattern(c["name"]) + r"(?![A-Za-z0-9])[\s:,]*(.*)", t, re.S | re.I)
+        if m and (best is None or len(c["name"]) > len(best[0]["name"])):
+            best = (c, m.group(1).strip())
+    return best
+
+
+def open_here(cfg: dict, store, ref: str, surface: str = "gui", conversation_id: str = "") -> dict:
+    """Open a company by id or name, save it, and write the diary line: the one switch
+    behind '@Company' in a chat and the lead's open_company tool. The conversation it
+    was asked in goes with it, into that company's space, because what is said next
+    there is that company's. Raises ValueError with a sentence."""
+    from . import config as cfgmod
+    hit = find(cfg, ref)
+    if not hit:
+        names = ", ".join(c["name"] for c in companies(cfg)) or "none yet"
+        raise ValueError(f"no company called '{ref}'. Yours: {names}")
+    if not hit["active"] and not hit["id"]:
+        raise ValueError(f"{hit['name']} cannot be opened")
+    row = hit if hit["active"] else switch(cfg, store, hit["id"], surface=surface)
+    if not hit["active"]:
+        cfgmod.save_config(cfg)
+        record(store, f"opened company: {row['name']}")
+    _conv_follows(store, conversation_id, row.get("space_id") or "")
+    return row
+
+
+def _conv_follows(store, conversation_id: str, sid: str) -> None:
+    if conversation_id and sid:
+        try:
+            if store.get_space(sid):
+                store.set_conversation_space(conversation_id, sid)
+        except Exception:
+            pass
+
+
+def start_here(cfg: dict, store, name: str, about: str = "", goal: str = "",
+               surface: str = "gui", conversation_id: str = "") -> dict:
+    """Start a new, empty company and open it (the lead's new_company tool). The
+    company that was open is parked whole."""
+    from . import config as cfgmod
+    from . import teamlink
+    row = create(cfg, store, teamlink.plain(name, 48, newlines=False),
+                 teamlink.plain(about, ABOUT_MAX, newlines=False),
+                 teamlink.plain(goal, OBJECTIVE_MAX, newlines=False), surface=surface)
+    cfgmod.save_config(cfg)
+    record(store, f"company started: {row['name']}")
+    _conv_follows(store, conversation_id, row.get("space_id") or "")
+    return row
+
+
+def opened_words(cfg: dict, store, row: dict) -> str:
+    """What is open now, for whoever asked: its line, its departments and their heads."""
+    depts = [d for d in departments(cfg, store) if d["members"]]
+    return (f"{row['name']} is open"
+            + (f" ({row['about']})" if row.get("about") else "") + ". "
+            + ("Departments: " + "; ".join(
+                f"{d['name']}" + (f" (head {d.get('lead')})" if d.get("lead") else "") for d in depts) + "."
+               if depts else "It has no departments yet: they are set up in the Office, under Company."))
+
+
+def others_note(cfg: dict, prefix: str = "") -> str:
+    """What the lead hears about the person's OTHER companies, and what to do when the
+    work asked for is not this company's. Asked for as "if I ask a stock market question
+    to the kids learning YouTube channel it can say the context is different, would you
+    like to create a company, and it does that or switches to that company"."""
+    rows = companies(cfg)
+    if not rows:
+        return ""
+    cur = next((c for c in rows if c["active"]), None)
+    others = [c for c in rows if not c["active"]]
+    lines = "".join(f"\n- {c['name']}" + (f": {' '.join(str(c['about']).split())[:160]}" if c.get("about") else "")
+                    for c in others)
+    here = f"{cur['name']}" + (f" ({' '.join(str(cur['about']).split())[:160]})" if cur and cur.get("about") else "") \
+        if cur else "no company"
+    return ("\n\nWHICH COMPANY THIS IS. The open company is " + here + "."
+            + (" The person also keeps:" + lines if others else " It is the only one they keep.")
+            + "\nEach company has its own people, memory and work, so a request is answered in the "
+              "company it belongs to. When what is asked is about a different business than the "
+              "open company (a question counts, not only a big job: a stock market question put "
+              "to a kids' channel is one), do not answer it here, not even the quick part. Say in "
+              "one line that it is a different context, then"
+            + (f" if another company fits, call {prefix}open_company {{\"company\": name}} straight "
+               f"away: the person is asked on a card, and after their yes you answer there, with "
+               f"that company's departments. If none of their companies fits," if others else "")
+            + f" ask whether to start a company for it, and on a yes call {prefix}new_company "
+              f"{{\"name\": ..., \"about\": one line, \"objective\": what it is for}} (the person "
+              f"confirms on a card), then carry on there. After a no on either, answer here as "
+              f"well as you can and do not ask again in this conversation. Small talk, anything "
+              f"about this conversation or this machine, and general questions that are no "
+              f"business's in particular are answered here and are never a reason to switch.")
+
+
+def place_mission(cfg: dict, store, body: dict) -> dict:
+    """A mission being saved, put where it belongs, or ValueError in a sentence. A new
+    one made while a company is open is that company's (its space); nobody from another
+    of the person's companies is on its roster. Every door that makes a mission for a
+    person calls this before flows.save: the lead's create_flow, the editor, a recipe."""
+    body = dict(body or {})
+    was = store.get_flow(str(body.get("name") or "")) if body.get("name") else None
+    if not was and not body.get("space_id"):
+        sid = str(((cfg or {}).get("company") or {}).get("space_id") or "")
+        if sid and store.get_space(sid):
+            body["space_id"] = sid
+    probe = {"name": body.get("name") or "", "space_id": body.get("space_id") or (was or {}).get("space_id") or ""}
+    out = outsiders(cfg, body.get("roster") or [], probe)
+    # only somebody being ADDED is refused: a mission that already mixes companies still saves
+    kept = {str(r.get("subagent") if isinstance(r, dict) else r).lower() for r in (was or {}).get("roster") or []}
+    out = {n: c for n, c in out.items() if n.lower() not in kept}
+    if out:
+        co = of_flow(cfg, probe)
+        here = (co or {}).get("name") or profile(cfg).get("name") or "this company"
+        raise ValueError("; ".join(f"{n} works in {c}" for n, c in out.items())
+                         + f". A mission of {here} runs with {here}'s own people: take them "
+                           f"off the roster, or open that company and make the mission there")
+    return body
+
+
+def route_note(cfg: dict, store, prefix: str = "") -> str:
+    """The first decision about any request, for the lead: WHO does it. Reported as "it
+    is still letting Aria do all the heavy lifting … Aria has to learn to delegate unless
+    it is alone, or set up specialised agents if no company is set, or switch company or
+    create one; it needs to take that cognitive decision". Each rule was already in the
+    prompt somewhere (the company note, the team note); as five separate paragraphs
+    thousands of characters apart they were not one decision. This is the decision, with
+    what this machine actually has, and it goes near the top."""
+    try:
+        depts = [d for d in departments(cfg, store) if d["members"]]
+    except Exception:
+        depts = []
+    try:
+        away = not_on_the_list(cfg, store)
+        free = [s["name"] for s in store.list_subagents()
+                if s.get("enabled") is not False and s["name"].lower() not in away]
+    except Exception:
+        free = []
+    rows = companies(cfg)
+    others = [c["name"] for c in rows if not c["active"]]
+    cur = next((c["name"] for c in rows if c["active"]), "")
+    have = []
+    if depts:
+        have.append(f"{len(depts)} department{'s' if len(depts) != 1 else ''} "
+                    f"({', '.join(d['name'] for d in depts)})")
+    if free:
+        have.append(f"{len(free)} specialist{'s' if len(free) != 1 else ''} outside them "
+                    f"({', '.join(free[:8])}{'…' if len(free) > 8 else ''})" if depts else
+                    f"{len(free)} specialist{'s' if len(free) != 1 else ''} "
+                    f"({', '.join(free[:8])}{'…' if len(free) > 8 else ''})")
+    if not have:
+        # alone: the work is the lead's, and a team is offered once it would earn its keep
+        return ("\n\nWHO DOES THE WORK. You work alone on this machine: there are no specialists "
+                "and no departments, so you do what is asked yourself, fully. When the same kind "
+                f"of real work comes up a second time, build a specialist for it with "
+                f"{prefix}create_subagent (a name, its job, exactly the tools it needs; the person "
+                f"approves it) and hand that work over from then on."
+                + (f" If it is ongoing work for a business and the person keeps no company for it, "
+                   f"ask once whether to start one ({prefix}new_company)." if not rows else ""))
+    steps = []
+    if rows:
+        steps.append(
+            "Whose business is it? " + (f"The open company is {cur}. " if cur else "")
+            + ("If what is asked is another company of theirs' business, a question included, "
+               f"open that company first ({prefix}open_company) and answer there; " if others else "")
+            + f"if it is a business none of their companies is for, ask whether to start one "
+              f"({prefix}new_company). The person answers on a card; then carry on there.")
+    if depts:
+        # Reported with a screenshot: asked to run code, the lead on Claude Code ran it in its
+        # own shell for minutes while Tech sat idle. Nothing said that running code is a
+        # department's work; it only said "when a department fits".
+        coders = [d["name"] for d in depts
+                  if any("run_python" in ((store.get_subagent(m) or {}).get("tools") or [])
+                         or "run_command" in ((store.get_subagent(m) or {}).get("tools") or [])
+                         for m in d["members"])]
+        steps.append(f"Does a department do this? Then it is that department's: {prefix}department_task. "
+                     f"Work that spans departments goes to each."
+                     + (f" Writing or running code, a script, a backtest or a data job is "
+                        f"{' or '.join(coders[:3])}'s: they can run code." if coders else
+                        f" If the work needs code run and no department can, ask for the "
+                        f"ability with {prefix}request_capability and then hand it over."))
+    if free:
+        steps.append(f"Otherwise, is it a specialist's job? Hand that part over with {prefix}delegate.")
+    steps.append(f"Nobody fits and it is real work? Build the specialist with {prefix}create_subagent "
+                 f"(temporary: true for a one-off), then hand it over.")
+    steps.append("Only then do it yourself.")
+    return ("\n\nWHO DOES THE WORK. You are the lead of a team (" + " and ".join(have) + "), and a "
+            "lead manages. Before you start on any request that is real work (research, analysis, "
+            "writing, building, checking: anything more than a quick answer), decide who does it, "
+            "in this order:\n" + "\n".join(f"{i}. {t}" for i, t in enumerate(steps, 1))
+            + ("\nYou have a shell, files and web search of your own. They are for looking "
+               "(reading a file the person names, a quick check of a fact), never for the job: "
+               "the moment a request means running or writing code, working through data, "
+               "researching or producing something, hand it over before you touch it, and give "
+               "them the files and paths they need in the brief." if prefix else "")
+            + "\nDoing work yourself that one of them is there for is a mistake, even when you "
+              "could do it faster: the person built the team to be used, and work you do alone is "
+              "not checked or signed off by anyone. Your part is the brief, reading what comes "
+              "back, putting it together and saying who did what. Small talk, a quick fact and "
+              "questions about this conversation are yours to answer.")
+
+
+def of_flow(cfg: dict, flow: dict | None) -> dict | None:
+    """The company a mission belongs to: the one whose desk or work it is, else the one
+    whose space it was made in. None for a mission that belongs to no company."""
+    if not flow:
+        return None
+    name = flow.get("name") or ""
+    cur, office = (cfg or {}).get("company") or {}, (cfg or {}).get("office") or {}
+    if name in _company_flows(cur, office):
+        return _summary(cur, office, True)
+    for rec in _parked(cfg).values():
+        if name in _company_flows(rec["company"], rec.get("office") or {}):
+            return _summary(rec["company"], rec.get("office") or {}, False)
+    return of_space(cfg, flow.get("space_id") or "")
+
+
+def outsiders(cfg: dict, roster: list, flow: dict | None = None) -> dict:
+    """{name: company} for the people on a roster who work in ANOTHER company than the
+    mission's: a mission runs with its own company's people, and anybody in no company.
+    A mission that belongs to no company is the open company's for this."""
+    co = of_flow(cfg, flow) if flow else None
+    mine = (co or {}).get("id") if co else None
+    cur = (cfg or {}).get("company") or {}
+    if co is None or co["active"]:
+        mine = str(cur.get("id") or "")
+    theirs: dict = {}
+    if str(cur.get("id") or "") != mine:
+        for m in _members_of((cfg or {}).get("office") or {}):
+            theirs[m] = cur.get("name") or "another company"
+    for cid, rec in _parked(cfg).items():
+        if cid != mine:
+            for m in _members_of(rec.get("office") or {}):
+                theirs[m] = rec["company"].get("name") or "another company"
+    # somebody who also works in the mission's own company is its own
+    own = _members_of((cfg or {}).get("office") or {}) if str(cur.get("id") or "") == mine else \
+        _members_of((_parked(cfg).get(mine) or {}).get("office") or {})
+    names = [str(r.get("subagent") if isinstance(r, dict) else r or "") for r in roster or []]
+    return {n: theirs[n.lower()] for n in names
+            if n and "@" not in n and n.lower() in theirs and n.lower() not in own}
+
+
 def elsewhere(cfg: dict, mem: dict | None = None, store=None) -> set[str]:
     """Lower-cased names of the people who work in ANOTHER of the person's companies.
     They are that company's: not addressed here, and not on the lead's list. Found
@@ -1255,7 +1507,10 @@ def addresses(cfg: dict, store) -> dict:
     depts = [{"name": d["name"], "head": d["head"], "hex": d["hex"],
               "people": len(d["members"]), "desk": bool(d["desk"])}
              for d in mem["departments"]]
-    return {"agents": agents, "departments": depts}
+    # another company is addressed too: '@Acme' asks to open it (parse_company)
+    cos = [{"name": c["name"], "about": c.get("about") or "", "departments": c["departments"],
+            "people": c["people"]} for c in companies(cfg) if not c["active"] and c.get("id")]
+    return {"agents": agents, "departments": depts, "companies": cos}
 
 
 # ---------------------------------------------------------------------------
@@ -1341,6 +1596,20 @@ def audit_task(dept: dict, task: str, deliverable: str, status: str, fault: str,
     return "\n\n".join(parts)
 
 
+# How much of a deliverable a boss or the auditor reads. It was 6,000 characters, cut with no
+# mark: a boss signed off, or sent back, work it had read the first part of.
+REVIEW_CHARS = 20000
+
+
+def _shown(deliverable: str, limit: int = 0) -> str:
+    text, limit = str(deliverable or "").strip(), limit or REVIEW_CHARS
+    if len(text) <= limit:
+        return text
+    return (text[:limit].rstrip()
+            + f"\n[… {len(text) - limit:,} more characters of it are not shown to you: judge what "
+              f"you can see, and say that you did not see the rest]")
+
+
 def _work_parts(task: str, deliverable: str, status: str, fault: str, board: list[dict],
                 briefed: list[dict] | None) -> list[str]:
     """The task, the deliverable, the board and what was filed in the Brief: what the
@@ -1350,7 +1619,7 @@ def _work_parts(task: str, deliverable: str, status: str, fault: str, board: lis
                                                or "(no task was given: the desk ran on its own)"),
              f"=== what they handed back (the run ended {status}"
              + (f": {fault}" if fault else "") + ") ===\n"
-             + (str(deliverable or "").strip()[:6000] or "(nothing)")]
+             + (_shown(deliverable) or "(nothing)")]
     left = AUDIT_BOARD_CHARS
     rows = []
     for b in board:
@@ -1466,7 +1735,7 @@ def review_mode(cfg: dict) -> str:
 
 
 def lead_name(cfg: dict) -> str:
-    return str(cfg.get("agent_name") or "Aria")
+    return str(cfg.get("agent_name") or "Bento")
 
 
 def chain(cfg: dict, store, dept_name: str, mode: str | None = None) -> list[dict]:
@@ -1656,8 +1925,9 @@ def note(cfg: dict, store, desks: bool = True, tool: str = "department_task") ->
     Finance" means the finance desk and not a guess. `desks=False` for a forwarded
     turn's team door, which offers `delegate` and `huddle` and no `run_flow`."""
     depts = [d for d in departments(cfg, store) if d["members"]]
+    prefix = tool[:-len("department_task")] if tool.endswith("department_task") else ""
     if not depts:
-        return ""
+        return others_note(cfg, prefix)
     pr = profile(cfg)
 
     def who(d: dict, m: str) -> str:
@@ -1673,7 +1943,6 @@ def note(cfg: dict, store, desks: bool = True, tool: str = "department_task") ->
              + (f". Desk: {d['desk']}" if d.get("desk") and desks else "")
              + (f". {abilities(store, d['members'])}" if abilities(store, d["members"]) else "")
              for d in depts]
-    others = [c["name"] for c in companies(cfg) if not c["active"]]
     return ("\n\nYOUR COMPANY" + (f" ({pr['name']})" if pr["name"] else "")
             + (f". Its objective, in the person's words: {pr['objective']}" if pr["objective"] else "")
             + ". The specialists are organised in departments:\n" + "\n".join(lines)
@@ -1710,9 +1979,7 @@ def note(cfg: dict, store, desks: bool = True, tool: str = "department_task") ->
                if review_mode(cfg) != "off" and desks else "")
             + "".join(f"\n{d['name']} reports to {d['reports_to']}." for d in depts
                       if d.get("reports_to"))
-            + (f"\nThe person also keeps other companies ({', '.join(others)}), each with its "
-               f"own office and people; they switch between them in the Office."
-               if others else ""))
+            + others_note(cfg, prefix))
 
 
 # What a person can do that matters for whether a step is possible: said beside each
@@ -2443,19 +2710,30 @@ def remove(cfg: dict, store, cid: str) -> dict:
             "switched_off": off}
 
 
-def cfg_for(cfg: dict, flow_name: str) -> dict:
+def cfg_for(cfg: dict, flow_name: str, space_id: str = "") -> dict:
     """The settings a flow's company runs under: the open company's for its own desks and
-    missions, a parked company's own office and settings for one of its flows. Anything
-    else (a flow that belongs to no company) gets cfg as it is."""
+    missions, a parked company's own office and settings for one of its flows. A mission
+    that is nobody's desk or work is its SPACE's company's (the company it was made in).
+    Anything else (a flow that belongs to no company) gets cfg as it is."""
     if not flow_name:
         return cfg
+    got = _cfg_for_listed(cfg, flow_name)
+    if got is not None:
+        return got
+    co = of_space(cfg, space_id)
+    if co and not co["active"]:
+        return cfg_of(cfg, co["id"]) or cfg
+    return cfg
+
+
+def _cfg_for_listed(cfg: dict, flow_name: str) -> dict | None:
     office = cfg.get("office") or {}
     if flow_name in _company_flows(cfg.get("company") or {}, office):
         return cfg
     for rec in _parked(cfg).values():
         if flow_name in _company_flows(rec["company"], rec.get("office") or {}):
             return {**cfg, "company": rec["company"], "office": rec.get("office") or {}}
-    return cfg
+    return None
 
 
 def cfg_of(cfg: dict, cid: str) -> dict | None:

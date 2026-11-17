@@ -228,7 +228,7 @@ def export(store, cfg: dict, *, name: str = "", description: str = "",
     soul = cfgmod.load_soul() if with_soul else ""
 
     manifest = {
-        "name": name or cfg.get("agent_name") or "Aria",
+        "name": name or cfg.get("agent_name") or "Bento",
         "description": description or "",
         "created_at": time.time(),
         "soul": soul,

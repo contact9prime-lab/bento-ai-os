@@ -81,8 +81,8 @@ def test_the_built_in_loop_still_gets_its_history_once(tmp_path, monkeypatch):
         async def run(self, msgs):
             seen["msgs"] = msgs
             return {"content": "hi", "steps": [], "tokens": {}}
-    import agentos.telegram as tgmod
-    monkeypatch.setattr(tgmod, "Agent", FakeAgent)
+    import agentos.agent as agentmod        # the phone turn is phoneturn.py's, for both phones
+    monkeypatch.setattr(agentmod, "Agent", FakeAgent)
     asyncio.run(b._handle({"chat": {"id": 5, "type": "private"}, "from": {"first_name": "PC"}, "text": "hello"}))
     users = [m for m in seen["msgs"] if m["role"] == "user"]
     assert len(users) == 1 and users[0]["content"].endswith("hello") and "via Telegram" in users[0]["content"]
@@ -91,8 +91,12 @@ def test_the_built_in_loop_still_gets_its_history_once(tmp_path, monkeypatch):
 def test_whatsapp_does_the_same():
     src = (Path(__file__).parent.parent / "agentos/whatsapp.py").read_text()
     body = src[src.index("async def _turn_in"):]
-    assert body.index('self.store.add_message(cid, "user", text)') < body.index("async def built_history")
+    assert body.index('self.store.add_message(cid, "user", text)') < body.index("phoneturn.answer(")
     assert 'await emit({"type": "turn_start"' in body and 'await emit({"type": "turn_end"})' in body
+    # and the history rebuild is the built-in loop's alone, in the one turn both phones share
+    turn = (Path(__file__).parent.parent / "agentos/phoneturn.py").read_text()
+    assert "_history.build(" in turn[turn.index("async def _built_in"):]
+    assert "_history.build(" not in turn[turn.index("async def _on_cli"):turn.index("async def _built_in")]
 
 
 def test_two_people_in_two_chats_run_at_the_same_time_in_their_own_sessions(tmp_path, monkeypatch):

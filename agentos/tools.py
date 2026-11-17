@@ -539,6 +539,10 @@ ALWAYS_ASK = {"power_action", "enable_flow", "enable_openclaw_plugin",
               # a department or an agent asking for an ability it lacks (running code):
               # the person's yes, every time, whoever asks (agentos/tools.py ABILITIES)
               "request_capability",
+              # which company the desk is in, and a new one: the person's, every time. The
+              # lead offers it when the work asked for is another company's; '@Company' in
+              # a chat asks the same card
+              "open_company", "new_company",
               # this OS's own code and a restart that loads it, and who the agent is from now
               # on. No autonomy level answers these, and neither does a remembered yes
               "develop_agentos", "restart_agentos", "update_soul",
@@ -617,8 +621,9 @@ SAFE_TOOLS = {
     # untrusted content: see policy.TAINT_WATCH.
     "remember", "forget", "kg_add", "save_skill", "run_automation",
     "brief_item", "notify", "save_report", "create_space", "snapshot_os",
-    # the Stage: drawn on the person's own screen and kept with the chat (stage.py)
-    "show_scene",
+    # the Stage: drawn on the person's own screen and kept with the chat (stage.py); its story as
+    # a file is written only into the workspace's own stage folder, from what was already shown
+    "show_scene", "stage_file",
     "set_avatar", "set_office", "set_wallpaper", "save_asset",
     # a machine's own screen: which face, which widgets. Cosmetic and undone with a tap
     "screen_face",
@@ -1521,6 +1526,25 @@ def _automation_step_label(s: dict) -> str:
     return str(k)
 
 
+# What a specialist, a mission or a department hands back to whoever asked for it. It was cut at
+# 3,500 characters with no mark, in three places: measured on the owner's machine, four desk
+# deliverables of 4,140 to 5,759 characters each reached the lead cut off mid-sentence, and the lead
+# answered from the part it had. Reported as "the answers fall short". The whole answer goes back
+# up to HANDBACK; past that it is cut at a paragraph and the cut is SAID, with where the rest is.
+HANDBACK = 20000
+
+
+def handed_back(body: str, run_id: str = "") -> str:
+    body = str(body or "")
+    if len(body) <= HANDBACK:
+        return body
+    cut = body.rfind("\n\n", HANDBACK // 2, HANDBACK)
+    cut = cut if cut > 0 else HANDBACK
+    where = (f" The whole answer is in Missions → History, run {run_id}" if run_id else "")
+    return (body[:cut].rstrip() + f"\n\n[… {len(body) - cut:,} more characters are not shown here."
+            + where + ". Say that the answer was cut if you rely on it.]")
+
+
 class Toolbox(usersmod.Scoped):
     """Executes tools. `store` is a memory.Store; `scheduler` is set by the app."""
 
@@ -1914,6 +1938,30 @@ class Toolbox(usersmod.Scoped):
         return (f"[{'added' if res['created'] else 'updated'} in the Brief · {res['kind']} · "
                 f"{res['title']}]")
 
+    async def stage_file(self, format: str = "pptx", _conv: str = "") -> str:
+        """The newest story of this chat as a file in the workspace's stage folder (stagedoc.py): a
+        PowerPoint, a Word document or a PDF. The chat is the agent's (`_conv`), never the model's."""
+        from . import stagedoc
+        if not _conv:
+            return "[error] there is no chat here to take a story from"
+        try:
+            fmt = stagedoc.fmt_of(format)
+            ans = stagedoc.newest(self.store, _conv)
+            from . import bpfill, stage as stagemod
+            # a blueprint still filling itself in is saved once its parts have landed
+            await bpfill.settle([r["id"] for r in stagemod.story(self.store, _conv, ans)], 60)
+            p = await stagedoc.to_file(self.store, self.cfg, _conv, ans, fmt,
+                                       os.path.expanduser(self.cfg["workspace"]), self.cfg.get("agent_name") or "")
+        except KeyError:
+            return ("[error] this chat has shown nothing on the Stage yet. Show the story first with "
+                    "show_scene, then save it.")
+        except (ValueError, RuntimeError) as e:
+            return f"[error] {e}"
+        except Exception as e:
+            return f"[error] the file could not be made: {e}"
+        return (f"[saved · {stagedoc.FORMATS[fmt][0]}] {p}\nName this path in your reply, exactly as written: "
+                f"that is how the person gets the file, on a phone too.")
+
     async def show_scene(self, kind: str = "", title: str = "", _conv: str = "", **spec) -> str:
         """One scene of the answer onto the person's Stage (agentos/stage.py). The chat is
         the agent's (`_conv`, injected by the loop), never the model's."""
@@ -1972,6 +2020,43 @@ class Toolbox(usersmod.Scoped):
                     "blueprint, show one with kind blueprint, its parts nested so they can open each; "
                     "a phone gets it as pictures, a video and a PDF)")
         return out
+
+    async def open_company(self, company: str, _surface: str = "", _conv: str = "") -> str:
+        """Open another of the person's companies. ALWAYS_ASK: the person says yes on a
+        card (the lead offers it when what is asked is another company's work, and
+        '@Company' in a chat is the same switch). The chat it was asked in goes with it."""
+        from . import company as companymod
+        try:
+            row = companymod.open_here(self.cfg, self.store, company, surface=_surface or "gui",
+                                       conversation_id=_conv)
+        except ValueError as e:
+            return f"[error] {e}"
+        await self._company_moved()
+        return ("[opened] " + companymod.opened_words(self.cfg, self.store, row)
+                + " You are working for this company now: carry on with what was asked, and "
+                  "hand real work to its departments with department_task.")
+
+    async def new_company(self, name: str, about: str = "", objective: str = "",
+                          _surface: str = "", _conv: str = "") -> str:
+        """Start a new, empty company and open it. ALWAYS_ASK. The company that was open
+        is kept whole. Its departments are the person's to set up (Office → Company)."""
+        from . import company as companymod
+        try:
+            row = companymod.start_here(self.cfg, self.store, name, about, objective,
+                                        surface=_surface or "gui", conversation_id=_conv)
+        except ValueError as e:
+            return f"[error] {e}"
+        await self._company_moved()
+        return (f"[started] {row['name']} is a new company and it is open. It has no "
+                f"departments or people yet: tell the person they can set them up in the "
+                f"Office, under Company (it drafts them from a line about the business). "
+                f"Until then, answer what was asked yourself, for this company.")
+
+    async def _company_moved(self) -> None:
+        if self.broadcast:
+            for t in ("office", "agents", "avatars", "fabric_defs", "spaces_update", "company"):
+                with contextlib.suppress(Exception):
+                    await self.broadcast({"type": t})
 
     async def request_capability(self, ability: str, who: str = "", why: str = "",
                                  _from: str = "") -> str:
@@ -2176,8 +2261,8 @@ class Toolbox(usersmod.Scoped):
             # the list it is handed, which is the right layer for it.
             try:
                 from . import knowledge
-                ranked = await knowledge.semantic_rank(
-                    self.cfg, self.store.search_memories("", limit=500, space=space_id), query)
+                ranked = await knowledge.quick_rank(
+                    self.cfg, self.store.search_memories("", limit=500, space=space_id), query, wait=8.0)
                 if ranked:
                     seen = {m["id"] for m in mems}
                     mems += [m for m in ranked[:10] if m["id"] not in seen]
@@ -2231,7 +2316,7 @@ class Toolbox(usersmod.Scoped):
         # no second mark, and a new mark would end a link's standing permissions (policy)
         known = list(_taint or [])
         fresh = any(t not in known for t in res.get("taint") or []) if "taint" in res else res.get("tainted")
-        return (TAINTED_REPLY if fresh else "") + f"{head}\n{body[:3500]}"
+        return (TAINTED_REPLY if fresh else "") + f"{head}\n{handed_back(body, res.get('run_id') or '')}"
 
     async def linked_teams(self) -> str:
         """Each linked team and who there this team may give work to, asked over the link."""
@@ -3845,9 +3930,11 @@ class Toolbox(usersmod.Scoped):
                           sinks: list | None = None, new_agents: list | None = None) -> str:
         """Write a flow definition. It is ALWAYS created disabled — see the note in the
         schema for why that is not a limitation but the entire point."""
+        from . import company as companymod
         from . import flows as flowsmod
         try:
-            flow, report = flowsmod.save(self.store, {
+            # a mission made while a company is open is that company's, with its people
+            flow, report = flowsmod.save(self.store, companymod.place_mission(self.cfg, self.store, {
                 "name": name, "mission": mission, "description": description,
                 "roster": roster or [], "permissions": permissions or {"memory": "read-space"},
                 "triggers": triggers or [], "sinks": sinks or [],
@@ -3856,11 +3943,13 @@ class Toolbox(usersmod.Scoped):
                 # permissions, so enabling one is granting them — and an agent that could
                 # do that could grant itself anything by writing a flow that says so.
                 # The user enables it in Missions → Build, having read what it grants.
-                "enabled": 0})
+                "enabled": 0}))
         except ValueError as e:
             return f"[error] {e}"
         would = flowsmod.declared_grants({**flow, "enabled": 1})
-        lines = [f"flow '{flow['name']}' saved (disabled — it holds nothing yet)."]
+        owner = companymod.of_flow(self.cfg, flow)
+        lines = [f"flow '{flow['name']}' saved (disabled — it holds nothing yet)"
+                 + (f", as a mission of {owner['name']}." if owner else ".")]
         if report.get("agents_created"):
             lines.append(f"created agents: {', '.join(report['agents_created'])}")
         lines.append(f"roster: {', '.join(r['subagent'] for r in flow['roster'])}")
@@ -4107,11 +4196,15 @@ class Toolbox(usersmod.Scoped):
         rows = self.store.list_flows()
         if not rows:
             return "no flows defined yet"
+        from . import company as companymod
         out = []
         for f in rows:
             trig = ", ".join(t["kind"] for t in self.store.flow_triggers(f["name"])) or "manual"
+            # whose mission it is: one of another company runs with that company's people
+            co = companymod.of_flow(self.cfg, f)
             out.append(f"{f['name']} — {'enabled' if f['enabled'] else 'disabled'} · "
-                       f"roster: {', '.join(r['subagent'] for r in f['roster']) or '—'} · "
+                       + (f"company: {co['name']}{'' if co['active'] else ' (not the open one)'} · " if co else "")
+                       + f"roster: {', '.join(r['subagent'] for r in f['roster']) or '—'} · "
                        f"starts: {trig}\n    {(f.get('mission') or '')[:140]}")
         return "\n".join(out)
 
@@ -4124,9 +4217,12 @@ class Toolbox(usersmod.Scoped):
             return "[error] fabric not available"
         res = await self.fabric.run_flow(defn, input, origin={"surface": "api"},
                                          conversation_id=conversation_id)
-        head = (f"[flow {defn['name']} · {res['status']} · {res['delegations']} delegations]")
+        from . import company as companymod
+        co = companymod.of_flow(self.cfg, defn)
+        head = (f"[flow {defn['name']} · {res['status']} · {res['delegations']} delegations"
+                + (f" · run by {co['name']}'s people" if co and not co["active"] else "") + "]")
         return ((TAINTED_REPLY if res.get("tainted") else "")
-                + f"{head}\n{(res['content'] or res['fault'] or '(no output)')[:3500]}")
+                + f"{head}\n{handed_back(res['content'] or res['fault'] or '(no output)', res.get('run_id') or '')}")
 
     async def department_task(self, department: str, task: str, _conv: str = "") -> str:
         """Hand a task to a department of the company: a run of its desk, led by its
@@ -4145,7 +4241,7 @@ class Toolbox(usersmod.Scoped):
         head = (f"[{got['department']} · {res['status']} · led by {got['head'] or 'its head'} · "
                 f"{res['delegations']} hand-over{'' if res['delegations'] == 1 else 's'}]")
         return ((TAINTED_REPLY if res.get("tainted") else "")
-                + f"{head}\n{(res['content'] or res['fault'] or '(no output)')[:3500]}")
+                + f"{head}\n{handed_back(res['content'] or res['fault'] or '(no output)', res.get('run_id') or '')}")
 
     async def telegram_send(self, message: str, chat_id: int = 0) -> str:
         """`chat_id` 0 means the owner's chat. It exists so work that arrived from a
@@ -4406,6 +4502,10 @@ class Toolbox(usersmod.Scoped):
             p = str(args.get("path") or "")
             where = os.path.realpath(self._abs(p)) if p else "this OS's own code"
             return "risky", f"Runs a test suite, which is code, in {where}."
+        if name == "open_company":
+            return "risky", "Your agent thinks what you asked is this company's work."
+        if name == "new_company":
+            return "risky", "None of your companies is for this, and you said yes to starting one."
         if name == "request_capability":
             who = str(args.get("who") or args.get("_from") or "an agent")
             return "risky", (f"Gives {who} an ability it does not have: "
@@ -5831,7 +5931,7 @@ class Toolbox(usersmod.Scoped):
                     f"payload (e.g. a whole app's html), emit it as a ```html code block in "
                     f"plain text instead of a tool call, or produce a smaller version.")
         try:
-            keep = ({"_flow", "_run_id"} if name == "brief_item" else {"_conv"} if name in ("create_app", "department_task", "show_scene", "create_subagent") else {"_from"} if name == "request_capability" else {"_who", "_why"} if name in ("device_get", "device_set") else {"_taint", "_space", "_files", "_files_note", "_root"} if name == "delegate" else {"_taint"} if name == "run_automation" else
+            keep = ({"_flow", "_run_id"} if name == "brief_item" else {"_conv"} if name in ("create_app", "department_task", "show_scene", "stage_file", "create_subagent") else {"_from"} if name == "request_capability" else {"_surface", "_conv"} if name in ("open_company", "new_company") else {"_who", "_why"} if name in ("device_get", "device_set") else {"_taint", "_space", "_files", "_files_note", "_root"} if name == "delegate" else {"_taint"} if name == "run_automation" else
                     {"_app"} if name in APP_BOUND_TOOLS else
                     {"_from", "_chain", "_root", "_run_id", "_conv", "_space", "_taint"}
                     if name == "ask_agent" else set())
@@ -7649,6 +7749,21 @@ TOOL_SCHEMAS.extend(BRIEF_TOOL_SCHEMAS)
 _PT = {"type": "array", "items": {}, "description": "[x, y]: x a number, a date or a label; y a number"}
 STAGE_TOOL_SCHEMAS = [
     {
+        "name": "stage_file",
+        "description": "Save the story you showed on the Stage in this chat as a file the person can keep, "
+                       "send or present: format pptx (a PowerPoint deck, a slide per scene), docx (a Word "
+                       "document) or pdf. Use it when they ask for a deck, slides, a presentation, a "
+                       "document, a Word file or a PDF of what was shown. It saves the newest story already "
+                       "on the Stage in this chat, with its pictures as drawn, so when there is one call this "
+                       "straight away: no research, no redrawing, no hand-over first. Only when nothing has "
+                       "been shown yet, show the scenes with show_scene and then call it. It answers with the "
+                       "file's path: name that path in your reply so they get the file.",
+        "parameters": {"type": "object", "properties": {
+            "format": {"type": "string", "enum": ["pptx", "docx", "pdf"],
+                       "description": "pptx for PowerPoint, docx for Word, pdf for PDF"}},
+            "required": ["format"]},
+    },
+    {
         "name": "show_scene",
         "description": "Show ONE scene of your answer on the person's screen, on the Stage, while "
                        "you answer: kind chart (series of [x, y] points; chart_type line, area, bar, "
@@ -7768,6 +7883,29 @@ CAPABILITY_REQUEST_SCHEMAS = [{
         "required": ["ability", "why"]},
 }]
 TOOL_SCHEMAS.extend(CAPABILITY_REQUEST_SCHEMAS)
+
+COMPANY_SWITCH_SCHEMAS = [{
+    "name": "open_company",
+    "description": "Open another of the person's companies, when what they ask is that "
+                   "company's work and not the open one's. The person is asked on a card; "
+                   "after a yes the desk, this chat and you are in that company, with its "
+                   "departments and people. Never for small talk or a quick fact.",
+    "parameters": {"type": "object", "properties": {
+        "company": {"type": "string", "description": "the company's name, as listed to you"}},
+        "required": ["company"]},
+}, {
+    "name": "new_company",
+    "description": "Start a new company for the person and open it, when what they ask is "
+                   "ongoing work for a business none of their companies is for AND they have "
+                   "said yes to starting one. The person confirms on a card. It starts empty; "
+                   "the one that was open is kept as it is.",
+    "parameters": {"type": "object", "properties": {
+        "name": {"type": "string", "description": "a short name for the business"},
+        "about": {"type": "string", "description": "one line: what the business is"},
+        "objective": {"type": "string", "description": "what the person wants from it, in their words"}},
+        "required": ["name"]},
+}]
+TOOL_SCHEMAS.extend(COMPANY_SWITCH_SCHEMAS)
 
 #: Tools whose reads and writes belong to the turn's space. The agent loop injects
 #: `space_id` for these; nothing else in the OS decides scope on the model's behalf.

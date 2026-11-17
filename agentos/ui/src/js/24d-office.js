@@ -299,7 +299,7 @@ function officeSeat(){
   O.L.rooms.forEach(r=>{
     if(r.kind==='lead'){
       const hx=r.x+r.w*.36, hy=r.y+OF_WALL+84+(r.grow||0)*.4;
-      seen['@agent']=officePerson(keep['@agent'],'@agent',(typeof agentName==='function'?agentName():'Aria'),r,hx,hy,true);
+      seen['@agent']=officePerson(keep['@agent'],'@agent',(typeof agentName==='function'?agentName():'Bento'),r,hx,hy,true);
     }
     if(r.kind!=='dept'&&r.kind!=='floor')return;
     const slot=Math.min(OF_DESK_W+30,(r.w-20)/Math.min(r.per,Math.max(1,r.members.length)));

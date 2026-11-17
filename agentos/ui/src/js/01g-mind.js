@@ -74,7 +74,7 @@ function mindStop(){
   if(MIND.telling&&typeof speechStop==='function')speechStop();
   document.body.classList.remove('mind-peace');
   if(MIND.host)MIND.host.remove();if(MIND.ui)MIND.ui.remove();
-  MIND.host=MIND.ui=MIND.cv=MIND.ctx=null;MIND.snap=null;MIND.sparks=[];MIND.glints=[];MIND.ripples=[];MIND.layout=null;MIND.bg=null;MIND.open='';MIND.telling=false;
+  document.body.classList.remove('mind-telling');MIND.host=MIND.ui=MIND.cv=MIND.ctx=null;MIND.snap=null;MIND.sparks=[];MIND.glints=[];MIND.ripples=[];MIND.layout=null;MIND.bg=null;MIND.open='';MIND.telling=false;
 }
 /* The picture, once now, again a second or so after things happen, and once a minute
    so a memory saved from a phone shows up without an event of its own. */
@@ -391,31 +391,41 @@ function mindVoice(t,state){
   A.lvl+=(lvl-A.lvl)*(lvl>A.lvl?.55:.18);
   // a syllable's onset sends a ripple out of the core and a few signals down the fibres
   const now=performance.now();
-  if(rise>.14&&now-MIND.lastPk>150&&!MIND.still){MIND.lastPk=now;
-    MIND.ripples.push({at:now,dur:1100,k:A.lvl});if(MIND.ripples.length>8)MIND.ripples.shift();
+  if(rise>.14&&now-MIND.lastPk>260&&!MIND.still){MIND.lastPk=now;
+    MIND.ripples.push({at:now,dur:1100,k:A.lvl});if(MIND.ripples.length>MIND_CORE.rings)MIND.ripples.shift();
     for(let i=0;i<2+Math.round(A.lvl*2);i++)mindGlint(true)}
   return {level:A.lvl,bins:A.bins};
 }
+/* How far the core reaches, in multiples of its radius, and the radius itself: energy (0 to 1)
+   and the voice's level (0 to 1) may add at most 13px to a 30px core. */
+var MIND_CORE={base:30,energy:8,voice:5,halo:3.4,ring:2.85,edge:.32,rings:4};
+function mindCoreR(e,level){return MIND_CORE.base+Math.max(0,Math.min(1,e))*MIND_CORE.energy+Math.max(0,Math.min(1,level))*MIND_CORE.voice}
 function mindCore(g,cx,cy,t,state,v){
   const e=MIND.energy,still=MIND.still,ph=mindPhone()?.8:1,now=performance.now();
-  const R=(30+e*20+v.level*24)*ph,T=still?0:t/1000;
+  // The voice moves the EDGE of the core, never its size. Reported with a screenshot ("the mind
+  // animation is so screwed"): speaking, the radius went from 35 to 74, the halo to 325px at
+  // 80% white and the rings to 318px, all added together, so the middle of the picture was one
+  // white disc with lumpy rings across the clusters. MIND_CORE holds every reach to a bound a
+  // test checks: the core stays under 50px, its glow under 160, a ring under 130.
+  const R=mindCoreR(e,v.level)*ph,T=still?0:t/1000,HR=R*MIND_CORE.halo;
   g.globalCompositeOperation='lighter';
-  const halo=g.createRadialGradient(cx,cy,0,cx,cy,R*4.4);
-  halo.addColorStop(0,`rgba(255,244,230,${.5+e*.3})`);
-  halo.addColorStop(.12,`rgba(255,196,140,${.32+e*.3+v.level*.2})`);
-  halo.addColorStop(.35,`rgba(150,120,255,${.12+e*.12})`);
+  const halo=g.createRadialGradient(cx,cy,0,cx,cy,HR);
+  halo.addColorStop(0,`rgba(255,244,230,${.34+e*.12})`);
+  halo.addColorStop(.12,`rgba(255,196,140,${.2+e*.14+v.level*.1})`);
+  halo.addColorStop(.35,`rgba(150,120,255,${.1+e*.08})`);
   halo.addColorStop(1,'rgba(40,60,160,0)');
-  g.fillStyle=halo;g.beginPath();g.arc(cx,cy,R*4.4,0,Math.PI*2);g.fill();
+  g.fillStyle=halo;g.beginPath();g.arc(cx,cy,HR,0,Math.PI*2);g.fill();
   // ripples: out of the core on a spoken syllable, in towards it while listening
   MIND.ripples=MIND.ripples.filter(r=>now-r.at<r.dur);
   if(state==='listening'&&!still&&(!MIND.ripples.length||now-MIND.ripples[MIND.ripples.length-1].at>700))
     MIND.ripples.push({at:now,dur:1400,k:.5,inward:true});
   MIND.ripples.forEach(r=>{
-    const u=(now-r.at)/r.dur,rr=r.inward?R*(3.4-u*2.2):R*(1.1+u*3.2);
-    g.strokeStyle=`rgba(255,${r.inward?'220,190':'205,160'},${(1-u)*(.18+r.k*.28)})`;g.lineWidth=1+r.k*1.2;
+    const u=(now-r.at)/r.dur,far=MIND_CORE.ring,rr=r.inward?R*(far-u*(far-1.15)):R*(1.15+u*(far-1.15));
+    g.strokeStyle=`rgba(255,${r.inward?'220,190':'205,160'},${(1-u)*(.1+r.k*.16)})`;g.lineWidth=1+r.k*.6;
     g.beginPath();
-    for(let k=0;k<=48;k++){const th=k/48*Math.PI*2,w=1+.05*Math.sin(th*5+u*6+r.at)+.04*Math.sin(th*3-u*4);
-      const x=cx+Math.cos(th)*rr*w,y=cy+Math.sin(th)*rr*w*.92;k?g.lineTo(x,y):g.moveTo(x,y)}
+    // a ring is nearly round: the 9% wobble and the squash read as a lumpy blob at this size
+    for(let k=0;k<=48;k++){const th=k/48*Math.PI*2,w=1+.025*Math.sin(th*5+u*6+r.at)+.02*Math.sin(th*3-u*4);
+      const x=cx+Math.cos(th)*rr*w,y=cy+Math.sin(th)*rr*w;k?g.lineTo(x,y):g.moveTo(x,y)}
     g.stroke();
   });
   // the soma: a cell body, never a perfect circle. Speaking, its edge is the voice
@@ -427,16 +437,16 @@ function mindCore(g,cx,cy,t,state,v){
     // the edge is a curve and not a staircase
     const th=k/72*Math.PI*2,h=k<=36?k/36:(72-k)/36,f=h*(N-1),i0=Math.floor(f),fr=f-i0;
     const bin=(bins[i0]||0)*(1-fr)+(bins[Math.min(N-1,i0+1)]||0)*fr;
-    const r=R*(1+.08*Math.sin(3*th+T*.9)+.06*Math.sin(5*th-T*1.3)+(state==='thinking'?.05*Math.sin(7*th+T*6):0)+bin*.6);
+    const r=R*(1+.08*Math.sin(3*th+T*.9)+.06*Math.sin(5*th-T*1.3)+(state==='thinking'?.05*Math.sin(7*th+T*6):0)+bin*MIND_CORE.edge);
     const x=cx+Math.cos(th)*r,y=cy+Math.sin(th)*r;k?g.lineTo(x,y):g.moveTo(x,y);
   }
   const body=g.createRadialGradient(cx,cy,0,cx,cy,R*1.5);
-  body.addColorStop(0,'rgba(255,250,240,.95)');body.addColorStop(.45,`rgba(255,200,150,${.55+v.level*.3})`);
+  body.addColorStop(0,'rgba(255,250,240,.95)');body.addColorStop(.45,`rgba(255,200,150,${.5+v.level*.2})`);
   body.addColorStop(1,'rgba(160,120,255,.05)');
   g.fillStyle=body;g.fill();
   g.strokeStyle=`rgba(255,220,190,${.12+e*.12+v.level*.2})`;g.lineWidth=1;g.stroke();
   // the nucleus, and a flicker inside it while thinking
-  const nk=still?1:1+(state==='thinking'?.12*Math.sin(t/90):0)+v.level*.25;
+  const nk=still?1:1+(state==='thinking'?.12*Math.sin(t/90):0)+v.level*.1;
   g.drawImage(mindSprite(28,100,70),cx-R*1.3*nk,cy-R*1.3*nk,R*2.6*nk,R*2.6*nk);
   g.drawImage(mindSprite(40,40,90),cx-R*.7*nk,cy-R*.7*nk,R*1.4*nk,R*1.4*nk);
   g.globalCompositeOperation='source-over';
@@ -540,10 +550,11 @@ function mindStateText(state){
 function mindNum(n){n=+n||0;return n>=1e6?(n/1e6).toFixed(1).replace(/\.0$/,'')+'M':n>=1e4?Math.round(n/1e3)+'k':n>=1e3?(n/1e3).toFixed(1).replace(/\.0$/,'')+'k':String(n)}
 function mindPaintUI(){
   const S=MIND.snap,U=MIND.ui;if(!S||!U)return;
-  const st=S.stats,b=S.brief||{},agents=S.team.length,depts=S.hubs.filter(h=>h.kind==='dept');
+  const st=S.stats,b=S.brief||{},agents=S.team.length,groups=S.hubs.filter(h=>h.kind==='dept'),
+    depts=groups.filter(h=>!h.company&&!h.loose),cos=groups.filter(h=>h.company);
   U.querySelector('.mn-top').innerHTML=
     `<span class="mn-dot"></span><b class="mn-state">Quiet</b><span class="mn-sep">·</span>`+
-    `<span class="mn-sum">${esc(S.lead)} and ${agents} specialist${agents===1?'':'s'}${depts.length?` in ${depts.length} department${depts.length===1?'':'s'}`:''}</span>`+
+    `<span class="mn-sum">${esc(S.lead)} and ${agents} specialist${agents===1?'':'s'}${depts.length?` in ${depts.length} department${depts.length===1?'':'s'}`:''}${cos.length?`, and ${cos.length} other compan${cos.length===1?'y':'ies'}`:''}</span>`+
     `<button class="mn-btn" onclick="mindTell()">Tell me</button>`+
     `<button class="mn-btn" onclick="mindTalk()" aria-label="Talk to ${esc(S.lead)}">🎙 Talk</button>`+
     `<button class="mn-btn mn-peace" onclick="mindPeace()" aria-pressed="${MIND.peace?'true':'false'}" title="${MIND.peace?'Show the panels':'Peace: only the mind'}">${MIND.peace?'Show all':'Peace'}</button>`;
@@ -565,11 +576,11 @@ function mindPaintUI(){
   const busyLead=typeof RUNNING!=='undefined'&&RUNNING.size>0;
   U.querySelector('.mn-right').innerHTML=`<section class="mn-panel mn-team"><h3>Team</h3>`+
     `<div class="mn-agent lead${busyLead?' busy':''}"><span class="mn-pip"></span><b>${esc(S.lead)}</b><i>${busyLead?'working':'your lead'}</i></div>`+
-    depts.map(h=>{const ppl=S.team.filter(a=>a.dept===h.label),busy=ppl.filter(a=>a.busy).length,
+    groups.map(h=>{const ppl=S.team.filter(a=>a.hub===h.id),busy=ppl.filter(a=>a.busy).length,
       runs=ppl.reduce((n,a)=>n+(a.runs||0),0);
       return `<button class="mn-agent${busy?' busy':''}" data-hub="${esc(h.id)}"><span class="mn-pip" style="--mh:${h.hue}"></span>`+
-        `<b>${esc(h.label)}</b><i>${busy?busy+' working':runs?runs+' run'+(runs===1?'':'s')+' this week':'idle'} · ${ppl.length} ${ppl.length===1?'person':'people'}</i></button>`}).join('')+
-    (S.team.length?S.team.filter(a=>!a.dept).map(a=>`<button class="mn-agent${a.busy?' busy':''}" data-hub="agent:${esc(a.name)}">`+
+        `<b>${esc(h.label)}</b><i>${h.company?'company · ':''}${busy?busy+' working':runs?runs+' run'+(runs===1?'':'s')+' this week':'idle'} · ${ppl.length} ${ppl.length===1?'person':'people'}</i></button>`}).join('')+
+    (S.team.length?S.team.filter(a=>(a.hub||'').indexOf('agent:')===0).map(a=>`<button class="mn-agent${a.busy?' busy':''}" data-hub="agent:${esc(a.name)}">`+
       `<span class="mn-pip" style="--mh:${(S.hubs.find(h=>h.id==='agent:'+a.name)||{}).hue||200}"></span><b>${esc(a.name)}</b>`+
       `<i>${a.busy?'working':a.runs?a.runs+' run'+(a.runs===1?'':'s')+' this week':'idle'}${a.brain?' · '+esc(a.brain):''}</i></button>`).join('')
       :'<p class="mn-quiet">No specialists yet.</p>')+`</section>`;
@@ -623,7 +634,11 @@ function mindCard(id,refresh){
     body=`<p>${busy.length?esc(busy.join(', '))+' working now.':runs.length?`${runs.length} run${runs.length===1?'':'s'} this week.`:'Nothing this week.'}</p>`+
       li(ppl.map(n=>`<li>${n.head?'★ ':''}${esc(n.label)}${n.title?` <i>${esc(n.title)}</i>`:''}</li>`))+
       li(runs.slice(0,4).map(n=>`<li>${esc(n.label)} <i>${esc(n.status||'')}</i></li>`));
-    go=`<button class="endbtn" data-dept="${esc(h.label)}">Give ${esc(h.label)} a task</button>`;
+    // a task goes to a department of the company that is open; another company's people
+    // and the ones on their own are reached from the Office and Missions
+    go=h.company?`<button class="endbtn" onclick="openApp('office')">Open the Office to switch company</button>`
+      :h.loose?`<button class="endbtn" onclick="openApp('jobs')">Open in Missions</button>`
+      :`<button class="endbtn" data-dept="${esc(h.label)}">Give ${esc(h.label)} a task</button>`;
   }else{
     const name=h.label,a=S.team.find(x=>x.name===name)||{},talk=S.links.filter(k=>k.kind==='talk'&&(k.a===id||k.b===id));
     const skills=nodes.filter(n=>n.kind==='skill'),runs=nodes.filter(n=>n.kind==='run');
@@ -648,8 +663,12 @@ function mindTell(){
   const S=MIND.snap;if(!S||typeof speakAs!=='function')return;
   const say=MIND.ui.querySelector('.mn-say');
   say.textContent=S.spoken;say.hidden=false;
+  // the prompt bar steps aside while it is said: the words were running under it
+  document.body.classList.add('mind-telling');
+  // a caret the page left in the bar would keep it up; typing brings it back (it is summoned)
+  const oi=document.getElementById('omni-in');if(oi&&document.activeElement===oi)oi.blur();
   MIND.telling=true;mindKick();
-  speakAs('@agent',S.spoken,()=>{MIND.telling=false;if(say)say.hidden=true;mindKick()});
+  speakAs('@agent',S.spoken,()=>{MIND.telling=false;document.body.classList.remove('mind-telling');if(say)say.hidden=true;mindKick()});
 }
 /* Talking to the lead: Jarvis, with this scene's core as its orb (26-mind.css). */
 function mindTalk(){if(typeof jarvisMode==='function')jarvisMode(true);mindKick()}

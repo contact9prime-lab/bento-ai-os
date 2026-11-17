@@ -394,6 +394,14 @@ body.dev-mobile .st-main.now.with-chat>.st-chat{position:absolute;inset:0;width:
 .st-tree-up{align-self:flex-start;border-color:var(--acc);color:var(--txt)}
 body.dev-mobile .st-tree-b{min-height:var(--tap,40px)}
 
+/* Save as: the story as a PowerPoint, a Word document or a PDF (stagedoc.py) */
+.st-savebox{display:flex;flex-direction:column;gap:2px}
+.stg-save-a{display:flex;flex-direction:column;gap:1px;min-height:var(--tap);justify-content:center;padding:8px 10px;border-radius:var(--r-sm);
+  color:var(--txt);text-decoration:none}
+.stg-save-a b{font-weight:600;font-size:var(--fs-sm)}
+.stg-save-a span{font-size:var(--fs-xs);color:var(--dim)}
+.stg-save-a:hover,.stg-save-a:focus-visible{background:color-mix(in srgb,var(--acc) 14%,transparent);outline:none}
+
 /* The Stage's blueprint (24v-blueprint.js): a drafting sheet the thing is taken apart on.
    Cyan ink on navy, a grid, registration marks and a title block, as an engineer's drawing;
    a white highlight for the part under your finger. Certainty is the line itself (solid,

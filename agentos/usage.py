@@ -33,25 +33,28 @@ import fnmatch
 
 # USD per million tokens, (input, output). Patterns are matched in order, most
 # specific first. These are a convenience, not an authority: refreshed with the model
-# catalogue (modelcatalog.CHECKED, 2026-11-17) from the providers' own pricing, and
+# catalogue (modelcatalog.CHECKED, 2026-11-15) from the providers' own pricing, and
 # providers change them without telling us. Override in Settings.
 DEFAULT_PRICING: list[tuple[str, tuple[float, float]]] = [
     ("ollama/*", (0.0, 0.0)),          # local: the electricity is not billed per token
     ("lmstudio/*", (0.0, 0.0)),
-    ("*claude-fable*", (8.0, 40.0)),
-    ("*claude-opus-5*", (4.0, 20.0)),
+    ("*claude-fable-5[-.]2*", (8.0, 40.0)),
+    ("*claude-fable*", (10.0, 50.0)),
+    ("*claude-opus-5[-.]5*", (4.0, 20.0)),
+    ("*claude-opus-5*", (5.0, 25.0)),
     ("*claude-sonnet-5*", (2.0, 10.0)),
-    ("*claude-haiku-5*", (0.10, 0.50)),
+    ("*claude-haiku-5*", (0.10, 0.50)),     # "from": its base rate
+    ("*gpt-6-astra*", (10.0, 50.0)),
+    ("*gpt-6.1-sol*", (2.0, 10.0)),
+    ("*gpt-6.1-terra*", (1.0, 5.0)),
     ("*gpt-6-sol*", (2.0, 10.0)),
     ("*gpt-6-luna*", (0.10, 0.50)),
     ("*gpt-5.6-sol*", (5.0, 30.0)),
     ("*gpt-5.6-terra*", (2.5, 15.0)),
     ("*gpt-5.6-luna*", (1.0, 6.0)),
-    ("*deepseek-flash*", (0.14, 0.28)),
-    ("*kimi-k3.1-pro*", (2.0, 10.0)),
-    ("*kimi-k3*", (3.0, 15.0)),
-    ("*gemini-3.8-flash*", (0.75, 3.75)),
-    ("*gemini-3.5-flash-lite*", (0.30, 2.50)),
+    # DeepSeek bills half of this off-peak; the peak rate is shipped so the estimate is never low
+    ("*deepseek*flash*", (0.30, 1.20)),
+    ("*deepseek-v4-pro*", (1.32, 3.96)),
     ("*claude-opus*", (15.0, 75.0)),
     ("*claude-sonnet*", (3.0, 15.0)),
     ("*claude-haiku*", (1.0, 5.0)),
@@ -234,16 +237,21 @@ def cost(cfg: dict, model: str, tokens_in: int, tokens_out: int) -> float | None
 
 def record(store, cfg: dict, model: str, tokens: dict, *, surface: str = "",
            principal: str = "user", conversation_id: str = "", space_id: str = "",
-           kind: str = "chat") -> None:
+           kind: str = "chat", cost_usd: float | None = None) -> None:
     """One turn's usage. Called from every path that runs a turn; silent about
     turns that reported nothing, because a provider that does not send usage is
-    not the same as a turn that spent nothing."""
+    not the same as a turn that spent nothing.
+
+    `cost_usd`: what an agent CLI said the turn cost (Claude Code reports it on its last
+    line). It is the bill, so it is recorded as given; this OS has no price list for a
+    CLI's models and never works one out."""
     tin, tout = int((tokens or {}).get("input") or 0), int((tokens or {}).get("output") or 0)
-    if not (tin or tout):
+    if not (tin or tout or cost_usd):
         return
     try:
         store.usage_add(model=model, tokens_in=tin, tokens_out=tout,
-                        cost_usd=cost(cfg, model, tin, tout), surface=surface,
+                        cost_usd=cost_usd if cost_usd is not None else cost(cfg, model, tin, tout),
+                        surface=surface,
                         principal=principal, conversation_id=conversation_id,
                         space_id=space_id, kind=kind)
     except Exception:

@@ -699,6 +699,9 @@ USER_KEYS = ("channels", "telegram", "whatsapp", "mcp_servers", "credentials", "
              "desktop", "widgets", "shortcuts", "spaces",
              "agent_name", "soul", "onboarding", "setup_complete",
              "autonomy", "default_model", "brain_fallbacks", "max_steps", "workspace",
+             # the window a local model was found to need (providers.learn_window): learned
+             # by this person's turns, so it saves with them, as their default model does
+             "ollama_windows",
              "memory", "history", "tools", "steer_queued_messages",
              # whom I trust: added registry publisher keys and the first-install
              # pins of apps I installed. Personal by the USER_KEYS test — trusting
@@ -738,7 +741,13 @@ USER_KEYS = ("channels", "telegram", "whatsapp", "mcp_servers", "credentials", "
              "stage",
              # the alarms I watch my devices for (devboard.py): what I want to see is mine;
              # switching anything is still device_set, asked every time
-             "device_alarms")
+             "device_alarms",
+             # which of MY companies each of my machines is for (devboard.py). Companies are
+             # mine, so the mapping is; it changes what a board shows and reaches nothing.
+             "device_companies",
+             # whether only MY voice wakes the screen (voiceprint.py). The print is a file
+             # in my own home; this is the switch for it.
+             "voiceprint")
 
 
 def machine_view(cfg: dict) -> dict:

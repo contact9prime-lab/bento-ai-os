@@ -216,7 +216,7 @@ class AgentTUI(App):
         self.port = port
         self.cfg = cfg
         self.model = cfg.get("default_model", "")
-        self.agent_name = cfg.get("agent_name", "Aria")
+        self.agent_name = cfg.get("agent_name", "Bento")
         self.cid = None
         self.title = "AgentOS"
         self.token = ""            # the signed session cookie, on a machine with accounts
@@ -299,7 +299,7 @@ class AgentTUI(App):
                     yield Input(placeholder="models, comma-separated (e.g. claude-sonnet-5-5)", id="cfg-ant-models")
                     yield Checkbox("OpenAI", id="cfg-oai-on")
                     yield Input(placeholder="sk-… API key", id="cfg-oai-key")
-                    yield Input(placeholder="models (e.g. gpt-6-sol, gpt-6-luna)", id="cfg-oai-models")
+                    yield Input(placeholder="models (e.g. gpt-6.1-sol, gpt-6-luna)", id="cfg-oai-models")
                     yield Checkbox("OpenRouter", id="cfg-or-on")
                     yield Input(placeholder="sk-or-… API key", id="cfg-or-key")
                     yield Input(placeholder="models (e.g. google/gemini-3.8-flash)", id="cfg-or-models")
@@ -819,7 +819,7 @@ class AgentTUI(App):
 
     @work(group="cfg")
     async def save_config(self):
-        name = self.query_one("#cfg-name", Input).value.strip() or "Aria"
+        name = self.query_one("#cfg-name", Input).value.strip() or "Bento"
         model = self.query_one("#cfg-model", Select).value
         auton = self.query_one("#cfg-autonomy", Select).value
         taint = self.query_one("#cfg-taint", Select).value

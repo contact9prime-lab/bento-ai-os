@@ -60,7 +60,7 @@ CORE = {
     # do things
     "write_file", "run_command", "run_python",
     # say things
-    "save_report", "llm_generate", "show_scene",
+    "save_report", "llm_generate", "show_scene", "stage_file",
     # find the other eighty
     "find_tools", "use_skill",
     # hand it to the team: the prompt names the specialists (executors.team_note), and a
@@ -68,6 +68,8 @@ CORE = {
     "delegate", "huddle", "department_task", "linked_teams",
     # and when nobody has what a step needs: build one, or ask the person for the ability
     "create_subagent", "request_capability",
+    # the prompt names the person's other companies; a narrowed set keeps the way to them
+    "open_company", "new_company",
 }
 
 DEFAULTS = {

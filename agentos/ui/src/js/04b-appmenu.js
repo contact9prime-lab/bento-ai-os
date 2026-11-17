@@ -133,6 +133,11 @@ function raiseShell(on){
   return fetch('/api/shell/raise',{method:'POST',quiet:true,headers:{'Content-Type':'application/json'},
     body:JSON.stringify({on:on!==false})}).catch(()=>{});
 }
+function mbFolded(menus){
+  const out=[];
+  menus.forEach(([title,items],i)=>{if(i)out.push(null);out.push({label:title,head:true});out.push(...items)});
+  return out;
+}
 /* ---- the menu bar renders the focused window's menus ---- */
 function buildAppMenus(){
   const box=$('#mbmenus');if(!box)return;
@@ -158,7 +163,10 @@ function buildAppMenus(){
   paintMenuBar(box,menus,()=>(activeWin()===w?menuStd(w):menus));
 }
 function paintMenuBar(box,menus,live){
-  box.innerHTML=menus.map(([title],i)=>`<button data-i="${i}">${esc(title)}</button>`).join('');
+  // The last button is the same menus folded into one list. CSS shows it only when the
+  // bar has run out of room (menubarFit's last step), so folding never repaints the bar.
+  box.innerHTML=menus.map(([title],i)=>`<button data-i="${i}">${esc(title)}</button>`).join('')
+    +`<button class="mbm-all" data-all="1" aria-label="Menus" title="Menus">☰</button>`;
   /* The dropdown is a popover with the title as its anchor. Before the manager,
      the title's click opened the menu and the document-level "click outside the
      context menu" listener closed it in the SAME event — so no menu ever opened
@@ -172,7 +180,7 @@ function paintMenuBar(box,menus,live){
       box.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
       let set=menus;
       try{set=live()||menus}catch(e){}
-      const items=(set[+b.dataset.i]||menus[+b.dataset.i])[1];
+      const items=b.dataset.all?mbFolded(set):(set[+b.dataset.i]||menus[+b.dataset.i])[1];
       showCtxItems({clientX:r.left,clientY:r.bottom+2,preventDefault(){}},items,
         {anchor:b,close:()=>b.classList.remove('on')});
     };

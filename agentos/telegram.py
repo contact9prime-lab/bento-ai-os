@@ -120,7 +120,7 @@ class TelegramBridge(usersmod.Scoped):
         self._alive_write(up_at=time.time(), seen=time.time(), version=version, clean=False)
         if not self._says_status():
             return
-        name = self.cfg.get("agent_name") or "Aria"
+        name = self.cfg.get("agent_name") or "Bento"
         msg = f"▲ {name} is back online"
         if before.get("version") and version and before["version"] != version:
             msg += f", updated {before['version']} → {version}"
@@ -140,7 +140,7 @@ class TelegramBridge(usersmod.Scoped):
         self._alive_write(seen=time.time(), clean=True)
         if not self._says_status():
             return
-        name = self.cfg.get("agent_name") or "Aria"
+        name = self.cfg.get("agent_name") or "Bento"
         with contextlib.suppress(Exception):
             await self.send(f"▼ {name} is going offline{(' ' + reason) if reason else ''}. "
                             f"I'll message you when I'm back.")
@@ -276,7 +276,7 @@ class TelegramBridge(usersmod.Scoped):
             except Exception as e:
                 self.store.log("telegram", f"could not send the blueprint document: {e}")
 
-    async def send_stage(self, cid: str, reply: str, chat_id: int) -> None:
+    async def send_stage(self, cid: str, reply: str, chat_id: int, ans: str = "") -> str:
         """The answer's story, when it showed one (stage.py), as pictures in the chat.
 
         Reported as "the stage experience in Telegram is really bad": it was one .html file
@@ -287,10 +287,10 @@ class TelegramBridge(usersmod.Scoped):
         this machine to draw them, the page goes as before. Never fatal."""
         try:
             from . import stage as stagemod, stagestill, executors as _ex
-            ans = stagemod.last_question(self.store, cid)
+            ans = ans or stagemod.last_question(self.store, cid)   # one named story (sent from the desktop), else the last
             scenes = [s["scene"] for s in stagemod.story(self.store, cid, ans)] if ans else []
             if not scenes:
-                return
+                return ""
             agent = self.cfg.get("agent_name") or ""
             # a blueprint fills itself in after the reply (bpfill.py): a phone gets its pictures,
             # so wait a while for the parts to land rather than photograph the outline
@@ -318,7 +318,7 @@ class TelegramBridge(usersmod.Scoped):
                     await self.send_clips(scenes, chat_id, items, pngs)
                     await self.send_narration(scenes, chat_id)
                     await self.send_blueprint_docs(rows, ans, chat_id)
-                    return
+                    return "sent"
                 self.store.log("telegram", f"could not send the story as pictures: {res}")
             p = stagemod.write_report(self.store, _ex.default_workspace(self.cfg), cid, ans,
                                       answer=reply, agent=agent)
@@ -328,8 +328,12 @@ class TelegramBridge(usersmod.Scoped):
                                                        f"Open it in your browser to watch.", chat_id)
                 if res.startswith("[error]"):
                     self.store.log("telegram", f"could not send the story: {res}")
+                    return str(res)
+                return "sent"
+            return "[error] the story could not be drawn or written on this machine"
         except Exception as e:
             self.store.log("telegram", f"could not send the story: {e}")
+            return f"[error] {e}"
 
     async def _settle_with_word(self, rows: list, chat_id: int) -> None:
         """Wait for a blueprint to fill in, saying so on the phone. Reported as "it shows the
@@ -436,7 +440,7 @@ class TelegramBridge(usersmod.Scoped):
             async with httpx.AsyncClient(timeout=120) as client:
                 r = await client.post(api_url(token, "sendAudio"),
                                       data={"chat_id": str(chat_id), "title": "The story, told",
-                                            "performer": self.cfg.get("agent_name") or "Aria"},
+                                            "performer": self.cfg.get("agent_name") or "Bento"},
                                       files={"audio": (f"story.{ext}", audio, mime or "audio/mpeg")})
             if not r.json().get("ok"):
                 raise RuntimeError(r.json().get("description", f"HTTP {r.status_code}"))
@@ -499,9 +503,43 @@ class TelegramBridge(usersmod.Scoped):
         cid = chat.get("conversation_id")
         if cid and any(c["id"] == cid for c in self.store.list_conversations(limit=500)):
             return cid
-        cid = self.store.create_conversation(f"Telegram · {chat.get('title') or chat['chat_id']}", origin="telegram")
+        from . import phonesessions
+        cid = phonesessions.start(self.store, "telegram", chat["chat_id"],
+                                  chat.get("title") or chat["chat_id"])
         self.store.tg_set_conversation(chat["chat_id"], cid)
+        chat["conversation_id"] = cid
         return cid
+
+    async def _sessions(self, chat: dict, text: str = "", tapped: str = "") -> bool:
+        """/new, /sessions, /resume and the buttons under the list (phonesessions.py).
+        True when it was one of them and has been answered."""
+        from . import phonesessions
+        chat_id = chat["chat_id"]
+        title = chat.get("title") or chat_id
+        cur, busy = self._conversation(chat), chat_id in self._busy_chats
+        res = (phonesessions.tapped(self.store, "telegram", chat_id, title, cur, tapped, busy) if tapped
+               else phonesessions.handle(self.store, "telegram", chat_id, title, cur, text, busy))
+        if res is None:
+            return False
+        if res.get("cid"):
+            self.store.tg_set_conversation(chat_id, res["cid"])
+            chat["conversation_id"] = res["cid"]
+            self.store.log("telegram", f"session {'started' if res.get('new') else 'reopened'} "
+                                       f"for {title}", {"chat_id": chat_id, "conversation_id": res["cid"]})
+        rows = res.get("rows") or []
+        if rows:
+            # one tap per session, and one for a new one; typing the number works too
+            kb = [[{"text": f"{r['n']}. {r['label']}"[:40], "callback_data": f"ss:{r['id']}"}]
+                  for r in rows if not r["current"]]
+            kb.append([{"text": "＋ New session", "callback_data": "ss:new"}])
+            try:
+                await self._api("sendMessage", chat_id=chat_id, text=res["say"][:4000],
+                                reply_markup={"inline_keyboard": kb})
+                return True
+            except Exception:
+                pass
+        await self.send(res["say"], chat_id)
+        return True
 
     def _conversation_for_chat(self, chat_id: int) -> str:
         """Same persistent conversation, reached by id — the admin console has the
@@ -512,7 +550,9 @@ class TelegramBridge(usersmod.Scoped):
     async def _handle(self, msg: dict):
         chat_info = msg.get("chat", {})
         chat_id = chat_info.get("id")
-        text = (msg.get("text") or "").strip()
+        text = (msg.get("text") or msg.get("caption") or "").strip()
+        if not text and msg.get("photo"):
+            text = "(a picture, with no words)"
         if not chat_id or not text:
             return
         # A sign-in wall this chat is being asked about (cdpbrowser.reach): a code goes into
@@ -539,16 +579,28 @@ class TelegramBridge(usersmod.Scoped):
         if not (t.get("owner_chat_id") or 0) and ctype == "private":
             t["owner_chat_id"] = chat_id
             cfgmod.save_config(self.cfg)
-            self.store.tg_set_allowed(chat_id, 1)
+            self.store.tg_set_allowed(chat_id, 1, "pairing: the first chat to write")
             chat["allowed"] = 1
-            name = self.cfg.get("agent_name") or "Aria"
+            name = self.cfg.get("agent_name") or "Bento"
             self.store.log("telegram", f"paired: owner = {title} ({chat_id})")
             await self.publish_commands()   # the console menu is owner-scoped
             await self.send(f"▲ Linked! Hi {frm.get('first_name', 'there')} — I'm {name}, "
                             f"the agent on your machine. This chat is now the owner. "
-                            f"Send me anything; /clear resets our session.", chat_id)
+                            f"Send me anything; /new starts a new session.", chat_id)
             if text.startswith("/start"):
                 return  # welcome is enough for /start
+
+        # A group or channel is answered only when the owner switched group chats on, and
+        # then only the ones they picked. Off, nothing is said in the group: the bot may sit
+        # in groups whose members never asked for an agent. The owner hears of each group once.
+        if ctype != "private" and not self.groups_on():
+            self.store.log("telegram", f"refused the group {title} ({chat_id}) — group chats are off",
+                           {"chat_id": chat_id, "title": title, "type": ctype,
+                            "msg_count": chat["msg_count"], "text": text[:160]})
+            if chat["msg_count"] <= 1:
+                await self.ask_owner_about(chat_id, title, username, text, group=True)
+            await self.broadcast({"type": "telegram_chats"})
+            return
 
         # The standing allow-list, consulted before the refusal. Somebody the owner
         # named in advance is let in on their first message rather than being told
@@ -557,7 +609,7 @@ class TelegramBridge(usersmod.Scoped):
             match = chanmod.preauthorised(chanmod.conf_of(self.cfg, "telegram"),
                                           username, str(chat_id))
             if match:
-                self.store.tg_set_allowed(chat_id, 1)
+                self.store.tg_set_allowed(chat_id, 1, f"the allow-list ({match})")
                 chat["allowed"] = 1
                 self.store.log("telegram", f"allowed {title} ({chat_id}) — on the allow-list as "
                                            f"{match}", {"chat_id": chat_id, "matched": match})
@@ -576,19 +628,24 @@ class TelegramBridge(usersmod.Scoped):
             if chat["msg_count"] <= 1:
                 await self.send("▲ I've asked the owner whether you can talk to me. You'll hear "
                                 "back here once they say yes.", chat_id)
-                await self.ask_owner_about(chat_id, title, username, text)
+                await self.ask_owner_about(chat_id, title, username, text, group=ctype != "private")
             await self.broadcast({"type": "telegram_chats"})
             return
         await self.broadcast({"type": "telegram_chats"})
 
+        if ctype != "private" and not await self._member_ok(chat, frm, text):
+            return
+
         if text.startswith("/start"):
-            await self.send("▲ Already linked. Send me anything; /clear resets the session.", chat_id)
+            await self.send("▲ Already linked. Send me anything; /new starts a new session.", chat_id)
             return
         if text.startswith("/clear"):
             cid = self._conversation(chat)
             self.store.clear_messages(cid)
             self.store.log("telegram", f"session cleared for {title}")
             await self.send("🧹 Session cleared — starting fresh.", chat_id)
+            return
+        if await self._sessions(chat, text):
             return
         # The admin console. Placed after the allow-list (only known chats reach it)
         # and before the busy lock (reading the logs must work WHILE a turn runs —
@@ -657,19 +714,14 @@ class TelegramBridge(usersmod.Scoped):
             # minutes looking queued while a newer chat was answered (measured on the owner's
             # machine: 2 min 45 s). And it runs only for the built-in loop, which reads it: a
             # forwarded brain resumes its own session.
-            self.store.add_message(cid, "user", text)
-            exec_meta: dict = {}      # the executor session a forwarded reply was given in
+            # A photo comes with the message: fetched only now, for a chat that is let in,
+            # and handed to whichever brain answers. It was ignored without a word.
+            images = await self._photos(msg)
+            self.store.add_message(cid, "user", text, {"images": images} if images else None)
             await self.broadcast({"type": "telegram_in", "conversation_id": cid, "text": text[:160]})
             note = ("[Message arriving via Telegram — the user is away from the machine. "
                     "Reply in plain text (no markdown tables). No one can click approval "
                     "dialogs, so risky actions only run in full autonomy.]\n\n")
-
-            async def built_history():
-                from . import history as _history
-                h, _info = await _history.build(self.store, cid, self.cfg, self.cfg.get("default_model", ""))
-                if h and h[-1].get("role") == "user" and str(h[-1].get("content") or "").strip() == text:
-                    h = h[:-1]          # the message just saved goes in once, with its note
-                return h + [{"role": "user", "content": note + text}]
 
             # The turn is the screen's too: the Office lights the lead's desk, a step shows
             # as a burst and a hand-over as a walk, and Chat streams it when this thread is
@@ -706,67 +758,20 @@ class TelegramBridge(usersmod.Scoped):
             from . import executors as _ex
             _engine = _ex.resolve_engine(self.cfg)
             await emit({"type": "turn_start", "model": _engine if _engine != "aria" else model})
-            mention = fabricmod.parse_mention(self.store, text) if self.toolbox.fabric else None
-            dept_hit = None
-            if not mention and self.toolbox.fabric:
-                from . import company as _companymod
-                dept_hit = _companymod.parse_department(self.cfg, self.store, text)
-            if dept_hit:  # '@Sales …' from the phone is a task for that department
-                dept, task = dept_hit
-                reply = await fabricmod.department_reply(self.toolbox.fabric, dept["name"], task,
-                                                         cid, approver, "telegram")
-                result = {"steps": []}
-            elif mention:  # '@researcher …' from the phone goes straight to that subagent
-                defn, task = mention
-                res = await self.toolbox.fabric.run_subagent(defn, task, conversation_id=cid,
-                                                             approver=approver)
-                reply = (f"@{defn['name']} · {res['status']}\n\n"
-                         + (res["content"] or res["fault"] or "(no output)"))
-                result = {"steps": res["steps"]}
-            else:
-                from . import executors as execmod
-                engine = execmod.resolve_engine(self.cfg)
-                if engine != "aria":
-                    # A machine set to forward forwards what arrives from OUTSIDE
-                    # too — a Telegram message is exactly the case the setting is
-                    # for. There is no event stream here, so take the text back.
-                    from . import config as _cfgmod
-                    _k.turn_started()
-                    try:
-                        self._runs[chat_id] = execmod.Run(engine=engine)
-                        reply, _run = await execmod.forward(
-                            engine, text, self.cfg,
-                            execmod.default_workspace(self.cfg), emit=emit,
-                            session_id=self.store.exec_session(cid),
-                            prior=self.store.get_messages(cid)[:-1],
-                            # the team door: "build me a tool" from the phone reaches
-                            # the toolsmith as it does at the desk
-                            team={"toolbox": self.toolbox, "store": self.store, "approver": approver,
-                                  "conversation_id": cid, "surface": "telegram"},
-                            run=self._runs[chat_id], steerable=True)
-                        if _run and _run.session_id:
-                            # kept in the conversation row, so a restart does not make every
-                            # phone thread a stranger (an in-memory dict did)
-                            self.store.set_exec_session(cid, _run.session_id)
-                            exec_meta = {"engine": engine, "exec_session": _run.session_id}
-                    finally:
-                        _k.turn_ended()
-                    reply = reply or "(done — no text output)"
-                    result = {"steps": [{"type": "executor", "name": engine}]}
-                else:
-                    agent = Agent(self.cfg, self.toolbox, model, emit, approver,
-                                  conversation_id=cid, surface="telegram")
-                    _k.turn_started()
-                    try:
-                        result = await agent.run(await built_history())
-                    finally:
-                        _k.turn_ended()
-                    reply = result["content"] or "(done — no text output)"
-            self.store.add_message(cid, "assistant", reply, {"steps": result["steps"], **exec_meta})
+            # Who answers is one function for both phones (phoneturn.py): a department, a
+            # huddle or a specialist addressed by name, else the lead on this machine's
+            # brain, and the next brain on the person's list when that one isn't available.
+            from . import phoneturn
+
+            async def tell(line):
+                await self.send("↪ " + line, chat_id)
+            out = await phoneturn.answer(
+                self.store, self.cfg, self.toolbox, cid=cid, text=text, surface="telegram",
+                emit=emit, approver=approver, note=note, images=tuple(images),
+                on_run=lambda run: self._runs.__setitem__(chat_id, run), steerable=True, tell=tell)
+            reply = out["reply"]
+            self.store.add_message(cid, "assistant", reply, {"steps": out["steps"], **out["meta"]})
             self.store.touch_conversation(cid)
-            from . import usage as _usage
-            _usage.record(self.store, self.cfg, model, result.get("tokens") or {},
-                          surface="telegram", conversation_id=cid)
             # The story first, then the words: the Stage is what the answer looks like, and
             # a long text above it pushed the pictures off the screen ("it is not giving an
             # impression of the Stage")
@@ -797,12 +802,41 @@ class TelegramBridge(usersmod.Scoped):
             if "tap" in locals():
                 _pg.close(cid, tap)          # idempotent: a failed turn must not leak a tap
 
+    PHOTO_MAX = 5_000_000      # under the chat's own cap for one picture, as base64
+
+    async def _photos(self, msg: dict) -> list:
+        """The photo on a message, as the data URL the chat's own pictures are. Telegram
+        sends several sizes; the largest that fits is taken. [] when there is none or it
+        could not be fetched: the turn still runs on the words."""
+        sizes = [p for p in (msg.get("photo") or []) if isinstance(p, dict) and p.get("file_id")]
+        if not sizes:
+            return []
+        import base64
+        try:
+            fits = [p for p in sizes if int(p.get("file_size") or 0) <= self.PHOTO_MAX] or sizes[:1]
+            info = await self._api("getFile", file_id=fits[-1]["file_id"])
+            path = str(info.get("file_path") or "")
+            if not path or ".." in path:
+                return []
+            token = self._t().get("bot_token", "")
+            base = os.environ.get("AGENTOS_TELEGRAM_API", "").rstrip("/") or "https://api.telegram.org"
+            async with httpx.AsyncClient(timeout=40) as client:
+                r = await client.get(f"{base}/file/bot{token}/{path}")
+            if r.status_code != 200 or len(r.content) > self.PHOTO_MAX:
+                return []
+            kind = "image/png" if r.content[:4] == b"\x89PNG" else "image/webp" if r.content[8:12] == b"WEBP" \
+                else "image/jpeg"
+            return [f"data:{kind};base64," + base64.b64encode(r.content).decode()]
+        except Exception as e:
+            self.store.log("telegram", f"a photo could not be fetched: {type(e).__name__}")
+            return []
+
     async def ask_wall(self, chat_id: int, att: dict, png: bytes) -> None:
         """The shared browser met a page only a person can get past, during this chat's turn:
         a picture of the page and one question, with Done under it (cdpbrowser.tool_wait)."""
         from . import cdpbrowser as _cdpb
         offer = _cdpb.phone_offer(att)
-        text = _cdpb.phone_words(att, self.cfg.get("agent_name") or "Aria", offer=offer)
+        text = _cdpb.phone_words(att, self.cfg.get("agent_name") or "Bento", offer=offer)
         rows = [[{"text": "Done, carry on", "callback_data": "bw:done"}]]
         if offer.get("ok"):
             # the page itself, on this phone, through remote access (handoff.py): the tap
@@ -922,22 +956,129 @@ class TelegramBridge(usersmod.Scoped):
                 pass
         return val in ("1", "2", "3")
 
-    async def ask_owner_about(self, chat_id: int, title: str, username: str, text: str) -> None:
+    def member_rule(self, chat: dict, member: dict, member_id) -> bool:
+        """May this person talk to the agent in this group? The owner always; a blocked
+        person never; otherwise everybody, or only the picked ones when the group is
+        set to `members_only`."""
+        if str(member_id) == str(self._t().get("owner_chat_id") or 0):
+            return True
+        state = (member or {}).get("state") or ""
+        if state == "blocked":
+            return False
+        return state == "allowed" or not chat.get("members_only")
+
+    async def _member_ok(self, chat: dict, frm: dict, text: str = "") -> bool:
+        """The person inside an enabled group. Everyone who writes there is recorded, so
+        the owner can see who talks to the agent and stop one of them."""
+        mid = frm.get("id")
+        if not mid:
+            return not chat.get("members_only")      # a post with no sender (a channel)
+        name = " ".join(filter(None, [frm.get("first_name", ""), frm.get("last_name", "")])).strip() or str(mid)
+        m = self.store.member_seen("telegram", chat["chat_id"], mid, name, frm.get("username") or "")
+        if self.member_rule(chat, m, mid):
+            return True
+        title = chat.get("title") or chat["chat_id"]
+        self.store.log("telegram", f"refused {name} in the group {title} — "
+                       + ("blocked there" if m.get("state") == "blocked" else "not one of the people picked there"),
+                       {"chat_id": chat["chat_id"], "member": str(mid), "text": text[:160]})
+        if m.get("state") != "blocked" and m["msg_count"] <= 1:
+            # asked once: the owner picks who talks to the agent in this group
+            await self.send(f"▲ In this group I answer only the people the owner picked. "
+                            f"I've asked about you, {name}.", chat["chat_id"])
+            owner = self._t().get("owner_chat_id") or 0
+            agent = self.cfg.get("agent_name") or "Bento"
+            if owner:
+                with contextlib.suppress(Exception):
+                    await self._api("sendMessage", chat_id=owner,
+                                    text=(f"📩 {name} wrote to {agent} in the group {title}:\n“{text[:300]}”\n\n"
+                                          f"Only people you pick are answered there.")[:4000],
+                                    reply_markup={"inline_keyboard": [[
+                                        {"text": "✓ Allow them there", "callback_data": f"mem:{chat['chat_id']}:{mid}:1"},
+                                        {"text": "✗ Block", "callback_data": f"mem:{chat['chat_id']}:{mid}:0"}]]})
+            with contextlib.suppress(Exception):
+                await self.broadcast({"type": "telegram_request", "chat_id": chat["chat_id"], "member": str(mid),
+                                      "title": f"{name}, in the group {title}", "text": text[:160]})
+        with contextlib.suppress(Exception):
+            await self.broadcast({"type": "telegram_chats"})
+        return False
+
+    def decide_member(self, chat_id, member_id, state: str, by: str = "the owner, on Telegram") -> str:
+        """Allow or block one person inside a group, or hand them back to the group's rule."""
+        if str(member_id) == str(self._t().get("owner_chat_id") or 0) and state == "blocked":
+            return "That's the owner. The owner is always answered."
+        if not self.store.member_set("telegram", chat_id, member_id, state, by):
+            return "Nobody by that id wrote in that group."
+        self.store.log("telegram", f"member {member_id} of chat {chat_id}: {state or 'the group rule'} ({by})",
+                       {"chat_id": chat_id, "member": str(member_id), "state": state, "by": by})
+        return {"allowed": "allowed there", "blocked": "blocked there"}.get(state, "back to the group's rule")
+
+    def set_members_only(self, chat_id, on: bool, by: str = "the owner, on Telegram") -> None:
+        self.store.tg_set_members_only(chat_id, on)
+        self.store.log("telegram", f"chat {chat_id} answers {'only picked people' if on else 'everybody in it'} ({by})")
+
+    def table(self) -> dict:
+        """People and groups as the tables draw them: who, since when, decided by whom,
+        and for a group the people who wrote there."""
+        owner = self._t().get("owner_chat_id") or 0
+        people, groups = [], []
+        for c in self.store.tg_list_chats():
+            row = {**c, "owner": c["chat_id"] == owner}
+            if (c.get("type") or "private") == "private":
+                people.append(row)
+                continue
+            ms = self.store.members("telegram", c["chat_id"])
+            for m in ms:
+                m["owner"] = str(m["member_id"]) == str(owner)
+                m["talks"] = self.member_rule(c, m, m["member_id"])
+            row["members"], row["answered"] = ms, bool(c.get("allowed")) and self.groups_on()
+            groups.append(row)
+        return {"people": people, "group_rows": groups, "groups_on": self.groups_on()}
+
+    def groups_on(self) -> bool:
+        """Whether groups and channels are answered at all. The owner's switch
+        (`telegram.groups`); a machine that never set it keeps answering the groups it
+        already enabled, and answers no group otherwise."""
+        v = self._t().get("groups")
+        if v is None:
+            return any(c.get("allowed") and (c.get("type") or "private") != "private"
+                       for c in self.store.tg_list_chats())
+        return bool(v)
+
+    def set_groups(self, on: bool, by: str = "") -> None:
+        self._t()["groups"] = bool(on)
+        cfgmod.save_config(self.cfg)
+        self.store.log("telegram", f"group chats switched {'on' if on else 'off'}" + (f" ({by})" if by else ""))
+
+    def groups(self) -> list[dict]:
+        """The groups and channels a message has come in from, newest first."""
+        return [c for c in self.store.tg_list_chats() if (c.get("type") or "private") != "private"]
+
+    async def ask_owner_about(self, chat_id: int, title: str, username: str, text: str,
+                              group: bool = False) -> None:
         """Somebody new wrote: the owner decides, with Allow / Block on their phone and an
         Allow on the desktop. Reported as "I am not getting an option to authorize other
         people on Telegram": the newcomer was told "the owner can enable it in the Telegram
         app", and the owner was told nothing."""
         owner = self._t().get("owner_chat_id") or 0
         who = f"{title}" + (f" (@{username})" if username else "")
-        name = self.cfg.get("agent_name") or "Aria"
+        name = self.cfg.get("agent_name") or "Bento"
         if owner and owner != chat_id:
+            if group:
+                off = not self.groups_on()
+                words = (f"📩 A message came in from the group {who}:\n“{text[:300]}”\n\n"
+                         + ("Group chats are off, so I said nothing there. " if off else "")
+                         + f"Allowing this group lets everybody in it talk to {name}, under your "
+                           f"settings and permissions." + (" It also turns group chats on." if off else ""))
+                yes = "✓ Allow this group"
+            else:
+                words = (f"📩 {who} wants to talk to {name}. They wrote:\n“{text[:300]}”\n\n"
+                         f"Allowing them lets them chat with {name} here, under your "
+                         f"settings and permissions.")
+                yes = "✓ Allow"
             try:
-                await self._api("sendMessage", chat_id=owner,
-                                text=(f"📩 {who} wants to talk to {name}. They wrote:\n“{text[:300]}”\n\n"
-                                      f"Allowing them lets them chat with {name} here, under your "
-                                      f"settings and permissions.")[:4000],
+                await self._api("sendMessage", chat_id=owner, text=words[:4000],
                                 reply_markup={"inline_keyboard": [[
-                                    {"text": "✓ Allow", "callback_data": f"who:{chat_id}:1"},
+                                    {"text": yes, "callback_data": f"who:{chat_id}:1"},
                                     {"text": "✗ Block", "callback_data": f"who:{chat_id}:0"}]]})
             except Exception as e:
                 self.store.log("telegram", f"could not ask the owner about {who}: {e}")
@@ -945,19 +1086,43 @@ class TelegramBridge(usersmod.Scoped):
             await self.broadcast({"type": "telegram_request", "chat_id": chat_id, "title": who,
                                   "text": text[:160]})
 
-    async def decide_newcomer(self, chat_id: int, allow: bool) -> str:
+    async def decide_newcomer(self, chat_id: int, allow: bool, by: str = "the owner, on Telegram") -> str:
         """The owner's answer, from a button or the desktop: one door for both."""
-        self.store.tg_set_allowed(chat_id, 1 if allow else 0)
-        self.store.log("telegram", f"{'allowed' if allow else 'blocked'} chat {chat_id} (asked the owner)",
-                       {"chat_id": chat_id, "allowed": allow})
+        row = next((c for c in self.store.tg_list_chats() if c["chat_id"] == chat_id), None) or {}
+        if allow and (row.get("type") or "private") != "private" and not self.groups_on():
+            # picking a group is the owner saying yes to groups: the two go together,
+            # or the group would read "enabled" and never be answered
+            self.set_groups(True, f"allowing {row.get('title') or chat_id}")
+        self.store.tg_set_allowed(chat_id, 1 if allow else 0, by)
+        self.store.log("telegram", f"{'allowed' if allow else 'blocked'} chat {chat_id} ({by})",
+                       {"chat_id": chat_id, "allowed": allow, "by": by})
         if allow:
-            name = self.cfg.get("agent_name") or "Aria"
-            await self.send(f"▲ You're in. I'm {name}. Send me anything; /clear resets our session.", chat_id)
+            name = self.cfg.get("agent_name") or "Bento"
+            await self.send(f"▲ You're in. I'm {name}. Send me anything; /new starts a new session.", chat_id)
         with contextlib.suppress(Exception):
             await self.broadcast({"type": "telegram_chats"})
         return "allowed" if allow else "blocked"
 
     async def _handle_callback(self, cq: dict):
+        if (cq.get("data") or "").startswith("ss:"):
+            # A session button (/sessions). Any enabled chat has sessions, so this is
+            # decided by the chat the button sits in, before the owner-only buttons.
+            with contextlib.suppress(Exception):
+                await self._api("answerCallbackQuery", callback_query_id=cq["id"])
+            chat_id = ((cq.get("message") or {}).get("chat") or {}).get("id")
+            chat = next((c for c in self.store.tg_list_chats() if c["chat_id"] == chat_id), None)
+            owner = chat_id == (self._t().get("owner_chat_id") or 0)
+            if chat and (chat.get("type") or "private") != "private" and not self.groups_on():
+                return
+            if chat and (chat.get("type") or "private") != "private":
+                who = cq.get("from") or {}
+                m = next((x for x in self.store.members("telegram", chat_id)
+                          if x["member_id"] == str(who.get("id"))), None)
+                if not self.member_rule(chat, m, who.get("id")):
+                    return
+            if chat and (chat.get("allowed") or owner):
+                await self._sessions(chat, tapped=cq["data"][3:])
+            return
         if cq.get("from", {}).get("id") != (self._t().get("owner_chat_id") or 0):
             return
         data = cq.get("data", "")
@@ -978,6 +1143,40 @@ class TelegramBridge(usersmod.Scoped):
             said = await self._console.open_company(data[3:])
             msg = cq.get("message", {})
             await self.send(said, (msg.get("chat") or {}).get("id") or cq.get("from", {}).get("id"))
+            return
+        if data.startswith("mem:") or data.startswith("gm:"):
+            # one person inside a group (mem:<chat>:<member>:<1|0>), or the group's rule
+            # (gm:<chat>:<1|0> = only picked people | everybody)
+            parts = data.split(":")
+            try:
+                if parts[0] == "mem":
+                    said = self.decide_member(int(parts[1]), parts[2], "allowed" if parts[3] == "1" else "blocked")
+                else:
+                    self.set_members_only(int(parts[1]), parts[2] == "1")
+                    said = "only the people you pick are answered there" if parts[2] == "1" \
+                        else "everybody in that group is answered"
+            except (ValueError, IndexError):
+                return
+            msg = cq.get("message", {})
+            if msg:
+                with contextlib.suppress(Exception):
+                    await self._api("editMessageText", chat_id=msg["chat"]["id"], message_id=msg["message_id"],
+                                    text=(msg.get("text") or "")[:3900] + f"\n\n→ {said}")
+            with contextlib.suppress(Exception):
+                await self.broadcast({"type": "telegram_chats"})
+            return
+        if data.startswith("wan:"):
+            # somebody new on WHATSAPP, asked here because this account's Telegram is paired
+            parts = data.split(":")
+            wa = getattr(self.toolbox, "whatsapp", None)
+            if wa is None or len(parts) < 3:
+                return
+            said = await wa.decide_newcomer(parts[1], parts[2] == "1", "the owner, on Telegram")
+            msg = cq.get("message", {})
+            if msg:
+                with contextlib.suppress(Exception):
+                    await self._api("editMessageText", chat_id=msg["chat"]["id"], message_id=msg["message_id"],
+                                    text=(msg.get("text") or "")[:3900] + f"\n\n→ {said}")
             return
         if data.startswith("who:"):
             # the owner's answer about somebody new (ask_owner_about)
@@ -1153,4 +1352,4 @@ class TelegramBridge(usersmod.Scoped):
         return {"enabled": bool(t.get("enabled")), "has_token": bool(t.get("bot_token")),
                 "owner_chat_id": t.get("owner_chat_id") or 0,
                 "status": self.status, "error": self.error, "bot_username": self.bot_username,
-                "chats": self.store.tg_list_chats()}
+                "groups": self.groups_on(), "chats": self.store.tg_list_chats(), **self.table()}

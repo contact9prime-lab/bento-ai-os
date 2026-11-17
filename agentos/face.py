@@ -71,7 +71,7 @@ def wake_words(cfg: dict) -> list[str]:
     """Everything the kiosk answers to: the person's own wake word, then the agent's name.
     The name always works, so renaming the agent never leaves a screen nobody can wake."""
     out = []
-    for w in (wake_word(cfg), str((cfg or {}).get("agent_name") or "Aria")):
+    for w in (wake_word(cfg), str((cfg or {}).get("agent_name") or "Bento")):
         if w and w.lower() not in (x.lower() for x in out):
             out.append(w)
     return out

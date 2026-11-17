@@ -11,11 +11,13 @@ body.has-win #devscene,body.deck-full #devscene,body.exposing #devscene{opacity:
 body.imm-devices .hm-greet,body.imm-devices .hm-chips,body.imm-devices .hm-play,body.imm-devices .hm-now,
   body.imm-devices .hm-links{display:none!important}
 #omnibar #omni-fold,#devchat{display:none}
+/* The docked chat is the App Hub's too (01i-apphub.js): every rule that is not about the board itself
+   names both scenes. */
 @media (min-width:901px){
   /* Folded: a small bar at the top right, over the end of a header that stays put, so nothing ever
      scrolls under it and the board has the full width. Open: a panel slides in and the board makes
      room in the same breath. */
-  body.imm-devices:not(.dev-mobile){--dvc-w:min(440px,34vw);--dvc-pill:min(290px,25vw);--dvc-t:300ms;
+  body:is(.imm-devices,.imm-apps):not(.dev-mobile){--dvc-w:min(440px,34vw);--dvc-pill:min(290px,25vw);--dvc-t:300ms;
     --dvc-top:calc(var(--mbh,28px) + 14px)}
   body.imm-devices:not(.dev-mobile) #devscene{padding-top:0;transition:right var(--dvc-t) var(--ease-out)}
   body.imm-devices.dvc-open:not(.dev-mobile) #devscene{right:calc(var(--dvc-w) + 30px)}
@@ -24,20 +26,20 @@ body.imm-devices .hm-greet,body.imm-devices .hm-chips,body.imm-devices .hm-play,
     padding-right:calc(var(--dvc-pill) + 26px);transition:padding-right var(--dvc-t) var(--ease-out)}
   body.imm-devices.dvc-open:not(.dev-mobile) .dvs-head{padding-right:14px}
 
-  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar,
-  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar.pop{top:calc(var(--dvc-top) + 11px);bottom:auto;
+  body.immersive:is(.imm-devices,.imm-apps):not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar,
+  body.immersive:is(.imm-devices,.imm-apps):not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar.pop{top:calc(var(--dvc-top) + 11px);bottom:auto;
     left:auto;right:28px;transform:none;width:var(--dvc-pill);height:44px;padding:0 6px 0 12px;gap:8px;
     transition:width var(--dvc-t) var(--ease-out),right var(--dvc-t) var(--ease-out),top var(--dvc-t) var(--ease-out),
       height var(--dvc-t) var(--ease-out),box-shadow var(--d-base) var(--ease-out),border-color var(--d-base) var(--ease-out)}
-  body.immersive.imm-devices.dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar,
-  body.immersive.imm-devices.dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar.pop{
+  body.immersive:is(.imm-devices,.imm-apps).dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar,
+  body.immersive:is(.imm-devices,.imm-apps).dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar.pop{
     top:calc(var(--dvc-top) + 10px);right:26px;width:calc(var(--dvc-w) - 20px);height:50px;padding:0 8px 0 14px}
-  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omni-in{font-size:var(--fs-base);min-width:0;text-overflow:ellipsis}
+  body.immersive:is(.imm-devices,.imm-apps):not(.has-win):not(.deck-full):not(.dev-mobile) #omni-in{font-size:var(--fs-base);min-width:0;text-overflow:ellipsis}
   /* what the small bar has room for: type, talk, open */
-  body.immersive.imm-devices:not(.dvc-open):not(.has-win):not(.deck-full):not(.dev-mobile) #omni-shot,
-  body.immersive.imm-devices:not(.dvc-open):not(.has-win):not(.deck-full):not(.dev-mobile) #omni-chat{display:none}
+  body.immersive:is(.imm-devices,.imm-apps):not(.dvc-open):not(.has-win):not(.deck-full):not(.dev-mobile) #omni-shot,
+  body.immersive:is(.imm-devices,.imm-apps):not(.dvc-open):not(.has-win):not(.deck-full):not(.dev-mobile) #omni-chat{display:none}
 
-  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar #omni-fold{display:flex;position:relative;
+  body.immersive:is(.imm-devices,.imm-apps):not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar #omni-fold{display:flex;position:relative;
     color:var(--txt);transition:background var(--d-fast) var(--ease-out)}
   #omni-fold svg{transition:transform var(--dvc-t,300ms) var(--ease-out)}
   body.dvc-open #omni-fold svg{transform:rotate(180deg)}
@@ -45,39 +47,39 @@ body.imm-devices .hm-greet,body.imm-devices .hm-chips,body.imm-devices .hm-play,
     box-shadow:0 0 0 2px var(--bg2);opacity:0;transform:scale(.4);transition:opacity var(--d-fast),transform var(--d-fast)}
   #omnibar.dvc-news #omni-fold i{opacity:1;transform:none}
 
-  body.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #devchat{display:block;position:absolute;z-index:6;
+  body:is(.imm-devices,.imm-apps):not(.has-win):not(.deck-full):not(.dev-mobile) #devchat{display:block;position:absolute;z-index:6;
     top:var(--dvc-top);right:16px;bottom:100px;width:var(--dvc-w);box-sizing:border-box;padding:76px 18px 16px;
     border-radius:var(--r-lg);border:1px solid var(--line);background:color-mix(in srgb,var(--bg2) 96%,transparent);
     box-shadow:var(--el-4);
     transform:translateX(calc(100% + 24px));opacity:0;visibility:hidden;
     transition:transform var(--dvc-t) var(--ease-out),opacity var(--dvc-t) var(--ease-out),visibility 0s linear var(--dvc-t)}
-  body.imm-devices.dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) #devchat{transform:none;opacity:1;visibility:visible;
+  body:is(.imm-devices,.imm-apps).dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) #devchat{transform:none;opacity:1;visibility:visible;
     transition:transform var(--dvc-t) var(--ease-out),opacity var(--dvc-t) var(--ease-out),visibility 0s}
   .dvc-hint{margin:0;color:var(--dim);font-size:var(--fs-sm);line-height:1.45}
   body:has(#omnicards .ocard) .dvc-hint{visibility:hidden}
 
   /* the answers follow the panel in a moment after it, and leave first */
-  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omnicards{top:calc(var(--dvc-top) + 74px);bottom:112px;
+  body.immersive:is(.imm-devices,.imm-apps):not(.has-win):not(.deck-full):not(.dev-mobile) #omnicards{top:calc(var(--dvc-top) + 74px);bottom:112px;
     left:auto;right:28px;transform:translateX(36px);width:calc(var(--dvc-w) - 24px);flex-direction:column;
     overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;opacity:0;visibility:hidden;
     transition:transform 180ms var(--ease-out),opacity 180ms var(--ease-out),visibility 0s linear 180ms}
-  body.immersive.imm-devices.dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile):not(.omni-pop) #omnicards{transform:none;opacity:1;visibility:visible;
+  body.immersive:is(.imm-devices,.imm-apps).dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile):not(.omni-pop) #omnicards{transform:none;opacity:1;visibility:visible;
     transition:transform var(--dvc-t) var(--ease-out) 90ms,opacity var(--dvc-t) var(--ease-out) 90ms,visibility 0s}
-  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omnicards .ocard{flex:none}
+  body.immersive:is(.imm-devices,.imm-apps):not(.has-win):not(.deck-full):not(.dev-mobile) #omnicards .ocard{flex:none}
   /* a window over the scene hides the board; a finished answer waits in the panel, not over the window */
-  body.imm-devices.has-win:not(.dev-mobile) #omnicards .ocard[data-done]{display:none}
+  body:is(.imm-devices,.imm-apps).has-win:not(.dev-mobile) #omnicards .ocard[data-done]{display:none}
 
   /* what floats keeps clear of the panel, and of the small bar */
-  body.immersive.imm-devices.dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) .approval.ap-float,
-  body.immersive.imm-devices.dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) #aibubble{right:calc(var(--dvc-w) + 32px)}
-  body.immersive.imm-devices:not(.dvc-open):not(.has-win):not(.deck-full):not(.dev-mobile) .approval.ap-float{top:calc(var(--dvc-top) + var(--mbh,28px) + 76px)}
+  body.immersive:is(.imm-devices,.imm-apps).dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) .approval.ap-float,
+  body.immersive:is(.imm-devices,.imm-apps).dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) #aibubble{right:calc(var(--dvc-w) + 32px)}
+  body.immersive:is(.imm-devices,.imm-apps):not(.dvc-open):not(.has-win):not(.deck-full):not(.dev-mobile) .approval.ap-float{top:calc(var(--dvc-top) + var(--mbh,28px) + 76px)}
   /* a Pi's own screen doesn't animate this; the board just takes its place */
   body.lite-screen.imm-devices{--dvc-t:0ms}
   body.lite-screen #omnibar,body.lite-screen #devchat,body.lite-screen #omnicards{transition-duration:0ms!important;transition-delay:0ms!important}
 }
 @media (max-width:900px){
   body.imm-devices #devscene{bottom:156px}
-  body.immersive.imm-devices:not(.has-win):not(.deck-full) #omnibar{top:auto;bottom:92px}
+  body.immersive:is(.imm-devices,.imm-apps):not(.has-win):not(.deck-full) #omnibar{top:auto;bottom:92px}
 }
 .dvs-wait{margin:18vh auto 0;max-width:520px;text-align:center;color:var(--txt);font-size:var(--fs-md);
   padding:14px 18px;border-radius:var(--r-lg);background:color-mix(in srgb,var(--bg2) 92%,transparent);border:1px solid var(--line)}

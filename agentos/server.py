@@ -4739,6 +4739,106 @@ async def api_face_wake_test(request: Request, lang: str = ""):
     return out
 
 
+# ---- a person's voice print: only an enrolled voice wakes the screen (voiceprint.py) ----
+
+def _voice_home():
+    return usersmod.home_for(usersmod.current() or "")
+
+
+@app.get("/api/voiceprint")
+async def api_voiceprint():
+    """Whether this person has a voice print and whether it filters. Never the print."""
+    from . import voiceprint
+    return voiceprint.status(state["cfg"], _voice_home())
+
+
+@app.post("/api/voiceprint/enroll")
+async def api_voiceprint_enroll(request: Request, lang: str = "", fresh: int = 0):
+    """One recording of the signed-in person saying the wake word, added to THEIR print.
+
+    The recording is turned into numbers here and thrown away. When this machine can
+    understand speech, the recording must contain a wake word, so the print is made from the
+    words that will wake it; an admin's recording that does also counts as the wake word
+    heard (the setup step's evidence), so one recording does both. `fresh=1` starts over."""
+    from . import face as facemod
+    from . import hearing, voiceprint
+    home = _voice_home()
+    if not voiceprint.ready():
+        return JSONResponse({"error": voiceprint.why_not(), "install": voiceprint.COMPONENT}, status_code=409)
+    wav = bytearray()
+    async for part in request.stream():
+        wav += part
+        if len(wav) > voiceprint.MAX_BYTES:
+            return JSONResponse({"error": "That was too long. Say the name and a short sentence."}, status_code=413)
+    wav = bytes(wav)
+    mcfg = state.machine_cfg()
+    text, heard, words = "", None, facemod.wake_words(mcfg)
+    if hearing.status(mcfg).get("engine") not in ("", None, "browser"):
+        try:
+            text = await hearing.transcribe(mcfg, wav, lang)
+        except hearing.HearError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        heard = facemod.addressed(text, words) if text.strip() else None
+        if not heard:
+            said = f"I heard “{text}”, but not " if text.strip() else "I heard sound but no words, and not "
+            return JSONResponse({"error": said + " or ".join(f"“{w}”" for w in words) + ". Say it again.",
+                                 "text": text, "words": words}, status_code=400)
+    loop = asyncio.get_running_loop()
+    try:
+        if fresh:
+            voiceprint.forget(home)
+        got = await loop.run_in_executor(None, voiceprint.enroll, home, wav)
+    except voiceprint.PrintError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    cfg = state["cfg"]
+    if got["enrolled"] and got["samples"] == voiceprint.NEED:
+        # the third recording completes the print, and the person asked for the filter
+        cfg["voiceprint"] = {**(cfg.get("voiceprint") if isinstance(cfg.get("voiceprint"), dict) else {}), "only": True}
+        cfgmod.save_config(cfg)
+        _ledger("voiceprint.enroll", "voiceprint:me", "a voice print was saved; only this voice wakes the screen")
+    if heard and usersmod.is_admin(usersmod.current() or ""):
+        engine = hearing.status(mcfg).get("engine") or ""
+        facemod.mark_heard(mcfg, text, heard[0], engine)
+        with usersmod.as_user(""):
+            cfgmod.save_config(mcfg)
+        if mcfg is not state["cfg"] and isinstance(state["cfg"], dict):
+            state["cfg"].setdefault("face", {})["heard"] = mcfg["face"]["heard"]
+        await state["broadcast"]({"type": "face"})
+    if not voiceprint.filtering(state["cfg"], home):
+        voiceprint.release()
+    return {**got, "text": text, "word": heard[0] if heard else "", "status": voiceprint.status(state["cfg"], home)}
+
+
+@app.put("/api/voiceprint")
+async def api_voiceprint_set(body: dict):
+    """Switch the filter: only my voice wakes the screen, or any voice does."""
+    from . import voiceprint
+    on = bool((body or {}).get("only"))
+    home = _voice_home()
+    if on and not voiceprint.enrolled(home):
+        return JSONResponse({"error": "Record your voice first: there is no print to filter with."}, status_code=400)
+    cfg = state["cfg"]
+    cfg["voiceprint"] = {**(cfg.get("voiceprint") if isinstance(cfg.get("voiceprint"), dict) else {}), "only": on}
+    cfgmod.save_config(cfg)
+    _ledger("voiceprint.only", "voiceprint:me", "only this voice wakes the screen" if on else "any voice wakes the screen")
+    return voiceprint.status(cfg, home)
+
+
+@app.delete("/api/voiceprint")
+async def api_voiceprint_forget():
+    """Delete this person's voice print. The filter goes off with it."""
+    from . import voiceprint
+    home = _voice_home()
+    had = voiceprint.forget(home)
+    cfg = state["cfg"]
+    cfg["voiceprint"] = {"only": False}
+    cfgmod.save_config(cfg)
+    if had:
+        _ledger("voiceprint.forget", "voiceprint:me", "the voice print was deleted")
+    voiceprint.release()
+    return voiceprint.status(cfg, home)
+
+
 @app.post("/api/speech/hear")
 async def api_speech_hear(request: Request, lang: str = ""):
     """One spoken utterance (16 kHz mono WAV from the kiosk face) to text, on whatever
@@ -4755,7 +4855,15 @@ async def api_speech_hear(request: Request, lang: str = ""):
         text = await hearing.transcribe(state.machine_cfg(), wav, lang)
     except hearing.HearError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
-    return {"text": text}
+    out = {"text": text}
+    # Only this person's voice wakes the screen (voiceprint.py): the verdict rides with the
+    # words, and the kiosk ignores a wake word from a voice that does not match. A filter,
+    # never a key: nothing here signs anybody in or decides what an agent may do.
+    from . import voiceprint
+    home = _voice_home()
+    if voiceprint.filtering(state["cfg"], home):
+        out["voice"] = await asyncio.get_running_loop().run_in_executor(None, voiceprint.match, home, wav)
+    return out
 
 
 @app.get("/api/profile")
@@ -5288,6 +5396,8 @@ async def api_conversations(q: str = "", tab: str = ""):
         hit = chattabs.search(state["store"], q)
         convs = [c for c in convs if c["id"] in hit]
     convs = chattabs.tag(state["store"], convs)
+    from . import phoneforward
+    convs = phoneforward.mark(state["store"], convs)     # a phone chat's sessions, each named
     if tab in chattabs.TABS:
         convs = [c for c in convs if tab in c["tabs"]]
     return {"conversations": convs, "tabs": [{"id": t, "name": chattabs.NAMES[t]} for t in chattabs.TABS]}
@@ -5321,6 +5431,39 @@ async def api_new_conversation(body: dict | None = None):
                                    "origin": origin, "space_id": space},
                                   str(usersmod.current() or ""))
     return {"id": cid, "title": title, "origin": origin, "space_id": space}
+
+
+@app.get("/api/phone/options")
+async def api_phone_options(conversation: str = ""):
+    """Where a chat of yours may be sent, and what it has to send (phoneforward.py). The
+    bridges and the store are the signed-in account's, so only its own chats are listed."""
+    from . import phoneforward
+    return phoneforward.options(state["store"], state.get("telegram"), state.get("whatsapp"), conversation)
+
+
+@app.post("/api/phone/send")
+async def api_phone_send(body: dict):
+    """Carry a chat on in Telegram or WhatsApp, or send one answer or one story there.
+    A person's act from a signed-in page: there is no agent tool for it. A ledger row each."""
+    from . import phoneforward
+    b = body or {}
+    channel, to, what = str(b.get("channel") or ""), str(b.get("to") or ""), str(b.get("what") or "")
+    cid = str(b.get("conversation_id") or "")
+    res = await phoneforward.send(state["store"], state.get("telegram"), state.get("whatsapp"), channel, to,
+                                  what, cid, mid=str(b.get("message_id") or ""),
+                                  answer_to=str(b.get("answer_to") or ""))
+    _ledger("phone.send", f"{channel}:{to}", f"{what} from chat {cid}: {res.get('message', '')}")
+    return res
+
+
+@app.post("/api/phone/session")
+async def api_phone_session(body: dict):
+    """A new session for one of your phone chats, started at the desktop."""
+    from . import phoneforward
+    b = body or {}
+    res = phoneforward.new_session(state["store"], state.get("telegram"), state.get("whatsapp"),
+                                   str(b.get("channel") or ""), str(b.get("to") or ""), str(b.get("name") or ""))
+    return res
 
 
 @app.get("/api/conversations/{cid}")
@@ -5637,7 +5780,7 @@ async def api_agent_shareables():
         "mcp_servers": sorted((cfg.get("mcp_servers") or {})),
         "has_soul": bool(cfgmod.load_soul().strip()),
         "can_sign": agentbundle.signing_key_exists(),
-        "agent_name": cfg.get("agent_name") or "Aria",
+        "agent_name": cfg.get("agent_name") or "Bento",
         "well_known": agentbundle.WELL_KNOWN[0],
         "topic": agentbundle.DISCOVERY_TOPIC,
     }
@@ -6129,6 +6272,31 @@ async def api_stage_export(sid: str, format: str = "pdf"):
                                       "instead and print it from your browser"}, status_code=503)
     return Response(data, media_type="application/pdf", headers={
         "Content-Disposition": f'attachment; filename="{bpdoc.filename(subject, "pdf")}"'})
+
+
+@app.get("/api/stage/story/file")
+async def api_stage_story_file(format: str = "pptx", conv: str = "", answer: str = "", sid: str = ""):
+    """A story as a file to keep or pass on (stagedoc.py): PowerPoint, Word or PDF. Named by its chat and
+    question, or by one of its scenes."""
+    from fastapi.responses import Response
+    from . import stagedoc
+    store = state["store"]
+    if sid:
+        r = store.db.execute("SELECT conversation_id, answer_to FROM stage_scenes WHERE id=?", (sid,)).fetchone()
+        if not r:
+            return JSONResponse({"error": "that scene is not here"}, status_code=404)
+        conv, answer = r[0], r[1] or ""
+    try:
+        data, name, _doc = await stagedoc.make(store, state["cfg"], conv, answer, format,
+                                               state["cfg"].get("agent_name") or "")
+    except KeyError:
+        return JSONResponse({"error": "that story is not here"}, status_code=404)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=422)
+    except RuntimeError as e:
+        return JSONResponse({"error": str(e)}, status_code=503)
+    return Response(data, media_type=stagedoc.FORMATS[stagedoc.fmt_of(format)][1], headers={
+        "Content-Disposition": f'attachment; filename="{name}"'})
 
 
 def stagemod_question(store, answer_to: str) -> str:
@@ -6678,21 +6846,44 @@ async def api_put_telegram(body: dict):
             t["enabled"] = True               # setting a token means "connect"
     if body.get("unpair"):
         t["owner_chat_id"] = 0
+    if "groups" in body:
+        # the owner's switch: off, no group or channel is answered, whichever were picked
+        t["groups"] = bool(body["groups"])
+        state["store"].log("telegram", f"group chats switched {'on' if t['groups'] else 'off'} (from the desktop)")
     cfgmod.save_config(state["cfg"])
     return {"ok": True}
 
 
+def _desk_by() -> str:
+    """Who decided, for the channel tables: the signed-in account, at the desktop."""
+    u = usersmod.get(usersmod.current() or "") if usersmod.current() else None
+    return (f"{u['name']}, at the desktop" if u and u.get("name") else "at the desktop")
+
+
 @app.put("/api/telegram/chats/{chat_id}")
 async def api_telegram_chat(chat_id: int, body: dict):
+    tg = state.get("telegram")
     if "allowed" in body:
         # the same door as the owner's phone buttons: the person is told when they're in
-        tg = state.get("telegram")
         if tg is not None and hasattr(tg, "decide_newcomer"):
-            await tg.decide_newcomer(chat_id, bool(body["allowed"]))
+            await tg.decide_newcomer(chat_id, bool(body["allowed"]), _desk_by())
         else:
-            state["store"].tg_set_allowed(chat_id, 1 if body["allowed"] else 0)
+            state["store"].tg_set_allowed(chat_id, 1 if body["allowed"] else 0, _desk_by())
             state["store"].log("telegram", f"chat {chat_id} {'enabled' if body['allowed'] else 'disabled'}")
+    if "members_only" in body and tg is not None:
+        # a group answers everybody in it, or only the people picked
+        tg.set_members_only(chat_id, bool(body["members_only"]), _desk_by())
     return {"ok": True}
+
+
+@app.put("/api/telegram/chats/{chat_id}/members/{member_id}")
+async def api_telegram_member(chat_id: int, member_id: str, body: dict):
+    """One person inside a group: allowed, blocked, or '' for the group's own rule."""
+    state_word = str((body or {}).get("state") or "")
+    if state_word not in ("", "allowed", "blocked"):
+        return JSONResponse({"error": "state is allowed, blocked or empty"}, status_code=400)
+    said = state["telegram"].decide_member(chat_id, member_id, state_word, _desk_by())
+    return {"ok": "there" in said or "rule" in said, "message": said}
 
 
 @app.delete("/api/telegram/chats/{chat_id}")
@@ -6757,9 +6948,8 @@ async def api_put_whatsapp(body: dict):
 @app.put("/api/whatsapp/chats/{wa_id}")
 async def api_whatsapp_chat(wa_id: str, body: dict):
     if "allowed" in body:
-        state["store"].wa_set_allowed(wa_id, 1 if body["allowed"] else 0)
-        state["store"].log("whatsapp",
-                           f"{wa_id} {'enabled' if body['allowed'] else 'blocked'}")
+        said = await state["whatsapp"].decide_newcomer(wa_id, bool(body["allowed"]), _desk_by())
+        return {"ok": said in ("allowed", "blocked"), "message": said}
     return {"ok": True}
 
 
@@ -12597,7 +12787,7 @@ async def api_setup_state():
         # set up from a hub: the hub chooses everything, so this screen asks nothing
         "first_run": cfgmod.is_first_run() and not hub,
         "from_hub": hub,
-        "agent_name": cfg.get("agent_name", "Aria"),
+        "agent_name": cfg.get("agent_name", "Bento"),
         "autonomy": cfg.get("autonomy", "balanced"),
         "default_model": cfg.get("default_model", ""),
         "ollama_models": local,
@@ -13265,7 +13455,7 @@ async def api_setup_say(body: dict):
     body = body or {}
     step = str(body.get("step") or "autonomy")
     name = (str(body.get("name") or "").strip()
-            or state["cfg"].get("agent_name") or "Aria")[:40]
+            or state["cfg"].get("agent_name") or "Bento")[:40]
     model = str(body.get("model") or "").strip()
     canned = SAY_FALLBACK.get(step, SAY_FALLBACK["done"]).format(name=name)
     cfg = state["cfg"]
@@ -13566,7 +13756,7 @@ async def api_app_context(request: Request):
     # what the app's AI actually answers on: the machine's brain or the provider model,
     # and the sentence when nothing does, so an app can say it instead of failing
     return {"app_id": principal.id, "app_name": a.get("name", ""),
-            "agent_name": cfg.get("agent_name", "Aria"),
+            "agent_name": cfg.get("agent_name", "Bento"),
             "model": model if engine == "aria" else engine, "brain": engine or "",
             "ai_ready": not why, "ai_note": why, "theme": "dark"}
 
@@ -13992,7 +14182,7 @@ async def api_world_checkin(body: dict):
         return _world_view(uid)
     v = _world_view(uid)
     w = v["world"]
-    system, prompt = worldmod.reply_prompt(w, cfg.get("agent_name") or "Aria", you)
+    system, prompt = worldmod.reply_prompt(w, cfg.get("agent_name") or "Bento", you)
     raw, who = await execmod.ask_once(cfg, system, prompt, timeout=60)
     reply = " ".join(str(raw or "").split())[:400]
     how = "brain" if reply else "words"
@@ -14837,7 +15027,8 @@ async def api_company_task(body: dict, request: Request):
 
 @app.get("/api/chat/addresses")
 async def api_chat_addresses():
-    """Who `@` reaches in a chat: the specialists and the open company's departments.
+    """Who `@` reaches in a chat: the specialists, the open company's departments, and
+    the person's other companies ('@Acme' asks to open it).
     Every composer's suggestions read this one list (company.addresses)."""
     from . import company as companymod
     return companymod.addresses(state["cfg"], state["store"])
@@ -15955,7 +16146,7 @@ async def api_network_targets():
         out.append({"id": co["id"], "name": co["name"], "open": co["active"],
                     "departments": [{"name": d["name"], "desk": bool(d.get("desk")), "people": len(d["members"])}
                                     for d in companymod.departments(ccfg, state["store"]) if d["members"]]})
-    return {"lead": cfg.get("agent_name") or "Aria", "companies": out}
+    return {"lead": cfg.get("agent_name") or "Bento", "companies": out}
 
 
 @app.put("/api/network/ties/{label}/target")
@@ -16322,7 +16513,7 @@ def _me_on_map() -> dict:
         name = teamlink.machine_name(state.machine_cfg())
     except Exception:
         name = "this computer"
-    return {"name": name, "agent": cfg.get("agent_name") or "Aria"}
+    return {"name": name, "agent": cfg.get("agent_name") or "Bento"}
 
 
 def _look_choices() -> dict:
@@ -16682,10 +16873,19 @@ async def api_network_hardware(body: dict):
             "events": [t for _e, t in got["events"]], "dropped": got["dropped"]}
 
 
+def _device_companies() -> tuple[dict, dict]:
+    """This person's companies that can be named ({id: name}), and which machine is for which."""
+    from . import company as companymod, devboard
+    cos = {c["id"]: c["name"] for c in companymod.companies(state["cfg"]) if c["id"]}
+    return cos, devboard.company_map(state["cfg"].get("device_companies"), cos)
+
+
 @app.get("/api/devices/board")
-async def api_device_board():
+async def api_device_board(company: str = ""):
     """The Devices scene and Devices → Live: every machine you have, each thing as last heard,
-    and the alarms now (devboard.py). An admin sees the machine's own as well. Asks no machine."""
+    and the alarms now (devboard.py). An admin sees the machine's own as well. Asks no machine.
+    With `company` (one of your company ids) the machines you gave to your other companies are
+    left out, with their alarms and rules; a machine given to none shows on every board."""
     me = usersmod.current() or ""
     whose = sorted({"", me}) if usersmod.is_admin(me) else [me]
     machines, alarms = [], []
@@ -16734,6 +16934,10 @@ async def api_device_board():
                           key=lambda a: a.get("ended") or a.get("since") or 0, reverse=True)
             rule_list += [{**r, "demo": True} for r in d.get("rule_list") or []]
             demo_rules = d.get("rules") or []
+    cos, cmap = _device_companies()
+    hidden = devboard.mark_companies(machines, cmap, cos, only=company)
+    alarms, past, evs = (devboard.without(x, hidden) for x in (alarms, past, evs))
+    rule_list = devboard.without(rule_list, hidden)
     seen, out = set(), []
     for a in alarms:
         if a["id"] not in seen:
@@ -16749,7 +16953,37 @@ async def api_device_board():
     return {"machines": machines, "alarms": out, "history": past, "rule_list": rows,
             "rules": devboard.clean_rules(state["cfg"].get("device_alarms") or [])[0],
             **({"demo_rules": demo_rules} if demo_rules is not None else {}),
+            "companies": [{"id": k, "name": v} for k, v in cos.items()],
+            "company": company if company in cos else "",
+            "elsewhere": len(hidden),          # machines left out because they are another company's
             "analytics": an, "at": time.time()}
+
+
+@app.put("/api/devices/company")
+async def api_device_company(body: dict):
+    """Say which of your companies a machine is for, or none (`company` empty). It changes which
+    boards show the machine; what an agent may read or switch there is still decided by the gate."""
+    from . import devboard
+    b = body or {}
+    key, cid = str(b.get("machine") or "")[:120], str(b.get("company") or "").strip().lower()[:64]
+    me = usersmod.current() or ""
+    mine = [m for o in (sorted({"", me}) if usersmod.is_admin(me) else [me]) for m in _board_machines(o)]
+    hit = next((m for m in mine if devboard.machine_key(m) == key), None)
+    if not hit and not (key.startswith("demo:") and _demo_shows(me)):
+        return JSONResponse({"error": "no machine of yours by that name"}, 404)
+    cos, cmap = _device_companies()
+    if cid and cid not in cos:
+        return JSONResponse({"error": "you keep no company by that id"}, 400)
+    cmap.pop(key, None)
+    if cid:
+        cmap[key] = cid
+    cfg = state["cfg"]
+    cfg["device_companies"] = cmap
+    cfgmod.save_config(cfg)
+    name = hit["machine"] if hit else key[5:]
+    _ledger("device.company", f"device:{name.lower()}", f"{name} is for {cos[cid]}" if cid else f"{name} is for no company")
+    await state["broadcast_user"]({"type": "device_alarm", "phase": "company"}, me)
+    return {"ok": True, "machine": key, "company": cid, "company_name": cos.get(cid, "")}
 
 
 def _demo_shows(me: str) -> bool:
@@ -18630,6 +18864,7 @@ async def api_run_job_now(name: str, request: Request):
 
 @app.get("/api/flows")
 async def api_flows(request: Request):
+    from . import company as _co
     store = state["store"]
     out = []
     for f in store.list_flows():
@@ -18642,6 +18877,9 @@ async def api_flows(request: Request):
                 t["url"] = flowsmod.hook_url(state["cfg"], f["name"], t,
                                              base=_base_url(request))
         out.append({**f, "triggers": trigs,
+                    # whose mission it is: it runs with that company's people (company.of_flow)
+                    "company": (lambda c: {"name": c["name"], "active": c["active"]} if c else None)(
+                        _co.of_flow(state["cfg"], f)),
                     "grants": [g for g in store.list_grants()
                                if (g.get("source_ref") or "") == flowsmod.source_ref(f["name"])],
                     # a disabled flow holds no grants, so the card has to be able to say
@@ -18817,7 +19055,10 @@ async def api_flows_preview(body: dict):
 async def api_save_flow(body: dict):
     before = state["store"].get_flow(str((body or {}).get("name") or ""))
     try:
-        flow, report = flowsmod.save(state["store"], body or {})
+        from . import company as _companymod
+        # a mission made while a company is open is that company's, with its own people
+        flow, report = flowsmod.save(state["store"],
+                                     _companymod.place_mission(state["cfg"], state["store"], body or {}))
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     await state["broadcast"]({"type": "fabric_defs"})
@@ -20360,6 +20601,14 @@ async def _run_chat(cid: str, data: dict):
         # other, each on its own brain, and every turn lands as that agent's bubble
         huddle_hit = fabricmod.parse_huddle(store, text)
         mention = None if huddle_hit else fabricmod.parse_mention(store, text)
+        # Whoever is addressed by name reads the thread they were addressed in, and where
+        # on the Stage it was asked: they ran with the task alone, so "@researcher
+        # summarise it" had no "it" (executors.thread_note).
+        thread = ""          # read only when somebody is addressed (below)
+        place = _stage_words(data)
+
+        def _asked(task: str) -> str:
+            return place + task + (("\n\n" + thread) if thread else "")
         # '@Sales find ten clinics' gives the task to a DEPARTMENT: a run of its desk,
         # led by its head, signed off and checked like any department task. A specialist
         # addressed by name was checked first and answers itself.
@@ -20370,20 +20619,65 @@ async def _run_chat(cid: str, data: dict):
                 dept_hit = _companymod.parse_department(cfg, store, text)
             except Exception:
                 dept_hit = None
+        # '@Acme …' names one of the person's COMPANIES: they are asked whether to open it,
+        # and what follows the name is answered there, by its people. An agent's name and a
+        # department of the open company were checked first.
+        canned = None
+        # A chat belongs to the company it was held in: its memory and graph are that
+        # company's. Carried on while ANOTHER company is open, the team and the memory would
+        # be two different companies', so the person is asked which it is.
+        if not retry and not text.startswith("@"):
+            with contextlib.suppress(Exception):
+                from . import company as _cmod
+                _conv = store.get_conversation(cid) or {}
+                _theirs = _cmod.of_space(cfg, _conv.get("space_id") or "")
+                if _theirs and not _theirs["active"] and _theirs.get("id"):
+                    _got = await state["fabric"].open_company(_theirs["id"], surface="gui",
+                                                              approver=approver, conversation_id=cid)
+                    if _got["opened"]:
+                        await evsend({"type": "status", "message": f"{_theirs['name']} is open"})
+                        await _company_changed(spaces=True)
+                    else:
+                        _here = next((c for c in _cmod.companies(cfg) if c["active"]), None)
+                        if _here and _here.get("space_id"):
+                            store.set_conversation_space(cid, _here["space_id"])
+                            await evsend({"type": "status", "message":
+                                          f"this chat is {_here['name']}'s from here on"})
+        if text.startswith("@") and not (huddle_hit or mention or dept_hit):
+            co_turn = await fabricmod.company_turn(state["fabric"], cfg, store, text, "gui",
+                                                   approver, cid)
+            if co_turn and co_turn["reply"]:
+                canned = co_turn["reply"]
+            elif co_turn:
+                if co_turn.get("status"):
+                    await evsend({"type": "status", "message": co_turn["status"]})
+                    await _company_changed(spaces=True)
+                text = co_turn["rest"]
+                history[-1] = {**history[-1], "content": place + text}
+                huddle_hit = fabricmod.parse_huddle(store, text)
+                mention = None if huddle_hit else fabricmod.parse_mention(store, text)
+                if not (huddle_hit or mention):
+                    with contextlib.suppress(Exception):
+                        dept_hit = _companymod.parse_department(cfg, store, text)
+            if co_turn and canned and "is open" in canned:
+                await _company_changed(spaces=True)
         # A message trigger can start a flow from the chat too. `@name` is resolved first
         # and always wins: an explicit address is not a pattern to be second-guessed.
         flow_hit = None
-        if not mention and not huddle_hit and not dept_hit:
+        if not mention and not huddle_hit and not dept_hit and canned is None:
             try:
                 flow_hit = flowsmod.match_message(store, text, surface="gui")
             except Exception:
                 flow_hit = None
+        if mention or huddle_hit or dept_hit:
+            with contextlib.suppress(Exception):
+                thread = execmod.thread_note(store.get_messages(cid)[:-1], cfg.get("agent_name") or "Aria")
         # An explicit address wins over the brain: `@toolsmith …`, `@a @b …` and a message
         # trigger go to the specialist / the huddle / the flow even when the machine's
         # brain is Claude Code. Checked in the wrong order, every `@toolsmith build a
         # tool` was forwarded to Claude Code, which built it itself.
         zero_res = None
-        if _zero().chat_on_hub(cfg) and not (mention or huddle_hit or flow_hit or dept_hit):
+        if canned is None and _zero().chat_on_hub(cfg) and not (mention or huddle_hit or flow_hit or dept_hit):
             # A Zero: the turn is worked on its hub, in its section there, and kept there
             # (fabric.zero_chat). This machine shows it and keeps the screen's copy.
             turns[cid] = {"agent": None, "task": asyncio.current_task(), "model": model, "uid": owner}
@@ -20397,7 +20691,13 @@ async def _run_chat(cid: str, data: dict):
                 started = False
                 await evsend({"type": "status", "message": zero_res["fallback"]})
                 zero_res = None
-        if zero_res is not None:
+        if canned is not None:
+            # the company was opened (or not), and that is the whole answer
+            await evsend({"type": "turn_start", "model": ""})
+            await evsend({"type": "text_delta", "text": canned})
+            result = {"content": canned, "steps": [], "tokens": {"input": 0, "output": 0}}
+            model = ""
+        elif zero_res is not None:
             result = zero_res
             model = ""
         elif model in execmod.ENGINES and model != "aria" and not (mention or huddle_hit or flow_hit or dept_hit):
@@ -20500,9 +20800,15 @@ async def _run_chat(cid: str, data: dict):
             # who does what (execmod.team_note). Closed in `finally` below.
             from . import spaces as _spacemod
             _surface = data.get("surface") if data.get("surface") in CLIENT_SURFACES else "gui"
+            _space = _spacemod.active_for(cfg, _surface, store, cid)
+            # said before the wait, not after: this runs ahead of turn_start, and a panel
+            # with nothing to show kept reading "sent — waking the agent"
+            await evsend({"type": "status", "message": "reading what I know about you"})
             team_token = execmod.open_team_door(
                 env, cfg, toolbox, store, evsend, approver, conversation_id=cid, surface=_surface,
-                space_id=_spacemod.active_for(cfg, _surface, store, cid), text=text)
+                space_id=_space, text=text,
+                # what the built-in lead's prompt carries: memory, graph, skills, servers
+                mind=await execmod.mind_note(cfg, toolbox, store, _space, cid, text))
             run = execmod.Run(engine=model)
             turns[cid] = {"agent": None, "task": asyncio.current_task(),
                           "model": model, "executor": run, "uid": owner}
@@ -20540,12 +20846,29 @@ async def _run_chat(cid: str, data: dict):
             # a message typed while it works reaches it at its next step (Run.steer)
             env.steerable = model == "claude-code"
             env.person = True     # a person's own chat: the CLI reads their user-level settings
+            env.images = tuple(images)     # what was attached reaches the brain that answers
+
+            def _exec_result() -> dict:
+                return {"content": "".join(collected),
+                        "steps": [{"type": "executor", "name": model, "read_outside": read_outside[0],
+                                   "cost_usd": run.cost_usd, "turns": run.turns,
+                                   "denials": run.denials, "envelope": env.describe()}],
+                        # who actually answered, so a reloaded conversation still
+                        # attributes it correctly rather than crediting the built-in agent
+                        "engine": model, "engine_model": run.model,
+                        # what it spent, for Usage: the CLI reports both on its last line
+                        "cost_usd": run.cost_usd or None,
+                        "tokens": {"input": run.tokens_in, "output": run.tokens_out}}
             try:
                 await execmod.run_task(_stage_words(data) + text, env, _relay, run)
                 turn_done = True
                 await _chat_app_fix(model, env, run, (checkout, chat_app), toolbox, evsend, _relay)
             finally:
                 execmod.stop(run)          # a cancelled turn must not leave it running
+                # What it had said so far is the reply, whatever ended the turn. It was built
+                # only after a clean finish, so a turn stopped or failed half-way saved an
+                # empty bubble while the session it ran in was stamped as having seen it.
+                result = _exec_result()
                 # Write the app back here, in `finally`: a turn stopped after the app
                 # was written (it was busy with a README) used to install nothing, and
                 # the file sat in builds/ where nothing ever looks again. commit_app
@@ -20578,14 +20901,7 @@ async def _run_chat(cid: str, data: dict):
             if any(ok for ok, _ in commits):
                 await state["broadcast"]({"type": "apps"})
             header = ""
-            result = {"content": "".join(collected),
-                      "steps": [{"type": "executor", "name": model, "read_outside": read_outside[0],
-                                 "cost_usd": run.cost_usd, "turns": run.turns,
-                                 "denials": run.denials, "envelope": env.describe()}],
-                      # who actually answered, so a reloaded conversation still
-                      # attributes it correctly rather than crediting the built-in agent
-                      "engine": model, "engine_model": run.model,
-                      "tokens": {"input": 0, "output": 0}}
+            result = _exec_result()
         elif flow_hit:
             trig, flow = flow_hit
             model = state["fabric"].resolve_model({"name": flow["name"],
@@ -20626,7 +20942,7 @@ async def _run_chat(cid: str, data: dict):
                           + (f": {head} leads" if head else "")})
             try:
                 got = await state["fabric"].department_task(
-                    dept["name"], task, conversation_id=cid, approver=approver,
+                    dept["name"], _asked(task), conversation_id=cid, approver=approver,
                     surface="gui", ui_emit=evsend, agent_slot=turns[cid])
             except PermissionError as e:
                 raise RuntimeError(str(e))
@@ -20650,7 +20966,7 @@ async def _run_chat(cid: str, data: dict):
 
             async def _say(e):
                 await evsend({"type": "agent_say", **e})
-            res = await state["fabric"].huddle(names, topic, conversation_id=cid,
+            res = await state["fabric"].huddle(names, _asked(topic), conversation_id=cid,
                                                say=_say, approver=approver)
             result = {"content": res["text"], "steps": [], "huddle": res["agents"],
                       "tokens": {"input": 0, "output": 0}}
@@ -20663,7 +20979,7 @@ async def _run_chat(cid: str, data: dict):
             started = True
             await evsend({"type": "turn_start", "model": model, "speaker": defn["name"]})
             res = await state["fabric"].run_subagent(
-                defn, task, conversation_id=cid, ui_emit=evsend,
+                defn, place + task, context=thread, conversation_id=cid, ui_emit=evsend,
                 approver=approver, agent_slot=turns[cid])
             content = res["content"] or (f"({res['status']}: {res['fault']})" if res["fault"]
                                          else f"({res['status']})")
@@ -20706,6 +21022,9 @@ async def _run_chat(cid: str, data: dict):
         if agent is not None:
             result = {"content": agent.partial_text, "steps": agent.partial_steps,
                       "tokens": result["tokens"]}
+        if not (result.get("content") or "").strip():
+            # stopped before a word: a line, so a reloaded chat does not show a blank reply
+            result["content"] = "(stopped before it answered)"
         with contextlib.suppress(Exception):
             await evsend({"type": "error", "message": "turn stopped"})
     except Exception as e:
@@ -20720,8 +21039,13 @@ async def _run_chat(cid: str, data: dict):
         # A turn that failed must still leave a message saying so. An empty
         # assistant bubble is the worst outcome: reloading the conversation shows
         # nothing at all, and the reason lives only in a log nobody opened.
+        if agent is not None and not (result.get("content") or "").strip():
+            result = {**result, "content": agent.partial_text or "", "steps": agent.partial_steps or []}
         if not (result.get("content") or "").strip():
             result["content"] = f"[error] {why['message']}"
+        else:
+            # it had started answering: keep that, and say under it why it ended
+            result["content"] = result["content"].rstrip() + f"\n\n[error] {why['message']}"
     finally:
         if started:
             knowledge.turn_ended()
@@ -20731,12 +21055,9 @@ async def _run_chat(cid: str, data: dict):
         fb_next, fb_tried = None, list(data.get("_fallback_tried") or [])
         try:
             said = (result.get("content") or "").strip()
-            if (not said or said.startswith("[error]")) and fallbackmod.unavailable(turn_errors + [said]):
-                fb_tried.append(fallbackmod.key(engine if engine != "aria" else "aria",
-                                                "" if engine != "aria" else model))
-                fb_next = fallbackmod.next_for(cfg, fb_tried + [
-                    fallbackmod.key(f["executor"], f["model"]) for f in fallbackmod.chain(cfg)
-                    if _agent_cli_refused(f["executor"])])
+            fb_next = fallbackmod.after(cfg, fb_tried, engine, model, turn_errors, said, skip=[
+                fallbackmod.key(f["executor"], f["model"]) for f in fallbackmod.chain(cfg)
+                if _agent_cli_refused(f["executor"])])
         except Exception:
             fb_next = None
         # Saving the reply comes first and alone. Everything after it is
@@ -20775,7 +21096,8 @@ async def _run_chat(cid: str, data: dict):
             from . import spaces as _spacemod
             _surface = data.get("surface") if data.get("surface") in CLIENT_SURFACES else "gui"
             usagemod.record(store, cfg, model, tk, surface=_surface, conversation_id=cid,
-                            space_id=_spacemod.active_for(cfg, _surface, store, cid))
+                            space_id=_spacemod.active_for(cfg, _surface, store, cid),
+                            cost_usd=result.get("cost_usd"))
             knowledge.schedule_extraction(cfg, store, cid, text, result["content"],
                                           state.get("broadcast"))
         except _FallingBack:

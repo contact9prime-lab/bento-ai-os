@@ -61,7 +61,7 @@ def identity(cfg: dict, store, owner: str = "") -> dict:
     u = usersmod.get(owner) if owner else None
     person = ((u.get("display") or u.get("name")) if u else
               ((cfg.get("team") or {}).get("my_name") or teamlink.machine_name(cfg)))
-    return {"agent_name": cfg.get("agent_name") or "Aria", "person": person,
+    return {"agent_name": cfg.get("agent_name") or "Bento", "person": person,
             "agent": avatars.recipe_for(store, avatars.AGENT), "me": avatars.recipe_for(store, avatars.ME)}
 
 

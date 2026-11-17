@@ -48,6 +48,13 @@ def _never_touch_the_real_config(tmp_path, monkeypatch):
     monkeypatch.setattr(devboard.Alarms, "restored", True)
     # The watcher's hold is process state: one test's hold must not stop every agent in the tests
     # after it, which is what it is built to do in a real server.
+    # What the developer's real Ollama has loaded is not a test's business: a model in memory
+    # there would change the window a test's stand-in call is given (providers.fit_loaded).
+    from agentos import providers as _providers
+
+    async def _nothing_loaded(base_url):
+        return {}
+    monkeypatch.setattr(_providers, "ollama_loaded", _nothing_loaded)
     from agentos import integrity
     monkeypatch.setattr(integrity, "_hold", None)
     monkeypatch.setattr(integrity, "_cache", (0.0, None))

@@ -227,6 +227,23 @@ CATALOG: dict[str, dict] = {
         "detect": lambda: _whisper_ready(),
         "why_unavailable": lambda: _whisper_missing(),
     },
+    # A voice print (voiceprint.py): the speaker model that lets only an enrolled voice wake
+    # the screen. Asked for, never shipped: the library goes into a folder of its own under
+    # the person's home (never into Bento's environment, which `uv sync` would empty again).
+    "voice-print": {
+        "packages": {}, "method": "script",
+        "licence": "Apache-2.0 (sherpa-onnx and the 3D-Speaker CAM++ model)",
+        "group": "optional", "for_session": False, "needs_root": False,
+        "title": "Voice prints: only your voice wakes it (speaker model)",
+        "unlocks": "Lets each person record their voice so the screen ignores the wake word "
+                   "from voices it does not know. Runs on this machine; nothing is sent "
+                   "anywhere. Installs a speech library and a 28 MB model in your home "
+                   "folder, about 70 MB together. It filters who can wake the screen; it "
+                   "never signs anybody in.",
+        "argv": lambda: [] if _voiceprint_missing() else ["sh", "-c", _voiceprint_script()],
+        "detect": lambda: _voiceprint_ready(),
+        "why_unavailable": lambda: _voiceprint_missing(),
+    },
     # The screen of a machine with no desktop (Raspberry Pi OS Lite): cage runs one
     # full-screen app, Chromium on the kiosk, from `bento screen on` (screen.py).
     "cage": {
@@ -483,6 +500,54 @@ if [ ! -s "$M/ggml-base.bin" ]; then
 fi
 echo "whisper.cpp is ready"
 """
+
+
+VOICEPRINT_SCRIPT = r"""set -e
+D="__DIR__"
+mkdir -p "$D/lib"
+if command -v uv >/dev/null 2>&1; then
+  uv pip install --quiet --python "__PY__" --target "$D/lib" sherpa-onnx
+else
+  "__PY__" -m pip install --quiet --target "$D/lib" sherpa-onnx
+fi
+if [ ! -s "$D/model.onnx" ]; then
+  curl -fL --retry 3 -o "$D/model.onnx.part" "__URL__"
+  mv "$D/model.onnx.part" "$D/model.onnx"
+fi
+echo "voice prints are ready"
+"""
+
+
+def _voiceprint_script() -> str:
+    import sys
+    from . import voiceprint
+    return (VOICEPRINT_SCRIPT.replace("__DIR__", str(voiceprint.base()).replace('"', ""))
+            .replace("__PY__", sys.executable.replace('"', ""))
+            .replace("__URL__", voiceprint.MODEL_URL))
+
+
+def _voiceprint_ready() -> bool:
+    try:
+        from . import voiceprint
+        return voiceprint.ready()
+    except Exception:
+        return False
+
+
+def _voiceprint_missing() -> str:
+    """'' when this machine can install the speaker model, else what it needs first."""
+    import sys
+    if not shutil.which("curl"):
+        return "curl is not installed, and the model is downloaded with it."
+    if shutil.which("uv"):
+        return ""
+    try:
+        import importlib.util
+        if importlib.util.find_spec("pip") is None:
+            return "Installing the speech library needs uv or pip for " + sys.executable + "."
+    except Exception:
+        return "Installing the speech library needs uv or pip."
+    return ""
 
 
 def _whisper_ready() -> bool:

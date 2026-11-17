@@ -39,7 +39,8 @@ def test_a_forwarded_turn_works_in_the_persons_own_workspace(tmp_path):
     assert env.workspace == str(tmp_path)
     # and no surface hands the machine's folder over any more
     import re
-    for f in ("server.py", "telegram.py", "whatsapp.py", "scheduler.py", "executors.py"):
+    # the phones' turn is phoneturn.py's, for both of them
+    for f in ("server.py", "phoneturn.py", "scheduler.py", "executors.py"):
         src = (ROOT / "agentos" / f).read_text()
         calls = re.findall(r"(?:forward|envelope_from)\((?:[^()]|\([^()]*\))*\)", src)
         assert calls and not [c for c in calls if 'AGENTOS_HOME / "workspace"' in c], f

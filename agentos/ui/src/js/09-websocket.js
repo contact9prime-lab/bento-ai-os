@@ -670,11 +670,18 @@ function handle(ev){
     // somebody new wrote to the bot: the owner decides here as well as on their phone
     case 'telegram_request':
       toast('📩 '+(ev.title||'Someone')+' wants to talk to '+agentName()+' on Telegram: “'+(ev.text||'')+'”',
-        {kind:'warn',ms:60000,label:'Allow',go:()=>{tgAllow(ev.chat_id,1);toast((ev.title||'They')+' can talk to '+agentName()+' now')}});
+        {kind:'warn',ms:60000,label:'Allow',go:()=>{if(ev.member)tgMember(ev.chat_id,ev.member,'allowed');else tgAllow(ev.chat_id,1);
+          toast((ev.title||'They')+' can talk to '+agentName()+' now')}});
       refreshApp('telegram');break;
+    // the same question for WhatsApp: this account's desktop is one of the places it is asked
+    case 'whatsapp_request':
+      toast('📩 '+(ev.title||'Someone')+' wants to talk to '+agentName()+' on WhatsApp: “'+(ev.text||'')+'”',
+        {kind:'warn',ms:60000,label:'Allow',go:()=>{waAllow(ev.wa_id,1);toast((ev.title||'They')+' can talk to '+agentName()+' now')}});
+      if(typeof waPanel==='function')waPanel();break;
+    case 'whatsapp_chats': if(typeof waPanel==='function')waPanel(); break;
     case 'knowledge_update': refreshApp('memory'); refreshApp('kg'); refreshApp('profile'); break;
     case 'assets_update': refreshApp('gallery'); refreshApp('timeline'); break;
-    case 'spaces_update': loadSpaces(true).then(paintSpaceChip); refreshApp('spaces'); break;
+    case 'spaces_update': loadSpaces(true).then(paintSpaceChip); refreshApp('spaces'); if(typeof deskCompaniesLoad==='function')deskCompaniesLoad(); break;
     case 'fabric_event':
       // a flow moved: its mark lights on the dial (heartbeats are not movement)
       if(typeof movementPulse==='function'&&ev.event!=='heartbeat')movementPulse('flow',ev.flow||ev.agent||ev.event,ev);

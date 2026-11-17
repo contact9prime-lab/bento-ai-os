@@ -99,6 +99,49 @@ A pager in the taskbar (`1 2 +`) gives you multiple desktops:
 - **Ctrl+1…6** switches desktops.
 - Widgets are **per-desktop**, so each desktop is its own workspace.
 
+#### What a desktop shows
+
+Each desktop has a scene of its own, and you choose it on the desktop. The button beside the
+pager names the scene of the desktop in front ("Town", "Devices", "App Hub"); press it for the
+menu. Adding a desktop with **+** takes you there and opens the menu. On a phone the button sits
+under the menu bar, where it is big enough to tap.
+
+![The desktop's menu: its scene and the company it opens](screenshots/desk-menu.png)
+
+![The same menu on a phone, under the button below the menu bar](screenshots/desk-menu-phone.png)
+
+The three at the top are the ones most people switch between:
+
+- **Town** is your agents and departments as a place.
+- **Devices** is every machine and its alarms, live.
+- **App Hub** is your widgets as a board, your apps under them, and the chat docked on the right.
+  Fold the chat with the arrow on the bar and the board takes the whole width. Widgets run only
+  while the desktop is bare, so a window over the hub costs nothing.
+
+![The App Hub: widgets as a board, apps under them, the chat on the right](screenshots/app-hub.png)
+
+On a phone the board is one column and the prompt bar stays at the bottom.
+
+![The App Hub on a phone: the widget board in one column](screenshots/app-hub-phone.png)
+
+The other scenes are under **More scenes**. A small machine's own screen is offered only the
+scenes it can draw; the App Hub is not one of them yet, because what its widgets cost there has
+not been measured.
+
+#### A company per desktop
+
+If you keep two or more companies, the menu has a **Company** row. Pick one and coming to that
+desktop opens that company. Leave it on **Whichever is open** and the desktop keeps the company
+you were in. The open company belongs to your account, so another browser signed in as you
+moves with it.
+
+A Devices desktop that opens a company shows that company's machines. See
+[Which company a machine is for](network.md#which-company-a-machine-is-for).
+
+Removing a desktop moves the ones after it down by one, with their windows, scene and company.
+
+A terminal has no desktops or scenes. `bento company open NAME` switches companies there.
+
 ### Command palette
 Press **Alt+Space** or **Ctrl+Space** anywhere for a fast launcher: fuzzy-search to open any app, run
 an action (new chat, clear session, toggle voice, reset wallpaper), or choose **"Ask …"** to send
@@ -116,6 +159,37 @@ searching, so the wall itself stays a wall of apps.
 ### Fullscreen
 Press **F11** (or use the Settings button) to toggle fullscreen. Launched via `agentos app`, the
 desktop opens fullscreen automatically, hiding the host taskbar.
+
+### The menu bar on a smaller screen
+Nothing in the menu bar wraps or slides under its neighbour. When the screen is too narrow
+for all of it, the bar carries on down the right edge of the screen: the mic, network, sound
+and battery and notifications move into a thin rail there, and the top bar keeps the menus,
+your space, your name and the brain. Windows stop at the rail rather than going under it. If
+that still isn't enough, the date goes, then your chip and the brain chip move to the rail too.
+
+Only past that does it hide things, least useful first: the words "Bento Box AI", the ADMIN
+tag and the model name, then the space name gets shorter, then your name (your initial stays),
+then the app's name. Last of all, File, Edit, View, Window and Help fold into one ☰ menu with
+the same items. Everything hidden is still a tooltip or a click away.
+
+When Bento is the whole desktop (the session), the bar hides things instead of using the
+rail, because native windows would cover it. A phone keeps its own layout.
+
+![At 1366 wide the top bar keeps everything and the icons sit in a rail down the right edge](screenshots/menubar-rail-1366.png)
+
+### The network
+Where the machine runs NetworkManager, the menu bar shows its network beside the sound and
+battery: Wi-Fi with its signal, wired, or **Offline** in amber. Click it to see the networks in
+range and join one. Joining is for an admin. Offline also says what it costs (a cloud brain
+can't answer until the machine is back), and when the network returns you get one toast naming
+it. It's the network of the machine Bento runs on: from a phone or another computer the panel
+says so, and asks before switching, because that device may lose the page if the new network is
+a different one. Without NetworkManager (a Mac, a container) the button isn't shown. In a
+terminal it's `bento wifi`.
+
+![The menu bar at 1366 wide with the network panel open, listing Wi-Fi networks in range](screenshots/menubar-network-1366.png)
+
+![The network button reading Offline in amber, its panel saying cloud brains can't answer until it's back](screenshots/menubar-offline-1440.png)
 
 ### Power & session
 The **⏻ button** at the right of the menu bar carries real session controls — lock screen,
@@ -685,6 +759,15 @@ made. And while your lead is busy with something slow, it says what it is doing:
 that page.", "Checking your calendar.", "Asking researcher." Only for tools that really
 started, at most one line every eight seconds, and never over something it is already
 saying. Code in a reply is read as "code block".
+
+**Stop the voice.** While anything is being read aloud, a **Stop voice** button is on screen:
+bottom left on a desktop, under the menu bar on a phone. Press it, or press Esc, and the
+reply stops being read, including the part still arriving. The voice stays on, so the next
+reply is spoken. To turn the voice off for good, use **Voice on** in the chat's header.
+
+![The Stop voice button while a reply is read](screenshots/voice-stop.png)
+
+![The same button on a phone](screenshots/voice-stop-phone.png)
 
 ![Settings → Voice: the voice engine](screenshots/voice-engine.png)
 

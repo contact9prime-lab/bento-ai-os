@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.9.9 — 2026-11-17
+## 0.9.26 — 2026-11-17
 
 **Each company can work in folders of its own.** In the Office, ▦ Company → Folders, a
 company either uses your account's folders, as before, or keeps a list of its own, each read
@@ -12,9 +12,245 @@ refused when you save, and a folder shared with you read only stays read only. E
 in the ledger, and Permissions shows a refusal at its own step. From a terminal it's
 `bento company folders`.
 
-**The suggested models are current.** The Anthropic list is Opus 5.5, Sonnet 5.5, Haiku 5.5
-and Fable 5.2, the deprecated Gemini 3.5 Flash is gone, and Kimi K3.1 Pro joins Moonshot's.
-Models you already chose are left as they are.
+## 0.9.25 — 2026-11-16
+
+**Send a chat to your phone.** Chat has a ➤ Phone button: carry the open chat on in Telegram or WhatsApp,
+or send its last answer or its story there. You pick the chat, from your own account's chats only. The Stage
+has the same button for a story.
+
+**A phone chat's sessions are listed on the desktop.** Chat's Channels tab groups every session under its chat,
+marks the one open on the phone, and ＋ starts another from the desk.
+
+## 0.9.24 — 2026-11-16
+
+No release notes were written for this one; the commits since 0.9.23 are what changed (`bento update` lists them).
+
+## 0.9.23 — 2026-11-16
+
+**A busy local model no longer holds your chats.**
+
+- **Chats stuck on "waking the agent".** Background jobs loaded a local model at its largest
+  window (262,144 tokens, 13 GB of a 16 GB card), and nothing else fitted beside it. Every call
+  to Ollama now says how big its window is, and it is the same size for all of them.
+- **A turn never waits on the embedding model.** Picking which memories to read waits three
+  seconds at most, then uses the newest, and leaves the model alone for a minute.
+- **A model already in memory is not loaded again.** A call uses the window the model is
+  running with. Before, two callers with two sizes made Ollama unload and load it each time.
+- **A window that had to grow is kept.** When a local model needs a bigger window to fit a
+  prompt, that size is saved for that model under `ollama_windows` in your config.
+- **The menu bar fits a smaller screen, and carries on down the right edge.** At 1366 wide the space chip
+  lay over Window and Help, and the brand and the clock wrapped. Nothing in the bar wraps or shrinks now.
+  When it runs out of room the icons (mic, network, sound and battery, notifications) move into a rail on
+  the right edge, and windows stop at it; then the date goes and your chip and the brain move there too.
+  Only after that does it hide things, and last it folds the app's menus into one ☰ list.
+- **The network is on the menu bar.** Wi-Fi with its signal, wired, or Offline in amber, read from
+  NetworkManager. Click for the networks in range and join one (admin only). From another device it says
+  it's the machine's network and asks before switching. When the network comes back, one toast says so.
+
+## 0.9.22 — 2026-11-16
+
+No release notes were written for this one; the commits since 0.9.21 are what changed (`bento update` lists them).
+
+## 0.9.21 — 2026-11-16
+
+**The voice can be stopped.** While a reply is read aloud there is a Stop voice button on screen,
+on every surface, and Esc does the same. It stops what is being said and the rest of that reply;
+the voice stays on for the next one.
+No release notes were written for this one; the commits since 0.9.20 are what changed (`bento update` lists them).
+
+## 0.9.20 — 2026-11-16
+
+**Who may talk to your agent is a table now, with when and who decided.** The Telegram app shows
+People and Groups in two tables: whether each is answered, when that was decided and by whom, how
+many messages, and when they last wrote. Under each group is everybody who wrote to the agent
+there. A group answers everybody in it or only the people you pick, and you can block one person
+either way. From your phone, `/people` and `/groups` say the same, and `/members <group>` lists a
+group's people with a button for each. WhatsApp's card has the same people table.
+
+**A request to let somebody in reaches the account that owns the channel.** It is asked on that
+account's owner chat and on its desktop. A new WhatsApp number used to be told to find Settings
+while you heard nothing; now you are asked on WhatsApp (`/allow <number>`, `/block <number>`,
+`/people`), on your Telegram with buttons when it is paired, and on the desktop.
+**A company is addressed by name, and your agent decides who does the work.**
+
+- **`@Company` opens a company.** Start a message with `@` and one of your companies' names, in Chat,
+  the prompt bar, the terminal, Telegram or WhatsApp. You're asked on a card; after a yes the rest of
+  the message is answered there, by that company's departments.
+- **Your agent notices the wrong company.** A stock market question put to a kids' channel is offered
+  to the company it belongs to. When none fits, it asks whether to start one, and does after your yes.
+- **Your agent hands work on.** Before real work it decides who does it: the right company, a
+  department, a specialist, or a specialist it builds. It works alone only when it is alone. Asked to
+  run code, it gives it to the department that can.
+- **A mission belongs to its company.** It runs with that company's people, also while another
+  company is open, and nobody from another company can be added to it.
+- **Memory is per company, with one shelf that goes everywhere.** What is about a business stays in
+  that company; what is about you follows your agent into each one.
+
+## 0.9.19 — 2026-11-16
+
+No release notes were written for this one; the commits since 0.9.18 are what changed (`bento update` lists them).
+
+## 0.9.17 — 2026-11-15
+
+**The chat turn is stitched.** One chat turn was read end to end and measured with real Claude Code.
+
+- **A lead on Claude Code, Gemini CLI or Codex knows what Bento remembers.** It used to get your soul
+  and nothing else. It now reads your memory, the conversation's notes, the knowledge graph, your
+  skills and your connected servers, and saves what you tell it with `remember` and `kg_add`, each
+  through the permission check and into the ledger.
+- **It finishes the job.** Both leads are told to do the next step instead of offering it, and to
+  set up a schedule instead of asking you to message again. On one machine, 21 of the last 133
+  replies had ended on such an offer.
+- **Pictures reach the brain that answers**, from Chat and as a photo on Telegram.
+- **A turn you stop keeps what it had written.** It used to save an empty reply.
+- **`@name`, `@Department` and a huddle read the conversation** they were asked in. A huddle can be
+  called from Telegram and WhatsApp.
+- **The next brain answers when one is not available**, on Telegram, WhatsApp and scheduled jobs as
+  well as in Chat.
+- **Usage counts turns answered by an agent CLI**, with the cost it reported.
+## 0.9.18 — 2026-11-15
+
+**The Mind keeps its shape while it speaks.** With the lead speaking, the core grew to about
+twice its size and its glow and rings were added on top, so the middle of the picture became one
+white disc with lumpy rings over the clusters. Now the voice moves the core's edge and its size
+barely changes; the glow and the rings stay close to it. The spoken line is shown whole, and the
+prompt bar steps aside while it is said. A linked team's chip no longer sits on the ring.
+## 0.9.17 — 2026-11-15
+
+**A new machine's agent is called Bento.** It was Aria. Setup still asks first: keep it or type
+your own. A machine already set up keeps the name it has.
+
+**Only your voice wakes it.** Each person can record a voice print: say the wake word three
+times in the setup step, or under Settings → Voice → Listening, and the screen then ignores the
+wake word from voices it does not know. It is a filter. It never signs anybody in or approves
+anything, and a recording of you could pass it. The print is kept in your own home on the
+machine and the recordings are thrown away. It needs a speaker model first, about 70 MB,
+Apache-2.0, installed in your home folder when you say yes. From a terminal, `bento face print`.
+
+## 0.9.16 — 2026-11-15
+
+No release notes were written for this one; the commits since 0.9.15 are what changed (`bento update` lists them).
+
+## 0.9.15 — 2026-11-15
+
+**The suggested models are current again.** The list the model pickers and setup offer was 49 days
+old. Checked against each provider's own page on 15 November 2026:
+
+- Anthropic: Claude Fable 5.2, Opus 5.5, Sonnet 5.5 and Haiku 5.5. Sonnet 5.5 is offered first.
+- OpenAI: GPT-6 Astra, GPT-6.1 Sol, GPT-6.1 Terra and GPT-6 Luna. GPT-6.1 Sol is offered first.
+- Google: Gemini 3.8 Flash, 3.6 Flash, 3.5 Flash-Lite and Gemini 4 Hydrogen. Gemini 3.5 Flash is no longer on Google's list.
+- DeepSeek: `deepseek-v4-pro` joins `deepseek-flash`.
+- Moonshot: Kimi K3.1 Pro and its high-speed version, ahead of K3.
+- OpenRouter: the same newer Claude and GPT models.
+
+The prices Usage estimates with were updated for the new models, and DeepSeek's are now its peak
+rate. Models you already chose are left exactly as they are.
+
+No release notes were written for this one; the commits since 0.9.14 are what changed (`bento update` lists them).
+
+## 0.9.13 — 2026-11-15
+
+**A story can leave the Stage as a file.** **Save as** on the Stage gives the story you are looking at
+as a PowerPoint deck, a Word document or a PDF, with the same pictures a phone gets and each scene's
+words and source. A blueprint's Export menu has Word and PowerPoint too. Ask your agent for "a deck of
+that" or "send it as a Word file" and it saves the story and gives you the file, in the chat and on
+Telegram or WhatsApp. From a terminal: `bento stage export --as pptx`.
+
+A tall picture is shown over several slides or pages instead of being shrunk until it can't be read.
+On a machine with no browser to draw with, the deck and the document carry the scenes in words and say
+so, and a PDF is refused with the reason.
+## 0.9.14 — 2026-11-15
+
+No release notes were written for this one; the commits since 0.9.13 are what changed (`bento update` lists them).
+
+## 0.9.13 — 2026-11-15
+
+**The Mind groups your other companies and unattached agents.** Only the open company's
+departments were clusters; everybody in your other companies, and everybody in no company, stood
+as a cluster of their own. With three companies that was about fifty clusters and their names
+piled up. Now each other company is one cluster, its people titled with their department there,
+and agents in no company stand together once there are more than six. The Team list has one row
+per cluster. On a 47-agent setup: 50 clusters became 12, with no names overlapping.
+**Telegram answers in a group only when you turned group chats on and picked that group.** A bot
+can be added to any group. Now the agent says nothing in a group until **Answer in group chats**
+is on (the Telegram app, or `/groups on` from your phone) and that group is enabled. The first
+message from a new group reaches you on your own chat with Allow this group and Block. `/groups`
+lists the groups a message came in from, with a button for each; `/groups off` stops all of them
+and keeps your picks. A machine that already had a group enabled keeps answering it.
+
+**An old story no longer sits under your newest answer in Chat.** After `/clear`, the Stage chips
+of the wiped questions were pinned to the bottom of the chat, so "Bengaluru this weekend" from
+weeks ago showed under a question about the market. A story whose question is gone now has no
+chip in the chat; it is still in the Stage's library.
+
+## 0.9.12 — 2026-11-15
+
+**What comes back from delegated work arrives whole.** An answer handed back to your agent by a
+specialist, a mission, a department or a colleague was cut at 3,500 characters, with nothing
+saying so. Your agent then answered from the part it had. Now the whole answer goes back, up to
+20,000 characters; past that it is cut at a paragraph and says how much is missing and where the
+rest is. Measured with Claude Code as the lead, asking a specialist for 60 numbered items: 21
+and 27 of them arrived before, all 60 after.
+
+**A boss reads all of what it signs.** The heads who review a department's work and the
+auditor read 6,000 characters of it, and a send-back showed the desk 4,000 of its own answer.
+Both are 20,000 now, and a cut is said.
+
+**A task that stops keeps what it finished.** A department task that ended without finishing
+(its process killed, an error, out of time) handed back only the error, and the finished steps
+stayed on its board unseen. Now it hands back every finished step in full, the notes its lead
+kept, and what did not finish, marked as unfinished and unchecked.
+## 0.9.11 — 2026-11-15
+
+**Each desktop's scene is chosen on the desktop.** A button beside the pager names what the
+desktop in front shows and opens a menu: Town, Devices and the new App Hub at the top, the other
+scenes under them. Adding a desktop takes you there and opens the menu. On a phone the button sits
+under the menu bar at full tap size.
+
+**App Hub, a new scene.** Your widgets as a board, your apps under them, and the chat docked on
+the right. Widgets run only while the desktop is bare. A small machine's own screen is not
+offered it yet: what its widgets cost there has not been measured.
+
+**A company per desktop.** With two or more companies the menu has a Company row; coming to
+that desktop opens that company. The open company is your account's, so another browser signed
+in as you moves with it.
+
+**A machine can be given to a company.** Machines belong to the account that set them up and
+named no company. Now each machine's header on the Devices scene has a company picker, and a
+Devices desktop that opens a company shows that company's machines, alarms and rules. It is a
+view: what an agent may read or switch is still the permissions in Devices. From a terminal,
+`bento network company`.
+
+**Removing a desktop keeps the later ones whole.** They move down by one with their windows,
+scene and company. Before, a window on a later desktop was left on a number that was gone.
+
+## 0.9.10 — 2026-11-15
+
+**Telegram and WhatsApp keep several sessions.** A chat had one conversation, and the only way to
+start over was `/clear`, which deletes it. Now `/new` starts a new session and keeps the one
+before (`/new invoices` names it), `/sessions` lists this chat's sessions newest first, and
+`/resume 2` or `/resume invoices` goes back to one with everything that was said in it. On Claude
+Code the earlier session is the one Claude Code itself remembers. Telegram puts a button under the
+list for each session and one for a new one. A chat sees and reopens only its own sessions, every
+enabled chat has the three commands, and a session is not switched while an answer is being
+written. `/clear` still wipes the open session's messages.
+
+WhatsApp's `/status` says what answers (Claude Code and its model when that is the brain), as
+Telegram's does.
+
+## 0.9.9 — 2026-11-15
+
+**A map's video shows the map, and every place on it.** A map sent to Telegram or WhatsApp was
+turned about forty degrees by the time it reached the second place, stopped at five places however
+many there were, and never showed them together. Now north stays up, the video opens on the whole
+map with the line that says what the numbers are, visits every place in turn with its number, its
+value and its note (up to twelve), flies from one to the next, and ends on a board listing all of
+them. A chart's video counts its bars the same way. Coastlines are drawn from three times the
+points, so neighbouring countries meet.
+
+**The picture and the sound stay together.** On a machine drawing in software the picture ran about
+ten seconds behind the sound and the ending was cut off. The video is now drawn on the machine's
+graphics card when it has one (about 30 frames a second where it was 9), and in software otherwise.
 
 ## 0.9.8 — 2026-11-15
 

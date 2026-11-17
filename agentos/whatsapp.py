@@ -434,17 +434,17 @@ class WhatsAppBridge(usersmod.Scoped):
             except Exception as e:
                 self.store.log("whatsapp", f"could not send the blueprint document: {e}")
 
-    async def send_stage(self, cid: str, reply: str, wa_id: str) -> None:
+    async def send_stage(self, cid: str, reply: str, wa_id: str, ans: str = "") -> str:
         """The answer's story after the reply, as Telegram sends it: a picture per scene
         (stagestill.py), or the page when this machine has no browser to draw them.
         Never fatal: the reply has already gone."""
         try:
             from . import stage as stagemod, stagestill, executors as _ex
-            ans = stagemod.last_question(self.store, cid)
+            ans = ans or stagemod.last_question(self.store, cid)   # one named story (sent from the desktop), else the last
             scenes = [s["scene"] for s in stagemod.story(self.store, cid, ans)] if ans else []
             n = len(scenes)
             if not n:
-                return
+                return ""
             # a blueprint fills itself in after the reply (bpfill.py): a phone gets its pictures,
             # so wait a while for the parts to land rather than photograph the outline
             from . import bpfill
@@ -468,7 +468,7 @@ class WhatsAppBridge(usersmod.Scoped):
                 if ok:
                     await self.send_clips(scenes, wa_id, items, pngs)
                     await self.send_blueprint_docs(rows, ans, wa_id)
-                    return
+                    return "sent"
             p = stagemod.write_report(self.store, _ex.default_workspace(self.cfg), cid, ans,
                                       answer=reply, agent=self.cfg.get("agent_name") or "")
             if p:
@@ -476,8 +476,12 @@ class WhatsAppBridge(usersmod.Scoped):
                                                        f"Open it to watch.", wa_id)
                 if str(res).startswith("[error]"):
                     self.store.log("whatsapp", f"could not send the story: {res}")
+                    return str(res)
+                return "sent"
+            return "[error] the story could not be drawn or written on this machine"
         except Exception as e:
             self.store.log("whatsapp", f"could not send the story: {e}")
+            return f"[error] {e}"
 
     async def send_files(self, reply: str, wa_id: str) -> None:
         """The files a reply names, after it, as Telegram does (whatsapp.files = false
@@ -611,13 +615,13 @@ class WhatsAppBridge(usersmod.Scoped):
         if not (self._c().get("owner_wa_id") or ""):
             c["owner_wa_id"] = wa_id
             cfgmod.save_config(self.cfg)
-            self.store.wa_set_allowed(wa_id, 1)
+            self.store.wa_set_allowed(wa_id, 1, "pairing: the first chat to write")
             chat["allowed"] = 1
-            agent = self.cfg.get("agent_name") or "Aria"
+            agent = self.cfg.get("agent_name") or "Bento"
             self.store.log("whatsapp", f"paired: owner = {name} ({wa_id})")
             await self.send(f"▲ Linked. I'm {agent}, the agent on your machine — same "
                             f"memory and the same tools as at the desk. Send me "
-                            f"anything; /clear starts a fresh session.", wa_id)
+                            f"anything; /new starts a new session.", wa_id)
             await self.broadcast({"type": "whatsapp_chats"})
             return
 
@@ -627,7 +631,7 @@ class WhatsAppBridge(usersmod.Scoped):
         if not chat.get("allowed"):
             match = chanmod.preauthorised(conf(self.cfg), wa_id)
             if match:
-                self.store.wa_set_allowed(wa_id, 1)
+                self.store.wa_set_allowed(wa_id, 1, f"the allow-list ({match})")
                 chat["allowed"] = 1
                 self.store.log("whatsapp", f"allowed {name} ({wa_id}) — on the allow-list",
                                {"wa_id": wa_id, "matched": match})
@@ -643,17 +647,34 @@ class WhatsAppBridge(usersmod.Scoped):
                            {"wa_id": wa_id, "name": name,
                             "msg_count": chat.get("msg_count") or 0, "text": text[:160]})
             if (chat.get("msg_count") or 0) <= 1:
-                await self.send("▲ This number reached an AgentOS machine, but it is not "
-                                "enabled. Its owner can allow it in Settings → Channels.",
-                                wa_id)
+                await self.send("▲ I've asked the owner whether you can talk to me. You'll hear "
+                                "back here once they say yes.", wa_id)
+                await self.ask_owner_about(wa_id, name, text)
             await self.broadcast({"type": "whatsapp_chats"})
             return
         await self.broadcast({"type": "whatsapp_chats"})
 
         low = text.lower()
+        if wa_id == (self._c().get("owner_wa_id") or "") and low.split(" ")[0] in ("/people", "/allow", "/block"):
+            await self.send(await self._owner_command(low.split(" ")[0], text.partition(" ")[2].strip()), wa_id)
+            return
         if low.startswith("/clear"):
             self.store.clear_messages(self._conversation(chat))
             await self.send("🧹 Session cleared — starting fresh.", wa_id)
+            return
+        from . import phonesessions
+        res = phonesessions.handle(self.store, "whatsapp", wa_id, chat.get("name") or wa_id,
+                                   self._conversation(chat), text, self._busy)
+        if res is not None:
+            # /new, /sessions, /resume: the same answers Telegram gives, without buttons
+            # (a reply button is three at most, and a list of sessions is longer)
+            if res.get("cid"):
+                self.store.wa_set_conversation(wa_id, res["cid"])
+                chat["conversation_id"] = res["cid"]
+                self.store.log("whatsapp", f"session {'started' if res.get('new') else 'reopened'} "
+                                           f"for {chat.get('name') or wa_id}",
+                               {"wa_id": wa_id, "conversation_id": res["cid"]})
+            await self.send(res["say"], wa_id)
             return
         if low.startswith("/office"):
             out = await self.send_office(wa_id)
@@ -671,8 +692,14 @@ class WhatsAppBridge(usersmod.Scoped):
                             else "▶ Pictures only. /clips on brings the videos back.", wa_id)
             return
         if low.startswith("/status"):
-            await self.send(f"▲ online · model {self.cfg.get('default_model') or '(none)'} "
-                            f"· autonomy {self.cfg.get('autonomy')}", wa_id)
+            # what answers, as Telegram's /status says it: an agent CLI and its model when
+            # one is the engine, since the saved provider model is not in use then
+            from . import executors as execmod
+            eng = execmod.resolve_engine(self.cfg)
+            what = (self.cfg.get("default_model") or "(none)") if eng == "aria" else \
+                eng + (" · " + execmod.executor_model(self.cfg, eng)
+                       if execmod.executor_model(self.cfg, eng) else "")
+            await self.send(f"▲ online · model {what} · autonomy {self.cfg.get('autonomy')}", wa_id)
             return
 
         # A message trigger starts a flow, checked before the busy lock — a flow runs
@@ -716,7 +743,7 @@ class WhatsAppBridge(usersmod.Scoped):
         turn: a picture of the page and one question (cdpbrowser.tool_wait). No button: a
         reply of "done" carries on, which works on both transports."""
         from . import cdpbrowser as _cdpb
-        text = _cdpb.phone_words(att, self.cfg.get("agent_name") or "Aria", button=False,
+        text = _cdpb.phone_words(att, self.cfg.get("agent_name") or "Bento", button=False,
                                  offer=_cdpb.phone_offer(att))
         if png:
             out = await self.send_photo(png, text, wa_id)
@@ -724,12 +751,79 @@ class WhatsAppBridge(usersmod.Scoped):
                 return
         await self.send(text, wa_id)
 
+    async def ask_owner_about(self, wa_id: str, name: str, text: str) -> None:
+        """Somebody new wrote: the account that owns this channel decides. Asked on its
+        WhatsApp owner chat, on its Telegram owner chat when that is paired (buttons),
+        and on its desktop. Before, the newcomer was sent to Settings and the owner
+        was told nothing."""
+        owner = self._c().get("owner_wa_id") or ""
+        agent = self.cfg.get("agent_name") or "Bento"
+        who = f"{name} (+{wa_id})" if name and name != wa_id else f"+{wa_id}"
+        words = (f"📩 {who} wants to talk to {agent} on WhatsApp. They wrote:\n“{text[:300]}”\n\n"
+                 f"Allowing them lets them chat with {agent}, under your settings and permissions.")
+        if owner and owner != wa_id:
+            with contextlib.suppress(Exception):
+                await self.send(words + f"\n\nReply /allow {wa_id} or /block {wa_id}.", owner, quiet=True)
+        tg = getattr(self.toolbox, "telegram", None)
+        tg_owner = tg is not None and (tg._t().get("owner_chat_id") or 0)
+        if tg_owner and getattr(tg, "status", "") == "polling":
+            with contextlib.suppress(Exception):
+                await tg._api("sendMessage", chat_id=tg_owner, text=words[:4000],
+                              reply_markup={"inline_keyboard": [[
+                                  {"text": "✓ Allow", "callback_data": f"wan:{wa_id}:1"},
+                                  {"text": "✗ Block", "callback_data": f"wan:{wa_id}:0"}]]})
+        with contextlib.suppress(Exception):
+            await self.broadcast({"type": "whatsapp_request", "wa_id": wa_id, "title": who, "text": text[:160]})
+
+    async def decide_newcomer(self, wa_id: str, allow: bool, by: str = "the owner, on WhatsApp") -> str:
+        """The owner's answer, from WhatsApp, Telegram or the desktop: one door."""
+        if not self.store.wa_get_chat(wa_id):
+            return "nobody by that number has written"
+        if not allow and wa_id == (self._c().get("owner_wa_id") or ""):
+            return "that's the owner"
+        self.store.wa_set_allowed(wa_id, 1 if allow else 0, by)
+        self.store.log("whatsapp", f"{'allowed' if allow else 'blocked'} {wa_id} ({by})",
+                       {"wa_id": wa_id, "allowed": allow, "by": by})
+        if allow:
+            agent = self.cfg.get("agent_name") or "Bento"
+            with contextlib.suppress(Exception):
+                await self.send(f"▲ You're in. I'm {agent}. Send me anything; /new starts a new session.",
+                                wa_id, quiet=True)
+        with contextlib.suppress(Exception):
+            await self.broadcast({"type": "whatsapp_chats"})
+        return "allowed" if allow else "blocked"
+
+    async def _owner_command(self, cmd: str, arg: str) -> str:
+        """/people, /allow, /block: the owner's, from their own WhatsApp."""
+        from .telegram_admin import decided
+        owner = self._c().get("owner_wa_id") or ""
+        if cmd == "/people":
+            ok, waiting = [], []
+            for c in self.store.wa_list_chats():
+                line = (f"• {c.get('name') or ''} +{c['wa_id']}".replace("  ", " ")
+                        + (" · owner" if c["wa_id"] == owner else "")
+                        + (f"\n   {'let in' if c['allowed'] else 'blocked'} {decided(c)}" if c.get("decided_at") else ""))
+                (ok if c["allowed"] else waiting).append(line)
+            out = "▲ Can talk to me\n" + ("\n".join(ok) or "only you")
+            if waiting:
+                out += "\n\nWrote, not allowed\n" + "\n".join(waiting)
+            return out + "\n\n/allow <number> lets somebody in. /block <number> stops them."
+        num = "".join(ch for ch in arg.split(" ")[0] if ch.isdigit())
+        if not num:
+            return f"▲ Who? {cmd} <number>. /people lists them."
+        said = await self.decide_newcomer(num, cmd == "/allow")
+        return {"allowed": f"▲ +{num} can talk to me now. I've told them.",
+                "blocked": f"▲ +{num} can no longer talk to me."}.get(said, f"▲ I can't: {said}.")
+
     def _conversation(self, chat: dict) -> str:
         cid = chat.get("conversation_id")
         if cid and any(c["id"] == cid for c in self.store.list_conversations(limit=500)):
             return cid
-        cid = self.store.create_conversation(f"WhatsApp · {chat.get('name') or chat['wa_id']}", origin="whatsapp")
+        from . import phonesessions
+        cid = phonesessions.start(self.store, "whatsapp", chat["wa_id"],
+                                  chat.get("name") or chat["wa_id"])
         self.store.wa_set_conversation(chat["wa_id"], cid)
+        chat["conversation_id"] = cid
         return cid
 
     async def _turn(self, chat: dict, wa_id: str, text: str):
@@ -759,14 +853,8 @@ class WhatsAppBridge(usersmod.Scoped):
         await self.broadcast({"type": "whatsapp_in", "conversation_id": cid,
                               "text": text[:160]})
         note = ("[Message arriving via WhatsApp — the user is away from the "
-                "machine. Reply in plain text (no markdown tables). Keep it "
-                "short enough to read on a phone.]\n\n")
-
-        async def built_history():
-            h, _info = await _history.build(self.store, cid, self.cfg, self.cfg.get("default_model", ""))
-            if h and h[-1].get("role") == "user" and str(h[-1].get("content") or "").strip() == text:
-                h = h[:-1]
-            return h + [{"role": "user", "content": note + text}]
+                "machine. Reply in plain text (no markdown tables). Do the whole "
+                "job before you reply; then say it in plain words a phone can show.]\n\n")
 
         async def emit(ev):
             # the turn is the screen's too (the Office, Chat), as Telegram's is
@@ -791,78 +879,23 @@ class WhatsAppBridge(usersmod.Scoped):
         engine = execmod.resolve_engine(self.cfg)
         await emit({"type": "turn_start", "model": engine if engine != "aria" else model})
         try:
-            return await self._turn_body(chat, wa_id, text, cid, emit, approver, model, engine,
-                                         exec_meta, built_history)
+            return await self._turn_body(chat, wa_id, text, cid, emit, approver, note)
         finally:
             await emit({"type": "turn_end"})
 
-    async def _turn_body(self, chat, wa_id, text, cid, emit, approver, model, engine,
-                         exec_meta, built_history):
-        from . import knowledge as _k
-        from . import usage as _usage
-        from . import executors as execmod
-        from . import fabric as fabricmod
-        mention = (fabricmod.parse_mention(self.store, text)
-                   if getattr(self.toolbox, "fabric", None) else None)
-        dept_hit = None
-        if not mention and getattr(self.toolbox, "fabric", None):
-            from . import company as _companymod
-            dept_hit = _companymod.parse_department(self.cfg, self.store, text)
-        if dept_hit:
-            # '@Sales …' from the phone is a task for that department, as it is at the desk
-            dept, task = dept_hit
-            _k.turn_started()
-            try:
-                reply = await fabricmod.department_reply(self.toolbox.fabric, dept["name"], task,
-                                                         cid, approver, "whatsapp")
-            finally:
-                _k.turn_ended()
-            result = {"steps": []}
-        elif mention:
-            # '@toolsmith …' from the phone goes straight to that specialist, as it does
-            # on Telegram and at the desk — whatever the machine's brain is
-            defn, task = mention
-            _k.turn_started()
-            try:
-                res = await self.toolbox.fabric.run_subagent(defn, task, conversation_id=cid,
-                                                             approver=approver)
-            finally:
-                _k.turn_ended()
-            reply = (f"@{defn['name']} · {res['status']}\n\n"
-                     + (res["content"] or res["fault"] or "(no output)"))
-            result = {"steps": res["steps"]}
-        elif engine != "aria":
-            _k.turn_started()
-            try:
-                reply, run = await execmod.forward(
-                    engine, text, self.cfg, execmod.default_workspace(self.cfg), emit=emit,
-                    session_id=self.store.exec_session(cid),
-                    prior=self.store.get_messages(cid)[:-1],
-                    team={"toolbox": self.toolbox, "store": self.store, "approver": approver,
-                          "conversation_id": cid, "surface": "whatsapp"})
-                if run and run.session_id:
-                    # kept in the conversation row, so a restart does not make every
-                    # phone thread a stranger (an in-memory dict did)
-                    self.store.set_exec_session(cid, run.session_id)
-                    exec_meta = {"engine": engine, "exec_session": run.session_id}
-            finally:
-                _k.turn_ended()
-            reply = reply or "(done — no text output)"
-            result = {"steps": [{"type": "executor", "name": engine}]}
-        else:
-            agent = Agent(self.cfg, self.toolbox, model, emit, approver,
-                          conversation_id=cid, surface="whatsapp")
-            _k.turn_started()
-            try:
-                result = await agent.run(await built_history())
-            finally:
-                _k.turn_ended()
-            reply = result["content"] or "(done — no text output)"
+    async def _turn_body(self, chat, wa_id, text, cid, emit, approver, note):
+        # one function for both phones (phoneturn.py): who is addressed, which brain, and
+        # the next brain when that one isn't available
+        from . import phoneturn
 
-        self.store.add_message(cid, "assistant", reply, {"steps": result["steps"], **exec_meta})
+        async def tell(line):
+            await self.send("↪ " + line, wa_id)
+        out = await phoneturn.answer(
+            self.store, self.cfg, self.toolbox, cid=cid, text=text, surface="whatsapp",
+            emit=emit, approver=approver, note=note, tell=tell)
+        reply = out["reply"]
+        self.store.add_message(cid, "assistant", reply, {"steps": out["steps"], **out["meta"]})
         self.store.touch_conversation(cid)
-        _usage.record(self.store, self.cfg, model, result.get("tokens") or {},
-                      surface="whatsapp", conversation_id=cid)
         await self.send(reply, wa_id)
         await self.send_files(reply, wa_id)
         await self.send_stage(cid, reply, wa_id)

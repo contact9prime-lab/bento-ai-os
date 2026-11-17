@@ -413,7 +413,9 @@ def test_the_chat_folds_and_only_a_person_folds_it():
     css = (ROOT / "agentos/ui/src/css/39-devscene.css").read_text()
     shell = (ROOT / "agentos/ui/src/shell.html").read_text()
     assert 'id="omni-fold"' in shell and "aria-expanded" in shell
-    assert "localStorage.getItem('devscene.chat')==='open'" in s, "folded unless this browser chose open"
+    # folded unless this browser chose open; the App Hub has the same panel, open unless folded
+    assert "return devChatHub()?'apphub.chat':'devscene.chat'" in s
+    assert "DEVCHAT.open=v?v==='open':devChatHub()" in s
     # a press, typing, a hotkey or a new answer opens it; a caret the page placed doesn't
     assert "addEventListener('pointerdown'" in omni and "focusin" not in omni
     for where in ("omniSummon(true);                       // come to the front", "wrap.classList.add('raised');",

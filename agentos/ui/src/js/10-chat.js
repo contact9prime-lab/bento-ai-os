@@ -32,6 +32,7 @@ function renderChat(body){
           <option value="full">Full autonomy</option>
         </select>
         <button id="ttsbtn" class="endbtn" title="Speak replies aloud"></button>
+        <button id="phonebtn" class="endbtn" title="Carry this chat on in Telegram or WhatsApp, or send its last answer or its story there" onclick="phoneSend()">➤ Phone</button>
         <button id="tracebtn" class="endbtn" title="Download everything this chat did as one JSON file: messages, every run, the gate's decisions, the office and who had which tools (secrets masked). Give it to an AI to find what went wrong." onclick="chatTrace()">⤓ JSON</button>
         <button id="clearses" class="endbtn" title="Wipe this conversation's messages and start fresh">Clear session</button>
         ${/* phone only: the three controls past the brain go behind one button —
@@ -239,7 +240,11 @@ async function loadConvs(){
   const row=c=>{
     const el=document.createElement('div');el.className='conv'+(c.id===currentConv?' active':'');
     el.innerHTML=`<span class="t"></span><button class="del">✕</button>`;
-    el.querySelector('.t').textContent=(RUNNING.has(c.id)?'● ':'')+(c.title||'untitled');
+    // a phone chat's session is named for the session: its chat is the group's heading
+    const ph=CONVTAB==='channels'&&c.phone;
+    el.querySelector('.t').textContent=(RUNNING.has(c.id)?'● ':'')+(ph?(c.phone.label||c.title||'untitled'):(c.title||'untitled'));
+    if(ph&&c.phone.open){const o=document.createElement('span');o.className='onphone';o.textContent='on the phone';
+      o.title='The session that chat is in now';el.insertBefore(o,el.querySelector('.del'))}
     if(chatFromMachine(c))el.classList.add('conv-machine',c.origin==='zero'?'zero':'team');
     if(RUNNING.has(c.id))el.querySelector('.t').style.color='var(--acc,#5eead4)';
     el.onclick=e=>{if(!e.target.classList.contains('del'))openConv(c.id)};
@@ -258,7 +263,19 @@ async function loadConvs(){
     :[['',()=>true]];
   if(CONVTAB==='huddles'){const nb=document.createElement('button');nb.className='endbtn conv-new-huddle';
     nb.textContent='＋ New huddle';nb.onclick=chatNewHuddle;box.appendChild(nb)}
-  groups.forEach(([label,test])=>{
+  // Channels: every session of one phone chat under that chat, with a way to start another here
+  if(CONVTAB==='channels'){
+    const seen=new Map();
+    items.forEach(c=>{const k=c.phone?c.phone.channel+':'+c.phone.to:'';if(!seen.has(k))seen.set(k,[]);seen.get(k).push(c)});
+    seen.forEach((its,k)=>{
+      if(k){const p=its[0].phone,h=document.createElement('div');h.className='convgrp phone';
+        const s=document.createElement('span');s.textContent=(p.channel==='telegram'?'Telegram':'WhatsApp')+' · '+p.chat+(its.length>1?' · '+its.length+' sessions':'');
+        const nb=document.createElement('button');nb.textContent='＋';nb.title='Start another session for this chat';nb.setAttribute('aria-label','New session for '+p.chat);
+        nb.onclick=()=>phoneNewSession(p.channel,p.to);h.append(s,nb);box.appendChild(h)}
+      else if(seen.size>1){const h=document.createElement('div');h.className='convgrp';h.textContent='Other';box.appendChild(h)}
+      its.forEach(c=>box.appendChild(row(c)))});
+  }
+  else groups.forEach(([label,test])=>{
     const its=items.filter(test);
     if(!its.length)return;
     if(label){const h=document.createElement('div');h.className='convgrp';h.textContent=label;box.appendChild(h)}
@@ -539,8 +556,8 @@ function paintForwardChip(){
   chip.innerHTML=(agent?'⇥ ':'▲ ')+esc(name)+'<span class="fwdmdl">'+esc(model)+'</span>';
   chip.title=(agent
       ?'Every turn on this machine is answered by '+name
-        +' — apps and App Studio still use '+((cfg&&cfg.agent_name)||'Aria')
-      :((cfg&&cfg.agent_name)||'Aria')+' answers, running on '+(cur.model||'no model yet'))
+        +' — apps and App Studio still use '+((cfg&&cfg.agent_name)||'Bento')
+      :((cfg&&cfg.agent_name)||'Bento')+' answers, running on '+(cur.model||'no model yet'))
     +'. Click to change it.';
   chip.classList.toggle('engine',agent);
 }

@@ -34,21 +34,47 @@ commands; every other enabled chat can only converse.
 | `/tools [search]` | what the agent can do |
 | `/logs [n\|search]` | the operator diary, plus what was recently denied or asked about |
 | `/perms` | who has been granted what |
-| `/clear` | wipe this conversation and start fresh |
+| `/new [name]` | start a new session. The one before is kept |
+| `/sessions` | your sessions in this chat, newest first, with a button to go back to each |
+| `/resume <number\|name>` | go back to an earlier session, with everything that was said in it |
+| `/clear` | wipe this session's messages |
 | `/updown [on\|off]` | a message when the agent goes offline or comes back |
 | `/companies` | your companies, with a button to open each |
 | `/company [name]` | the open company and its departments; with a name, open that one |
 | `/people` | who may talk to the agent here, and who wrote and is waiting |
+| `/groups [on\|off]` | whether the agent answers in group chats, and the groups a message came in from, each with a button |
+| `/members <group>` | who wrote in a group and whether each is answered, with a button to allow or block each, and one to answer only the people you pick |
 | `/allow <@name\|chat id>` | let somebody in. Somebody who hasn't written yet is let in on their first message |
 | `/block <@name\|chat id>` | stop somebody talking to the agent |
 
 The commands appear as Telegram's **Menu** button and `/` autocomplete — AgentOS registers them
 itself (`setMyCommands`) when the bridge starts and again when a chat becomes the owner, so there
 is nothing to type into BotFather and no hand-kept copy to go stale. The menu is scoped: the
-owner's chat sees the console, every other enabled chat sees only `/help`, `/status` and `/clear`,
+owner's chat sees the console, every other enabled chat sees only `/help`, `/status`, `/clear` and the
+session commands (`/new`, `/sessions`, `/resume`),
 because offering somebody a command they will then be refused is worse than not offering it. If
 the menu ever looks out of date, restart the bridge from the Telegram app — publishing happens on
 start. (Telegram clients cache the list briefly; it can take a minute to appear.)
+
+### From the desktop to your phone
+
+In Chat, **➤ Phone** sends the open chat to Telegram or WhatsApp. You pick what goes and which chat gets it:
+
+- **Carry the chat on there.** That chat on your phone picks it up with everything said so far. The session the
+  phone had is kept, and `/sessions` lists both.
+- **The last answer**, as a message.
+- **The story**, as the pictures and video a phone gets. The Stage has the same ➤ button.
+
+The list shows only your own account's chats: yours, people you let in, and groups that are answered. A group
+row says everyone in it will see what you send. A WhatsApp chat whose 24-hour window is closed is greyed with
+the reason. Only you can do this; your agents can't. Each send is a row in the Ledger.
+
+![The Phone button in Chat, sending a chat to Telegram or WhatsApp](screenshots/send-to-phone.png)
+
+Chat's **Channels** tab lists every session of a phone chat under that chat, marks the one open on the phone,
+and ＋ starts another from the desktop.
+
+![A phone chat and its earlier sessions listed in Chat](screenshots/channel-sessions.png)
 
 Two things about it are deliberate. **A command is never a way around the gate:** `/run` is
 `delegate` and `/model` is `configure_agentos` (or `set_engine` when it names an agent such as Claude Code), so each goes through the same policy decision,
@@ -78,6 +104,28 @@ bot, with the owner badged and an enable/disable toggle for each. Only enabled c
 agent. Connect more channels by adding the bot to a group (as a member) or to a broadcast channel (as
 an admin) — new arrivals start blocked until you permit them in the app. (In groups, a bot only sees
 messages that mention it unless you disable privacy mode via BotFather.)
+
+**Group chats are off until you turn them on.** A bot can be added to any group, so a group is
+answered only when two things are true: **Answer in group chats** is on (the Telegram app, or
+`/groups on` from your phone), and you enabled that group. While it is off the agent says nothing
+in any group. The first message from a new group reaches you on your own chat with **Allow this
+group** and **Block**; allowing one turns group chats on. `/groups` lists every group a message
+came in from with a button for each, and `/groups off` stops all of them while keeping your picks.
+Everybody in an enabled group can talk to the agent. A machine that already had a group enabled
+keeps answering it.
+
+**Who may talk, as tables.** The Telegram app lists **People** and **Groups and channels** in two
+tables: who, whether they are answered, when that was decided and by whom (you on Telegram, an
+account at the desktop, the allow-list, or pairing), how many messages, and when they last wrote.
+Under each group is everybody who wrote to the agent there. A group answers **everybody in it** or
+**only the people you pick**, and either way you can block one person. You are always answered.
+Decisions made before this was recorded read "not recorded". WhatsApp's card has the same people
+table.
+
+**A request to let somebody in goes to the account that owns the channel.** It is asked on that
+account's owner chat (Telegram buttons, or `/allow <number>` on WhatsApp), and on its desktop. A
+new WhatsApp number is also asked on the account's Telegram when that is paired. WhatsApp groups
+are not read at all: the Business API does not carry them and the linked device skips them.
 
 **Letting somebody in before they write.** That toggle only exists once there is a row, and there is
 no row until somebody has messaged you — so on its own it means a colleague has to be turned away

@@ -73,8 +73,8 @@ def test_a_finished_step_reads_as_finished_in_both(machine, capsys):
     """Same probe, so a machine set up half way in the browser opens here with the
     right steps already green."""
     cfg, store = machine
-    cfg["agent_name"] = "Bento"
-    setup_tui._draw(ob.state(cfg, store), "Bento")
+    cfg["agent_name"] = "Juno"
+    setup_tui._draw(ob.state(cfg, store), "Juno")
     lines = [ln for ln in capsys.readouterr().out.splitlines() if "Name your agent" in ln]
     assert lines and lines[0].strip().startswith("✓")
 

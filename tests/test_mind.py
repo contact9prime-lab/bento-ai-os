@@ -13,8 +13,12 @@ our agents and their data and how that is interconnected"). What these defend:
   pasted into an onclick;
 - the terminal gets the same snapshot (`bento mind`).
 """
+import json
+import re
 import sys
 from pathlib import Path
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -192,3 +196,77 @@ def test_the_core_speaks_with_the_voice_and_the_neurons_rest_awake():
     assert "mindNodeFibre(" in draw and "quadraticCurveTo(qx" not in draw
     layout = src.split("function mindLayout(", 1)[1].split("\n}", 1)[0]
     assert "far=" in layout and "den.push" in layout
+
+
+def test_other_companies_and_unattached_agents_are_one_cluster_each(tmp_path):
+    """Reported with a screenshot of 47 clusters: "the mind should be better organized". Only the
+    open company's departments were grouped; everybody in a parked company, and everybody in no
+    company, stood as a cluster of their own."""
+    store = Store(tmp_path / "t.db")
+    loose = [f"solo{i}" for i in range(mind.MAX_OWN + 1)]
+    for n in ["seller", "closer", "ops1", "ops2", "legal1"] + loose:
+        store.save_subagent({"name": n, "soul": "x"})
+    cfg = {"agent_name": "Aria",
+           "company": {"id": "aaaa1111", "name": "Open Co"},
+           "office": {"departments": [{"name": "Sales", "members": ["seller", "closer"], "lead": "seller"}]},
+           "companies": {"bbbb2222": {"company": {"id": "bbbb2222", "name": "Other Co"},
+                                      "office": {"departments": [
+                                          {"name": "Ops", "members": ["ops1", "ops2"], "lead": "ops1"},
+                                          {"name": "Legal", "members": ["legal1"]}]}}}}
+    rid = store.fabric_run_start("delegate", "ops2", "reconcile the ledger")
+    store.fabric_run_finish(rid, "ok")
+    s = mind.snapshot(store, cfg, running={"ops1"})
+    hubs = {h["id"]: h for h in s["hubs"]}
+    assert set(hubs) == {"memory", "knowledge", "missions", "dept:Sales", "co:bbbb2222", mind.LOOSE}
+    other = hubs["co:bbbb2222"]
+    assert other["label"] == "Other Co" and other["company"] and other["busy"], "one working person lights it"
+    assert sorted(other["members"]) == ["legal1", "ops1", "ops2"]
+    people = {n["label"]: n for n in s["nodes"] if n["hub"] == "co:bbbb2222" and n["kind"] == "person"}
+    assert people["ops1"]["title"].startswith("Ops") and people["legal1"]["title"].startswith("Legal")
+    assert any(n["kind"] == "run" and n["hub"] == "co:bbbb2222" for n in s["nodes"]), "its work sits on it"
+    assert hubs[mind.LOOSE]["label"] == mind.LOOSE_LABEL and sorted(hubs[mind.LOOSE]["members"]) == sorted(loose)
+    assert s["where"]["ops2"] == "co:bbbb2222" and s["where"]["solo0"] == mind.LOOSE
+    row = {t["name"]: t for t in s["team"]}
+    assert row["ops1"]["hub"] == "co:bbbb2222" and row["ops1"]["group"] == "Other Co"
+    assert row["seller"]["hub"] == "dept:Sales" and row["seller"]["dept"] == "Sales"
+
+
+def test_a_few_unattached_agents_keep_a_cluster_each(tmp_path):
+    store = Store(tmp_path / "t.db")
+    for n in ("a", "b"):
+        store.save_subagent({"name": n, "soul": "x"})
+    hubs = {h["id"] for h in mind.snapshot(store, {"agent_name": "Aria"})["hubs"]}
+    assert {"agent:a", "agent:b"} <= hubs and mind.LOOSE not in hubs
+
+
+def test_the_page_groups_its_team_list_by_cluster():
+    js = (ROOT / "agentos/ui/src/js/01g-mind.js").read_text() if "ROOT" in globals() else \
+        (Path(__file__).parent.parent / "agentos/ui/src/js/01g-mind.js").read_text()
+    assert "S.team.filter(a=>a.hub===h.id)" in js, "one row per cluster, not one per person"
+    assert "(a.hub||'').indexOf('agent:')===0" in js
+    assert "h.company?" in js and ":h.loose?" in js, "a task goes only to a department of the open company"
+
+
+def test_speaking_moves_the_cores_edge_and_never_floods_the_picture():
+    """Reported with a screenshot, "the mind animation is so screwed": speaking, the core was a
+    white disc some 220px across with lumpy rings 318px out, over the clusters. Every reach is
+    a multiple of the radius in MIND_CORE, and the radius itself is bounded."""
+    import shutil
+    import subprocess
+    if not shutil.which("node"):
+        pytest.skip("node is not installed")
+    src = (ROOT / "agentos/ui/src/js/01g-mind.js").read_text()
+    decl = re.search(r"^var MIND_CORE=.*?;$", src, re.M).group(0)
+    fn = re.search(r"^function mindCoreR\(.*$", src, re.M).group(0)
+    js = decl + fn + ("const r=mindCoreR(1,1),q=mindCoreR(.25,0);"
+                      "console.log(JSON.stringify({r,q,over:mindCoreR(9,9),halo:r*MIND_CORE.halo,ring:r*MIND_CORE.ring,"
+                      "edge:r*(1+.14+MIND_CORE.edge),rings:MIND_CORE.rings}))")
+    d = json.loads(subprocess.run(["node", "-e", js], capture_output=True, text=True, check=True).stdout)
+    assert d["r"] <= 45 and d["r"] - d["q"] <= 12, "speaking adds a few pixels to the core, it does not double it"
+    assert d["over"] == d["r"], "a level past 1 changes nothing"
+    assert d["edge"] <= 70 and d["halo"] <= 160 and d["ring"] <= 130 and d["rings"] <= 4
+    core = src.split("function mindCore(", 1)[1].split("\n}", 1)[0]
+    assert "R*4.4" not in core and "u*3.2" not in core and "*.92" not in core
+    css = (ROOT / "agentos/ui/src/css/26-mind.css").read_text()
+    assert "body.mind-telling:not(.has-win) #omnibar" in css, "the spoken line is not written under the prompt bar"
+    assert "classList.remove('mind-telling')" in src

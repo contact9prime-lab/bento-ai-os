@@ -290,7 +290,7 @@ var OB_PANES={
     <div id="ob-co-out"></div>`,
 
   name:()=>`<label class="job-q"><span>What should it be called?</span>
-      <input id="ob-name" value="${esc((typeof cfg!=='undefined'&&cfg.agent_name)||'Aria')}"
+      <input id="ob-name" value="${esc((typeof cfg!=='undefined'&&cfg.agent_name)||'Bento')}"
         spellcheck="false" autocomplete="off">
       <em>It answers to this, signs its work with it, and it is what the menu bar says.</em>
     </label>
@@ -451,7 +451,7 @@ var OB_CLOUD=[
    where:'console.anthropic.com'},
   {id:'google',label:'Google (Gemini)',model:'gemini-3.8-flash',
    where:'aistudio.google.com'},
-  {id:'openai',label:'OpenAI',model:'gpt-6-sol',where:'platform.openai.com'},
+  {id:'openai',label:'OpenAI',model:'gpt-6.1-sol',where:'platform.openai.com'},
   {id:'deepseek',label:'DeepSeek',model:'deepseek-flash',where:'platform.deepseek.com'},
   {id:'moonshot',label:'Moonshot (Kimi)',model:'kimi-k3.1-pro',
    where:'platform.moonshot.ai'},
@@ -1068,7 +1068,13 @@ var OB_WIRE={
         <div class="ob-meter"><i id="ob-voice-meter"></i></div>
         <p class="mut" id="ob-voice-out" aria-live="polite">${f.heard&&f.heard.at?`Last heard: “${esc(f.heard.text||'')}”`:''}</p>
       </div>
-      <div class="job-go"><button class="wiz-next" id="ob-voice-go" ${hear.engine?'':'disabled'}>Listen now</button></div>`;
+      <div class="job-go"><button class="wiz-next" id="ob-voice-go" ${hear.engine?'':'disabled'}>Listen now</button></div>
+      <div id="ob-vp"></div>`;
+    // your voice print: the same wake word, recorded three times, so only your voice wakes it
+    const vpPaint=async()=>{const el=$('#ob-vp');if(!el)return;
+      el.innerHTML=voicePrintHTML(await voicePrintLoad(),first);
+      voicePrintWire(el,async()=>{await vpPaint();if(typeof obRefresh==='function')obRefresh(true)})};
+    vpPaint();
     const put=async body=>{
       const r=await fetch('/api/face',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
       const d=await r.json().catch(()=>({}));

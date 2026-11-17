@@ -243,7 +243,7 @@ def describe(rec: dict) -> str:
 def principals(store, cfg: dict) -> list[dict]:
     """Everybody who gets a face: your agent, you, and every specialist that exists.
     A character is never invented for somebody who is not there."""
-    out = [{"key": AGENT, "label": (cfg or {}).get("agent_name") or "Aria", "kind": "agent"},
+    out = [{"key": AGENT, "label": (cfg or {}).get("agent_name") or "Bento", "kind": "agent"},
            {"key": ME, "label": "you", "kind": "me"}]
     try:
         for s in store.list_subagents():
