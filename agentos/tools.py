@@ -2924,15 +2924,28 @@ class Toolbox(usersmod.Scoped):
             return (f"{state['latest']} is available (you have {updmod.current()}).\n"
                     + (f"{len(waiting)} change(s) waiting:\n{lines}\n" if waiting else "")
                     + ("Say so and I will install it." if ok else f"It cannot be installed: {why}"))
-        res = await updmod.apply(self.cfg, run_tests=True)
+        # The way Settings and `bento update --apply` go: this copy, every other copy on
+        # the machine, then a restart that says why on every account's screens and phones.
+        # Asked for as "update bento via WhatsApp … carried the same way as bento update,
+        # only when the account asking is admin" (the check above, and the gate asks a
+        # person every time: policy.person_rule).
+        whole = getattr(self, "update_everywhere", None)
+        res = await (whole() if whole else updmod.apply(self.cfg, run_tests=True))
         if not res.get("ok"):
             return f"[error] {res.get('error')}"
+        others = [o for o in (res.get("others") or []) if not o.get("ok")]
+        also = "".join(f"\nThe other copy in {o['root']} was not updated: {o['error']}" for o in others)
         if res.get("unchanged"):
-            return "Already at the newest commit — nothing changed."
+            return "Already at the newest commit — nothing changed." + also
         got = "\n".join(f"  {c['hash']}  {c['title']}" for c in (res.get("changes") or []))
-        return (f"Updated {res['from']} → {res['to']} ({res['files']} files, now "
-                f"{res.get('version') or '?'}).\n{got}\n"
-                f"It is on disk but not loaded — restart to run it (restart_agentos).")
+        head = (f"Updated {res['from']} → {res['to']} ({res['files']} files, now "
+                f"{res.get('version') or '?'}).\n{got}{also}\n")
+        down = getattr(self, "going_down", None)
+        if not down:
+            return head + "It is on disk but not loaded — restart to run it (restart_agentos)."
+        asyncio.get_running_loop().create_task(down("to install an update", wait_turns=True))
+        return head + ("Restarting once this reply is out, in about a minute. Every account is told "
+                       "why, and the phones hear when it is back.")
 
     async def share_folder(self, path: str, mode: str = "ro", users: str = "",
                            remove: bool = False) -> str:
@@ -6400,8 +6413,10 @@ TOOL_SCHEMAS = [
     {
         "name": "update_agentos",
         "description": ("Check whether a newer AgentOS is published, and optionally install "
-                        "it. Checking changes nothing; installing verifies against the test "
-                        "suite and rolls back on failure. Admin only."),
+                        "it. Checking changes nothing. Installing is what `bento update --apply` "
+                        "does: every copy on this machine, verified against the test suite and "
+                        "rolled back on failure, then a restart once your reply is out, with "
+                        "every account told why. Admin only; the person approves each install."),
         "parameters": {"type": "object", "properties": {
             "apply": {"type": "boolean",
                       "description": "install it (default false = just check)"}}},

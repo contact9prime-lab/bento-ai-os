@@ -560,6 +560,8 @@ def service_stop() -> tuple[bool, str]:
     not stopped by `systemctl stop`, and reporting success there leaves the thing
     the user wanted stopped still listening.
     """
+    from . import goingdown
+    goingdown.note("because it was stopped from a terminal", goingdown.who(), back=False, keep=True)
     port = _port()
     mgr = service_manager()
     said = ""
@@ -604,6 +606,8 @@ def service_stop() -> tuple[bool, str]:
 
 
 def service_restart() -> tuple[bool, str]:
+    from . import goingdown
+    goingdown.note("to restart", goingdown.who(), keep=True)
     port = _port()
     mgr = service_manager()
     if mgr == "systemd":

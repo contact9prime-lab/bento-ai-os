@@ -338,6 +338,9 @@ async def startup():
     scheduler = Scheduler(cfg, store, toolbox, broadcast)
     scheduler.zero_job = _zero_job      # a schedule made at a Zero's screen runs as its chat does
     toolbox.scheduler = scheduler
+    # the update tool (a chat, a phone) goes the way Settings and `bento update` go
+    toolbox.update_everywhere = _update_everywhere
+    toolbox.going_down = _going_down
     mcp = MCPManager(cfg, store)
     toolbox.mcp = mcp
     telegram = TelegramBridge(cfg, store, toolbox, _owner_send())
@@ -1759,11 +1762,7 @@ async def _zero_update_from_hub(lk: dict, auto: bool = False) -> dict:
             await state["broadcast"]({"type": "update_done", **res})
             if res.get("ok") and res.get("from") != res.get("to"):     # something moved: restart into it
                 await asyncio.sleep(1.0)
-                await state["broadcast"]({"type": "reload", "delay": 8000})
-                await asyncio.sleep(0.5)
-                from . import desktop as desktopmod
-                state["down_reason"] = "to install an update"
-                desktopmod.restart_service()
+                await _going_down("to install an update, as its hub asked", reload_ms=8000)
         finally:
             _ZERO_UPDATING["on"] = False
     asyncio.create_task(go())
@@ -2339,6 +2338,52 @@ def _device_rows() -> list:
     return sorted(rows, key=lambda x: -x.get("last", 0))[:64]
 
 
+
+def _person_name(uid: str) -> str:
+    """Who asked, in words, for the going-down line: '' on a machine without accounts."""
+    if not uid or not usersmod.enabled():
+        return ""
+    u = usersmod.get(uid) or {}
+    return str(u.get("display") or u.get("name") or "")
+
+
+async def _announce_down(reason: str, back: bool = True) -> None:
+    """Say on every account's pages why this machine is about to go, and who asked.
+    The phones hear it from the shutdown hook, which reads the same state."""
+    by = _person_name(usersmod.current() or "")
+    state["down_reason"], state["down_by"], state["down_said"] = reason, by, True
+    state["down_at"] = time.time()
+    from . import goingdown
+    with contextlib.suppress(Exception):
+        await state["broadcast"]({"type": "going_down", "reason": reason, "by": by, "back": back,
+                                  "text": goingdown.words(state["cfg"].get("agent_name") or "Bento",
+                                                          reason, by, back)})
+    with contextlib.suppress(Exception):
+        state["store"].log("system", f"going offline {reason}" + (f", asked by {by}" if by else ""))
+
+
+async def _going_down(reason: str, *, back: bool = True, wait_turns: bool = False,
+                      reload_ms: int = 6000) -> None:
+    """The one way this server takes itself down: say why on every account's pages (the
+    shutdown hook says it on every phone), then restart. Asked for as "when Bento is going
+    down it should emit the reason on the other accounts". `wait_turns` is for a restart
+    asked from inside a turn (the update tool, from a chat or a phone): the answer has to
+    reach the person before the server that would send it goes."""
+    if wait_turns:
+        await asyncio.sleep(10)                     # the reply after the tool still has to be said
+        for _ in range(80):
+            if not state.get("turns"):
+                break
+            await asyncio.sleep(1)
+    await _announce_down(reason, back=back)
+    await asyncio.sleep(0.6)
+    with contextlib.suppress(Exception):
+        await state["broadcast"]({"type": "reload", "delay": reload_ms})
+    await asyncio.sleep(0.5)
+    from . import desktop as desktopmod
+    desktopmod.restart_service()
+
+
 @app.on_event("shutdown")
 async def shutdown():
     # Kept first: on a free host this is the only copy of the home, and the host gives a
@@ -2367,14 +2412,38 @@ async def shutdown():
                 await state[k].stop()
     if "scheduler" in state:
         state["scheduler"].stop()
-    # Say goodbye on every Telegram that came up (the machine's and each account's), briefly:
-    # a shutdown is never held up by a phone.
+    # Why: said by this server's own going-down path, or noted by a terminal just before
+    # it stopped the service (goingdown.take), or nobody said: the service was stopped.
+    from . import goingdown as _gd
+    left = _gd.take()
+    if time.time() - float(state.get("down_at") or 0) > 300:
+        # said for something that did not happen (a power action that failed): not this stop
+        state["down_reason"], state["down_by"], state["down_said"] = "", "", False
+    if not state.get("down_reason"):
+        state["down_reason"] = left.get("reason") or ""
+        state["down_by"] = left.get("by") or ""
+    if not state.get("down_said"):
+        # a stop nobody announced here (a terminal, systemd, the machine shutting down):
+        # every account's pages hear it before the socket closes
+        with contextlib.suppress(Exception):
+            await asyncio.wait_for(state["broadcast"]({
+                "type": "going_down", "reason": state.get("down_reason") or "", "by": state.get("down_by") or "",
+                "back": left.get("back", True) if left else False,
+                "text": _gd.words(state["cfg"].get("agent_name") or "Bento", state.get("down_reason") or "",
+                                  state.get("down_by") or "", left.get("back", True) if left else False)}), 2)
+    # Say goodbye on every Telegram and WhatsApp that came up (the machine's and each
+    # account's), briefly: a shutdown is never held up by a phone.
+    services = [b for b in list(getattr(usersmod, "_services", {}).values()) if isinstance(b, dict)]
     bridges = [state["telegram"]] if "telegram" in state else []
-    bridges += [b.get("telegram") for b in list(getattr(usersmod, "_services", {}).values())
-                if isinstance(b, dict) and b.get("telegram") is not None]
+    bridges += [b.get("telegram") for b in services if b.get("telegram") is not None]
     for tg in {id(b): b for b in bridges}.values():
         with contextlib.suppress(Exception):
-            await asyncio.wait_for(tg.say_down(state.get("down_reason") or ""), 4)
+            await asyncio.wait_for(tg.say_down(state.get("down_reason") or "", state.get("down_by") or ""), 4)
+    was = [state["whatsapp"]] if "whatsapp" in state else []
+    was += [b.get("whatsapp") for b in services if b.get("whatsapp") is not None]
+    for wa in {id(b): b for b in was}.values():
+        with contextlib.suppress(Exception):
+            await asyncio.wait_for(wa.say_down(state.get("down_reason") or "", state.get("down_by") or ""), 4)
     if "telegram" in state:
         state["telegram"].stop()
     if "whatsapp" in state:
@@ -2917,10 +2986,7 @@ async def api_restart(request: Request):
     from . import desktop as desktopmod
 
     async def _finish():
-        await state["broadcast"]({"type": "reload", "delay": 6000})
-        await asyncio.sleep(0.5)
-        state["down_reason"] = "to restart"   # said on Telegram as it goes (say_down)
-        desktopmod.restart_service()
+        await _going_down("to restart")
 
     state["store"].log("system", "restart requested")
     asyncio.create_task(_finish())
@@ -2951,32 +3017,47 @@ async def api_update_apply(request: Request, body: dict | None = None):
         cfgmod.save_config(state["cfg"])
         return {"ok": True, "skipped": body["skip"]}
 
+    res = await _update_everywhere(run_tests=bool(body.get("run_tests", True)),
+                                   allow_unsigned=bool(body.get("allow_unsigned")),
+                                   switch=bool(body.get("switch")))
+    if not res.get("ok"):
+        return JSONResponse(res, status_code=400)
+    if res.get("unchanged"):
+        return res                                   # nothing new for the copy that runs: no restart
+
+    async def _finish():
+        await asyncio.sleep(1.0)
+        await _going_down("to install an update")
+    asyncio.create_task(_finish())
+    return {**res, "restarting": True}
+
+
+async def _update_everywhere(run_tests: bool = True, allow_unsigned: bool = False,
+                             switch: bool = False) -> dict:
+    """What `bento update --apply` does, for Settings and for the agent's tool (a chat, a
+    phone): this copy, then every other copy of this program on the machine
+    (updates.other_copies), each by its own code. The caller restarts (`_going_down`).
+    Asked for as "the update should be carried the same way as bento update"."""
+    from . import updates as updmod
+
     async def say(msg):
         await state["broadcast"]({"type": "update_progress", "message": msg})
 
     loop = asyncio.get_running_loop()
     res = await updmod.apply(
-        state["cfg"], run_tests=bool(body.get("run_tests", True)),
+        state["cfg"], run_tests=run_tests,
         log=lambda m: loop.call_soon_threadsafe(asyncio.ensure_future, say(m)),
-        allow_unsigned=bool(body.get("allow_unsigned")),
-        **({"switch": True} if body.get("switch") else {}))
+        allow_unsigned=allow_unsigned, **({"switch": True} if switch else {}))
+    if res.get("ok"):
+        res["others"] = []
+        for other in await asyncio.to_thread(updmod.other_copies):
+            await say(f"updating the other copy in {other}…")
+            got = await asyncio.to_thread(updmod.update_copy, other, run_tests, allow_unsigned)
+            res["others"].append(got)
+            await say(f"{other}: " + ("up to date" if got["ok"] else "not updated: " + got["error"]))
     state["store"].log("system", f"update: {res}")
-    if not res.get("ok"):
-        await state["broadcast"]({"type": "update_done", **res})
-        return JSONResponse(res, status_code=400)
-
-    async def _finish():
-        # The page first: it must be told to come back, and by whom, before the
-        # server that would tell it disappears.
-        await state["broadcast"]({"type": "update_done", **res})
-        await asyncio.sleep(1.0)
-        await state["broadcast"]({"type": "reload", "delay": 6000})
-        await asyncio.sleep(0.5)
-        from . import desktop as desktopmod
-        state["down_reason"] = "to install an update"   # said on Telegram as it goes (say_down)
-        desktopmod.restart_service()
-    asyncio.create_task(_finish())
-    return {**res, "restarting": True}
+    await state["broadcast"]({"type": "update_done", **res})
+    return res
 
 
 @app.post("/api/update/rollback")
@@ -3001,11 +3082,7 @@ async def api_update_rollback(request: Request):
     async def _finish():
         await state["broadcast"]({"type": "update_done", "rolled_back_by_you": True, **res})
         await asyncio.sleep(1.0)
-        await state["broadcast"]({"type": "reload", "delay": 6000})
-        await asyncio.sleep(0.5)
-        from . import desktop as desktopmod
-        state["down_reason"] = "to undo the last update"   # said on Telegram as it goes (say_down)
-        desktopmod.restart_service()
+        await _going_down("to undo the last update")
     asyncio.create_task(_finish())
     return {**res, "restarting": True}
 
@@ -3019,11 +3096,7 @@ async def api_update_restart(request: Request):
         return no
 
     async def _go():
-        await state["broadcast"]({"type": "reload", "delay": 6000})
-        await asyncio.sleep(0.8)
-        from . import desktop as desktopmod
-        state["down_reason"] = "to start the update"   # said on Telegram as it goes (say_down)
-        desktopmod.restart_service()
+        await _going_down("to start the update")
     asyncio.create_task(_go())
     return {"ok": True, "restarting": True}
 
@@ -4257,6 +4330,10 @@ async def power_exec(action: str) -> tuple[bool, str]:
     spec = POWER_ACTIONS.get(action)
     if not spec:
         return False, f"unknown action '{action}'"
+    if action in ("restart", "poweroff"):
+        # the whole computer: every account loses its desktop and its agent, so each is told why
+        await _announce_down("because the computer is restarting" if action == "restart"
+                             else "because the computer is shutting down", back=action == "restart")
     import sys as _sys
     argv = spec["darwin"] if _sys.platform == "darwin" else spec["linux"]
     try:
@@ -10767,7 +10844,8 @@ async def api_restore_apply(body: dict, request: Request):
                             status_code=400)
     _backup_audit("backup.restore", "restore applying: restarting")
     # after the answer has left: a restart can re-exec this very process
-    asyncio.get_running_loop().call_later(0.6, desktopmod.restart_service)
+    asyncio.get_running_loop().call_later(
+        0.6, lambda: asyncio.ensure_future(_going_down("to restore a backup")))
     return {"ok": True, "restarting": True}
 
 
@@ -10800,8 +10878,8 @@ STANDBY_OPEN = ("/api/standby", "/login", "/api/remote/login", "/api/users/", "/
 
 
 def _standby_restart(delay: float = 0.8) -> None:
-    from . import desktop as desktopmod
-    asyncio.get_running_loop().call_later(delay, desktopmod.restart_service)
+    asyncio.get_running_loop().call_later(
+        delay, lambda: asyncio.ensure_future(_going_down("for a cloud standby hand-over")))
 
 
 # ---- a free cloud machine's memory, kept in its own storage bucket (keep.py) --------
@@ -11484,8 +11562,7 @@ async def api_snapshot_restore(sid: str):
             shutil.copy2(py, src / py.name)
     state["store"].log("system", f"snapshot restored: {sid}"
                        + ("" if code else " (data only: it was taken on another version)") + " — restarting")
-    from . import desktop as desktopmod
-    desktopmod.restart_service()
+    asyncio.create_task(_going_down("to restore a snapshot"))
     return {"ok": True, "restarting": True}
 
 

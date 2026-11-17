@@ -653,6 +653,8 @@ function handle(ev){
     case 'update': showUpdate(ev);if(typeof kioskUpdate==='function')kioskUpdate(ev); break;   // a newer version exists; installing still asks
     case 'update_progress': updateProgress(ev);if(typeof kioskUpdate==='function')kioskUpdate(ev); break;
     case 'update_done': updateDone(ev); break;
+    // the machine is about to go, and why: said on every account's screen (server._announce_down)
+    case 'going_down': goingDown(ev); break;
     case 'suggestion': showSuggestion(ev); break;    // at most one proactive idea at a time
     case 'accounts':
       // a sign-in came back (in another tab, or from a phone): the card and the

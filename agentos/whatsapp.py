@@ -278,6 +278,16 @@ class WhatsAppBridge(usersmod.Scoped):
         self.store.log("whatsapp", "→ said something about a sign-in link" if quiet else f"→ sent: {text[:200]}")
         return "sent via WhatsApp"
 
+    async def say_down(self, reason: str = "", by: str = "") -> None:
+        """From the server's shutdown, as Telegram's: why it is going, said to the owner's
+        chat. A Cloud API chat outside its 24-hour window refuses it quietly (send)."""
+        c = self._c()
+        if not (c.get("enabled") and c.get("owner_wa_id") and c.get("status_messages", True) is not False):
+            return
+        name = self.cfg.get("agent_name") or "Bento"
+        await self.send(f"▼ {name} is going offline{(' ' + reason) if reason else ''}"
+                        f"{(', asked by ' + by) if by else ''}. It will be back in a minute or two.")
+
     async def say_wall(self, wa_id: str, text: str, buttons: list) -> None:
         """A line about a sign-in link (handoff.py). No buttons here: an address is in the
         words already, and anything else is answered by replying with its word."""

@@ -420,6 +420,22 @@ itself; from elsewhere, `bento service restart`.
 A bare `bento update` never pulls. The same machinery backs Settings → Updates, the
 About panel and the background check, so all four agree about what is waiting.
 
+**Settings, a chat and your phone update the same way.** Settings → System's Update,
+and asking your agent to update Bento (in Chat, on Telegram or on WhatsApp), do what
+`bento update --apply` does: this copy, any other copy of Bento on the machine (the
+installer's clone and the folder the service really runs from), the test check, then a
+restart. Only an admin account may ask, and you approve each install, even at full
+autonomy. Checking for an update changes nothing and asks nothing.
+
+**Everybody is told why Bento goes down.** An update, a restart, a rollback, a restore,
+`bento service stop` or the computer itself restarting: every account's screen shows
+"Aria is going offline to install an update, asked by Piyush", and every Telegram and
+WhatsApp that is set up hears it too. A file the update would add that is already there,
+untracked, is cleared when it is identical to what arrives, and stops the update by name
+when it is not.
+
+![Every account's screen says why Bento is going offline](screenshots/going-down.png)
+
 **Two sources, because they answer for different installs.** `agentos/VERSION` is the
 only thing a pip/wheel copy can compare against. The checkout's own git is the only
 thing that knows exactly which commits are waiting. So a report looks like one of:

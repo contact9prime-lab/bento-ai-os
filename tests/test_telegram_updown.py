@@ -54,6 +54,6 @@ def test_it_can_be_switched_off_and_never_holds_a_shutdown(tmp_path):
     srv = (ROOT / "agentos/server.py").read_text()
     sh = srv[srv.index("Say goodbye on every Telegram"):][:900]
     assert "asyncio.wait_for(tg.say_down(" in sh and ", 4)" in sh
-    assert 'state["down_reason"] = "to install an update"' in srv
+    assert 'await _going_down("to install an update")' in srv, "an update says why it goes"
     src = (ROOT / "agentos/telegram.py").read_text()
     assert "\nimport contextlib\n" in src

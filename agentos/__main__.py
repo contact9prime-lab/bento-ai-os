@@ -8829,21 +8829,23 @@ def _served_behind(tracked: str) -> None:
     error": the terminal's clone said up to date while the service ran a development
     tree (a systemd drop-in) three releases behind. Said here, so "up to date" is
     never read as being about the desktop the person is looking at."""
+    from . import updates as upd
+    for other in upd.other_copies():
+        _say_behind(other, tracked)
+
+
+def _say_behind(other, tracked: str) -> None:
     import subprocess
-    from . import desktop
-    other = desktop.served_root()
-    if not other:
-        return
     ref = tracked
     subprocess.run(["git", "fetch", "-q", *ref.split("/", 1)], cwd=str(other), capture_output=True, timeout=120)
     n = subprocess.run(["git", "rev-list", "--count", f"HEAD..{ref}"], cwd=str(other),
                        capture_output=True, text=True).stdout.strip()
     ver = (other / "agentos" / "VERSION").read_text().strip() if (other / "agentos" / "VERSION").exists() else "?"
     if n and n != "0":
-        print(f"! but Bento runs from {other}, which is on {ver}, {n} commit(s) behind {tracked}.\n"
-              f"  update that copy too:  bento update --apply")
+        print(f"! but {other} is on {ver}, {n} commit(s) behind {tracked}.\n"
+              f"  bento update --apply updates it too")
     else:
-        print(f"  Bento runs from {other}, which is current too ({ver}).")
+        print(f"  {other} is current too ({ver}).")
 
 
 def _update_cli(args) -> int:
@@ -8890,7 +8892,8 @@ def _update_cli(args) -> int:
         if args.no_restart:
             print("  load it:  bento service restart")
             return 0
-        from . import desktop
+        from . import desktop, goingdown
+        goingdown.note("to undo the last update", goingdown.who())
         started, msg = desktop.service_restart()
         print(f"  {msg}")
         return 0 if started else 1
@@ -9054,10 +9057,9 @@ def _update_cli(args) -> int:
     if result.get("unchanged"):
         print("✓ already at the newest commit — nothing changed")
         parked()
-        from . import desktop
-        if not desktop.served_root():
+        if getattr(args, "only_here", False) or not upd.other_copies(root):
             return 0
-        # this copy is current, the one the server runs may not be: fall through to it
+        # this copy is current, another one (the one the server runs) may not be: on to it
     if result.get("switched"):
         print(f"  switched from '{result['switched']}' to '{state.get('tracks')}'")
     was = upd.current()
@@ -9087,26 +9089,25 @@ def _update_cli(args) -> int:
     # pointing at a development tree): that is the copy the person sees, so it is
     # updated too, by its own code, before the one restart.
     from . import desktop
-    other = desktop.served_root()
+    others = [] if getattr(args, "only_here", False) else upd.other_copies(root)
     other_failed = ""
     moved = not result.get("unchanged")
-    if other:
-        print(f"\n  Bento runs from {other}, not from this copy; updating that one too")
-        head = lambda: subprocess.run(["git", "rev-parse", "HEAD"], cwd=str(other),
-                                      capture_output=True, text=True).stdout.strip()
-        before = head()
-        py = other / ".venv" / "bin" / "python"
-        cmd = [str(py if py.exists() else sys.executable), "-m", "agentos", "update", "--apply",
-               "--no-restart"] + (["--no-tests"] if args.no_tests else []) + (
-                   ["--allow-unsigned"] if getattr(args, "allow_unsigned", False) else [])
-        rc = subprocess.run(cmd, cwd=str(other)).returncode
-        if rc:
+    for other in others:
+        served = other == desktop.served_root()
+        print(f"\n  {'Bento runs from' if served else 'Bento is also installed in'} {other}; "
+              f"updating that copy too")
+        got = upd.update_copy(other, run_tests=not args.no_tests,
+                              allow_unsigned=getattr(args, "allow_unsigned", False))
+        if not got["ok"]:
             # Said last as well as here: the line above scrolls away under the restart, and
             # this copy's "updated" read as the desktop's (reported as "the backend worked,
             # the front end shows the error")
-            other_failed = f"{other} (the copy Bento runs) was not updated: see the ✗ above"
-            print(f"✗ {other} could not be updated (exit {rc}); the server keeps running it as it is")
-        moved = moved or head() != before
+            other_failed = (f"{other} ({'the copy Bento runs' if served else 'the other copy'}) "
+                            f"was not updated: {got['error']}")
+            print(f"✗ {other} could not be updated: {got['error']}")
+        else:
+            print(f"✓ {other} is up to date" + (" (it moved)" if got["moved"] else ""))
+        moved = moved or got["moved"]
     if not moved:
         if other_failed:
             print(f"\n✗ {other_failed}")
@@ -9116,6 +9117,8 @@ def _update_cli(args) -> int:
         if other_failed:
             print(f"\n✗ {other_failed}")
         return 1 if other_failed else 0
+    from . import goingdown
+    goingdown.note("to install an update", goingdown.who())
     started, msg = desktop.service_restart()
     print(("✓ " if started else "✗ ") + msg)
     if other_failed:
@@ -9973,6 +9976,8 @@ def main():
                        help="skip the test gate (it is what rolls a bad update back)")
     p_upd.add_argument("--no-restart", action="store_true",
                        help="leave the restart to you")
+    p_upd.add_argument("--only-here", action="store_true",
+                       help="update this copy only, not the other copies on this machine")
     # Testing a fork: point updates at another repository and branch. Persisted,
     # so Settings and the background check follow the same source until
     # --official puts it back.

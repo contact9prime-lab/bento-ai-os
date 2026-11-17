@@ -100,7 +100,7 @@ def test_the_page_says_a_refusal_once():
 def test_the_terminal_names_the_copy_the_server_runs():
     src = (ROOT / "agentos" / "__main__.py").read_text()
     fn = src[src.index("def _served_behind("):src.index("def _update_cli(")]
-    assert "desktop.served_root()" in fn and "behind" in fn
+    assert "upd.other_copies()" in fn and "_say_behind" in fn
     cli = src[src.index("def _update_cli("):src.index("def _service_cli(")]
     assert "_served_behind(tracked)" in cli
     # a failed update of the served copy is the last line, and a failure

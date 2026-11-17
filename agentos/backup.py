@@ -95,6 +95,8 @@ PRIVATE = (".restoring-", ".before-restore-", ".restore-ready", ".backup-out-",
            ".standby",
            # where this machine keeps its home on GitHub (keep.py): this machine's own
            ".keep",
+           # why this machine last went down (goingdown.py): about this machine only
+           ".going-down",
            # what the watcher knows about this machine's code (integrity.py). Which tree is
            # sealed, and what is locked, are facts about this computer.
            "integrity.")
