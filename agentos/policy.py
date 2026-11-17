@@ -275,7 +275,11 @@ def person_rule(principal, name: str, args: dict, dec, pdp=None, level: str = ""
     must = ""
     args = args or {}
     # A radio's change is asked every time, and reading its status is not a change
-    if (name in ALWAYS_ASK or (name in RADIO_TOOLS and level == "risky")) and dec.effect in ("allow", "ask"):
+    # Installing an update replaces the code that enforces every permission here, and
+    # restarts: a person's yes each time, from Settings, a chat or a phone. Checking is not.
+    installs = name == "update_agentos" and bool(args.get("apply"))
+    if (name in ALWAYS_ASK or installs or (name in RADIO_TOOLS and level == "risky")) \
+            and dec.effect in ("allow", "ask"):
         # confirmed every time, full autonomy included, and never remembered from a card
         row = pdp.grant_row(dec.rule) if pdp is not None and dec.effect == "allow" else None
         if not wrote_on_purpose(row):

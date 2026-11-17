@@ -682,6 +682,67 @@ def in_the_way(root: Path, ref: str) -> dict:
         (same if mine and mine == theirs else differ).append(rel)
     return {"same": same, "differ": differ}
 
+
+# The installer's clone (install.sh's DIR). A machine whose service runs a development
+# tree has two copies, and an update from either face must reach both.
+INSTALLER_DIR = "~/.local/src/agentic-os"
+
+
+def _same_repo(a: Path, b: Path) -> bool:
+    url = lambda r: _run(["git", "config", "--get", "remote.origin.url"], cwd=r)[1].strip()  # noqa: E731
+    ua, ub = url(a), url(b)
+    return bool(ua) and ua == ub
+
+
+def other_copies(root: Path | None = None) -> list[Path]:
+    """The other checkouts of this program on this machine that an update should reach:
+    the one the running server comes from (desktop.served_root, for a terminal), and the
+    installer's clone (for a server running a development tree). Only checkouts of the
+    same repository, and only for the machine's own home: a test, or a second install
+    with a home of its own, never reaches the person's copies (the suite once updated the
+    live checkout)."""
+    root = root or install_dir()
+    if not root:
+        return []
+    root = Path(root)
+    from . import config as _c
+    out: list[Path] = []
+    with contextlib.suppress(Exception):
+        from . import desktop
+        served = desktop.served_root()
+        if served:
+            out.append(Path(served).resolve())
+    default_home = Path(os.path.expanduser("~/.agentos")).resolve()
+    if Path(_c.AGENTOS_HOME).expanduser().resolve() == default_home:
+        cand = Path(os.path.expanduser(os.environ.get("AGENTOS_DIR") or INSTALLER_DIR))
+        if (cand / ".git").exists() and (cand / "agentos" / "__init__.py").exists():
+            out.append(cand.resolve())
+    seen, keep = {root.resolve()}, []
+    for c in out:
+        if c not in seen and _same_repo(root, c):
+            seen.add(c)
+            keep.append(c)
+    return keep
+
+
+def update_copy(other: Path, run_tests: bool = True, allow_unsigned: bool = False) -> dict:
+    """Update one other checkout by its OWN code, as `bento update --apply` would there,
+    never restarting and never reaching further (`--only-here`). Blocking."""
+    py = other / ".venv" / "bin" / "python"
+    head = lambda: _run(["git", "rev-parse", "HEAD"], cwd=other)[1].strip()  # noqa: E731
+    before = head()
+    cmd = [str(py if py.exists() else _python(other)), "-m", "agentos", "update", "--apply",
+           "--no-restart", "--only-here"] + ([] if run_tests else ["--no-tests"]) + (
+               ["--allow-unsigned"] if allow_unsigned else [])
+    try:
+        p = subprocess.run(cmd, cwd=str(other), capture_output=True, text=True, timeout=APPLY_TIMEOUT + 300)
+    except Exception as e:  # noqa: BLE001
+        return {"root": str(other), "ok": False, "moved": False, "error": str(e)[:300]}
+    tail = [ln for ln in (p.stdout + p.stderr).splitlines() if ln.strip()]
+    err = next((ln.strip() for ln in reversed(tail) if ln.strip().startswith("✗")), "")
+    return {"root": str(other), "ok": p.returncode == 0, "moved": head() != before,
+            "error": "" if p.returncode == 0 else (err or (tail[-1] if tail else f"exit {p.returncode}"))[:300]}
+
 async def apply(cfg: dict, run_tests: bool = True, log=None, switch: bool = False,
                 need_verified: bool = False, allow_unsigned: bool = False) -> dict:
     """`_apply` on a worker thread. Every step is a blocking subprocess (git, uv, the

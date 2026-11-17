@@ -133,7 +133,7 @@ class TelegramBridge(usersmod.Scoped):
         with contextlib.suppress(Exception):
             await self.send(msg)
 
-    async def say_down(self, reason: str = "") -> None:
+    async def say_down(self, reason: str = "", by: str = "") -> None:
         """From the server's shutdown, before the poller stops."""
         if not getattr(self, "_said_up", False):
             return                        # it never came up in this process: nothing to say
@@ -142,8 +142,8 @@ class TelegramBridge(usersmod.Scoped):
             return
         name = self.cfg.get("agent_name") or "Bento"
         with contextlib.suppress(Exception):
-            await self.send(f"▼ {name} is going offline{(' ' + reason) if reason else ''}. "
-                            f"I'll message you when I'm back.")
+            await self.send(f"▼ {name} is going offline{(' ' + reason) if reason else ''}"
+                            f"{(', asked by ' + by) if by else ''}. I'll message you when I'm back.")
 
     async def publish_commands(self) -> None:
         """Register the command menu with Telegram (the blue Menu button and the

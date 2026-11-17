@@ -339,7 +339,8 @@ def test_a_restore_is_started_only_by_an_admin_at_the_machine(tmp_path, monkeypa
     srv = (ROOT / "agentos/server.py").read_text()
     for route in ('("POST", "/api/backup")', '("POST", "/api/restore")', '("DELETE", "/api/restore")'):
         assert route in srv, route
-    assert "call_later(0.6, desktopmod.restart_service)" in srv, "the answer leaves before the restart"
+    assert 'call_later(\n        0.6, lambda: asyncio.ensure_future(_going_down("to restore a backup")))' in srv, \
+        "the answer leaves before the restart"
 
 
 def test_the_start_applies_a_restore_only_when_it_owns_the_home():

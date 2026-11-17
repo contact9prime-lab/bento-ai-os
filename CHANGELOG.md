@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.31 — 2026-11-17
+
+**Updating from Settings, a chat or your phone goes the way `bento update` goes, and everybody hears why Bento is going down.**
+
+- **One way to update.** Settings → System's Update and asking your agent to update Bento (Chat,
+  Telegram, WhatsApp) now update every copy of Bento on the machine, run the tests and restart,
+  as `bento update --apply` does. Only an admin account may ask, and each install is approved by a
+  person, at every autonomy level. From a phone the restart waits until the reply is out.
+- **Why it went down.** An update, a restart, a rollback, a restore, a stop from a terminal or the
+  computer restarting is said on every account's screen with who asked, and on every Telegram and
+  WhatsApp that is set up. WhatsApp says goodbye now too.
+
 ## 0.9.30 — 2026-11-17
 
 **An update gets past files that are already there, and says which copy it updated.**

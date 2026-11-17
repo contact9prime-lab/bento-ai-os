@@ -95,9 +95,14 @@ def test_an_update_reaches_the_copy_the_server_runs():
     even when its own copy was already current."""
     src = (ROOT / "agentos/__main__.py").read_text()
     up = src[src.index('    if result.get("unchanged"):\n        print("✓ already at the newest commit'):][:7000]
-    assert "desktop.served_root()" in up and "fall through" in up
-    assert '"update", "--apply"' in up and '"--no-restart"]' in up
-    assert up.index("other = desktop.served_root()") < up.index("desktop.service_restart()")
+    assert "upd.other_copies(root)" in up and "another one (the one the server runs)" in up
+    assert "upd.update_copy(other" in up
+    assert up.index("others = [] if") < up.index("desktop.service_restart()")
+    upd = (ROOT / "agentos/updates.py").read_text()
+    uc = upd[upd.index("def update_copy("):][:1400]
+    assert '"update", "--apply"' in uc and '"--no-restart", "--only-here"]' in uc
+    oc = upd[upd.index("def other_copies("):][:1800]
+    assert "desktop.served_root()" in oc
     nomove = up[up.index("if not moved:"):up.index("if args.no_restart:")]
     assert "service_restart" not in nomove and "return 1 if other_failed else 0" in nomove, \
         "no restart when nothing changed anywhere, and a failed served copy is a failure"

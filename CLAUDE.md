@@ -4584,6 +4584,24 @@ code is (only a server whose `X-Bento-Home` is this home: the suite once updated
 checkout), updates that checkout with its own Python, and restarts once, only when something moved. The
 page notes its build (`PAGE_BUILD`) and offers Refresh after a reconnect into another one.
 
+**Every face updates through one door, and every way down says why** (`server._update_everywhere`,
+`_going_down`/`_announce_down`, `updates.other_copies`/`update_copy`, `agentos/goingdown.py`,
+`update_agentos` with `toolbox.update_everywhere`/`going_down`; `tests/test_going_down.py`). Asked for
+as "update via WhatsApp or Settings the same way as bento update, only when the account asking is
+admin" and "when Bento is going down it should emit the reason on the other accounts". Five rules:
+- **One list of copies** (`other_copies`): the served root and the installer's clone, same repository
+  only, and the installer's clone only for the machine's own home (a test home must never reach the
+  person's checkout). Each is updated by its own code with `--only-here`, or two copies recurse.
+- **Installing is a person's yes every time** (`person_rule`: `update_agentos` with `apply`), the
+  tool's own admin check stays, and checking asks nothing.
+- **A restart from inside a turn waits for the reply** (`wait_turns`): from a phone the answer is
+  sent after the tool returns, by the server about to go.
+- **Never call `desktop.restart_service` directly for a way down**: `_going_down(reason)` says why on
+  every account's pages first, and the shutdown hook says it on every Telegram and WhatsApp. A
+  terminal leaves `goingdown.note` (`service_stop`/`service_restart` do it themselves); a reason older
+  than five minutes (a power action that failed) is not this stop's.
+- `.going-down` is in `backup.PRIVATE`: it is about this machine only.
+
 **A file already where the update puts one is judged, never left to git** (`updates.in_the_way`;
 `tests/test_update_untracked.py`). Reported as Settings showing git's "untracked working tree files would
 be overwritten … Aborting" twice while the terminal said up to date: the service ran a development tree

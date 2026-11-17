@@ -368,3 +368,15 @@ async function updateTray(){
   }catch(e){}
 }
 
+
+/* Bento is going offline, and why (server._announce_down): an update, a restart, a stop, the
+   computer itself. Every account's screen hears it, with who asked, so a colleague's desktop
+   going quiet is not a mystery. The reconnect that follows is 09-websocket.js's own. */
+var GOING_DOWN={at:0,text:''};
+function goingDown(ev){
+  const t=String((ev&&ev.text)||'Bento is going offline.');
+  if(t===GOING_DOWN.text&&Date.now()-GOING_DOWN.at<10000)return;
+  GOING_DOWN.text=t;GOING_DOWN.at=Date.now();
+  toast(t,{kind:'warn'});
+  if(typeof kioskUpdate==='function')kioskUpdate({type:'update_progress',message:t});
+}
