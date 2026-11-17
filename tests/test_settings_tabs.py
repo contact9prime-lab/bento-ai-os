@@ -30,7 +30,8 @@ def _tab(name: str) -> str:
 def test_the_tabs_sit_after_agents():
     ids = re.findall(r"^\s+\['(\w+)','[^']*','([^']*)','(\w+)'\],", SETTINGS, re.M)
     order = [i for i, _, _ in ids]
-    assert order[:4] == ["ai", "agent", "network", "permissions"], order
+    # Companies sits beside Agents: a company is who works for you, managed next to them
+    assert order[:5] == ["ai", "agent", "companies", "network", "permissions"], order
     labels = {i: l for i, l, _ in ids}
     assert "team" not in labels and labels["permissions"] == "Permissions"
     assert labels["network"] == "Network & Teams"
@@ -72,7 +73,8 @@ def test_nothing_points_at_the_old_place():
     for name, tab in (("'Community'", "network"), ("'Free talk'", "agent"), ("'Network'", "network"),
                       ("'New machines'", "network"), ("'Devices without Bento'", "network")):
         line = next(ln for ln in places.splitlines() if ln.strip().startswith("[" + name))
-        assert f"placeSettings('{tab}')" in line, name
+        # a place may also name the section of the tab it lands on (SETSUBS)
+        assert f"placeSettings('{tab}')" in line or f"placeSettings('{tab}','" in line, name
 
 
 def test_the_rail_draws_both():

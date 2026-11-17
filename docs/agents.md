@@ -102,6 +102,16 @@ says why.
 
 ![The same page on a 390px phone](screenshots/settings-brains-phone.png)
 
+## Finding your way in Settings
+
+A long Settings page is split into sections, with a row of chips at its top: Agents has Lead
+agent, Models, Working together, Your agents, Map and Sharing, for example. Only the section
+you pick is shown, and the page remembers it. Searching shows every card again, from every
+page. When something changes behind the page (an agent saved, a company switched), Settings
+stays where you were instead of jumping back to the top.
+
+![Settings → Agents with its sections](screenshots/settings-sections.png)
+
 ## Making an agent
 
 ![The agent editor after "Draft it": the drafted face in the header, the persona drafted in

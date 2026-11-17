@@ -131,7 +131,7 @@ function acctClientsCard(){
 }
 function acctShowClients(){
   const d=document.getElementById('acct-reg');if(d)d.open=true;
-  const c=document.getElementById('acct-clients');if(c)c.scrollIntoView({block:'start',behavior:'smooth'});
+  const c=document.getElementById('acct-clients');if(c){if(typeof setSubReveal==='function')setSubReveal(c)}if(c)c.scrollIntoView({block:'start',behavior:'smooth'});
 }
 async function acctSaveClients(){
   const body={};

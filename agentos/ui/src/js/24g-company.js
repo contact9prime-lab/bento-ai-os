@@ -729,11 +729,14 @@ async function companyPermMode(sel){
 /* ---------------- the company's folders (company.py folders_state / set_folders) ----------------
    Its own list, each read-only or read-write, or the account's. The server checks every folder
    against what the account can reach and refuses the save in a sentence; nothing is judged here. */
-function companyFoldersHTML(F){
+/* One drawing for the Office's panel and Settings → Companies (11k-companies.js): `ferr` is
+   the refusal to show, `head` false leaves out the panel's own section title. */
+function companyFoldersHTML(F,ferr,head){
   if(!F)return '';
   const own=!F.inherit,rows=F.folders||[];
-  const err=COMPANY.ferr?`<div class="co-bad co-ferr" role="alert">${esc(COMPANY.ferr)}</div>`:'';
-  return `<div class="of-sec">Folders</div>
+  const why=ferr===undefined?COMPANY.ferr:ferr;
+  const err=why?`<div class="co-bad co-ferr" role="alert">${esc(why)}</div>`:'';
+  return `${head===false?'':'<div class="of-sec">Folders</div>'}
     <label class="co-audit co-signoff"><span>Works in</span><select class="co-fmode" aria-label="Which folders this company works in">
       <option value="inherit"${own?'':' selected'}>Your account's folders</option>
       <option value="own"${own?' selected':''}>Folders of its own</option></select>${typeof pInfo==='function'?pInfo(F.say||''):''}</label>
@@ -751,8 +754,9 @@ function companyFoldersHTML(F){
       ${rows.some(f=>f.real===F.suggest)?'':`<button class="co-link co-fmake" title="${esc(F.suggest)}">Make a folder for it in your workspace</button>`}</div>`:''}
     ${err}`;
 }
-function companyFoldersWire(el){
-  const F=COMPANY.data&&COMPANY.data.folders;if(!F)return;
+function companyFoldersWire(el,F,save){
+  F=F||(COMPANY.data&&COMPANY.data.folders);if(!F)return;
+  const companyFolders=save||window.companyFolders;
   const rows=()=>(F.folders||[]).map(f=>({path:f.path,mode:f.mode}));
   const mode=el.querySelector('.co-fmode');
   if(mode)mode.onchange=()=>mode.value==='inherit'?companyFolders({inherit:true},mode)

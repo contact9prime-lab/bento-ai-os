@@ -15238,6 +15238,38 @@ async def api_companies():
             "max": companymod.MAX_COMPANIES}
 
 
+@app.get("/api/companies/one")
+async def api_companies_one(id: str = ""):
+    """One company for Settings → Companies (company.detail): open or parked, by id; the
+    open one when no id is given."""
+    from . import company as companymod
+    try:
+        return companymod.detail(state["cfg"], state["store"], str(id or "")[:16])
+    except KeyError:
+        return JSONResponse({"error": "you keep no company with that id"}, status_code=404)
+
+
+@app.put("/api/companies/one")
+async def api_companies_one_set(body: dict):
+    """Rename a company, or change its line or objective, open or parked
+    (company.update_profile). A person's door, and a ledger row like the panel's rename."""
+    from . import company as companymod, teamlink
+    cfg, b = state["cfg"], body or {}
+    fields = {k: teamlink.plain(b.get(k), 400, newlines=False) for k in ("name", "about", "objective") if k in b}
+    if not fields:
+        return JSONResponse({"error": "say what to change: name, about or objective"}, status_code=400)
+    try:
+        got = companymod.update_profile(cfg, str(b.get("id") or ""), fields)
+    except KeyError:
+        return JSONResponse({"error": "you keep no company with that id"}, status_code=404)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    cfgmod.save_config(cfg)
+    companymod.record(state["store"], f"company changed: {got['name']} ({', '.join(sorted(fields))})")
+    await _company_changed()
+    return {"ok": True, "company": got, "companies": companymod.companies(cfg)}
+
+
 @app.post("/api/companies")
 async def api_companies_create(body: dict):
     """Start a new company and open it: an empty office, its objective and a space of its

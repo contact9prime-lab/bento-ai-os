@@ -1084,6 +1084,52 @@ def _task_rows(cfg: dict, store, waiting: list | None, now: float) -> list[dict]
     return rows
 
 
+def detail(cfg: dict, store, cid: str = "") -> dict:
+    """One company as Settings → Companies shows it: what it is, its departments with their
+    heads and people, the folders it works in and whether it is in the Brief. The open one
+    for '' (it may have no id until a second company exists); KeyError for no such company."""
+    c = cfg_of(cfg, cid)
+    if c is None:
+        raise KeyError(cid)
+    co = c.get("company") or {}
+    cur = (cfg or {}).get("company") or {}
+    active = not cid or str(cid).lower() == str(cur.get("id") or "").lower()
+    return {**_summary(co, c.get("office") or {}, active),
+            "departments": [{"name": d["name"], "head": d.get("lead") or "", "people": len(d["members"]),
+                             "members": d["members"], "about": d.get("about") or ""}
+                            for d in departments(c, store)],
+            "folders": folders_state(cfg, cid), "brief": co.get("brief") is not False}
+
+
+def update_profile(cfg: dict, cid: str, fields: dict) -> dict:
+    """Rename a company, or change its line or objective, whether it is open or parked. A
+    name another of the person's companies has is refused in a sentence."""
+    c = cfg_of(cfg, cid)
+    if c is None:
+        raise KeyError(cid)
+    co = dict(c.get("company") or {})
+    if "name" in fields:
+        name = officemod._plain(fields.get("name"), 48)
+        if not name:
+            raise ValueError("a company needs a name")
+        mine = str(co.get("id") or "")
+        if any(x["name"].lower() == name.lower() and x["id"] != mine for x in companies(cfg)):
+            raise ValueError(f"you already have a company called {name}")
+        co["name"] = name
+    if "about" in fields:
+        co["about"] = officemod._plain(fields.get("about"), ABOUT_MAX)
+    if "objective" in fields:
+        co["objective"] = officemod._plain(fields.get("objective"), OBJECTIVE_MAX)
+    cur = (cfg or {}).get("company") or {}
+    if not cid or str(cid).lower() == str(cur.get("id") or "").lower():
+        cfg["company"] = co
+    else:
+        parked = dict(_parked(cfg))
+        parked[str(cid).lower()] = {**parked[str(cid).lower()], "company": co}
+        cfg["companies"] = parked
+    return profile({"company": co})
+
+
 def brief_list(cfg: dict) -> list[dict]:
     """Each company the person keeps and whether its items are in their Brief (on unless
     switched off). The flag lives on the company, so it parks and comes back with it."""

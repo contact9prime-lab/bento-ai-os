@@ -1570,6 +1570,38 @@ body.dev-touch .prefs label:has(> input[type=checkbox]:not(.psw input)){min-heig
 .pgroup.pfold{margin-bottom:10px}
 .team-limits .tl-row{flex-wrap:nowrap}
 .team-limits .tl-l{flex:1 1 auto}
+
+/* Settings sub-sections (11l-setsubs.js): one row of chips at the top of a long tab, sticky
+   while the pane scrolls, and only the chosen section shown. On a phone the row scrolls and
+   snaps, so a chip never rests half off the edge. */
+.prefs-main > .set-subs{position:sticky;top:-22px;z-index:3;display:flex;gap:6px;overflow-x:auto;
+  scroll-snap-type:x mandatory;scroll-padding-inline:26px;scrollbar-width:none;margin:4px -26px 16px;padding:10px 26px;
+  background:var(--bg2);border-bottom:1px solid var(--line)}
+.prefs-main > .set-subs::-webkit-scrollbar{display:none}
+.set-subs > button{flex:0 0 auto;scroll-snap-align:start;min-height:var(--tap,36px);padding:0 14px;
+  border-radius:999px;border:1px solid var(--line);background:var(--bg3);color:var(--txt);
+  font:inherit;font-size:var(--fs-sm);font-weight:600;cursor:pointer;white-space:nowrap}
+.set-subs > button:hover{border-color:var(--acc)}
+.set-subs > button.on{background:var(--acc-grad,var(--acc));color:var(--on-acc,#fff);border-color:transparent}
+.set-subs > button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.prefs-main .ssub-off{display:none!important}
+
+/* Settings → Companies (11k-companies.js) */
+.co-set-row.sel{box-shadow:inset 3px 0 0 var(--acc)}
+.co-set-row .pl .co-set-name>b{display:inline}
+.co-set-tag{display:inline-block;margin-left:6px;padding:1px 8px;border-radius:999px;font-size:var(--fs-2xs,11px);
+  font-weight:700;background:color-mix(in srgb,var(--acc) 18%,transparent);color:var(--txt)}
+.co-set-acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.co-set-acts .endbtn,.co-set-go .endbtn{min-height:var(--tap,36px)}
+.co-set-go{display:flex;justify-content:flex-end;padding:10px 16px}
+.co-set-edit{margin-top:8px;border-top:1px solid var(--line);padding-top:4px}
+.co-set-edit .of-sec{padding:8px 16px 0;font-weight:700}
+.co-set-edit textarea{width:100%;min-height:56px;resize:vertical}
+.co-set-for{display:flex;align-items:center;gap:10px;padding:8px 16px}
+.co-set-for select{min-height:var(--tap,36px);max-width:100%}
+.co-set-wrap .co-folders,.co-set-wrap .co-signoff{padding-left:16px;padding-right:16px}
+.co-set-empty{padding:8px 16px}
+@media (max-width:600px){.co-set-row{flex-wrap:wrap}.co-set-acts{justify-content:flex-start;width:100%}}
 /* ================= window switcher (Ctrl+Tab) ================= */
 #switcher{position:fixed;inset:0;z-index:9720;display:none;align-items:center;justify-content:center;background:rgba(5,7,10,.4);backdrop-filter:blur(4px)}
 #switcher.show{display:flex}
@@ -3492,6 +3524,7 @@ body.immersive .prefs-side .psi{width:26px;height:26px;border-radius:8px;display
 body.immersive .prefs-side button.on .psi{box-shadow:inset 0 .5px 0 rgba(255,255,255,.5),0 1px 3px rgba(0,0,0,.3)}
 body.immersive .prefs-side [data-t=ai] .psi{background:linear-gradient(135deg,#a78bfa,#6d28d9)}
 body.immersive .prefs-side [data-t=agent] .psi{background:linear-gradient(135deg,#2dd4bf,#0f766e)}
+body.immersive .prefs-side [data-t=companies] .psi{background:linear-gradient(135deg,#fbbf24,#b45309)}
 body.immersive .prefs-side [data-t=team] .psi{background:linear-gradient(135deg,#fbbf24,#b45309)}
 body.immersive .prefs-side [data-t=permissions] .psi{background:linear-gradient(135deg,#f87171,#b91c1c)}
 body.immersive .prefs-side [data-t=network] .psi{background:linear-gradient(135deg,#22d3ee,#0e7490)}
@@ -9722,7 +9755,7 @@ async function ttFork(p,model){
    there. SUI: the same page as the desktop, nothing native. */
 var ZERO_APPS=['chat','office','files','settings','docs'];
 // AI providers (it thinks with the hub), executors, channels and accounts are the hub's
-var ZERO_TABS_HIDDEN=['ai','executors','channels','accounts','network'];
+var ZERO_TABS_HIDDEN=['ai','executors','channels','accounts','network','companies'];
 function zeroFace(){try{return !!(PLATFORM&&PLATFORM.zero&&PLATFORM.zero.on_hub)}catch(e){return false}}
 function zeroHub(){try{return (PLATFORM.zero||{}).hub||''}catch(e){return ''}}
 function zeroAllows(id){return !zeroFace()||ZERO_APPS.indexOf(id)>=0}
@@ -17099,9 +17132,10 @@ var APP_WORDS={
   logs:['diary','events','errors'],
   tokens:['usage','cost','spend','billing'],
 };
-function placeSettings(tab){const go=()=>{
+/* `sub` names a section of a long tab (SETSUBS in 11l-setsubs.js), so a place lands on it. */
+function placeSettings(tab,sub){const go=()=>{
   tab=(typeof SETTAB_ALIAS!=='undefined'&&SETTAB_ALIAS[tab])||tab;
-  SETTAB=tab;try{localStorage.setItem('settab',tab)}catch(e){}
+  SETTAB=tab;try{localStorage.setItem('settab',tab);if(sub)localStorage.setItem('setsub.'+tab,sub)}catch(e){}
   openApp('settings');
   // an open Settings window is already painted on another pane: move it
   setTimeout(()=>{if(typeof settingsGo==='function')settingsGo(tab)},60);
@@ -17119,10 +17153,10 @@ function placeCompany(){return ()=>{openApp('office');setTimeout(()=>{if(typeof 
 var PLACES=[
   ['AI providers','settings','Settings → AI providers',['provider','providers','model','models','brain','api key','key','openai','anthropic','claude','gemini','ollama','openrouter','llm'],placeSettings('ai')],
   ['Agents','settings','Settings → Agents',['agent','agents','specialist','specialists','lead','persona'],placeSettings('agent')],
-  ['Agents working together','settings','Settings → Agents',['team','swarm','huddle','talk','working together','democracy','matrix','who may ask whom','own providers','departments talk'],placeSettings('agent')],
+  ['Agents working together','settings','Settings → Agents',['team','swarm','huddle','talk','working together','democracy','matrix','who may ask whom','own providers','departments talk'],placeSettings('agent','Working together')],
   ['Network & Teams','settings','Settings → Network & Teams',['linked teams','link','team chat','messages','communications','teams and communication','mapping','talks to','topology','logical map','physical map'],placeSettings('network')],
   ['Permissions settings','settings','Settings → Permissions',['permissions','autonomy','paranoid','balanced','full autonomy','ledger','audit','untrusted','injection','grants','security'],placeSettings('permissions')],
-  ['Free talk','settings','Settings → Agents',['free talk','let them talk','agent talk','agent to agent','agents talking','talk log','open floor'],placeSettings('agent')],
+  ['Free talk','settings','Settings → Agents',['free talk','let them talk','agent talk','agent to agent','agents talking','talk log','open floor'],placeSettings('agent','Working together')],
   ['Executors','settings','Settings → Executors',['executor','executors','hands','folders','folder access','claude code','codex','gemini cli','sandbox','reach'],placeSettings('executors')],
   ['Channels','settings','Settings → Channels',['channel','channels','telegram','whatsapp','messaging','phone','bot','notify','notifications'],placeSettings('channels')],
   ['Accounts','settings','Settings → Accounts',['account','accounts','mail','email','gmail','outlook','calendar','imap','caldav','sign in','google','microsoft'],placeSettings('accounts')],
@@ -17131,17 +17165,18 @@ var PLACES=[
   ['Voice','settings','Settings → Voice',['voice','speech','speak','tts','microphone','mic','wake word','dictation'],placeSettings('voice')],
   ['Appearance','settings','Settings → Appearance',['appearance','look','theme','immersive','scene','dark mode','font','wallpaper','office look','mind','brain','neural','island','town','time of day'],placeSettings('look')],
   ['System','settings','Settings → System',['system','update','updates','version','reset','factory reset','backup','restore','light mode','profile','snapshots','users'],placeSettings('system')],
-  ['Put Bento in the cloud','settings','Settings → System → Put Bento in the cloud',['deploy','cloud','render','fly','hosting','host','server','online','one click','storage','bucket','backblaze','keep memory'],placeSettings('system')],
+  ['Put Bento in the cloud','settings','Settings → System → Put Bento in the cloud',['deploy','cloud','render','fly','hosting','host','server','online','one click','storage','bucket','backblaze','keep memory'],placeSettings('system','Backup & cloud')],
   ['Network','settings','Settings → Network',['network','inventory','devices on the network','machines on my network','lan','secure a machine','secure it','harden','firewall','ssh password','security updates','teams and zeros','zeros','device map','what it runs on'],placeSettings('network')],
-  ['New machines','settings','Settings → Network → Set machines up',['new machine','provision','discover','set up a pi','enrolment key','enroll','poap','zero touch','make a zero','zero'],placeSettings('network')],
-  ['Devices without Bento','settings','Settings → Network',['devices','network scan','scan the network','install bento','ssh','sd card','first boot','cloud-init','imager'],placeSettings('network')],
-  ['Community','settings','Settings → Network & Teams → Community',['community','pool','cluster','machines','raspberry pi','pi','leader','join','shared notes','shared memory','split work'],placeSettings('network')],
-  ['On this screen','settings','Settings → Appearance → On this screen',['kiosk','one agent','buddy','wake word','small screen'],placeSettings('look')],
-  ['Listening','settings','Settings → Voice → Listening',['listen','listening','speech to text','whisper','hear','hearing','transcribe','mic language','dictation'],placeSettings('voice')],
-  ['Cloud standby','settings','Settings → System → Cloud standby',['cloud','standby','failover','offload','take over','hand back','move to the cloud','vps','always on'],placeSettings('system')],
+  ['New machines','settings','Settings → Network → Set machines up',['new machine','provision','discover','set up a pi','enrolment key','enroll','poap','zero touch','make a zero','zero'],placeSettings('network','Discovery')],
+  ['Devices without Bento','settings','Settings → Network',['devices','network scan','scan the network','install bento','ssh','sd card','first boot','cloud-init','imager'],placeSettings('network','Discovery')],
+  ['Community','settings','Settings → Network & Teams → Community',['community','pool','cluster','machines','raspberry pi','pi','leader','join','shared notes','shared memory','split work'],placeSettings('network','Community')],
+  ['On this screen','settings','Settings → Appearance → On this screen',['kiosk','one agent','buddy','wake word','small screen'],placeSettings('look','This screen')],
+  ['Listening','settings','Settings → Voice → Listening',['listen','listening','speech to text','whisper','hear','hearing','transcribe','mic language','dictation'],placeSettings('voice','Listening')],
+  ['Cloud standby','settings','Settings → System → Cloud standby',['cloud','standby','failover','offload','take over','hand back','move to the cloud','vps','always on'],placeSettings('system','Backup & cloud')],
   ['Run missions','jobs','Missions → Run',['mission','missions','job','jobs','recipe','recipes','daily','describe a mission','catalogue'],placeMissions('run')],
   ['Flows','jobs','Missions → Build → Flows',['flow','flows','workflow','workflows','trigger','triggers','webhook','cron','schedule','orchestrator','fabric','automation'],placeMissions('build','flows')],
   ['Mission agents','jobs','Missions → Build → Agents',['roster','specialist','specialists','subagent','subagents','new agent'],placeMissions('build','agents')],
+  ['Companies','settings','Settings → Companies',['companies','company','new company','another company','switch company','company folders','objective','business','businesses'],placeSettings('companies')],
   ['Company','office','Office → Company',['company','departments','department','org','organisation','organization','startup','business','hr','finance','sales','marketing','admin','supply','operations'],placeCompany()],
   ['History','jobs','Missions → History',['run','runs','run history','history','what ran','last run','scheduled runs','schedule runs','did it run'],placeMissions('history')],
   ['Schedule','jobs','Missions → Schedule',['scheduler','schedule','scheduled','cron','timer','task','tasks','reminder'],placeFold('tasks')],
@@ -21503,6 +21538,7 @@ const pSelect=(id,opts,cur)=>`<select id="${id}">${opts.map(([v,l])=>
 const SETTINGS_TABS=[
   ['ai','✦','AI providers','sparkles'],
   ['agent','◈','Agents','agent'],
+  ['companies','▦','Companies','bag'],
   ['network','⌖','Network & Teams','wifi'],
   ['permissions','⛨','Permissions','shield'],
   ['executors','⇥','Executors','executors'],
@@ -21520,6 +21556,9 @@ var SETTAB_ALIAS={team:'network'};
 let SETTAB=(t=>SETTAB_ALIAS[t]||t)(localStorage.getItem('settab')||'ai');
 
 async function renderSettings(body){
+  // A redraw of the window (an agent saved, a theme picked, a company opened) must not throw
+  // the person back to the top of the tab they were working in (setKeepTake, 11l-setsubs.js)
+  const keep=typeof setKeepTake==='function'?setKeepTake(body):null;
   await loadConfig();
   if(zeroTabHidden(SETTAB))SETTAB='agent';   // a Zero has no AI providers or channels of its own
   body.innerHTML=`<div class="pshell">
@@ -21556,8 +21595,12 @@ async function renderSettings(body){
     setAutoSave(e);
   });
   if(typeof MutationObserver!=='undefined'){let q=0;
-    new MutationObserver(()=>{if(q)return;q=1;queueMicrotask(()=>{q=0;pTidy(pm)})}).observe(pm,{childList:true,subtree:true})}
+    new MutationObserver(()=>{if(q)return;q=1;queueMicrotask(()=>{q=0;pTidy(pm);
+      if(typeof setSubsApply==='function')setSubsApply(pm);
+      if(typeof setKeepHold==='function')setKeepHold(pm)})}).observe(pm,{childList:true,subtree:true})}
+  if(typeof setKeepWatch==='function')setKeepWatch(pm);
   setTab(body);
+  if(keep&&typeof setKeepGive==='function')setKeepGive(body,keep);
 }
 /* listFilter hides each [data-f] on its own words, and a card is one of them: a search
    for "api key" hid every provider card, because the card's words are its name while
@@ -21574,6 +21617,9 @@ function setSearchGroups(pm,v){
 }
 function setTab(body,all){
   const main=(body||document).querySelector('#prefs-main');if(!main)return;
+  // the same tab drawn again keeps its place; another tab starts at its top (11l-setsubs.js)
+  const again=!all&&main.dataset.tab===SETTAB&&!main.classList.contains('searching');
+  if(typeof setKeepSame==='function')setKeepSame(main,again);
   const p=cfg.providers;
   const P=[];
   const want=id=>(all||SETTAB===id)&&!zeroTabHidden(id);
@@ -21804,6 +21850,13 @@ function setTab(body,all){
        11c-agentshare.js renders it, agentbundle.py decides everything. */
     P.push(`<div id="agent-share-box" data-f="share fork agent bundle export import publish host"><div class="pgroup"><h3>Share this agent</h3><div class="ghint mut">checking…</div></div></div>`);
     setTimeout(renderAgentShare,0);
+  }
+  if(want('companies')){
+    // every company you keep, its line and objective, its folders, its departments and
+    // whether it is in your Brief (11k-companies.js). The Office's ▦ Company panel is where
+    // departments are designed; this is where the companies themselves are managed.
+    P.push(`<h2>Companies</h2><p class="lead">Each company is its own setup: its people, missions, memory and folders. ${pInfo('Your own agent works for all of them. Open a company to work in it; the others are kept as they are.')}</p>`);
+    P.push(`<div id="co-set" class="co-set-wrap"><p class="mut">loading…</p></div>`);
   }
   if(want('network')){
     /* Network & Teams: Team & Communications merged into Network (2026-10), in three parts.
@@ -22143,6 +22196,10 @@ function setTab(body,all){
       bm.insertAdjacentHTML('beforeend',`<option value="${esc(cur)}" selected>${esc(cur)} · unavailable right now</option>`);
     bm.value=cur;
   }).catch(()=>{});
+  if(want('companies')&&typeof coSetPaint==='function')coSetPaint();
+  main.dataset.tab=all?'':SETTAB;
+  if(typeof setSubsApply==='function')setSubsApply(main);
+  if(typeof setKeepHold==='function')setKeepHold(main);
 }
 function settingsVoices(){
   const vsel=$('#v-voice');
@@ -22952,7 +23009,7 @@ function openLinkedTeams(){
   openApp('settings');
   setTimeout(()=>{
     if(!document.getElementById('s-team-links'))document.querySelector('.prefs-side button[data-t="network"]')?.click();
-    setTimeout(()=>{const e=document.getElementById('s-team-links');if(e){paintTeamLinks();e.scrollIntoView({block:'start',behavior:'smooth'})}},120);
+    setTimeout(()=>{const e=document.getElementById('s-team-links');if(e){paintTeamLinks();if(typeof setSubReveal==='function')setSubReveal(e);e.scrollIntoView({block:'start',behavior:'smooth'})}},120);
   },250);
 }
 function tlkReqHTML(r){
@@ -23651,6 +23708,7 @@ async function ocpReview(pid){
     </div>
     <div class="ghint mut">Changes take effect after OpenClaw's gateway restarts.</div>
   </div>`;
+  if(typeof setSubReveal==='function')setSubReveal(out);
   out.scrollIntoView({block:'nearest', behavior:'smooth'});
 }
 
@@ -24265,7 +24323,7 @@ function acctClientsCard(){
 }
 function acctShowClients(){
   const d=document.getElementById('acct-reg');if(d)d.open=true;
-  const c=document.getElementById('acct-clients');if(c)c.scrollIntoView({block:'start',behavior:'smooth'});
+  const c=document.getElementById('acct-clients');if(c){if(typeof setSubReveal==='function')setSubReveal(c)}if(c)c.scrollIntoView({block:'start',behavior:'smooth'});
 }
 async function acctSaveClients(){
   const body={};
@@ -24920,6 +24978,7 @@ async function cloudKeepSave(b){
 
 function cloudDeployGo(id){
   const el=document.getElementById(id);
+  if(el&&typeof setSubReveal==='function')setSubReveal(el);
   if(el)el.scrollIntoView({behavior:'smooth',block:'center'});
 }
 /* Settings → Permissions → Security: what the watcher knows (agentos/integrity.py, /api/security/status).
@@ -25000,6 +25059,303 @@ async function secCardPaint(){
   }
   if(SEC_OPEN)secDetails(st).forEach(r=>kids.push(r));
   box.replaceChildren(...kids);
+}
+/* ---------------- Settings → Companies ----------------
+   Asked for as "where is the place in the settings where I can define companies and attach
+   folders, management of the companies? I need it in the settings". The companies lived only
+   in the Office's ▦ Company panel, which is where departments are DESIGNED. This tab is where
+   the companies themselves are managed: every company you keep (open or parked), its name,
+   line and objective, a new one, the folders it works in, its departments at a glance, and
+   whether it is in your Brief.
+
+   Nothing new is decided here. Each control is a route the panel or the CLI already uses:
+   /api/companies (list, create, open, remove), /api/companies/one (one company, open or parked,
+   and its name, line and objective), /api/company/folders (company.set_folders, the same checks
+   the panel gets), /api/brief/schedule (the Brief's per-company switch).
+
+   The tab is split into sub-sections by the cards' titles (SETSUBS in 11l-setsubs.js), so the
+   cards are drawn as children of `.set-subroot`. Everything is text nodes or esc()'d: a company's
+   name is the person's words. TUI: `bento company companies|new|open|drop|folders`. SUI: the
+   same page. A Zero has no companies of its own (ZERO_TABS_HIDDEN). */
+var COSET={list:[],sel:'',d:null,brief:[],err:'',ferr:'',busy:false};
+
+async function coSetPaint(){
+  const box=document.getElementById('co-set');if(!box)return;
+  try{
+    const [l,b]=await Promise.all([apiJSON('/api/companies'),apiJSON('/api/brief').catch(()=>({}))]);
+    COSET.list=l.companies||[];COSET.max=l.max||8;COSET.brief=b.companies||[];
+    const want=COSET.list.find(c=>c.id&&c.id===COSET.sel)||COSET.list.find(c=>c.active)||COSET.list[0];
+    COSET.sel=want?want.id:'';
+    COSET.d=want?await apiJSON('/api/companies/one?id='+encodeURIComponent(COSET.sel)):null;
+    COSET.err='';
+  }catch(e){COSET.err=e.message||String(e)}
+  coSetDraw();
+}
+
+function coSetPick(){
+  // which company the cards below are about; only when there is more than one
+  if(COSET.list.length<2)return '';
+  return `<label class="co-set-for"><span>Company</span><select class="co-set-pick" aria-label="Which company to manage">${
+    COSET.list.map(c=>`<option value="${esc(c.id)}"${c.id===COSET.sel?' selected':''}>${esc(c.name)}${c.active?' (open)':''}</option>`).join('')}</select></label>`;
+}
+
+function coSetDraw(){
+  const box=document.getElementById('co-set');if(!box)return;
+  box.classList.add('set-subroot');
+  if(COSET.err){box.innerHTML=`<div class="pgroup"><h3>Your companies</h3><p class="co-bad">${esc(COSET.err)}</p></div>`;return}
+  const L=COSET.list,d=COSET.d,full=L.length>=(COSET.max||8);
+  const n=(k,w)=>k+' '+w+(k===1?'':'s');
+  const rows=L.length?L.map(c=>`<div class="prow co-set-row${c.id===COSET.sel?' sel':''}">
+      <div class="pl"><div class="co-set-name"><b>${esc(c.name)}</b>${c.active?' <span class="co-set-tag">open now</span>':''}</div>
+        <div class="pdesc">${c.about?esc(c.about)+' · ':''}${n(c.departments,'department')} · ${n(c.people,'person').replace('persons','people')} · ${n(c.missions||0,'mission')}</div></div>
+      <div class="pc co-set-acts">
+        ${c.id===COSET.sel?'':`<button class="endbtn" data-co-sel="${esc(c.id)}">Manage</button>`}
+        ${c.active?'':`<button class="endbtn" data-co-open="${esc(c.id)}">Open</button>`}
+        ${c.active||!c.id?'':`<button class="endbtn co-set-del" data-co-del="${esc(c.id)}" data-co-name="${esc(c.name)}">Remove…</button>`}
+      </div></div>`).join('')
+    :`<p class="mut co-set-empty">You don’t keep a company yet. Start one below, or set one up in the Office.</p>`;
+  const about=d?`<div class="co-set-edit">
+      <div class="of-sec">About ${esc(d.name)}</div>
+      ${pRow('Name',`<input id="co-s-name" maxlength="48" value="${esc(d.name)}" aria-label="Company name">`,{desc:'What it is called everywhere.',f:'company name rename'})}
+      ${pRow('What it does',`<input id="co-s-about" maxlength="200" value="${esc(d.about||'')}" placeholder="One line, e.g. a kids learning YouTube channel" aria-label="What it does">`,
+        {desc:'Your agent reads it to tell this business from your others.',f:'company line about what it does'})}
+      ${pRow('Objective',`<textarea id="co-s-goal" rows="2" maxlength="400" placeholder="What should it achieve?" aria-label="Objective">${esc(d.objective||'')}</textarea>`,
+        {desc:'What the company is for. Its departments and missions work towards it.',stack:true,f:'company objective goal'})}
+    </div>`:'';
+  const depts=d?(d.departments.length?d.departments.map(x=>`<div class="prow"><div class="pl"><b>${esc(x.name)}</b>
+        <div class="pdesc">${x.head?'Head '+esc(x.head)+' · ':''}${n(x.people,'person').replace('persons','people')}${x.about?' · '+esc(x.about):''}</div></div></div>`).join('')
+      :`<p class="mut">${esc(d.name)} has no departments yet.</p>`):'';
+  const briefOn=name=>{const b=COSET.brief.find(x=>x.name===name);return !b||b.on};
+  box.innerHTML=`
+    <div class="pgroup" data-f="companies list open switch remove manage"><h3>Your companies</h3>
+      <div class="ghint">The open one is the one you work in now: the Office, Chat and new missions belong to it.</div>
+      ${rows}${about}${COSET.cerr?`<div class="co-bad" role="alert">${esc(COSET.cerr)}</div>`:''}</div>
+    <div class="pgroup" data-f="new company create start another business"><h3>A new company</h3>
+      <div class="ghint">It gets its own office, people, memory and folders, and opens straight away. The one you have now is kept as it is.</div>
+      ${pRow('Name',`<input id="co-n-name" maxlength="48" placeholder="e.g. Homes" aria-label="New company's name">`,{f:'new company name'})}
+      ${pRow('What it does',`<input id="co-n-about" maxlength="200" placeholder="e.g. three rented apartments" aria-label="What it does">`,{f:'new company about'})}
+      ${pRow('Objective',`<input id="co-n-goal" maxlength="400" placeholder="optional" aria-label="Objective">`,{f:'new company objective'})}
+      <div class="co-set-go"><button class="endbtn" id="co-n-go"${full?' disabled title="You keep as many companies as you can here. Remove one first."':''}>Start it</button></div></div>
+    <div class="pgroup" data-f="company folders files read write access attach"><h3>Folders</h3>
+      <div class="ghint">The folders a company’s departments and missions may read and write. Your own agent keeps your account’s folders.</div>
+      ${coSetPick()}${d?companyFoldersHTML(d.folders,COSET.ferr,false):'<p class="mut">Start a company first.</p>'}</div>
+    <div class="pgroup" data-f="company departments people heads design office"><h3>Departments</h3>
+      <div class="ghint">Who works in each department. You design them in the Office.</div>
+      ${coSetPick()}${depts}
+      ${d?`<div class="co-set-go"><button class="endbtn" id="co-d-go">${d.active?'Design departments in the Office':'Open '+esc(d.name)+' and design its departments'}</button></div>`:''}</div>
+    <div class="pgroup" data-f="company brief morning briefing in the brief"><h3>In your Brief</h3>
+      <div class="ghint">A company switched off here is left out of the Brief you are sent. Its items stay in the Brief app.</div>
+      ${L.length?L.map(c=>pRow(c.name,`<label class="psw"><input type="checkbox" data-co-brief="${esc(c.name)}"${briefOn(c.name)?' checked':''} aria-label="${esc(c.name)} in your Brief"><span></span></label>`,
+        {f:'brief '+c.name})).join(''):'<p class="mut">No companies yet, so the Brief has everything in it.</p>'}</div>`;
+  coSetWire(box);
+}
+
+function coSetWire(box){
+  box.querySelectorAll('[data-co-sel]').forEach(b=>b.onclick=()=>{COSET.sel=b.dataset.coSel;COSET.ferr='';coSetPaint()});
+  box.querySelectorAll('.co-set-pick').forEach(s=>s.onchange=()=>{COSET.sel=s.value;COSET.ferr='';coSetPaint()});
+  box.querySelectorAll('[data-co-open]').forEach(b=>b.onclick=()=>coSetOpen(b.dataset.coOpen,b));
+  box.querySelectorAll('[data-co-del]').forEach(b=>b.onclick=()=>coSetRemove(b.dataset.coDel,b.dataset.coName,b));
+  const ed=(id,key)=>{const e=box.querySelector('#'+id);if(e)e.onchange=()=>coSetEdit({[key]:e.value},e)};
+  ed('co-s-name','name');ed('co-s-about','about');ed('co-s-goal','objective');
+  const go=box.querySelector('#co-n-go');if(go)go.onclick=()=>coSetCreate(go);
+  const dg=box.querySelector('#co-d-go');if(dg)dg.onclick=()=>coSetDesign(dg);
+  box.querySelectorAll('[data-co-brief]').forEach(c=>c.onchange=()=>coSetBrief(c.dataset.coBrief,c.checked,c));
+  const fsec=box.querySelector('.pgroup[data-f^="company folders"]');
+  if(fsec&&COSET.d)companyFoldersWire(fsec,COSET.d.folders,coSetFolders);
+}
+
+async function coSetCall(url,method,body,ctl){
+  if(ctl)ctl.disabled=true;
+  try{const j=await apiJSON(url,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});
+    if(j&&j.error)throw new Error(j.error);return j}
+  finally{if(ctl)ctl.disabled=false}
+}
+async function coSetEdit(fields,ctl){
+  try{const j=await coSetCall('/api/companies/one','PUT',{id:COSET.sel,...fields},ctl);
+    COSET.cerr='';toast('✓ Saved');if(typeof setSavedMark==='function')setSavedMark(true);
+    if(fields.name)await coSetPaint()}
+  catch(e){COSET.cerr=e.message||String(e);toast('could not save: '+COSET.cerr,{kind:'err'});coSetDraw()}
+}
+async function coSetOpen(id,ctl){
+  try{const j=await coSetCall('/api/companies/active','PUT',{id},ctl);
+    toast(`✓ ${j.company.name} is open`);COSET.sel=id;
+    if(typeof officeLoad==='function')officeLoad();await coSetPaint()}
+  catch(e){toast('could not open it: '+(e.message||e),{kind:'err'})}
+}
+async function coSetRemove(id,name,ctl){
+  if(!await osConfirm(`Remove ${name}?`,'Its desks and missions are switched off. Its agents, missions and memory are kept, so nothing is lost.'))return;
+  try{const j=await coSetCall('/api/companies/'+encodeURIComponent(id),'DELETE',null,ctl);
+    toast(`${name} is off your list`+(j.switched_off&&j.switched_off.length?`; ${j.switched_off.length} missions switched off`:''));
+    if(COSET.sel===id)COSET.sel='';await coSetPaint()}
+  catch(e){toast('could not remove it: '+(e.message||e),{kind:'err'})}
+}
+async function coSetCreate(ctl){
+  const v=id=>((document.getElementById(id)||{}).value||'').trim();
+  const name=v('co-n-name');if(!name){const e=document.getElementById('co-n-name');if(e)e.focus();return}
+  try{const j=await coSetCall('/api/companies','POST',{name,about:v('co-n-about'),objective:v('co-n-goal')},ctl);
+    toast(`✓ ${j.company.name} is started and open`);COSET.sel=j.company.id||'';
+    if(typeof officeLoad==='function')officeLoad();await coSetPaint();
+    if(typeof setSubShow==='function')setSubShow('Your companies')}
+  catch(e){toast('could not start it: '+(e.message||e),{kind:'err'})}
+}
+async function coSetFolders(body,ctl){
+  try{const j=await coSetCall('/api/company/folders','PUT',{company:(COSET.d&&COSET.d.folders&&COSET.d.folders.id)||COSET.sel||'',...body},ctl);
+    COSET.ferr='';COSET.d.folders=j;
+    toast(j.inherit?`${j.company} uses your account's folders`
+      :`${j.company} works in ${j.folders.length} ${j.folders.length===1?'folder':'folders'}`)}
+  catch(e){COSET.ferr=e.message||String(e);toast(COSET.ferr,{kind:'err'})}
+  coSetDraw();
+}
+async function coSetBrief(name,on,ctl){
+  try{await coSetCall('/api/brief/schedule','PUT',{companies:{[name]:on}},ctl);
+    toast(on?`${name} is in your Brief`:`${name} is left out of your Brief`);
+    const b=COSET.brief.find(x=>x.name===name);if(b)b.on=on}
+  catch(e){toast('could not save: '+(e.message||e),{kind:'err'});if(ctl)ctl.checked=!on}
+}
+async function coSetDesign(ctl){
+  const d=COSET.d;if(!d)return;
+  if(!d.active){try{await coSetCall('/api/companies/active','PUT',{id:d.id},ctl);if(typeof officeLoad==='function')await officeLoad()}
+    catch(e){toast('could not open it: '+(e.message||e),{kind:'err'});return}}
+  openApp('office');setTimeout(()=>{if(typeof officeCompany==='function')officeCompany(true)},500);
+}
+/* ---------------- Settings: sub-sections, and keeping your place ----------------
+   Asked for as "all the confusion in the settings is so much messed up, we need sub settings
+   if need be" and "when I am changing the settings it takes me to the top of the page".
+
+   SUB-SECTIONS. A long tab is split into a row of sub-sections at its top, and only the chosen
+   one is shown. Measured on a throwaway home before this: Agents was 9,774px tall, Channels
+   3,923, System 2,744, AI providers 2,554. The split is by the cards' own titles (SETSUBS: a
+   label and the title of the card it starts at), so a card added to a tab joins the section
+   before it and nothing has to be moved in 11-settings.js. A section whose first card is not on
+   the page (an admin's card for a non-admin) is not offered; fewer than two and there is no row.
+   Searching shows every card of every tab, so the row goes away while a search is typed. The
+   choice is per tab and per browser (localStorage, in a try).
+
+   KEEPING YOUR PLACE. The whole window is drawn again by refreshApp('settings'), which many
+   saves cause (an agent or a company changed broadcasts `avatars`; a theme or a scene; a
+   company opened). innerHTML put the pane back at the top. The same tab drawn again now keeps
+   its scroll position, the search being typed and the field with the caret; the position is
+   held for a few seconds while the pieces painted later (lists fetched after the page) grow
+   the pane, and given up the moment the person scrolls or types. Another tab starts at its top.
+
+   GUI and SUI: this page. TUI: `bento config` and the verbs each card names; there is no pane to
+   scroll. */
+var SETSUBS={
+  ai:[['Answering','Answering'],['Cloud providers','Cloud providers'],['Agents installed here','AI agents installed here'],['Images','Image generation']],
+  agent:[['Lead agent','Lead agent'],['Models','Models'],['Working together','Asking each other'],['Your agents','Your agents'],['Map','The map'],['Sharing','Share this agent']],
+  companies:[['Your companies','Your companies'],['New company','A new company'],['Folders','Folders'],['Departments','Departments'],['Brief','In your Brief']],
+  network:[['Discovery','Discovery and linkage'],['Linked teams','Linked teams'],['Community','Community'],['Messages','Messages'],['Mapping','Team to agent mapping'],['Maps','Maps']],
+  permissions:[['Autonomy','On their own'],['Security','Security'],['Ledger','The ledger']],
+  channels:[['Overview','Ways to reach it'],['Remote browser','Remote browser'],['Telegram','Telegram'],['WhatsApp','WhatsApp'],['Built in','Built in']],
+  accounts:[['Sign in','Sign in'],['Mail & calendar','Mail'],['App registration','App registration'],['Vault','Vault'],['GitHub','GitHub']],
+  voice:[['Speech','Speech'],['Listening','Listening']],
+  look:[['Look','Look'],['Characters','Characters'],['Office','Office'],['This screen','On this screen']],
+  system:[['Version','Version'],['People','People'],['Setup','Footprint'],['Backup & cloud','Backup'],['Machine','Machine']],
+};
+function setSubKey(tab){return 'setsub.'+tab}
+function setSubGet(tab){try{return localStorage.getItem(setSubKey(tab))||''}catch(e){return ''}}
+function setSubSet(tab,label){try{localStorage.setItem(setSubKey(tab),label)}catch(e){}}
+/* A card's title is its first heading: the card itself when it is a part heading
+   (`h3.pgh`, `h3.net-part`, `h3.chsec`), or the first h3 inside it (a card's h3 may sit in a
+   header row, and may carry a status after the name, which startsWith ignores). */
+function setSubTitle(el){
+  if(!el||!el.matches)return '';
+  if(el.matches('h3'))return el.textContent;
+  const h=el.querySelector('h3');
+  return h?h.textContent:'';
+}
+/* What the split works on: the pane's children, with a wrapper that holds several titled
+   cards opened up (`.set-subroot`, Channels' #chan-list, Accounts' #acct-list, the share box),
+   so a section can start at any of its cards. A card is never opened up: `.pgroup` is a unit. */
+function setSubUnits(main,bar){
+  const out=[];
+  const walk=(c,depth)=>{
+    if(c===bar)return;
+    const kids=[...c.children];
+    const opens=c.classList.contains('set-subroot')||(depth<2&&c.tagName==='DIV'&&!c.classList.contains('pgroup')
+      &&kids.filter(k=>k.matches('h3')||(k.classList.contains('pgroup')&&k.querySelector('h3'))).length>=2);
+    if(opens)kids.forEach(k=>walk(k,depth+1));else out.push(c);
+  };
+  [...main.children].forEach(c=>walk(c,0));
+  return out;
+}
+function setSubsApply(main){
+  if(!main)return;
+  const tab=main.dataset.tab||'',defs=SETSUBS[tab];
+  let bar=main.querySelector(':scope > .set-subs');
+  const clear=()=>{if(bar)bar.remove();main.querySelectorAll('.ssub-off').forEach(e=>e.classList.remove('ssub-off'))};
+  if(!defs||main.classList.contains('searching'))return clear();
+  const norm=t=>String(t||'').replace(/\s+/g,' ').trim().toLowerCase();
+  const units=setSubUnits(main,bar),found=[],of=new Map();
+  let cur=-1;
+  units.forEach(u=>{
+    const t=norm(setSubTitle(u));
+    if(t){const i=defs.findIndex(d=>t.startsWith(d[1].toLowerCase()));
+      if(i>=0&&!found.some(f=>f.i===i)){found.push({i,el:u,label:defs[i][0]});cur=i}}
+    of.set(u,cur)});
+  if(found.length<2)return clear();
+  let sel=setSubGet(tab);
+  if(!found.some(f=>f.label===sel))sel=found[0].label;
+  const key=found.map(f=>f.label).join('|');
+  if(!bar||bar.dataset.k!==key){
+    if(bar)bar.remove();
+    bar=document.createElement('nav');bar.className='set-subs';bar.dataset.k=key;
+    bar.setAttribute('role','tablist');bar.setAttribute('aria-label','Sections of this page');
+    found.forEach(f=>{const b=document.createElement('button');b.type='button';b.textContent=f.label;
+      b.dataset.sub=f.label;b.setAttribute('role','tab');b.onclick=()=>setSubShow(f.label,true);bar.appendChild(b)});
+    bar.onkeydown=e=>{if(e.key!=='ArrowRight'&&e.key!=='ArrowLeft')return;
+      const bs=[...bar.querySelectorAll('button')],i=bs.indexOf(document.activeElement);if(i<0)return;
+      const n=bs[(i+(e.key==='ArrowRight'?1:bs.length-1))%bs.length];n.focus();n.click();e.preventDefault()};
+    // after the page's own heading and its line, before the first section
+    let top=found[0].el;while(top.parentNode&&top.parentNode!==main)top=top.parentNode;
+    main.insertBefore(bar,top);
+  }
+  const selI=found.find(f=>f.label===sel).i;
+  units.forEach(u=>{const s=of.get(u);
+    u.classList.toggle('ssub-off',s>=0&&s!==selI);
+    if(s>=0&&u.dataset.ssub!==defs[s][0])u.dataset.ssub=defs[s][0]});
+  bar.querySelectorAll('button').forEach(b=>{const on=b.dataset.sub===sel;
+    b.classList.toggle('on',on);b.setAttribute('aria-selected',on?'true':'false');b.tabIndex=on?0:-1});
+}
+/* Show one section by its label (a chip, or code that sends the person to a card). */
+function setSubShow(label,fromChip){
+  const main=document.getElementById('prefs-main');if(!main)return;
+  setSubSet(main.dataset.tab||SETTAB,label);
+  setSubsApply(main);
+  if(fromChip){main.scrollTop=0;SETKEEP.until=0}
+}
+/* Before something scrolls a card into view: make sure its section is the one showing. */
+function setSubReveal(el){
+  const u=el&&el.closest&&el.closest('[data-ssub]');
+  if(u&&u.classList.contains('ssub-off'))setSubShow(u.dataset.ssub);
+}
+
+var SETKEEP={want:0,until:0};
+function setKeepTake(body){
+  const m=body&&body.querySelector('#prefs-main');if(!m)return null;
+  const a=document.activeElement,q=body.querySelector('#set-q');
+  return {tab:m.dataset.tab||'',top:m.scrollTop,q:q?q.value:'',
+    focus:a&&m.contains(a)&&a.id?a.id:'',
+    sel:a&&typeof a.selectionStart==='number'?[a.selectionStart,a.selectionEnd]:null};
+}
+function setKeepGive(body,k){
+  const m=body.querySelector('#prefs-main');if(!m||!k)return;
+  if(k.q){const q=body.querySelector('#set-q');if(q){q.value=k.q;if(q.oninput)q.oninput()}return}
+  if(k.tab&&k.tab===SETTAB&&k.top>0){SETKEEP.want=k.top;SETKEEP.until=Date.now()+4000;m.scrollTop=k.top}
+  if(k.focus){const f=document.getElementById(k.focus);
+    if(f&&m.contains(f))try{f.focus({preventScroll:true});if(k.sel&&f.setSelectionRange)f.setSelectionRange(k.sel[0],k.sel[1])}catch(e){}}
+}
+function setKeepSame(main,again){
+  if(again&&main.scrollTop>0){SETKEEP.want=main.scrollTop;SETKEEP.until=Date.now()+4000}
+  else if(!again){SETKEEP.want=0;SETKEEP.until=0;main.scrollTop=0}
+}
+function setKeepHold(main){
+  if(!main||!SETKEEP.until||Date.now()>SETKEEP.until||!SETKEEP.want)return;
+  if(Math.abs(main.scrollTop-SETKEEP.want)>2)main.scrollTop=SETKEEP.want;
+}
+function setKeepWatch(main){
+  // the person scrolling or typing ends the hold at once: their place is wherever they are now
+  ['wheel','touchstart','keydown'].forEach(t=>main.addEventListener(t,()=>{SETKEEP.until=0},{passive:true}));
 }
 /* ================= memory app ================= */
 let memTab='user';
@@ -36825,11 +37181,14 @@ async function companyPermMode(sel){
 /* ---------------- the company's folders (company.py folders_state / set_folders) ----------------
    Its own list, each read-only or read-write, or the account's. The server checks every folder
    against what the account can reach and refuses the save in a sentence; nothing is judged here. */
-function companyFoldersHTML(F){
+/* One drawing for the Office's panel and Settings → Companies (11k-companies.js): `ferr` is
+   the refusal to show, `head` false leaves out the panel's own section title. */
+function companyFoldersHTML(F,ferr,head){
   if(!F)return '';
   const own=!F.inherit,rows=F.folders||[];
-  const err=COMPANY.ferr?`<div class="co-bad co-ferr" role="alert">${esc(COMPANY.ferr)}</div>`:'';
-  return `<div class="of-sec">Folders</div>
+  const why=ferr===undefined?COMPANY.ferr:ferr;
+  const err=why?`<div class="co-bad co-ferr" role="alert">${esc(why)}</div>`:'';
+  return `${head===false?'':'<div class="of-sec">Folders</div>'}
     <label class="co-audit co-signoff"><span>Works in</span><select class="co-fmode" aria-label="Which folders this company works in">
       <option value="inherit"${own?'':' selected'}>Your account's folders</option>
       <option value="own"${own?' selected':''}>Folders of its own</option></select>${typeof pInfo==='function'?pInfo(F.say||''):''}</label>
@@ -36847,8 +37206,9 @@ function companyFoldersHTML(F){
       ${rows.some(f=>f.real===F.suggest)?'':`<button class="co-link co-fmake" title="${esc(F.suggest)}">Make a folder for it in your workspace</button>`}</div>`:''}
     ${err}`;
 }
-function companyFoldersWire(el){
-  const F=COMPANY.data&&COMPANY.data.folders;if(!F)return;
+function companyFoldersWire(el,F,save){
+  F=F||(COMPANY.data&&COMPANY.data.folders);if(!F)return;
+  const companyFolders=save||window.companyFolders;
   const rows=()=>(F.folders||[]).map(f=>({path:f.path,mode:f.mode}));
   const mode=el.querySelector('.co-fmode');
   if(mode)mode.onchange=()=>mode.value==='inherit'?companyFolders({inherit:true},mode)
@@ -41353,7 +41713,7 @@ async function netAct(act,b){
       await post('/api/network/label',{key:r.key,label:n});return netPaint()}
     if(act==='setup'){const m=[...document.querySelectorAll('.prov-m')].find(e=>e.textContent.includes(r.name||r.display));
       if(!m){toast('It is not waiting any more. Press Look at the network.');return}
-      m.scrollIntoView({block:'center',behavior:'smooth'});const c=m.querySelector('[data-pick]');if(c&&!c.disabled&&!c.checked)c.click();
+      if(typeof setSubReveal==='function')setSubReveal(m);m.scrollIntoView({block:'center',behavior:'smooth'});const c=m.querySelector('[data-pick]');if(c&&!c.disabled&&!c.checked)c.click();
       (m.querySelector('.prov-code')||m.querySelector('.prov-name'))?.focus({preventScroll:true});return}
     if(act==='more'){NET.more=NET.more===r.key?'':r.key;return netPaint()}
     if(act==='hardware'){NET.more='';const same=NET.open===r.key&&NET.mode==='hardware';

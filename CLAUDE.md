@@ -1862,6 +1862,21 @@ Every tab was photographed at 1440x900 and on a 390px phone first. Four things t
   immersive rule for `.pgroup > h3` makes any other heading a 2xs grey label.
 - **Speech to text is under Voice → Listening** (`hearSettingsPaint`), the same key that
   speaks. On this screen only says whether it can hear, with a door there.
+- **A long tab is split into sections by its own card titles** (`SETSUBS` in `11l-setsubs.js`:
+  a chip label and the title of the card it starts at; `tests/test_settings_companies.py`).
+  Asked for as "all the confusion in the settings, we need sub settings". A card added to a tab
+  joins the section before it; a wrapper holding several titled cards is opened up, a `.pgroup`
+  never is. Searching drops the row. A place may name a section (`placeSettings(tab, sub)`), and
+  code that scrolls to a card calls `setSubReveal(el)` first, or it scrolls to a hidden card.
+- **A redraw keeps your place** (`setKeepTake`/`Give`/`Same`/`Hold`/`Watch`). Reported as "when I
+  change a setting it takes me to the top": `refreshApp('settings')` (an `avatars` broadcast after
+  any agent or company save) rebuilt the pane with innerHTML. Measured: master 600px → 0, now 600
+  → 600. Held for a few seconds while late lists grow the pane, dropped at the first wheel, touch
+  or key. Another tab still starts at its top.
+- **Settings → Companies manages the companies; the Office designs their departments**
+  (`11k-companies.js`, `company.detail`/`update_profile`, `/api/companies/one`, `bento company
+  edit`). Every control is a route the panel or the CLI already had, open or parked company alike.
+  Its fields are not in `SET_AUTO`: the page-wide save would write the open company.
 
 Five things will bite whoever touches this next (`tests/test_hands.py`):
 

@@ -93,5 +93,6 @@ async function cloudKeepSave(b){
 
 function cloudDeployGo(id){
   const el=document.getElementById(id);
+  if(el&&typeof setSubReveal==='function')setSubReveal(el);
   if(el)el.scrollIntoView({behavior:'smooth',block:'center'});
 }

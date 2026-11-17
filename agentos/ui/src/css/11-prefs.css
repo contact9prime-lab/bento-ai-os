@@ -216,3 +216,35 @@ body.dev-touch .prefs label:has(> input[type=checkbox]:not(.psw input)){min-heig
 .pgroup.pfold{margin-bottom:10px}
 .team-limits .tl-row{flex-wrap:nowrap}
 .team-limits .tl-l{flex:1 1 auto}
+
+/* Settings sub-sections (11l-setsubs.js): one row of chips at the top of a long tab, sticky
+   while the pane scrolls, and only the chosen section shown. On a phone the row scrolls and
+   snaps, so a chip never rests half off the edge. */
+.prefs-main > .set-subs{position:sticky;top:-22px;z-index:3;display:flex;gap:6px;overflow-x:auto;
+  scroll-snap-type:x mandatory;scroll-padding-inline:26px;scrollbar-width:none;margin:4px -26px 16px;padding:10px 26px;
+  background:var(--bg2);border-bottom:1px solid var(--line)}
+.prefs-main > .set-subs::-webkit-scrollbar{display:none}
+.set-subs > button{flex:0 0 auto;scroll-snap-align:start;min-height:var(--tap,36px);padding:0 14px;
+  border-radius:999px;border:1px solid var(--line);background:var(--bg3);color:var(--txt);
+  font:inherit;font-size:var(--fs-sm);font-weight:600;cursor:pointer;white-space:nowrap}
+.set-subs > button:hover{border-color:var(--acc)}
+.set-subs > button.on{background:var(--acc-grad,var(--acc));color:var(--on-acc,#fff);border-color:transparent}
+.set-subs > button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.prefs-main .ssub-off{display:none!important}
+
+/* Settings → Companies (11k-companies.js) */
+.co-set-row.sel{box-shadow:inset 3px 0 0 var(--acc)}
+.co-set-row .pl .co-set-name>b{display:inline}
+.co-set-tag{display:inline-block;margin-left:6px;padding:1px 8px;border-radius:999px;font-size:var(--fs-2xs,11px);
+  font-weight:700;background:color-mix(in srgb,var(--acc) 18%,transparent);color:var(--txt)}
+.co-set-acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.co-set-acts .endbtn,.co-set-go .endbtn{min-height:var(--tap,36px)}
+.co-set-go{display:flex;justify-content:flex-end;padding:10px 16px}
+.co-set-edit{margin-top:8px;border-top:1px solid var(--line);padding-top:4px}
+.co-set-edit .of-sec{padding:8px 16px 0;font-weight:700}
+.co-set-edit textarea{width:100%;min-height:56px;resize:vertical}
+.co-set-for{display:flex;align-items:center;gap:10px;padding:8px 16px}
+.co-set-for select{min-height:var(--tap,36px);max-width:100%}
+.co-set-wrap .co-folders,.co-set-wrap .co-signoff{padding-left:16px;padding-right:16px}
+.co-set-empty{padding:8px 16px}
+@media (max-width:600px){.co-set-row{flex-wrap:wrap}.co-set-acts{justify-content:flex-start;width:100%}}

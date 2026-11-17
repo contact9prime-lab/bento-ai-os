@@ -3992,6 +3992,31 @@ def _company_cli(args):
         except EOFError:
             return False
 
+    if a == "edit":
+        # Settings → Companies' name, line and objective, for any company, open or parked
+        hit = co.find(cfg, " ".join(rest))
+        if not hit:
+            print(f"✗ no company called {' '.join(rest) or '?'}. bento company companies")
+            sys.exit(1)
+        fields = {k: v for k, v in (("name", getattr(args, "rename", "")), ("about", args.about),
+                                    ("objective", args.objective)) if v}
+        if not fields:
+            print('say what to change: --rename "New name", --about "what it does", --objective "what it is for"')
+            sys.exit(1)
+        if up:
+            d = _api_call(port, "/api/companies/one", "PUT", {"id": hit["id"], **fields})
+            if d.get("error"):
+                refused(d)
+        else:
+            try:
+                co.update_profile(cfg, hit["id"], fields)
+            except ValueError as e:
+                print(f"✗ {e}")
+                sys.exit(1)
+            _cfgmod.save_config(cfg)
+            co.record(store, f"company changed from the terminal: {hit['name']} ({', '.join(fields)})")
+        print(f"✓ {fields.get('name') or hit['name']}: {', '.join(fields)} saved.")
+        return
     if a in ("companies", "new", "open", "drop"):
         # several companies, each its own office, objective, work and space
         if a == "new":
@@ -10295,22 +10320,23 @@ def main():
     p_co.add_argument("action", nargs="?", default="show",
                       choices=["show", "list", "templates", "setup", "task", "name", "audit",
                                "review", "chain", "check", "objective", "todo", "start",
-                               "companies", "new", "open", "drop", "permissions", "allow", "block",
+                               "companies", "new", "open", "drop", "edit", "permissions", "allow", "block",
                                "ask", "hands", "kit", "code", "folders"], metavar="ACTION")
     p_co.add_argument("args", nargs="*", help="setup: what the company does · task: DEPARTMENT \"the task\""
                                               " · name: the company's name · audit: on|off"
                                               " · review: lead|heads|off"
                                               " · chain: [DEPARTMENT BOSS|lead] · check: RUN"
                                               " · objective: what it is for · start: TODO-ID"
-                                              " · new/open/drop: a company's name"
+                                              " · new/open/drop/edit: a company's name"
                                               " · permissions: agent|department"
                                               " · allow/block/ask: DEPARTMENT DEPARTMENT"
                                               " · hands: DEPARTMENT EXECUTOR|own · kit: DEPARTMENT"
                                               " · code: DEPARTMENT on|off"
                                               " · folders: make|add PATH [ro]|remove PATH|ro PATH|rw PATH|inherit")
     p_co.add_argument("--company", default="", help="folders: the company's id (default: the open one)")
-    p_co.add_argument("--objective", default="", help="setup, new: what the company is trying to achieve")
-    p_co.add_argument("--about", default="", help="new: what the company does, in one line")
+    p_co.add_argument("--objective", default="", help="setup, new, edit: what the company is trying to achieve")
+    p_co.add_argument("--about", default="", help="new, edit: what the company does, in one line")
+    p_co.add_argument("--rename", default="", help="edit: the company's new name")
     p_co.add_argument("--departments", default="", help="setup: exactly these, e.g. admin,hr,finance,sales")
     p_co.add_argument("--no-talk", action="store_true", help="setup: do not let colleagues ask each other")
     p_co.add_argument("--words", action="store_true", help="setup: skip the brain, use the catalogue as it is")

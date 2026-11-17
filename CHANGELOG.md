@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.9.29 — 2026-11-17
+
+**Companies are in Settings, long Settings pages have sections, and a change no longer sends you to the top.**
+
+- **Settings → Companies.** Every company you keep, the open one marked. Change any company's name,
+  what it does and its objective, open or not. Open, remove or start one, set the folders it works
+  in, see its departments, and leave it out of your Brief. In a terminal, `bento company edit NAME
+  --rename/--about/--objective` does the same.
+- **Sections.** AI providers, Agents, Companies, Network & Teams, Permissions, Channels, Accounts,
+  Voice, Appearance and System each show a row of section chips, and only the chosen section.
+  Agents was almost 10,000 pixels tall. Searching still shows everything.
+- **Your place is kept.** Saving an agent or a company redraws Settings, and that used to scroll the
+  page back to the top. It now stays where you were.
+
 ## 0.9.28 — 2026-11-17
 
 **A department's card keeps showing who is doing what, and the Brief says what it wants from you.**

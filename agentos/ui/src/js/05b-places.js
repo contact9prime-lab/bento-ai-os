@@ -43,9 +43,10 @@ var APP_WORDS={
   logs:['diary','events','errors'],
   tokens:['usage','cost','spend','billing'],
 };
-function placeSettings(tab){const go=()=>{
+/* `sub` names a section of a long tab (SETSUBS in 11l-setsubs.js), so a place lands on it. */
+function placeSettings(tab,sub){const go=()=>{
   tab=(typeof SETTAB_ALIAS!=='undefined'&&SETTAB_ALIAS[tab])||tab;
-  SETTAB=tab;try{localStorage.setItem('settab',tab)}catch(e){}
+  SETTAB=tab;try{localStorage.setItem('settab',tab);if(sub)localStorage.setItem('setsub.'+tab,sub)}catch(e){}
   openApp('settings');
   // an open Settings window is already painted on another pane: move it
   setTimeout(()=>{if(typeof settingsGo==='function')settingsGo(tab)},60);
@@ -63,10 +64,10 @@ function placeCompany(){return ()=>{openApp('office');setTimeout(()=>{if(typeof 
 var PLACES=[
   ['AI providers','settings','Settings → AI providers',['provider','providers','model','models','brain','api key','key','openai','anthropic','claude','gemini','ollama','openrouter','llm'],placeSettings('ai')],
   ['Agents','settings','Settings → Agents',['agent','agents','specialist','specialists','lead','persona'],placeSettings('agent')],
-  ['Agents working together','settings','Settings → Agents',['team','swarm','huddle','talk','working together','democracy','matrix','who may ask whom','own providers','departments talk'],placeSettings('agent')],
+  ['Agents working together','settings','Settings → Agents',['team','swarm','huddle','talk','working together','democracy','matrix','who may ask whom','own providers','departments talk'],placeSettings('agent','Working together')],
   ['Network & Teams','settings','Settings → Network & Teams',['linked teams','link','team chat','messages','communications','teams and communication','mapping','talks to','topology','logical map','physical map'],placeSettings('network')],
   ['Permissions settings','settings','Settings → Permissions',['permissions','autonomy','paranoid','balanced','full autonomy','ledger','audit','untrusted','injection','grants','security'],placeSettings('permissions')],
-  ['Free talk','settings','Settings → Agents',['free talk','let them talk','agent talk','agent to agent','agents talking','talk log','open floor'],placeSettings('agent')],
+  ['Free talk','settings','Settings → Agents',['free talk','let them talk','agent talk','agent to agent','agents talking','talk log','open floor'],placeSettings('agent','Working together')],
   ['Executors','settings','Settings → Executors',['executor','executors','hands','folders','folder access','claude code','codex','gemini cli','sandbox','reach'],placeSettings('executors')],
   ['Channels','settings','Settings → Channels',['channel','channels','telegram','whatsapp','messaging','phone','bot','notify','notifications'],placeSettings('channels')],
   ['Accounts','settings','Settings → Accounts',['account','accounts','mail','email','gmail','outlook','calendar','imap','caldav','sign in','google','microsoft'],placeSettings('accounts')],
@@ -75,17 +76,18 @@ var PLACES=[
   ['Voice','settings','Settings → Voice',['voice','speech','speak','tts','microphone','mic','wake word','dictation'],placeSettings('voice')],
   ['Appearance','settings','Settings → Appearance',['appearance','look','theme','immersive','scene','dark mode','font','wallpaper','office look','mind','brain','neural','island','town','time of day'],placeSettings('look')],
   ['System','settings','Settings → System',['system','update','updates','version','reset','factory reset','backup','restore','light mode','profile','snapshots','users'],placeSettings('system')],
-  ['Put Bento in the cloud','settings','Settings → System → Put Bento in the cloud',['deploy','cloud','render','fly','hosting','host','server','online','one click','storage','bucket','backblaze','keep memory'],placeSettings('system')],
+  ['Put Bento in the cloud','settings','Settings → System → Put Bento in the cloud',['deploy','cloud','render','fly','hosting','host','server','online','one click','storage','bucket','backblaze','keep memory'],placeSettings('system','Backup & cloud')],
   ['Network','settings','Settings → Network',['network','inventory','devices on the network','machines on my network','lan','secure a machine','secure it','harden','firewall','ssh password','security updates','teams and zeros','zeros','device map','what it runs on'],placeSettings('network')],
-  ['New machines','settings','Settings → Network → Set machines up',['new machine','provision','discover','set up a pi','enrolment key','enroll','poap','zero touch','make a zero','zero'],placeSettings('network')],
-  ['Devices without Bento','settings','Settings → Network',['devices','network scan','scan the network','install bento','ssh','sd card','first boot','cloud-init','imager'],placeSettings('network')],
-  ['Community','settings','Settings → Network & Teams → Community',['community','pool','cluster','machines','raspberry pi','pi','leader','join','shared notes','shared memory','split work'],placeSettings('network')],
-  ['On this screen','settings','Settings → Appearance → On this screen',['kiosk','one agent','buddy','wake word','small screen'],placeSettings('look')],
-  ['Listening','settings','Settings → Voice → Listening',['listen','listening','speech to text','whisper','hear','hearing','transcribe','mic language','dictation'],placeSettings('voice')],
-  ['Cloud standby','settings','Settings → System → Cloud standby',['cloud','standby','failover','offload','take over','hand back','move to the cloud','vps','always on'],placeSettings('system')],
+  ['New machines','settings','Settings → Network → Set machines up',['new machine','provision','discover','set up a pi','enrolment key','enroll','poap','zero touch','make a zero','zero'],placeSettings('network','Discovery')],
+  ['Devices without Bento','settings','Settings → Network',['devices','network scan','scan the network','install bento','ssh','sd card','first boot','cloud-init','imager'],placeSettings('network','Discovery')],
+  ['Community','settings','Settings → Network & Teams → Community',['community','pool','cluster','machines','raspberry pi','pi','leader','join','shared notes','shared memory','split work'],placeSettings('network','Community')],
+  ['On this screen','settings','Settings → Appearance → On this screen',['kiosk','one agent','buddy','wake word','small screen'],placeSettings('look','This screen')],
+  ['Listening','settings','Settings → Voice → Listening',['listen','listening','speech to text','whisper','hear','hearing','transcribe','mic language','dictation'],placeSettings('voice','Listening')],
+  ['Cloud standby','settings','Settings → System → Cloud standby',['cloud','standby','failover','offload','take over','hand back','move to the cloud','vps','always on'],placeSettings('system','Backup & cloud')],
   ['Run missions','jobs','Missions → Run',['mission','missions','job','jobs','recipe','recipes','daily','describe a mission','catalogue'],placeMissions('run')],
   ['Flows','jobs','Missions → Build → Flows',['flow','flows','workflow','workflows','trigger','triggers','webhook','cron','schedule','orchestrator','fabric','automation'],placeMissions('build','flows')],
   ['Mission agents','jobs','Missions → Build → Agents',['roster','specialist','specialists','subagent','subagents','new agent'],placeMissions('build','agents')],
+  ['Companies','settings','Settings → Companies',['companies','company','new company','another company','switch company','company folders','objective','business','businesses'],placeSettings('companies')],
   ['Company','office','Office → Company',['company','departments','department','org','organisation','organization','startup','business','hr','finance','sales','marketing','admin','supply','operations'],placeCompany()],
   ['History','jobs','Missions → History',['run','runs','run history','history','what ran','last run','scheduled runs','schedule runs','did it run'],placeMissions('history')],
   ['Schedule','jobs','Missions → Schedule',['scheduler','schedule','scheduled','cron','timer','task','tasks','reminder'],placeFold('tasks')],
