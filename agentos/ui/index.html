@@ -42859,7 +42859,7 @@ function zmLayout(st){
 /* Who may ask whom among the people on the ring: a solid line where a question is allowed
    (an allow cell, or an open cell under swarm), dashed where it is blocked, an arrow when it
    goes one way only. An unset cell that asks you first draws nothing: it is decided when it
-   happens. Read from the same cells as Settings → Agents → Working together (fabric.matrix). */
+   happens. Read from the same cells as the Working together grid (fabric.matrix). */
 function zmTalkOf(t,a,b){
   if(!t||t.talk==='off')return '';
   const v=(t.cells||{})[a+'>'+b]||'';

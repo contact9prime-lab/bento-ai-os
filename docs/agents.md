@@ -352,6 +352,8 @@ line where a question is allowed (a cell set to allow, or an open cell in Swarm)
 where it is blocked, and an arrow pointing at the one who answers when it goes one way only. An
 agent's panel lists the same in words: **May ask**, **Can't ask** and **Asks you first**.
 
+![The map inside the Default company: researcher and writer may ask each other, validator may ask writer (an arrow), researcher may not ask validator (dashed), and researcher's panel says so](screenshots/settings-agents-map-talk.png)
+
 Tap an agent to see only its lines:
 
 ![The map with the analyst selected: its brain, its "reports" hands, and who may and may not ask it](screenshots/settings-agents-map-focus.png)

@@ -30,6 +30,12 @@ does the reading, and the expensive one gets the judgement calls.
 
 ![Settings → Agents: the switch, then one row per agent with its face, a model picker and the provider it is answering on now](screenshots/team-settings.png)
 
+![Agents → Models: each agent's company, its first choice, its backups numbered in order, and what is answering now](screenshots/settings-agent-backups.png)
+
+On a phone each agent's row stacks, its backups under it:
+
+![Agents → Models on a 390px phone](screenshots/settings-agent-backups-phone.png)
+
 **The badge always shows what is actually answering, not what the agent was pinned to.** Those
 can differ. If an agent is pinned to a provider that is switched off, or has no key yet, the pin
 is kept, the agent uses this machine's brain until the provider is on, and the row says so in
