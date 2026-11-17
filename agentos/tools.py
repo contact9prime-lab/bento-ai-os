@@ -2757,6 +2757,58 @@ class Toolbox(usersmod.Scoped):
         return (f"generated asset {row['id']} with {label} "
                 f"({row.get('width') or width}x{row.get('height') or height})")
 
+    async def generate_video(self, prompt: str, seconds: int = 8, aspect: str = "16:9",
+                             title: str = "", space_id: str = "",
+                             conversation_id: str = "") -> str:
+        """Make a short video and keep it in the gallery (agentos/videogen.py).
+
+        Google's Gemini Omni Flash, the one video API left (Sora and Veo's preview were shut
+        down in 2026). One synchronous request; the MP4 comes back inline. It costs money per
+        second, so the tool is risky and asks first, and the card says what it will cost."""
+        from . import usage as usagemod
+        from . import videogen
+        ok, why = videogen.ready(self.cfg)
+        if not ok:
+            return f"[error] {why}"
+        c = videogen.conf(self.cfg)
+        google = self.cfg["providers"].get("google") or {}
+        base = (google.get("base_url") or "https://generativelanguage.googleapis.com").rstrip("/")
+        body = videogen.request(prompt, seconds, aspect, c["resolution"], c["model"])
+        try:
+            async with httpx.AsyncClient(timeout=600.0) as cl:
+                r = await cl.post(base + videogen.ENDPOINT, json=body,
+                                  headers={"x-goog-api-key": google["api_key"]})
+        except Exception as e:
+            return f"[error] could not reach Google: {type(e).__name__}"
+        try:
+            ans = r.json()
+        except Exception:
+            ans = r.text
+        if r.status_code != 200:
+            return "[error] " + videogen.refusal(r.status_code, ans)
+        data = videogen.video_of(ans if isinstance(ans, dict) else {})
+        if not data:
+            return "[error] Google answered, but the answer carried no video"
+        secs = videogen.seconds_of(seconds)
+        from . import assets as assetmod
+        row = await assetmod.put_bytes(
+            self.store, data, name="generated.mp4", mime="video/mp4",
+            title=title or prompt[:80], prompt=prompt,
+            source=f"tool:generate_video (google/{c['model']}, {secs}s {c['resolution']})",
+            space_id=space_id, conversation_id=conversation_id)
+        if not row:
+            return "[error] the video was made but could not be stored"
+        try:
+            usagemod.record(self.store, self.cfg, f"google/{c['model']}", {}, kind="video",
+                            conversation_id=conversation_id, space_id=space_id,
+                            cost_usd=videogen.cost(secs, c["resolution"]))
+        except Exception:
+            pass
+        if self.broadcast:
+            await self.broadcast({"type": "assets_update"})
+        return (f"generated video asset {row['id']} with google/{c['model']} "
+                f"({secs} s, {c['resolution']}, {videogen.cost_words(secs, c['resolution'])})")
+
     async def list_spaces(self) -> str:
         """The things the user is working on."""
         rows = self.store.list_spaces()
@@ -4428,6 +4480,11 @@ class Toolbox(usersmod.Scoped):
             n = len(args.get("pieces") or []) if isinstance(args.get("pieces"), list) else 1
             return "risky", (f"Hands {n} piece{'' if n == 1 else 's'} of work to machines in your "
                              f"community. Each runs there with that machine's tools.")
+        if name == "generate_video":
+            from . import videogen
+            res = videogen.conf(self.cfg)["resolution"]
+            return "risky", (f"Makes a {videogen.seconds_of(args.get('seconds'))}-second video with "
+                             f"Google: {videogen.cost_words(args.get('seconds'), res)}.")
         if name == "set_agent_brain":
             dest = args.get("model") or "this machine's brain"
             return "risky", (f"Moves '{args.get('agent', '?')}' onto {dest} — that provider "
@@ -7600,6 +7657,22 @@ MEDIA_TOOL_SCHEMAS = [
         },
     },
     {
+        "name": "generate_video",
+        "description": "Make a short video (3 to 15 seconds) from a description and keep it in "
+                       "the gallery. Returns an asset id. It costs money per second and the "
+                       "person is asked first; use it only when they want a video.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "prompt": {"type": "string", "description": "what happens, the look and the camera, in detail"},
+                "seconds": {"type": "integer", "description": "3 to 15, default 8"},
+                "aspect": {"type": "string", "enum": ["16:9", "9:16"], "description": "default 16:9"},
+                "title": {"type": "string", "description": "what to call it in the gallery"},
+            },
+            "required": ["prompt"],
+        },
+    },
+    {
         "name": "generate_image",
         "description": "Draw a picture from a description and keep it in the gallery. Returns "
                        "an asset id. Use this for any image the user wants to KEEP or use; "
@@ -7925,7 +7998,7 @@ def _zero_label_of(space_id: str) -> str:
 
 SPACE_SCOPED_TOOLS = frozenset({
     "remember", "recall", "kg_add", "kg_query",
-    "list_assets", "save_asset", "generate_image", "timeline",
+    "list_assets", "save_asset", "generate_image", "generate_video", "timeline",
     # how a schedule asked for at a Zero becomes that Zero's (scheduler.zero_job)
     "schedule_task",
     # a Zero's chat runs in its section: that is how screen_face knows which screen is its own,
