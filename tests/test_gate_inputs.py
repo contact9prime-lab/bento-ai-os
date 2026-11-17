@@ -630,7 +630,7 @@ NOT_MACHINE = {
     "browser_tabs", "browser_type", "browser_wait_for_person", "calendar_events", "community_recall",
     "control_desktop", "create_app", "create_space", "create_trigger", "delegate", "delete_asset", "delete_skill",
     "department_task", "desktop_state", "device_get", "device_set", "discover_mcp_servers", "discover_skills",
-    "export_app_to_git", "fetch_url", "find_tools", "focus_window", "forget", "generate_image", "generate_wallpaper",
+    "export_app_to_git", "fetch_url", "find_tools", "focus_window", "forget", "generate_image", "generate_video", "generate_wallpaper",
     "get_asset", "git_branch", "git_clone", "git_commit", "git_diff", "git_init", "git_log", "git_pull", "git_push",
     "git_remote_set", "git_status", "huddle", "kg_add", "kg_query", "launch_native_app", "linked_teams", "list_assets",
     "list_automations", "list_dir", "list_flows", "list_folders", "list_notifications", "list_openclaw_plugins",
