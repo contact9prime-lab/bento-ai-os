@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.26 — 2026-11-17
+
+**Each company can work in folders of its own.** In the Office, ▦ Company → Folders, a
+company either uses your account's folders, as before, or keeps a list of its own, each read
+only or read and write. **Make a folder for it** creates one named for the company in your
+workspace. Its department agents, desks and missions then read and write only there, and the
+code they run can write only in its read-and-write folders. Your own agent keeps the account's
+folders. A company can't reach further than your account: a folder your agents can't reach is
+refused when you save, and a folder shared with you read only stays read only. Every change is
+in the ledger, and Permissions shows a refusal at its own step. From a terminal it's
+`bento company folders`.
 ## 0.9.26 — 2026-11-16
 
 **A model that says it did something it never ran is caught.**

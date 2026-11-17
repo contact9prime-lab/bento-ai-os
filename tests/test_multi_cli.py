@@ -212,6 +212,28 @@ def test_a_mission_runs_a_codex_agent_on_the_machines_brain_and_says_so(tmp_path
     assert any("keeps its own read-only shell" in str(ev) for ev in logs)
 
 
+def test_a_company_with_its_own_folders_runs_a_codex_agent_on_the_machines_brain(
+        tmp_path, installed, monkeypatch):
+    # a company's folder list is a promise like a mission's, and Codex keeps a shell of its own
+    c, store, tb, cp, events = _world(tmp_path)
+    (tmp_path / "clients").mkdir()
+    c["company"] = {"name": "Forge", "folders": [{"path": str(tmp_path / "clients"), "mode": "rw"}]}
+    c["office"] = {"departments": [{"name": "Tech", "members": ["coder"]}]}
+    store.save_subagent({"name": "coder", "soul": "codes", "tools": ["recall"], "model": "codex/gpt-5"})
+    monkeypatch.setattr(executors, "resolve_engine", lambda cfg, requested="": "gemini-cli")
+    clis = _CLIs()
+    monkeypatch.setattr(executors, "_drive", clis)
+    res = asyncio.run(cp.run_subagent(store.get_subagent("coder"), "task"))
+    assert res["status"] == "ok" and res["model"].startswith("gemini-cli/")
+    logs = [ev for ev in events if ev.get("type") == "fabric_event" and ev.get("event") == "log"]
+    assert any("inside Forge's folders" in str(ev) for ev in logs)
+    # the same agent outside the company answers on Codex, as before
+    c.pop("company")
+    clis.seen.clear()
+    asyncio.run(cp.run_subagent(store.get_subagent("coder"), "task"))
+    assert [e for e, *_ in clis.seen] == ["codex"]
+
+
 def test_a_cli_that_never_asked_for_its_tools_is_an_error(tmp_path, installed, monkeypatch):
     c, store, tb, cp, events = _world(tmp_path)
     store.save_subagent({"name": "researcher", "soul": "r", "tools": ["recall"],

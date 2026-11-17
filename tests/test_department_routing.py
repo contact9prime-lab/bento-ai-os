@@ -344,7 +344,7 @@ def test_a_department_can_run_code_and_a_person_is_asked_each_time(tmp_path):
     assert "run_python" in company.ALLOWED_TOOLS and "run_python" in company.KITS["tech"]["tools"]
     assert "run_command" not in company.ALLOWED_TOOLS
     src = (ROOT / "agentos/__main__.py").read_text()
-    assert '"/api/company/code"' in src and 'choices=["show"' in src and '"kit", "code"]' in src
+    assert '"/api/company/code"' in src and 'choices=["show"' in src and '"kit", "code"' in src
     assert "data-code=" in (JS / "24g-company.js").read_text()
 
 

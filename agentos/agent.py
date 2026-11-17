@@ -1412,7 +1412,26 @@ class Agent:
         files are two consents, and the matrix's cell is only the first."""
         if name == "delegate" and args.get("_cross") and args.get("files"):
             args = await self._files_out(args)
-        return await self.toolbox.execute(name, args)
+        cj = self._company_jail() if name in tools_mod.JAILED_TOOLS else None
+        if cj is None:
+            return await self.toolbox.execute(name, args)
+        # a company agent's code runs in its company's folders (company.py), decided here from
+        # who this agent is and which run it is in, never from what the model sent
+        tok = tools_mod.company_jail.set(cj)
+        try:
+            return await self.toolbox.execute(name, args)
+        finally:
+            tools_mod.company_jail.reset(tok)
+
+    def _company_jail(self) -> dict | None:
+        from . import company as companymod
+        if self.principal.kind not in ("subagent", "flow"):
+            return None
+        hit = companymod.folders_for(self.cfg, self.principal.kind, self.principal.id, self.flow)
+        if hit is None:
+            return None
+        rw, ro = companymod.folder_places(self.cfg, hit[1])
+        return {"name": hit[0], "rw": rw, "ro": ro}
 
     async def _files_out(self, args: dict) -> dict:
         """`file.send` on `team:<label>` (linkfiles.py): decided by the same gate, asked

@@ -43,6 +43,7 @@ plans and applies the same thing with the server down.
 from __future__ import annotations
 
 import json
+import os
 import re
 import secrets
 import time
@@ -2964,6 +2965,270 @@ def set_code(cfg: dict, store, department: str, on: bool) -> dict:
                f"{hit['name']} " + ("can run Python, asked each time" if on else "cannot run code")
                + (f" ({', '.join(changed)})" if changed else " (no change)"))
     return {"department": hit["name"], "code": on, "changed": changed}
+
+
+# ---------------------------------------------------------------------------
+# A company's folders: its own list, or the account's
+# ---------------------------------------------------------------------------
+# "Every company can have its own set of folders that it can work upon along with the
+#  permissions, or it can inherit the default one from the account level." So a
+# company either says nothing (`folders` absent: its people reach what the account's
+# agents reach, as before) or keeps a list of folders, each read-only or read-write.
+# Four rules keep that honest:
+#
+# - **It only narrows.** The list is a ceiling in the gate (`folder_refusal`, rule
+#   `company-folders`, after the agent's hands), and the file tools' own account checks
+#   still run after it. A folder the account cannot reach is refused at the save
+#   (`clean_folders` asks the same two checks the file tools do), and a folder shared
+#   with the account read-only cannot become read-write for one of its companies.
+# - **It is the company's people, not the lead.** A department's specialists, its desk's
+#   master and every run of the company's desks and missions are held to it, whichever
+#   company is open (`company_of` reads parked companies too). The lead works for the
+#   account and keeps the account's folders.
+# - **Code goes with it.** A company agent's `run_python` / `run_command` runs in a jail
+#   built on a throwaway folder with only the company's read-write folders writable and
+#   its read-only ones visible (tools.company_jail). No jail on the machine is a refusal:
+#   a list of folders a shell can walk past is not a list of folders.
+# - **Only a person sets it.** The route, the panel and `bento company folders`; no agent
+#   tool, and `configure_agentos` cannot reach the `company` key. Each change is a
+#   `company.folders` ledger row.
+
+MAX_FOLDERS = 12
+#: Tools whose `path` is a folder they read (the repository), judged like a read.
+FOLDER_READ_TOOLS = ("git_status", "git_log", "git_diff")
+#: Runs a folder's own code, which may write anywhere in it: judged like a write.
+FOLDER_WRITE_TOOLS = ("run_tests",)
+#: The shared terminal reaches whatever the account's jail reaches, so a company with
+#: folders of its own does not use it (its code runs through run_command instead).
+TERMINAL_TOOLS = ("terminal_send", "terminal_read", "terminal_sessions")
+SAY_FOLDERS = ("Its agents, desks and missions work only in these folders. "
+               "The lead and agents outside the company keep the account's folders.")
+
+
+def folders_of(co: dict) -> list[dict] | None:
+    """A company's own folders, or None when it uses the account's."""
+    raw = (co or {}).get("folders")
+    if not isinstance(raw, list):
+        return None
+    return [{"path": str(f["path"]), "mode": "ro" if f.get("mode") == "ro" else "rw"}
+            for f in raw if isinstance(f, dict) and f.get("path")]
+
+
+def company_of(cfg: dict, kind: str, ident: str, flow: str = "") -> dict | None:
+    """The company a principal works for: the one whose desk or mission this run is,
+    else the one whose department the agent sits in. None for the lead, for apps and for
+    an agent in no company."""
+    name = flow or (ident if kind == "flow" else "")
+    if name:
+        if name in _company_flows((cfg or {}).get("company") or {}, (cfg or {}).get("office") or {}):
+            return (cfg or {}).get("company") or {}
+        for rec in _parked(cfg).values():
+            if name in _company_flows(rec["company"], rec.get("office") or {}):
+                return rec["company"]
+    if kind == "subagent" and ident:
+        hit = officemod.department_of(cfg, ident)
+        if hit:
+            return hit[1]
+    return None
+
+
+def folders_for(cfg: dict, kind: str, ident: str, flow: str = "") -> tuple[str, list[dict]] | None:
+    """(company name, its folders) for a principal held to a company's own folders, or
+    None when nothing narrows it (no company, or a company using the account's)."""
+    co = company_of(cfg, kind, ident, flow)
+    folders = folders_of(co) if co is not None else None
+    if folders is None:
+        return None
+    return officemod._plain(co.get("name"), 48) or "This company", folders
+
+
+def _place(path: str, ws: str) -> str:
+    if path == "@workspace":
+        path = ws or "~"
+    return os.path.realpath(os.path.expanduser(path))
+
+
+def folder_places(cfg: dict, folders: list[dict]) -> tuple[list[str], list[str]]:
+    """(read-write, read-only) real paths of a company's folders, for the shell jail."""
+    ws = (cfg or {}).get("workspace", "")
+    rw = [_place(f["path"], ws) for f in folders if f["mode"] == "rw"]
+    ro = [_place(f["path"], ws) for f in folders if f["mode"] == "ro"]
+    return rw, [p for p in ro if p not in rw]
+
+
+def _judge(name: str, folders: list[dict], ws: str, path: str, write: bool) -> str:
+    from .policy import _fs_real
+    real = _fs_real(f"fs:{path or ws or '~'}", ws)[3:]
+    ro_hit = False
+    for f in folders:
+        root = _place(f["path"], ws)
+        if real == root or real.startswith(root.rstrip("/") + "/"):
+            if not write or f["mode"] == "rw":
+                return ""
+            ro_hit = True
+    if ro_hit:
+        return f"{real} is read-only for {name}"
+    return f"{real} is outside {name}'s folders"
+
+
+def folder_refusal(cfg: dict, kind: str, ident: str, flow: str, tool: str,
+                   action: str, resource: str, args: dict | None = None,
+                   probe: bool = False) -> str:
+    """Why a company's folders do not reach this step ('' when they do, or when the
+    principal is not held to a company's own folders). The gate's `company-folders`.
+    `probe` is the "could it ever?" question asked with no path when the tool list is
+    built: a file tool is offered, and the real call is judged on its real path."""
+    hit = folders_for(cfg, kind, ident, flow)
+    if hit is None:
+        return ""
+    name, folders = hit
+    ws = (cfg or {}).get("workspace", "")
+    args = args or {}
+    if tool in TERMINAL_TOOLS:
+        return (f"the shared terminal reaches the account's folders, and {name} works only "
+                f"in its own")
+    if action in ("fs.read", "fs.write"):
+        path, write = resource[3:] if resource.startswith("fs:") else "", action == "fs.write"
+    elif tool in FOLDER_READ_TOOLS or tool in FOLDER_WRITE_TOOLS:
+        path, write = str(args.get("path") or ""), tool in FOLDER_WRITE_TOOLS
+    elif tool == "search_files":
+        path, write = ws, False      # a search over the workspace's files and their text
+    else:
+        return ""
+    if path in ("", "*"):
+        if probe:
+            return ""
+        path = ws
+    return _judge(name, folders, ws, path, write)
+
+
+def clean_folders(cfg: dict, raw) -> tuple[list[dict], list[str]]:
+    """A company's folder list read entry by entry: (folders, what was refused and why).
+    Each is `@workspace` or a full path to a folder that exists, that this account's own
+    agent could reach with that mode (the file tools' two checks), and that is no home,
+    secret or system folder. Entries may be {path, mode} or "path" / "path:ro"."""
+    from . import tools as toolsmod
+    out, refused, seen = [], [], set()
+    for item in raw if isinstance(raw, list) else []:
+        if isinstance(item, dict):
+            path, mode = str(item.get("path") or "").strip(), str(item.get("mode") or "rw")
+        else:
+            path, mode = str(item or "").strip(), "rw"
+            if path.endswith((":ro", ":rw")):
+                path, mode = path[:-3], path[-2:]
+        mode = "ro" if mode == "ro" else "rw"
+        if not path:
+            continue
+        if path != "@workspace" and not os.path.isabs(os.path.expanduser(path)):
+            refused.append(f"{path}: write a full path, like ~/clients or /srv/data")
+            continue
+        real = _place(path, cfg.get("workspace", ""))
+        keep = "@workspace" if path == "@workspace" else real
+        if keep in seen:
+            continue
+        good, why = toolsmod.check_safe_folder(real)
+        if not why and not toolsmod._jail_path_ok(real):
+            why = "this is a home or a private folder, and no agent may work in it"
+        if not why:
+            why = toolsmod.account_refusal(cfg, real, write=mode == "rw")
+            if why and mode == "rw" and not toolsmod.account_refusal(cfg, real, write=False):
+                why = "it is shared with you read-only, so a company can only read it"
+            why = why.replace("[denied] ", "")
+        if why:
+            refused.append(f"{path}: {why}")
+            continue
+        if len(out) >= MAX_FOLDERS:
+            refused.append(f"{path}: a company keeps at most {MAX_FOLDERS} folders")
+            continue
+        seen.add(keep)
+        out.append({"path": keep, "mode": mode})
+    return out, refused
+
+
+def own_folder(cfg: dict, co: dict | None = None) -> str:
+    """Where a folder of the company's own would go: under the workspace, named for it."""
+    co = co if co is not None else (cfg.get("company") or {})
+    base = re.sub(r"[^A-Za-z0-9 _.-]+", "", officemod._plain(co.get("name"), 48)).strip(" .")
+    ws = os.path.realpath(os.path.expanduser(cfg.get("workspace") or "~/AgentOS"))
+    return os.path.join(ws, base or "Company")
+
+
+def _label(real: str, ws: str) -> str:
+    """A folder as a person reads it: inside the workspace, inside their home, or in full."""
+    wsr = os.path.realpath(os.path.expanduser(ws or "~/AgentOS"))
+    if real == wsr:
+        return "workspace"
+    if real.startswith(wsr + os.sep):
+        return "workspace/" + real[len(wsr) + 1:]
+    home = os.path.realpath(os.path.expanduser("~"))
+    return "~" + real[len(home):] if real.startswith(home + os.sep) else real
+
+
+def folders_state(cfg: dict, cid: str = "") -> dict:
+    """What a company works in, for the panel, the CLI and the route."""
+    c = cfg_of(cfg, cid)
+    if c is None:
+        raise KeyError(cid)
+    co = c.get("company") or {}
+    own = folders_of(co)
+    ws = cfg.get("workspace", "")
+    rows = [{**f, "real": _place(f["path"], ws), "label": _label(_place(f["path"], ws), ws),
+             "exists": os.path.isdir(_place(f["path"], ws))} for f in own or []]
+    return {"company": officemod._plain(co.get("name"), 48) or "My company",
+            "id": str(co.get("id") or ""), "inherit": own is None, "folders": rows,
+            "suggest": own_folder(cfg, co), "say": SAY_FOLDERS}
+
+
+def set_folders(cfg: dict, store, folders, cid: str = "", make: bool = False) -> dict:
+    """Give a company folders of its own (a list, possibly empty) or put it back on the
+    account's (None). `make` creates the suggested folder of its own first and adds it
+    read-write. Refuses the whole save when any entry is refused, so what was asked for
+    is what is stored. The caller saves config."""
+    c = cfg_of(cfg, cid)
+    if c is None:
+        raise KeyError(cid)
+    co = dict(c.get("company") or {})
+    name = officemod._plain(co.get("name"), 48) or "My company"
+    if folders is None and not make:
+        co.pop("folders", None)
+        clean, refused = None, []
+    else:
+        want = list(folders or [])
+        if make:
+            path = own_folder(cfg, co)
+            os.makedirs(path, exist_ok=True)
+            want.append({"path": path, "mode": "rw"})
+        clean, refused = clean_folders(cfg, want)
+        if refused:
+            raise ValueError("; ".join(refused))
+        co["folders"] = clean
+    if c is cfg:
+        cfg["company"] = co
+    else:
+        parked = dict(cfg.get("companies") or {})
+        parked[str(co.get("id"))] = {**parked[str(co.get("id"))], "company": co}
+        cfg["companies"] = parked
+    _audit_row(store, "company.folders", f"company:{co.get('id') or name}",
+               f"{name} " + ("uses the account's folders" if clean is None else
+                             "works in " + (", ".join(f"{f['path']} ({'read-only' if f['mode'] == 'ro' else 'read-write'})"
+                                                      for f in clean) or "no folders")))
+    return folders_state(cfg, str(co.get("id") or ""))
+
+
+def folders_note(cfg: dict, kind: str, ident: str, flow: str = "") -> str:
+    """One paragraph for a company agent's prompt naming the folders it works in, so it
+    uses full paths there rather than the workspace a relative path resolves to."""
+    hit = folders_for(cfg, kind, ident, flow)
+    if hit is None:
+        return ""
+    name, folders = hit
+    if not folders:
+        return (f"=== your company's folders ===\n{name} has no folders, so you cannot read "
+                f"or write files. Work from memory, the web and what you are told.")
+    rw, ro = folder_places(cfg, folders)
+    lines = [f"  - {p} (read and write)" for p in rw] + [f"  - {p} (read only)" for p in ro]
+    return (f"=== your company's folders ===\n{name} works only in these folders. Use full "
+            f"paths inside them; anything outside is refused.\n" + "\n".join(lines))
 
 
 # ---------------------------------------------------------------------------
