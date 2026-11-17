@@ -122,9 +122,11 @@ def agent_brain(cfg: dict, defn: dict | None, override: str = "") -> dict:
         pid = pinned.split("/", 1)[0]
         title = executors.EXECUTORS_BY_ID.get(pid, {}).get("title", pid)
         if not own_ok:
-            note = "every agent uses this machine's brain (Team & Communications)"
+            note = "every agent uses this machine's brain (Agents → Models)"
         elif _cli_pin_refused(pid):
             note = f"only an admin can put an agent on {title}"
+        elif executors.switched_off(cfg, pid):
+            note = f"{title} is switched off in AI providers"
         elif pid not in executors.MCP_ENGINES:
             note = f"{title} cannot be handed this OS's tools yet"
         elif not executors.probe(pid).get("installed"):
@@ -136,7 +138,7 @@ def agent_brain(cfg: dict, defn: dict | None, override: str = "") -> dict:
         conf = (cfg.get("providers") or {}).get(pid)
         label = names.get(pid, pid)
         if not own_ok:
-            note = "every agent uses this machine's brain (Team & Communications)"
+            note = "every agent uses this machine's brain (Agents → Models)"
         elif conf is None:
             note = f"'{pid}' is not a provider on this machine"
         elif not conf.get("enabled"):

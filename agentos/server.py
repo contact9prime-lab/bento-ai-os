@@ -4930,6 +4930,26 @@ async def api_brain_fallbacks_set(body: dict):
     return await api_brain_fallbacks()
 
 
+@app.put("/api/executors/use")
+async def api_executor_use(body: dict):
+    """Switch one installed agent on or off as a brain (executors.set_use). The machine's."""
+    from . import executors as execmod
+    engine = str((body or {}).get("engine") or "")
+    if usersmod.enabled() and not usersmod.is_admin(usersmod.current()):
+        return JSONResponse({"error": "only an admin can choose which agents answer on this machine"},
+                            status_code=403)
+    cfg = state["cfg"]
+    ok, said = execmod.set_use(cfg, engine, bool((body or {}).get("on")))
+    if not ok:
+        return JSONResponse({"error": said}, status_code=400)
+    cfgmod.save_config(cfg)
+    with contextlib.suppress(Exception):
+        state["store"].audit_add(principal_kind="user", principal_id=usersmod.current() or "owner",
+                                 surface="desktop", action="executor.use", resource=f"executor:{engine}",
+                                 effect="allow", rule="person", outcome="ok", detail=said)
+    return {"ok": True, "said": said, "off": (cfg.get("executors") or {}).get("off") or []}
+
+
 @app.put("/api/brain")
 async def api_set_brain(body: dict):
     """Choose the executor AND its model in one write."""

@@ -21,17 +21,27 @@ brain, hands or permission is a row in the ledger (Logs, or `bento audit`).
 
 ## AI providers: the brains
 
-![Settings → AI providers: the lead agent's brain, then the cloud providers as one line each until you switch one on](screenshots/settings-brains.png)
+![Settings → AI providers: In use lists everything switched on and who uses it](screenshots/settings-brains.png)
 
-The first row is the lead agent's brain. Below it are all the brains this machine has:
+AI providers lists every brain this machine has and each one's settings. Which agent thinks
+with which is chosen on the agent, in **Agents**. The tab has five sections:
 
-- **Local models** through Ollama.
-- **Cloud providers**: Anthropic, OpenAI, OpenRouter, Google (Gemini) and any
-  OpenAI-compatible server. One you haven't switched on is a single line. Switch it on and
-  its key and model list open under it.
-- **AI agents installed here**: the ones on this machine with their settings, then one row
-  for each one that isn't, with **Install** and **Docs**. The ⓘ on the row shows the exact
-  command Install runs. Pick one as the lead agent's brain.
+- **In use**: everything switched on, whether it's ready, and who uses it (your lead, its
+  backups, and any agent pinned to it). **Settings** on a row opens that provider's card.
+- **Model providers**: local models through Ollama, then Anthropic, OpenAI, OpenRouter,
+  Google (Gemini) and any OpenAI-compatible server. One you haven't switched on is a single
+  line. Switch it on and its key and model list open under it.
+- **Installed agents**: a switch for each AI agent installed here (Claude Code, Gemini CLI,
+  Codex, Hermes, OpenClaw). One that is off is never used: not by your lead, not by an agent
+  pinned to it, not as a backup. Your lead's own brain can't be switched off here; choose
+  another one for it first. Below the switches are each agent's settings, then one row for
+  each agent that isn't installed, with **Install** and **Docs**. The ⓘ shows the exact
+  command Install runs. In a terminal: `bento brain agents [on|off <id>]`.
+
+  ![Installed agents: a switch for each, then Claude Code's own settings](screenshots/settings-installed-agents.png)
+- **Images**: which service makes pictures.
+- **Voice**: which service speaks (this browser, this computer, ElevenLabs, OpenAI or Google
+  Cloud) and its key. How replies are read aloud stays in Settings → Voice.
 
 Settings save themselves. Flip a switch, pick from a list or leave a box, and the header says
 **Saved**. Cards that talk to another service, like a channel or a mail account, keep their
@@ -202,8 +212,15 @@ relative path taken from the workspace, and `..` and symlinks resolved. A folder
 
 ![Settings → Agents: each specialist with its brain, hands, permissions, skills, who it may ask and its missions](screenshots/settings-agents.png)
 
-The **Lead agent** group names your agent, sets its **look** and its hands; its brain is
-chosen in AI providers. **How it works** holds the rest: the workspace, the most steps a turn
+The **Lead agent** group names your agent, sets its **look**, its brain and its hands. **Thinks
+with** is its first choice; **Then, in this order** lists the backups asked in turn when that one
+can't answer (`bento brain fallbacks`).
+
+![Agents → Lead agent: thinks with Claude Code · opus, then its backups in order](screenshots/settings-lead-brain.png)
+
+On a phone the same rows stack:
+
+![Agents → Lead agent on a 390px phone](screenshots/settings-lead-brain-phone.png) **How it works** holds the rest: the workspace, the most steps a turn
 may take, what happens to a conversation that outgrows the model, and the model App Studio
 builds with. Below them, **Your agents** shows each specialist on one card:
 
@@ -310,7 +327,7 @@ and "that" mean something. From Telegram and WhatsApp too, where `@a @b` now sta
 huddle as it does at the desk.
 
 A turn you stop keeps what it had written. If the brain is not available (a usage limit, a
-lapsed sign-in), the next one on your list in Settings → AI providers answers: in Chat, on
+lapsed sign-in), the next one on your list in Settings → Agents → Lead agent answers: in Chat, on
 Telegram, on WhatsApp and for a scheduled job. What a turn on one of these agents cost is
 in Usage with the rest.
 

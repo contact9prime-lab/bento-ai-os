@@ -78,12 +78,13 @@ def chain(cfg: dict) -> list[dict]:
 
 
 def usable(cfg: dict, fb: dict) -> bool:
-    """Can this machine run that brain right now? A CLI must be installed; a provider must be
+    """Can this machine run that brain right now? A CLI must be installed and switched on; a provider must be
     switched on and, for a cloud one, have its key."""
     from . import executors as execmod
     ex, model = fb.get("executor") or "aria", fb.get("model") or ""
     if ex != "aria":
-        return execmod.drives(ex) and bool(execmod.probe(ex).get("installed"))
+        return (execmod.drives(ex) and not execmod.switched_off(cfg, ex)
+                and bool(execmod.probe(ex).get("installed")))
     prov = model.split("/", 1)[0]
     p = ((cfg or {}).get("providers") or {}).get(prov)
     if p is None:

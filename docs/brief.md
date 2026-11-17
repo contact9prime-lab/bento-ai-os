@@ -53,7 +53,13 @@ Three rules make it a page rather than a feed:
 
 The Brief comes at the times you choose: 8:00 every day unless you change it. Set it on the
 Brief page (*Change* under the Play button) or with `bento brief schedule 08:00,18:00`
-(`--weekdays`, `--ai on`, `off` to stop). At each time Bento gathers what is waiting and what came
+(`--weekdays`, `--ai on`, `off` to stop). Settings → Companies → **Brief** has the same on/off
+switch for your account (**Send me the Brief**) and one for each company: a company switched off is
+left out of what you are sent, and its items stay in the Brief app.
+
+![Settings → Companies → Brief: Send me the Brief, and a door to the Brief app for its times](screenshots/settings-brief-switch.png)
+
+At each time Bento gathers what is waiting and what came
 in since the last Brief, and delivers it:
 
 - **On your screen**, a card: *Your 08:00 Brief: 3 need you · 2 decisions*, with **▶ Play**. If you

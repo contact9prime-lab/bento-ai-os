@@ -203,39 +203,20 @@ function setTab(body,all){
   const want=id=>(all||SETTAB===id)&&!zeroTabHidden(id);
   if(zeroFace())P.push(zeroSettingsNote());
   if(want('ai')){
-    P.push(`<h2>AI providers</h2><p class="lead">Every model this machine can think with. Each agent can use its own, set in <a href="#" onclick="settingsGo('agent');return false">Agents</a>. ${pInfo('Cloud providers with a key, models running on this machine, and other AI agents installed here like Claude Code, Gemini CLI or Codex.')}</p>`);
-    // The chat chip has always said "change it in Settings → AI providers", and
-    // for a long time this panel had nowhere to change it: you could add a key
-    // and edit a provider's model LIST, but choosing which model actually answers
-    // was only possible as "Set default" in the Model Manager. So editing the
-    // list here looked like picking a model and did nothing. This is that control,
-    // in the place everything already points at, and it applies on the spot —
-    // needing a second Save to make a chosen model take effect is the same bug
-    // wearing a different hat.
-    P.push(pGroup('Answering', [
-      pRow('Your lead agent thinks with',
-        `<span class="s-modelrow">
-           <select id="s-brain" onchange="pickExecutor(this.value)"><option value="">loading…</option></select>
-           <select id="s-model" onchange="pickModel(this.value)"><option value="">loading…</option></select>
-           <button class="endbtn" id="s-model-refresh" onclick="paintModelPicker(1)" title="Ask every enabled provider what it can run right now">↻ Refresh</button>
-           <button class="endbtn" onclick="openApp('models')" title="Pull, delete and inspect local models">Manage…</button>
-         </span>`,
-        {desc:'The AI that answers you, and the model it uses.',
-         more:'Chat, the prompt bar, Telegram and scheduled jobs all use it. Changes apply right away.',
-         f:'model default answers with picker which model refresh available executor engine brain'}),
-      pRow('If it isn’t available','<div id="s-fallbacks" class="fb-list"><span class="mut">…</span></div>',
-        {desc:'Asked next, in this order, when the one above can’t answer.',stack:true,
-         more:'A usage limit, a lapsed sign-in or a service that is down sends the same message to the next one. A turn you stopped, or one the rules refused, is never retried.',
-         f:'fallback fallbacks pool backup if not available next model brain order failover'}),
-      pRow('Available', '<span id="s-model-count" class="mut">…</span>',
-        {desc:'What your providers can run right now.',more:'Refresh after you pull a model or add a key.',
-         f:'available models count refresh providers'}),
-    ], {f:'model answering default'}));
-    setTimeout(paintModelPicker, 0);      // the list is fetched, not part of cfg
-    setTimeout(paintFallbacks, 0);
+    /* AI providers is the list of BRAINS this machine has: which are switched on and
+       each one's own settings. WHO thinks with which is decided on the agent (Agents →
+       Lead agent for the lead's brain and its backups, Agents → Models for the rest):
+       asked for as "the AI providers section should show the providers that are
+       activated and settings for each; Answering should move to Agents → Lead agent". */
+    P.push(`<h2>AI providers</h2><p class="lead">The brains this machine can think with, and each one’s settings. Your agents choose from them in <a href="#" onclick="settingsGo('agent');return false">Agents</a>. ${pInfo('Cloud providers with a key, models running on this machine, other AI agents installed here like Claude Code, Gemini CLI or Codex, and the services that make pictures and speech.')}</p>`);
+    P.push(`<div class="pgroup" data-f="in use active providers switched on enabled which brains"><h3>In use</h3><div class="ghint">Everything switched on here, and who uses it.</div><div id="s-active" class="act-list"><p class="mut">…</p></div></div>`);
+    setTimeout(paintActiveProviders,0);
+    P.push(`<h3 class="pgh">Model providers</h3>`);
     P.push(pGroup('Local',[
       pRow('Ollama base URL',pText('s-ollama-url',p.ollama.base_url,'http://localhost:11434'),
         {desc:'Models running on this machine. Private and free.',f:'ollama local base url'}),
+      pRow('Local models','<button class="endbtn" onclick="openApp(\'models\')">Model Manager…</button>',
+        {desc:'Pull, delete and inspect the models on this machine.',f:'model manager pull local ollama models'}),
     ],{f:'ollama local'}));
     /* A provider you have not switched on is one line: its name, what it is, and the
        switch. The key and the model list open under it when you switch it on, so the
@@ -246,7 +227,6 @@ function setTab(body,all){
         {cls:'pmore',f:key+' api key',desc:(obj&&obj._has_key)?'Saved on this machine and never shown again.':'Paste it once. It stays hidden after that.'}),
       pRow('Models',pText(idModels,((obj&&obj.models)||[]).join(', '),'comma-separated'),{cls:'pmore',stack:true,f:key+' models'}),
     ],{f:key+' '+name,fold:true,open:!!(obj&&(obj.enabled||obj._has_key))});
-    P.push(`<h3 class="pgh">Cloud providers</h3>`);
     P.push(prov('anthropic','Anthropic','s-ant-on','s-ant-key','s-ant-models','sk-ant-…','Claude models.',p.anthropic));
     P.push(prov('openai','OpenAI','s-oai-on','s-oai-key','s-oai-models','sk-…','GPT models.',p.openai));
     P.push(prov('openrouter','OpenRouter','s-or-on','s-or-key','s-or-models','sk-or-…','One key, hundreds of models.',p.openrouter));
@@ -264,7 +244,8 @@ function setTab(body,all){
        rest of the brains. The code still calls them executors (agentos/executors.py):
        renaming the identifier would cost every install its saved engine for a word
        nobody sees. */
-    P.push(`<h3 class="pgh">AI agents installed here</h3><p class="mut" style="margin:0 0 8px">Another agent can be the brain. Pick it above, or give it to one of your agents. ${pInfo('AgentOS keeps control of the desktop and permissions. An installed agent only reaches the folder you choose.')}</p>`);
+    P.push(`<h3 class="pgh">AI agents installed here</h3><p class="mut" style="margin:0 0 8px">Switch on the ones your agents may think with. ${pInfo('AgentOS keeps control of the desktop and permissions. An installed agent only reaches the folder you choose. One that is off is never used, not even as a backup.')}</p>`);
+    P.push(`<div id="exec-use" class="pgroup" data-f="installed agents on off use claude code gemini cli codex hermes openclaw switch"><h3>Use them</h3><p class="mut">checking…</p></div>`);
     P.push(`<div id="exec-list" class="pgroup chan" data-f="executors claude code hermes openclaw installed agents brain"><h3>Claude Code</h3><p class="mut">checking…</p></div>`);
     P.push(`<div id="exec-offers"></div>`);
     P.push(`<div id="ocp-list" class="pgroup chan" data-f="openclaw plugins extensions clawhub"><h3>OpenClaw plugins</h3><p class="mut">checking…</p></div>`);
@@ -275,6 +256,17 @@ function setTab(body,all){
         {desc:'Auto tries Google, then OpenAI, then the free pollinations.ai.',f:'image provider'}),
       pRow('Model',pText('s-img-model',(cfg.image&&cfg.image.model)||'','the provider’s default'),{f:'image model'}),
     ],{f:'image generation wallpaper'}));
+    /* The engine that speaks (agentos/speech.py, 11f-speech.js): which service and its
+       key live here with the other providers; how replies are read aloud (on or off,
+       speed, each agent's voice) stays in Voice. */
+    P.push(pGroup('Voice',[
+      pRow('Voice engine','<div id="v-engine-box" class="sp-box mut">loading…</div>',
+        {stack:true,desc:'This browser, this computer, or ElevenLabs, OpenAI or Google Cloud.',
+         more:'The cloud voices sound more natural and cost money per character. Your keys stay on this computer, and every line is kept so a replay costs nothing. The same key lets a kiosk hear you.',
+         f:'voice engine tts elevenlabs openai google cloud text to speech system say piper espeak natural voices key'}),
+      pRow('How replies are read','<button class="endbtn" onclick="settingsGo(\'voice\')">Open Voice</button>',
+        {desc:'Speaking aloud, speed, and each agent’s voice.',f:'voice speak aloud rate'}),
+    ],{f:'voice speech engine tts'}));
   }
   if(want('executors')){
     /* Executors are HANDS (agentos/hands.py): what an agent can reach — which tools,
@@ -330,13 +322,32 @@ function setTab(body,all){
         +`<button class="endbtn" onclick="avatarDesignAsk('@agent')">✦ Describe it</button>`,
         {desc:'Its character in Chat, Logs and the Office. Pick one or describe it.',f:'agent look character avatar face appearance'}),
       // a Zero thinks with its hub's brain: there is no AI providers tab to send it to
-      zeroFace()?pRow('Brain',`<span class="mut">${esc(zeroHub())}'s</span>`,
-        {desc:'Your agent thinks on '+zeroHub()+', the hub this machine belongs to.',f:'lead agent brain model provider hub zero'}):
-      pRow('Brain','<span id="s-lead-brain" class="mut">…</span> <button class="endbtn" onclick="settingsGo(\'ai\')">Change</button>',
-        {desc:'What your lead agent thinks with. You choose it in AI providers.',f:'lead agent brain model provider'}),
+      ...(zeroFace()?[pRow('Brain',`<span class="mut">${esc(zeroHub())}'s</span>`,
+        {desc:'Your agent thinks on '+zeroHub()+', the hub this machine belongs to.',f:'lead agent brain model provider hub zero'})]:[
+      /* The lead's brain and its backups, in priority order. They lived in AI providers as
+         "Answering"; the brain is the lead's, so it is chosen on the lead (asked for as
+         "Answering should be moved to Agents → Lead agent … the priority of the AI providers
+         to be set here"). The picker is still one write (executors.set_brain). */
+      pRow('Thinks with',
+        `<span class="s-modelrow">
+           <select id="s-brain" onchange="pickExecutor(this.value)" aria-label="Brain"><option value="">loading…</option></select>
+           <select id="s-model" onchange="pickModel(this.value)" aria-label="Model"><option value="">loading…</option></select>
+           <button class="endbtn" id="s-model-refresh" onclick="paintModelPicker(1)" title="Ask every provider that is on what it can run right now">↻ Refresh</button>
+         </span>`,
+        {desc:'First choice: the AI that answers you, and the model it uses.',
+         more:'Chat, the prompt bar, Telegram and scheduled jobs all use it. Changes apply right away. Only providers and agents switched on in AI providers are offered.',
+         f:'model default answers with picker which model refresh available executor engine brain lead thinks priority first'}),
+      pRow('Then, in this order','<div id="s-fallbacks" class="fb-list"><span class="mut">…</span></div>',
+        {desc:'Backups, asked in turn when the one above can’t answer.',stack:true,
+         more:'A usage limit, a lapsed sign-in or a service that is down sends the same message to the next one. A turn you stopped, or one the rules refused, is never retried.',
+         f:'fallback fallbacks pool backup backups priority order if not available next model brain failover'}),
+      pRow('Available','<span id="s-model-count" class="mut">…</span>',
+        {desc:'What your providers can run right now.',more:'Refresh after you pull a model or add a key.',
+         f:'available models count refresh providers'})]),
       pRow('Executor','<select id="s-lead-hands" onchange="setAgentHands(\'@agent\',this.value)"><option>…</option></select>',
         {desc:'What it can reach: tools, folders, web and MCP.',more:'Set up in Executors. Changes apply right away.',f:'lead agent hands executor profile reach tools folders'}),
-    ],{f:'agent identity name look brain executor lead'}));
+    ],{f:'agent identity name look brain executor lead model fallback backup priority'}));
+    if(!zeroFace()){setTimeout(paintModelPicker,0);setTimeout(paintFallbacks,0)}
     /* Who it is above, how it works here: these four are about a turn, not about the
        agent, and they used to sit under its name and face as one long list, with the
        conversation setting in a group of its own further down. */
@@ -548,10 +559,9 @@ function setTab(body,all){
       /* Which engine turns text into speech (agentos/speech.py, 11f-speech.js). The
          browser's own voices are the default; the rest are the server's, and the cloud
          ones cost money per character, so the engine is the machine's setting. */
-      pRow('Voice engine','<div id="v-engine-box" class="sp-box mut">loading…</div>',
-        {stack:true,desc:'This browser, this computer, or ElevenLabs, OpenAI or Google Cloud.',
-         more:'The cloud voices sound more natural and cost money per character. Your keys stay on this computer, and every line is kept so a replay costs nothing.',
-         f:'voice engine tts elevenlabs openai google cloud text to speech system say piper espeak natural voices'}),
+      pRow('Voice engine','<span id="v-engine-now" class="mut">…</span> <button class="endbtn" onclick="settingsGo(\'ai\',\'Voice\')">Change</button>',
+        {desc:'The service that speaks. You choose it and add its key in AI providers.',
+         f:'voice engine tts elevenlabs openai google cloud text to speech'}),
       pRow('Voice','<select id="v-voice"></select>',{desc:'Your lead agent’s voice.',f:'tts voice picker'}),
       pRow('Each agent speaks in its own voice',pSwitch('v-agents',VOICE.agents!==false),
         {desc:'Hear huddles and free talk, with a different voice for each agent.',
@@ -765,6 +775,8 @@ function setTab(body,all){
   if(main.querySelector('#s-hear'))hearSettingsPaint();
   if(main.querySelector('#v-voice'))settingsVoices();
   if(main.querySelector('#v-engine-box'))speechPaint();
+  if(main.querySelector('#exec-use'))renderExecUse();
+  if(main.querySelector('#v-engine-now'))voiceEnginePaint();
   const bm=main.querySelector('#s-build-model');
   if(bm)fetch('/api/models').then(r=>r.json()).then(d=>{
     const cur=(cfg.build&&cfg.build.model)||'';
@@ -943,7 +955,7 @@ async function paintModelPicker(refresh){
     const mods=(chosen&&chosen.models)||[];
     sel.innerHTML=mods.length?mods.map(m=>
       `<option value="${esc(m.id)}"${m.id===cur.model?' selected':''}>${esc(m.name||m.id)}</option>`).join('')
-      :`<option value="">No models yet. Add a key below or pull one in Model Manager</option>`;
+      :`<option value="">No models yet. Add a key in AI providers, or pull one in Model Manager</option>`;
     // A model set in config that the providers no longer offer must stay visible
     // and selected, or opening Settings would silently look like something else
     // is answering.
@@ -959,9 +971,9 @@ async function paintModelPicker(refresh){
     const per=provs.map(e=>`${esc(e.id)} ${e.models.length}`).join(' · ');
     const agents=list.filter(e=>e.kind==='agent'&&e.available).map(e=>esc(e.name));
     count.innerHTML=n?`<b>${n}</b> model${n===1?'':'s'}: ${per}`
-                     :`None found. Enable a provider below or pull one in <a href="#" onclick="openApp('models');return false">Model Manager</a>`;
+                     :`None found. Switch on a provider in <a href="#" onclick="settingsGo('ai','Providers');return false">AI providers</a> or pull one in <a href="#" onclick="openApp('models');return false">Model Manager</a>`;
     count.innerHTML+=agents.length?` · agents here: ${agents.join(', ')}`
-      :` · no other agents installed. See <a href="#" onclick="SETTAB='executors';localStorage.setItem('settab','executors');refreshApp('settings');return false">Executors</a>`;
+      :` · no other agents on. See <a href="#" onclick="settingsGo('ai','Installed agents');return false">AI providers</a>`;
   }
 }
 async function pickExecutor(id){
@@ -1038,9 +1050,8 @@ async function saveSettings(){
     if(ubr&&ubr.value.trim())patch.updates.branch=ubr.value.trim();}
   // Executors: the tool list is checkboxes rather than a field, so it is read
   // from the DOM directly. Only present when the Executors tab is on screen.
-  if(document.getElementById('s-exec-on')!==null){
+  if(document.getElementById('s-exec-ws')!==null){
     patch.executors={claude_code:{
-      enabled:on('s-exec-on'),
       workspace:(val('s-exec-ws')||'').trim(),
       model:(val('s-exec-model')||'').trim(),
       budget_usd:Number(val('s-exec-budget')||2),
@@ -1248,8 +1259,6 @@ async function renderExecutors(){
     (b.stripped||[]).length?` <span class="mut">(${esc(b.stripped.join(', '))} is set in the environment but is not passed to it)</span>`:''}</div>`:'';
   box.innerHTML=`<h3>Claude Code <span class="mut">${esc(String(ex.version||'').replace(/\s*\(Claude Code\)\s*$/i,''))}</span></h3>
     <div class="ghint">${esc(ex.what||'')}</div>${bill}
-    ${pRow('Use as an engine',pSwitch('s-exec-on',ex.enabled),
-      {desc:'Adds Claude Code to the model picker in Chat, so it can answer your turns.',f:'enable claude code executor'})}
     ${ex.needs_signin?`<div class="ghint bill none">! Installed, but nobody is signed in yet. Run <code>${esc(ex.signin_cmd||'claude')}</code> once in a terminal.</div>`:''}
     ${pRow('Folder',pText('s-exec-ws',c.workspace),
       {desc:'The only folder it can read or write.',

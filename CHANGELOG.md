@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.9.31 — 2026-11-17
+
+**AI providers lists what is switched on; the lead's brain and its backups are on the lead.**
+
+- **AI providers** starts with **In use**: everything switched on here, whether it is ready, and
+  who uses it, each with a door to its own settings. Then the model providers, the AI agents
+  installed here, Images, and a new **Voice** section with the speech engine and its key.
+- **Installed agents can be switched on and off.** Claude Code, Gemini CLI, Codex, Hermes and
+  OpenClaw each have a switch. One that is off is never used: not by the lead, not by an agent
+  pinned to it, not as a backup. Claude Code's old "Use as an engine" switch was read by nothing
+  and is gone. In a terminal: `bento brain agents [on|off <id>]`.
+- **Agents → Lead agent** now holds what was "Answering": the brain the lead thinks with first,
+  then its backups in order.
+- **Sharing** in Agents showed nothing: the section splitter left its box hidden once the cards
+  arrived. **The Brief's switches** in Companies were invisible (wrong markup), and the Brief
+  card now has an account-wide on/off as well as one per company.
+
 ## 0.9.30 — 2026-11-17
 
 **An update gets past files that are already there, and says which copy it updated.**

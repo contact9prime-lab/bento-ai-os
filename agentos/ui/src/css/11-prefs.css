@@ -248,3 +248,12 @@ body.dev-touch .prefs label:has(> input[type=checkbox]:not(.psw input)){min-heig
 .co-set-wrap .co-folders,.co-set-wrap .co-signoff{padding-left:16px;padding-right:16px}
 .co-set-empty{padding:8px 16px}
 @media (max-width:600px){.co-set-row{flex-wrap:wrap}.co-set-acts{justify-content:flex-start;width:100%}}
+
+/* Settings → AI providers → In use (11m-providers.js): one row per brain that is switched on,
+   a dot for ready or not, and who uses it. The dot is never the only signal: the line says it. */
+.act-row .act-name{display:flex;align-items:center;gap:0}
+.act-row .act-name b{display:inline}
+.act-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:8px;vertical-align:middle;background:var(--mut,#888)}
+.act-dot.ok{background:var(--ok,#3fb950)}
+.act-dot.no{background:var(--warn,#d29922)}
+.act-row.off .pdesc{color:var(--mut)}

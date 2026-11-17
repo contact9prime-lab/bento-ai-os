@@ -465,6 +465,37 @@ def runs_missions(engine: str) -> bool:
 FORWARDED_SURFACES = ("chat", "omnibar", "copilot", "telegram", "api", "task")
 
 
+def switched_off(cfg: dict, engine: str) -> bool:
+    """Did the person switch this installed agent off in AI providers?
+
+    `executors.off` is the list. It is the machine's (the `executors` key is), and an agent
+    that is off is never a brain: not the lead's, not a pin's, not a fallback. The old
+    `executors.claude_code.enabled` switch was read by nothing, so it is not this.
+    """
+    off = ((cfg or {}).get("executors") or {}).get("off") or []
+    return str(engine or "") in off
+
+
+def set_use(cfg: dict, engine: str, on: bool) -> tuple[bool, str]:
+    """Switch one installed agent on or off. Mutates `cfg`; the caller saves.
+
+    The lead's own brain can't be switched off from here: the person picks another brain
+    first, so the machine is never left answering with something they did not choose."""
+    engine = str(engine or "").strip()
+    if engine not in ENGINES or engine == "aria":
+        return False, f"there is no agent called {engine!r} to switch"
+    title = EXECUTORS_BY_ID.get(engine, {}).get("title", engine)
+    ex = cfg.setdefault("executors", {})
+    off = [e for e in (ex.get("off") or []) if e in ENGINES and e != engine]
+    if not on:
+        if str(cfg.get("engine") or "aria") == engine:
+            return False, (f"your lead agent thinks with {title}. Choose another brain for it "
+                           "in Agents → Lead agent first")
+        off.append(engine)
+    ex["off"] = off
+    return True, f"{title} is {'on' if on else 'off'}"
+
+
 def resolve_engine(cfg: dict, requested: str = "") -> str:
     """Which agent should answer this turn.
 
@@ -473,11 +504,11 @@ def resolve_engine(cfg: dict, requested: str = "") -> str:
     own engine decides, so a forwarder stays a forwarder on every surface.
     """
     if requested and requested in ENGINES and requested != "aria":
-        return requested
+        return "aria" if switched_off(cfg, requested) else requested
     if requested:                      # a real model id: the built-in agent
         return "aria"
     engine = str((cfg or {}).get("engine") or "aria")
-    if engine not in ENGINES or engine == "aria":
+    if engine not in ENGINES or engine == "aria" or switched_off(cfg, engine):
         return "aria"
     # Chosen but no longer here. An executor can be uninstalled, or the config can
     # be edited by hand, or a machine can be restored onto different hardware —
@@ -1782,8 +1813,11 @@ def brains(cfg: dict, models: list[dict], engine: str = "") -> dict:
             "kind": "agent", "engine": spec["id"], "provider": "",
             # installed is not enough: a brain this OS cannot run a turn on is a
             # dead choice, and choosing it used to start Claude Code under its name
-            "available": bool(r.get("installed")) and spec["id"] in DRIVEN,
-            "reason": r.get("why_not", "") or (
+            "available": (bool(r.get("installed")) and spec["id"] in DRIVEN
+                          and not switched_off(cfg, spec["id"])),
+            "on": not switched_off(cfg, spec["id"]),
+            "reason": (f"{spec['title']} is switched off in AI providers."
+                       if r.get("installed") and switched_off(cfg, spec["id"]) else "") or r.get("why_not", "") or (
                 "" if spec["id"] in DRIVEN else
                 f"{spec['title']} is installed, but AgentOS cannot run a turn on it yet."),
             "detail": r.get("version", ""),

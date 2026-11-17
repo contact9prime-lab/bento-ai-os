@@ -6329,6 +6329,28 @@ def _fallbacks_cli(spec: str):
         print(f"    {i}. {fb.words(f)}" + ("" if fb.usable(cfg, f) else "   (not on this machine right now, skipped)"))
 
 
+def _brain_agents_cli(spec: str):
+    """`bento brain agents [on|off ID]`: which installed agents (Claude Code, Gemini CLI, Codex,
+    Hermes, OpenClaw) may be a brain here. Settings → AI providers → Agents installed here."""
+    from . import config as _cfgm
+    from . import executors as ex
+    cfg = _cfgm.load_config()
+    words = spec.split()
+    if words:
+        if len(words) != 2 or words[0] not in ("on", "off"):
+            sys.exit("  usage: bento brain agents [on|off <id>]   e.g. bento brain agents off codex")
+        ok, said = ex.set_use(cfg, words[1], words[0] == "on")
+        if not ok:
+            sys.exit(f"  ✗ {said}")
+        _cfgm.save_config(cfg)
+        print(f"  ✓ {said}")
+    for r in ex.roster():
+        if r.get("builtin"):
+            continue
+        state = ("off" if ex.switched_off(cfg, r["id"]) else "on") if r.get("installed") else "not installed"
+        print(f"    {r['id']:<12} {r.get('title', r['id']):<14} {state}")
+
+
 def _install_owner(name: str) -> str:
     """Whose a machine installed from this terminal is. Named with --for; else, on a machine
     whose accounts have ONE admin, that admin (the terminal has no sign-in, and a Pi left
@@ -9907,7 +9929,9 @@ def main():
                                                     "openrouter | custom | claude-code | gemini-cli | "
                                                     "codex | aria")
     p_brain.add_argument("model", nargs="?", help="one of THAT executor's models; omit for its default. "
-                                                  "`bento brain fallbacks a,b` sets the brains asked next")
+                                                  "`bento brain fallbacks a,b` sets the brains asked next; "
+                                                  "`bento brain agents off codex` switches an installed agent")
+    p_brain.add_argument("which", nargs="?", help=argparse.SUPPRESS)
 
     p_del = verb("delegate", help="hand a task to an executor (Claude Code) and stream it here")
     p_del.add_argument("prompt", nargs="+")
@@ -10680,6 +10704,8 @@ def main():
         forward_cmd(args.engine)
     elif args.cmd == "brain" and args.executor == "fallbacks":
         _fallbacks_cli(args.model or "")
+    elif args.cmd == "brain" and args.executor == "agents":
+        _brain_agents_cli(" ".join(x for x in (args.model, getattr(args, "which", None)) if x))
     elif args.cmd == "brain":
         brain_cmd(args.executor, args.model)
     elif args.cmd == "profile":

@@ -13,8 +13,10 @@ bento agent fork   owner/repo --yes    # everything lands disabled, nothing gran
 bento agent verify owner/repo          # integrity + signature only
 ```
 
-The GUI face is Settings → Agent → **Share this agent**; the same module
-(`agentos/agentbundle.py`) decides everything on every surface.
+The GUI face is Settings → Agents → **Sharing** (**Share this agent**, **Host it**, **Fork a shared
+agent**); the same module (`agentos/agentbundle.py`) decides everything on every surface.
+
+![Settings → Agents → Sharing: name and line for the bundle, apps to include, the soul switch, Build the bundle](screenshots/settings-sharing.png)
 
 ---
 

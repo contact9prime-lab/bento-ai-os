@@ -10,11 +10,15 @@
 var HANDS={data:null,edit:null};
 var AGENTS={data:null,focus:''};
 
-function settingsGo(tab){
+/* `sub` names a section of the tab (SETSUBS in 11l-setsubs.js), so a link can land on the
+   card it is about rather than at the top of a long tab. */
+function settingsGo(tab,sub){
   tab=(typeof SETTAB_ALIAS!=='undefined'&&SETTAB_ALIAS[tab])||tab;
   SETTAB=tab;try{localStorage.setItem('settab',tab)}catch(e){}
+  if(sub&&typeof setSubSet==='function')setSubSet(tab,sub);
   const b=document.querySelector(`.prefs-side button[data-t="${tab}"]`);
   if(b)b.click();
+  if(sub&&typeof setSubShow==='function')setSubShow(sub,true);
 }
 
 /* ---------------- Executors: the hands editor ---------------- */
@@ -138,8 +142,6 @@ async function renderAgentsList(){
   const opts=cur=>profs.map(p=>`<option value="${esc(p.name)}" ${p.name===cur?'selected':''}>${esc(p.name)}</option>`).join('');
   const lead=d.agents.find(a=>a.master);
   if(lead){
-    const lb=document.getElementById('s-lead-brain');
-    if(lb)lb.textContent=lead.brain.provider_name+' · '+lead.brain.short;
     const lh=document.getElementById('s-lead-hands');
     if(lh)lh.innerHTML=opts(lead.hands.name);
   }
