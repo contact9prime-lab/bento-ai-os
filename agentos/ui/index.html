@@ -19886,19 +19886,19 @@ function handle(ev){
       // rather than making the panel poll.
       if(typeof waPanel==='function'&&document.getElementById('wa-extra'))waPanel();
       break;
-    case 'telegram_chats': refreshApp('telegram'); break;
+    case 'telegram_chats': refreshApp('telegram'); if(typeof chanAuthPaint==='function')chanAuthPaint(); break;
     // somebody new wrote to the bot: the owner decides here as well as on their phone
     case 'telegram_request':
-      toast('📩 '+(ev.title||'Someone')+' wants to talk to '+agentName()+' on Telegram: “'+(ev.text||'')+'”',
+      toast('📩 '+(ev.group?'The Telegram group '+(ev.title||'')+' is waiting for you'+(ev.text?': “'+ev.text+'”':''):(ev.title||'Someone')+' wants to talk to '+agentName()+' on Telegram: “'+(ev.text||'')+'”'),
         {kind:'warn',ms:60000,label:'Allow',go:()=>{if(ev.member)tgMember(ev.chat_id,ev.member,'allowed');else tgAllow(ev.chat_id,1);
           toast((ev.title||'They')+' can talk to '+agentName()+' now')}});
-      refreshApp('telegram');break;
+      refreshApp('telegram');if(typeof chanAuthPaint==='function')chanAuthPaint();break;
     // the same question for WhatsApp: this account's desktop is one of the places it is asked
     case 'whatsapp_request':
-      toast('📩 '+(ev.title||'Someone')+' wants to talk to '+agentName()+' on WhatsApp: “'+(ev.text||'')+'”',
+      toast('📩 '+(ev.group?'The WhatsApp group '+(ev.title||'')+' is waiting for you: “'+(ev.text||'')+'”':(ev.title||'Someone')+' wants to talk to '+agentName()+' on WhatsApp: “'+(ev.text||'')+'”'),
         {kind:'warn',ms:60000,label:'Allow',go:()=>{waAllow(ev.wa_id,1);toast((ev.title||'They')+' can talk to '+agentName()+' now')}});
-      if(typeof waPanel==='function')waPanel();break;
-    case 'whatsapp_chats': if(typeof waPanel==='function')waPanel(); break;
+      if(typeof waPanel==='function')waPanel();if(typeof chanAuthPaint==='function')chanAuthPaint();break;
+    case 'whatsapp_chats': if(typeof waPanel==='function')waPanel(); if(typeof chanAuthPaint==='function')chanAuthPaint(); break;
     case 'knowledge_update': refreshApp('memory'); refreshApp('kg'); refreshApp('profile'); break;
     case 'assets_update': refreshApp('gallery'); refreshApp('timeline'); break;
     case 'spaces_update': loadSpaces(true).then(paintSpaceChip); refreshApp('spaces'); if(typeof deskCompaniesLoad==='function')deskCompaniesLoad(); break;
@@ -22851,10 +22851,12 @@ async function renderChannels(){
      built-in cards that are always on and have nothing to fill in, so the page opened
      on the part nobody came for. */
   const own=d.channels.filter(c=>!c.builtin),built=d.channels.filter(c=>c.builtin);
-  var html=(own.length?`<h3 class="chsec">Ways to reach it</h3>`+own.map(chanCard).join(''):'')
+  var html=`<h3 class="chsec">Authorization</h3><div class="pgroup chan" id="chan-auth"><p class="mut">checking…</p></div>`
+    +(own.length?`<h3 class="chsec">Ways to reach it</h3>`+own.map(chanCard).join(''):'')
     +(built.length?`<h3 class="chsec">Built in <span class="mut">always on</span></h3>`+built.map(chanCard).join(''):'');
   box.innerHTML=html;
   if(typeof waPanel==='function'&&document.getElementById('wa-extra'))waPanel();
+  if(typeof chanAuthPaint==='function')chanAuthPaint();
 }
 function chanCard(c){
   const dot={on:'ok',off:'mut',needs:'warn'}[c.status]||'mut';
@@ -25430,7 +25432,7 @@ var SETSUBS={
   companies:[['About','About'],['Working together','Working together'],['Departments','Departments'],['Folders','Folders'],['Brief','In your Brief'],['New company','A new company']],
   network:[['Discovery','Discovery and linkage'],['Linked teams','Linked teams'],['Community','Community'],['Messages','Messages'],['Mapping','Team to agent mapping'],['Maps','Maps']],
   permissions:[['Autonomy','On their own'],['Security','Security'],['Ledger','The ledger']],
-  channels:[['Overview','Ways to reach it'],['Remote browser','Remote browser'],['Telegram','Telegram'],['WhatsApp','WhatsApp'],['Built in','Built in']],
+  channels:[['Authorization','Authorization'],['Overview','Ways to reach it'],['Remote browser','Remote browser'],['Telegram','Telegram'],['WhatsApp','WhatsApp'],['Built in','Built in']],
   accounts:[['Sign in','Sign in'],['Mail & calendar','Mail'],['App registration','App registration'],['Vault','Vault'],['GitHub','GitHub']],
   voice:[['Speech','Speech'],['Listening','Listening']],
   look:[['Look','Look'],['Characters','Characters'],['Office','Office'],['This screen','On this screen']],
@@ -25545,6 +25547,58 @@ function setKeepWatch(main){
   // the person scrolling or typing ends the hold at once: their place is wherever they are now
   ['wheel','touchstart','keydown'].forEach(t=>main.addEventListener(t,()=>{SETKEEP.until=0},{passive:true}));
 }
+/* ================= Settings → Channels → Authorization =================
+   Every person and group that reached Telegram or WhatsApp, in one list, waiting first,
+   with Allow and Block on each. Asked for as "we need a separate section of Authorization
+   for all the channels, so it's easier": requests were spread over the Telegram app's two
+   tables and the WhatsApp card, and a group that wrote in sat where nobody looked.
+   The list is chanauth.rows on the server, the same one `bento channels who` prints, and
+   a decision goes through each bridge's own door, so the person is told they are in.
+   Every name is somebody else's words: each cell goes through esc().
+   GUI and SUI draw this; the TUI is `bento channels who`, the phones `/allow` and `/block`. */
+var CHAN_AUTH={filter:'waiting'};
+var CHAN_AUTH_H=['Who','Where','Status','Decided','Messages','Last wrote',''];
+async function chanAuthPaint(){
+  const box=document.getElementById('chan-auth');if(!box)return;
+  let d=null;
+  try{d=await apiJSON('/api/channels/authorization')}catch(e){box.innerHTML=`<p class="mut">${esc(String(e.message||e))}</p>`;return}
+  const s=d.summary||{},items=d.items||[];
+  const f=CHAN_AUTH.filter==='waiting'&&!s.waiting?'all':CHAN_AUTH.filter;
+  const shown=f==='all'?items:items.filter(r=>r.state===f);
+  const seg=[['waiting','Waiting',s.waiting||0],['allowed','Let in',s.allowed||0],['blocked','Blocked',s.blocked||0],['all','All',items.length]]
+    .map(([k,l,n])=>`<button class="${k===f?'on':''}" onclick="chanAuthShow('${jsq(k)}')">${esc(l)} <span class="mut">${n}</span></button>`).join('');
+  const rows=shown.map(r=>{
+    const where=(r.channel==='telegram'?'Telegram':'WhatsApp')+(r.kind==='group'?' group':'');
+    const badge=r.state==='waiting'?'<span class="badge warn">waiting for you</span>'
+      :chanBadge(r.state==='allowed',r.state==='allowed'?'let in':'blocked');
+    const acts=(r.state!=='allowed'?`<button class="endbtn" onclick="chanAuthDecide('${jsq(r.ref)}',1)">Allow</button>`:'')
+      +(r.state!=='blocked'?`<button class="endbtn" onclick="chanAuthDecide('${jsq(r.ref)}',0)">Block</button>`:'');
+    return `<tr>${chanCells(CHAN_AUTH_H,[
+      `<b>${esc(r.name)}</b>${r.handle?` <span class="mut">${esc(r.handle)}</span>`:''}${r.members?`<small>${esc(r.members)} ${r.members==1?'person':'people'} wrote there</small>`:''}`,
+      esc(where),badge,r.decided_at?chanDecided(r):'<span class="mut">not yet</span>',
+      esc(r.messages||0),esc(chanWhen(r.last_seen)),`<span class="ct-act">${acts}</span>`])}</tr>`;
+  });
+  const empty=f==='waiting'?'Nobody is waiting.':'Nobody here yet. When somebody or a group writes to your Telegram bot or WhatsApp, they show up here.';
+  const notes=[];
+  if(d.telegram_privacy)notes.push(`<div class="wa-line warn"><b>Telegram groups.</b> ${esc(d.telegram_privacy)}</div>`);
+  if(d.whatsapp_mode==='cloud')notes.push(`<div class="wa-line mut">WhatsApp groups need the QR-code link. ${pInfo('The Business (Cloud) API does not deliver group messages.')}</div>`);
+  box.innerHTML=`<div class="ghint">Who may talk to your agent on Telegram and WhatsApp. New people and groups wait here until you decide. ${pInfo('You get the same question on your Telegram and WhatsApp, and can answer there.')}</div>
+    ${notes.join('')}
+    <div class="seg" style="margin:8px 16px">${seg}</div>
+    ${chanTable(CHAN_AUTH_H,rows,empty)}`;
+}
+async function chanAuthDecide(ref,allow){
+  let d={};
+  try{
+    const r=await fetch('/api/channels/authorization',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ref,allow:!!allow})});
+    d=await r.json().catch(()=>({}));
+    if(!r.ok||d.ok===false){toast('Could not change that: '+(d.message||r.status));return}
+  }catch(e){toast('could not reach the server');return}
+  toast(allow?'Let in. They’ve been told.':'Blocked.');
+  chanAuthPaint();
+}
+function chanAuthShow(k){CHAN_AUTH.filter=k;chanAuthPaint()}
 /* ---------------- Settings → AI providers: what is in use, and which agents may think ----------------
    Asked for as "the AI providers section should show the list of the providers that are
    activated and settings for each" and "select the agents that are to be enabled as a whole,
@@ -30530,6 +30584,7 @@ async function renderTelegram(body){
       <div class="tg-head">People</div>
       ${tgPeopleTable(d)}
       <div class="tg-head">Groups and channels</div>
+      ${d.privacy?`<p class="warn" style="margin:4px 0 8px">${esc(d.privacy)}</p>`:''}
       ${tgGroupsTable(d)}
     </div>
   </div>`;
@@ -30704,7 +30759,8 @@ function waPeopleTable(d){
   const rows=(d.chats||[]).map(c=>{
     const own=c.wa_id===d.owner_wa_id;
     return `<tr>${chanCells(WA_PEOPLE_H,[
-      `<b>${esc(c.name||'+'+c.wa_id)}</b>${own?' <span class="badge ok">owner</span>':''}<small>+${esc(c.wa_id)}</small>`,
+      c.kind==='group'?`<b>${esc(c.name||c.wa_id)}</b> <span class="mut">group</span>`
+        :`<b>${esc(c.name||'+'+c.wa_id)}</b>${own?' <span class="badge ok">owner</span>':''}<small>+${esc(c.wa_id)}</small>`,
       chanBadge(c.allowed,c.allowed?'let in':'blocked'),
       chanDecided(c),esc(c.msg_count||0),esc(chanWhen(c.last_seen)),
       own?'':`<span class="ct-act"><button class="endbtn" onclick="waAllow('${jsq(c.wa_id)}',${c.allowed?0:1})">${c.allowed?'Block':'Allow'}</button></span>`])}</tr>`;

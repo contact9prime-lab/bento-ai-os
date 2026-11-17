@@ -5129,6 +5129,38 @@ async def api_channels():
                           "help": chmod.POSTURE_HELP[p]} for p in chmod.POSTURE_LABELS]}
 
 
+@app.get("/api/channels/authorization")
+async def api_channels_authorization():
+    """Every person and group that reached Telegram or WhatsApp, waiting first
+    (chanauth.rows). Settings → Channels → Authorization draws it."""
+    from . import chanauth
+    from . import whatsapp as wamod
+    items = chanauth.rows(state["store"], state["cfg"])
+    tg = state.get("telegram")
+    return {"items": items, "summary": chanauth.summary(items),
+            "telegram_privacy": tg.privacy_words() if tg is not None and hasattr(tg, "privacy_words") else "",
+            "whatsapp_mode": wamod.mode(state["cfg"])}
+
+
+@app.post("/api/channels/authorization")
+async def api_channels_authorization_decide(body: dict):
+    """Allow or block one request. Through the bridge when it runs, so the person is
+    told they are in; straight into the database otherwise."""
+    from . import chanauth
+    ref, allow = str(body.get("ref") or ""), bool(body.get("allow"))
+    try:
+        channel, key = chanauth.split_ref(ref)
+    except ValueError as e:
+        return JSONResponse({"ok": False, "message": str(e)}, status_code=400)
+    bridge = state.get(channel)
+    if bridge is not None and hasattr(bridge, "decide_newcomer"):
+        said = await bridge.decide_newcomer(int(key) if channel == "telegram" else key, allow, _desk_by())
+    else:
+        said = chanauth.decide(state["store"], ref, allow, _desk_by())
+    await state["broadcast"]({"type": f"{channel}_chats"})
+    return {"ok": said in ("allowed", "blocked"), "message": said}
+
+
 @app.put("/api/channels/{channel_id}")
 async def api_channel_save(channel_id: str, body: dict, request: Request):
     from . import channels as chmod

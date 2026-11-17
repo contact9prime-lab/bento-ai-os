@@ -666,19 +666,19 @@ function handle(ev){
       // rather than making the panel poll.
       if(typeof waPanel==='function'&&document.getElementById('wa-extra'))waPanel();
       break;
-    case 'telegram_chats': refreshApp('telegram'); break;
+    case 'telegram_chats': refreshApp('telegram'); if(typeof chanAuthPaint==='function')chanAuthPaint(); break;
     // somebody new wrote to the bot: the owner decides here as well as on their phone
     case 'telegram_request':
-      toast('📩 '+(ev.title||'Someone')+' wants to talk to '+agentName()+' on Telegram: “'+(ev.text||'')+'”',
+      toast('📩 '+(ev.group?'The Telegram group '+(ev.title||'')+' is waiting for you'+(ev.text?': “'+ev.text+'”':''):(ev.title||'Someone')+' wants to talk to '+agentName()+' on Telegram: “'+(ev.text||'')+'”'),
         {kind:'warn',ms:60000,label:'Allow',go:()=>{if(ev.member)tgMember(ev.chat_id,ev.member,'allowed');else tgAllow(ev.chat_id,1);
           toast((ev.title||'They')+' can talk to '+agentName()+' now')}});
-      refreshApp('telegram');break;
+      refreshApp('telegram');if(typeof chanAuthPaint==='function')chanAuthPaint();break;
     // the same question for WhatsApp: this account's desktop is one of the places it is asked
     case 'whatsapp_request':
-      toast('📩 '+(ev.title||'Someone')+' wants to talk to '+agentName()+' on WhatsApp: “'+(ev.text||'')+'”',
+      toast('📩 '+(ev.group?'The WhatsApp group '+(ev.title||'')+' is waiting for you: “'+(ev.text||'')+'”':(ev.title||'Someone')+' wants to talk to '+agentName()+' on WhatsApp: “'+(ev.text||'')+'”'),
         {kind:'warn',ms:60000,label:'Allow',go:()=>{waAllow(ev.wa_id,1);toast((ev.title||'They')+' can talk to '+agentName()+' now')}});
-      if(typeof waPanel==='function')waPanel();break;
-    case 'whatsapp_chats': if(typeof waPanel==='function')waPanel(); break;
+      if(typeof waPanel==='function')waPanel();if(typeof chanAuthPaint==='function')chanAuthPaint();break;
+    case 'whatsapp_chats': if(typeof waPanel==='function')waPanel(); if(typeof chanAuthPaint==='function')chanAuthPaint(); break;
     case 'knowledge_update': refreshApp('memory'); refreshApp('kg'); refreshApp('profile'); break;
     case 'assets_update': refreshApp('gallery'); refreshApp('timeline'); break;
     case 'spaces_update': loadSpaces(true).then(paintSpaceChip); refreshApp('spaces'); if(typeof deskCompaniesLoad==='function')deskCompaniesLoad(); break;

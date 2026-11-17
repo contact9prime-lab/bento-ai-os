@@ -971,7 +971,7 @@ class Store:
                 self.db.execute(f"ALTER TABLE conversations ADD COLUMN {col} {ddl}")
         # when a chat was let in or blocked, and by whom; a group may answer only picked people
         for table, extra in (("telegram_chats", (("members_only", "INTEGER DEFAULT 0"),)),
-                             ("whatsapp_chats", ())):
+                             ("whatsapp_chats", (("kind", "TEXT DEFAULT ''"),))):
             have = {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})").fetchall()}
             for col, ddl in (("decided_at", "REAL"), ("decided_by", "TEXT DEFAULT ''"), *extra):
                 if have and col not in have:
@@ -2495,20 +2495,22 @@ class Store:
 
     # -- whatsapp chats -------------------------------------------------------
 
-    def wa_upsert_chat(self, wa_id: str, name: str) -> dict:
+    def wa_upsert_chat(self, wa_id: str, name: str, kind: str = "") -> dict:
         """Record an INBOUND message. `last_inbound` moves only here, because that is
         exactly what Meta's 24-hour window measures — a message we sent does not
-        reopen it, and a row touched for any other reason must not pretend it did."""
+        reopen it, and a row touched for any other reason must not pretend it did.
+        `kind` is 'group' for a WhatsApp group (the linked device only), '' for a person."""
         now = time.time()
         row = self.db.execute("SELECT 1 FROM whatsapp_chats WHERE wa_id=?", (wa_id,)).fetchone()
         if row:
             self.db.execute(
                 "UPDATE whatsapp_chats SET name=?, msg_count=msg_count+1, last_inbound=?, "
-                "last_seen=? WHERE wa_id=?", (name, now, now, wa_id))
+                "last_seen=?, kind=? WHERE wa_id=?", (name, now, now, kind or "", wa_id))
         else:
             self.db.execute(
                 "INSERT INTO whatsapp_chats (wa_id, name, allowed, msg_count, last_inbound, "
-                "first_seen, last_seen) VALUES (?,?,0,1,?,?,?)", (wa_id, name, now, now, now))
+                "first_seen, last_seen, kind) VALUES (?,?,0,1,?,?,?,?)",
+                (wa_id, name, now, now, now, kind or ""))
         self.db.commit()
         return self.wa_get_chat(wa_id) or {}
 
@@ -2534,6 +2536,7 @@ class Store:
 
     def wa_delete_chat(self, wa_id: str):
         self.db.execute("DELETE FROM whatsapp_chats WHERE wa_id=?", (wa_id,))
+        self.db.execute("DELETE FROM chat_members WHERE channel='whatsapp' AND chat_key=?", (wa_id,))
         self.db.commit()
 
     # -- skills ---------------------------------------------------------------

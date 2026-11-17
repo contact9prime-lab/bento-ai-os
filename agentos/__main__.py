@@ -806,6 +806,61 @@ def _folder_path_of(entry) -> str:
     return os.path.realpath(os.path.expanduser(str(raw)))
 
 
+def channels_who(allow: str = "", block: str = "") -> None:
+    """Who may talk to the agent on Telegram and WhatsApp, waiting first: Settings →
+    Channels → Authorization, in a terminal. Reads the machine's home and every
+    account's, because each account's bot keeps its own requests."""
+    import pathlib
+    from . import chanauth
+    from . import config as cfgmod
+    from . import memory as memmod
+    from . import users as usersmod
+    homes = [("this machine", cfgmod.AGENTOS_HOME, "")]
+    try:
+        for u in usersmod.list_users():
+            homes.append((u.get("name") or u["id"], usersmod.home_for(u["id"]), u["id"]))
+    except Exception:
+        pass
+    ref = allow or block
+    shown = False
+    seen: set = set()
+    for label, home, uid in homes:
+        db = pathlib.Path(home) / "agentos.db"
+        if not db.exists() or db.resolve() in seen:
+            continue
+        seen.add(db.resolve())
+        store = memmod.Store(str(db))
+        cfg = cfgmod.load_config() if not uid else usersmod.cfg_for(uid)
+        if ref:
+            try:
+                said = chanauth.decide(store, ref, bool(allow), "an admin, in a terminal")
+            except ValueError as e:
+                print(f"✗ {e}")
+                return
+            if said in ("allowed", "blocked"):
+                print(f"✓ {ref} {said} ({label}). They'll be answered from their next message; "
+                      f"from the desktop or your phone they are also told.")
+                return
+            continue
+        items = chanauth.rows(store, cfg or {})
+        if not items:
+            continue
+        shown = True
+        s = chanauth.summary(items)
+        print(f"\n  {label}: {s['waiting']} waiting · {s['allowed']} let in · {s['blocked']} blocked")
+        for r in items:
+            mark = {"waiting": "?", "allowed": "●", "blocked": "✗"}[r["state"]]
+            kind = "group" if r["kind"] == "group" else "person"
+            print(f"    {mark} {r['channel']:<8} {kind:<6} {r['name'][:34]:<34} {chanauth.STATES[r['state']]:<16} {r['ref']}")
+    if ref:
+        print(f"✗ nobody by {ref} has written to any account here")
+        return
+    if not shown:
+        print("  Nobody has written on Telegram or WhatsApp yet.")
+        return
+    print("\n  bento channels who --allow <ref>   lets one in; --block <ref> stops one.")
+
+
 def channels_cmd(channel: str | None, on: bool, off: bool, posture: str | None,
                   sets: list | None = None):
     """Show or change the ways in.
@@ -10204,6 +10259,10 @@ def main():
                              "(the Baileys bridge — no Meta account needed)")
     p_chan.add_argument("--unpair", action="store_true",
                         help="whatsapp: unlink the device and forget the paired chat")
+    p_chan.add_argument("--allow", default="", metavar="REF",
+                        help="with `channels who`: let in tg:<chat id> or wa:<number or group id>")
+    p_chan.add_argument("--block", default="", metavar="REF",
+                        help="with `channels who`: block tg:<chat id> or wa:<number or group id>")
     p_chan.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
                         help="set one of this channel's fields, e.g. --set verify_token=hunter2 "
                              "(repeatable; `agentos channels <id>` lists the fields it needs)")
@@ -10847,7 +10906,10 @@ def main():
     elif args.cmd == "folders":
         folders_cmd(args.action, args.path, args.mode, args.users)
     elif args.cmd == "channels":
-        channels_cmd(args.channel, args.on, args.off, args.posture, args.set)
+        if args.channel == "who":
+            channels_who(args.allow, args.block)
+        else:
+            channels_cmd(args.channel, args.on, args.off, args.posture, args.set)
     elif args.cmd == "delegate":
         delegate(" ".join(args.prompt), args.dir, args.tools, args.model, args.budget)
     elif args.cmd == "app":

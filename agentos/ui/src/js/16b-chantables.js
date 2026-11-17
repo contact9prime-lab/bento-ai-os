@@ -86,7 +86,8 @@ function waPeopleTable(d){
   const rows=(d.chats||[]).map(c=>{
     const own=c.wa_id===d.owner_wa_id;
     return `<tr>${chanCells(WA_PEOPLE_H,[
-      `<b>${esc(c.name||'+'+c.wa_id)}</b>${own?' <span class="badge ok">owner</span>':''}<small>+${esc(c.wa_id)}</small>`,
+      c.kind==='group'?`<b>${esc(c.name||c.wa_id)}</b> <span class="mut">group</span>`
+        :`<b>${esc(c.name||'+'+c.wa_id)}</b>${own?' <span class="badge ok">owner</span>':''}<small>+${esc(c.wa_id)}</small>`,
       chanBadge(c.allowed,c.allowed?'let in':'blocked'),
       chanDecided(c),esc(c.msg_count||0),esc(chanWhen(c.last_seen)),
       own?'':`<span class="ct-act"><button class="endbtn" onclick="waAllow('${jsq(c.wa_id)}',${c.allowed?0:1})">${c.allowed?'Block':'Allow'}</button></span>`])}</tr>`;

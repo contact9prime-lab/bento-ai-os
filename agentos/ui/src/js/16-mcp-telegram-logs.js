@@ -266,6 +266,7 @@ async function renderTelegram(body){
       <div class="tg-head">People</div>
       ${tgPeopleTable(d)}
       <div class="tg-head">Groups and channels</div>
+      ${d.privacy?`<p class="warn" style="margin:4px 0 8px">${esc(d.privacy)}</p>`:''}
       ${tgGroupsTable(d)}
     </div>
   </div>`;
