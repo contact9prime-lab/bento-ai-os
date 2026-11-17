@@ -257,3 +257,12 @@ body.dev-touch .prefs label:has(> input[type=checkbox]:not(.psw input)){min-heig
 .act-dot.ok{background:var(--ok,#3fb950)}
 .act-dot.no{background:var(--warn,#d29922)}
 .act-row.off .pdesc{color:var(--mut)}
+
+/* Agents → Models: each agent's company, first choice and backups (paintTeamBrains). */
+.tb-row{flex-wrap:wrap;row-gap:6px}
+.tb-co{font-size:var(--fs-xs,12px);color:var(--mut);padding:2px 8px;border-radius:999px;border:1px solid color-mix(in srgb,var(--txt) 14%,transparent)}
+.tb-bk{font-size:var(--fs-xs,12px);color:var(--warn,#d29922)}
+.tb-ups{flex-basis:100%;display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding-left:40px}
+.tb-up{display:inline-flex;align-items:center;gap:4px}
+.tb-x{background:none;border:0;color:var(--mut);cursor:pointer;min-width:var(--tap,32px);min-height:var(--tap,32px)}
+@media (max-width:600px){.tb-ups{padding-left:0}}

@@ -214,5 +214,9 @@ async function agentEdit(name){
 async function renderAgentsGraph(){
   const box=document.getElementById('agents-graph');if(!box)return;
   let tree;try{tree=await apiJSON('/api/network/logical')}catch(e){box.textContent='could not load the map: '+e.message;return}
-  zmMount(box,zmLogical(tree),{label:'Your agents'});
+  // who may ask whom, drawn as lines between the agents on a ring (the same cells as
+  // Working together's grid, fabric.matrix): asked for as "the map should also show which
+  // agent can talk to what agent"
+  let talk=null;try{talk=await apiJSON('/api/team/matrix')}catch(e){}
+  zmMount(box,zmLogical(tree),{label:'Your agents',talk});
 }

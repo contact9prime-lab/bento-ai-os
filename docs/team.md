@@ -14,7 +14,8 @@ Gemini, OpenRouter, a local Ollama model, or a custom OpenAI-compatible server. 
 free local model, a validator on Claude and a writer on GPT is a normal setup: the cheap agent
 does the reading, and the expensive one gets the judgement calls.
 
-- **Settings → Agents** lists every agent with a model picker. A change applies
+- **Settings → Agents → Models** lists every agent with the company it works in (or the
+  Default company), its first choice and its **backups** in order. A change applies
   immediately.
 - **Missions → Build → Agents** shows each agent's provider on its card, and so does the Crew
   stage. Under each figure is the provider it answers on, and while it works the light above its
@@ -23,17 +24,30 @@ does the reading, and the expensive one gets the judgement calls.
   choose models on providers that exist here, and it asks first, because the move changes who is
   billed.
 - **From a terminal**, `bento team` lists everyone, `bento team set writer openai/gpt-4o` pins
-  one, and `bento team own on|off` is the switch below. It works with the server down.
+  one, `bento team backups writer anthropic/claude-sonnet-5,ollama/qwen3` sets its backups, and `bento team own on|off` is the switch below. It works with the server down.
   `bento team draft "…"` drafts a new specialist, with its persona, look and skills, and asks
   before saving it (see [agents.md](agents.md#making-an-agent)).
 
 ![Settings → Agents: the switch, then one row per agent with its face, a model picker and the provider it is answering on now](screenshots/team-settings.png)
+
+![Agents → Models: each agent's company, its first choice, its backups numbered in order, and what is answering now](screenshots/settings-agent-backups.png)
+
+On a phone each agent's row stacks, its backups under it:
+
+![Agents → Models on a 390px phone](screenshots/settings-agent-backups-phone.png)
 
 **The badge always shows what is actually answering, not what the agent was pinned to.** Those
 can differ. If an agent is pinned to a provider that is switched off, or has no key yet, the pin
 is kept, the agent uses this machine's brain until the provider is on, and the row says so in
 words. The **Agents answer on their own providers** switch turns all of this off (one bill, one
 provider). Every agent then uses the brain chosen at the top of the page.
+
+**Backups work like the lead's.** The first model in an agent's list that this machine can run
+answers; the row names it (`backup 2`) and says why the ones before it couldn't. If a run fails
+because its brain isn't available (a usage limit, a lapsed sign-in, a service that is down)
+before it has said or done anything, it is asked again of the next backup. A stop, a refusal or
+a run that already took a step is never retried. An agent CLI switched off in AI providers is
+skipped like a provider that is off.
 
 This holds when your agent runs on another installed agent too. With Claude Code as the
 machine's brain, a specialist pinned to OpenAI still answers on OpenAI, through AgentOS's own

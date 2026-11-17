@@ -245,7 +245,7 @@ The Agents tab also has everything about your agents working together:
 
 - **Your agents, by company.** Each company you keep, its departments with their heads, and the
   agents in them. Agents in no company are under **Default company**.
-- **Models**: each agent's own provider.
+- **Models**: each agent's company, its first choice and its backups in order.
 - **Asking each other**: ask me, swarm, democracy or off, who may ask whom (agents, or
   departments when the company says so), and the limits.
 - **Huddles and free talk**: start a huddle, let them talk, and the log of every
@@ -346,6 +346,13 @@ with one line per relationship:
   specialist);
 - *mission roster* (a mission that puts it to work), and *linked team* (another team that
   may ask it, including their missions and standing permissions).
+
+Inside a company or department, the agents on the ring are joined by who may ask whom: a solid
+line where a question is allowed (a cell set to allow, or an open cell in Swarm), a dashed line
+where it is blocked, and an arrow pointing at the one who answers when it goes one way only. An
+agent's panel lists the same in words: **May ask**, **Can't ask** and **Asks you first**.
+
+![The map inside the Default company: researcher and writer may ask each other, validator may ask writer (an arrow), researcher may not ask validator (dashed), and researcher's panel says so](screenshots/settings-agents-map-talk.png)
 
 Tap an agent to see only its lines:
 

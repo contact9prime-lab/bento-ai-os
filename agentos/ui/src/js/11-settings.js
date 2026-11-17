@@ -378,8 +378,8 @@ function setTab(body,all){
          more:'Agents on different providers can then work together and talk it through in a huddle. When off, every agent uses the brain above.',
          f:'team agents providers multiple own brain model per agent mix openai claude gemini huddle'}),
       pRow('Who answers on what','<div id="s-team-list" class="team-list mut">loading…</div>',
-        {stack:true,desc:'Pick a model for any agent.',
-         more:'If its provider is off or has no key, the agent uses the brain above until that’s fixed.',
+        {stack:true,desc:'Each agent’s first choice, then its backups in order.',
+         more:'If none of them can run here (a provider off or with no key, an agent switched off), the agent uses your lead’s brain until that’s fixed.',
          f:'team agent model pin provider per agent'}),
     ],{f:'team agents providers models'}));
     P.push(pGroup('Asking each other',[
@@ -1489,20 +1489,35 @@ async function paintTeamBrains(){
   const models=((mods||{}).models||[]).map(m=>m.id);
   const names={};((mods||{}).models||[]).forEach(m=>names[m.id]=m.name||m.id);
   box.classList.remove('mut');
+  /* One row per agent: its company, its first choice, then its backups in order (the same
+     priority list the lead has; fabric.agent_brain walks it). The chip says which one is
+     answering now and why the ones before it can't. */
+  const label=m=>m?esc(names[m]||m)+(models.includes(m)?'':' · not available now'):'This machine’s brain';
   box.innerHTML=list.map(s=>{
-    const b=s.brain||{}, pin=s.model||'';
+    const b=s.brain||{}, pin=s.model||'', ups=s.backups||[], wf=s.works_for||{};
     const opts=['',...models]; if(pin&&!opts.includes(pin))opts.push(pin);
-    return `<div class="team-row">${avatarImg(s.name,'av-set')}<b>${esc(s.name)}</b>
-      <select data-agent="${esc(s.name)}" aria-label="Model for ${esc(s.name)}">${opts.map(m=>
-        `<option value="${esc(m)}"${m===pin?' selected':''}>${m?esc(names[m]||m)+(models.includes(m)?'':' · not available now'):'This machine\u2019s brain'}</option>`).join('')}</select>
-      <span class="team-now">${brainChip(b.model,b.provider_name)}${b.note?` <span class="mut">${esc(b.note)}</span>`:''}</span></div>`;
+    const free=models.filter(m=>m!==pin&&!ups.includes(m));
+    return `<div class="team-row tb-row">${avatarImg(s.name,'av-set')}<b>${esc(s.name)}</b>
+      <span class="tb-co" title="Where it works">${wf.company?esc(wf.company)+(wf.department?' · '+esc(wf.department):''):'Default company'}</span>
+      <select data-agent="${esc(s.name)}" aria-label="First choice for ${esc(s.name)}">${opts.map(m=>
+        `<option value="${esc(m)}"${m===pin?' selected':''}>${label(m)}</option>`).join('')}</select>
+      <span class="team-now">${brainChip(b.model,b.provider_name)}${b.backup?` <span class="tb-bk">backup ${b.backup}</span>`:''}${b.note?` <span class="mut">${esc(b.note)}</span>`:''}</span>
+      ${pin?`<div class="tb-ups"><span class="mut">Then:</span>${ups.map((m,i)=>`<span class="brainchip tb-up">${i+1}. ${label(m)}<button class="tb-x" data-agent="${esc(s.name)}" data-drop="${i}" aria-label="Remove backup ${i+1}">✕</button></span>`).join('')}
+        ${ups.length<4&&free.length?`<select class="tb-add" data-agent="${esc(s.name)}" aria-label="Add a backup for ${esc(s.name)}"><option value="">＋ backup…</option>${free.map(m=>`<option value="${esc(m)}">${label(m)}</option>`).join('')}</select>`:''}</div>`:''}</div>`;
   }).join('');
-  box.querySelectorAll('select[data-agent]').forEach(sel=>sel.onchange=async()=>{
-    const r=await fetch('/api/subagents/'+encodeURIComponent(sel.dataset.agent)+'/brain',{method:'PUT',
-      headers:{'Content-Type':'application/json'},body:JSON.stringify({model:sel.value})}).then(r=>r.json()).catch(()=>({error:'the server did not answer'}));
-    if(r.error){toast(r.error);return}
-    toast(sel.dataset.agent+' now answers on '+(r.brain.provider_name||'the default'));paintTeamBrains();
-  });
+  const put=async(name,body,said)=>{
+    const r=await fetch('/api/subagents/'+encodeURIComponent(name)+'/brain',{method:'PUT',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()).catch(()=>({error:'the server did not answer'}));
+    if(r.error){toast(r.error);paintTeamBrains();return}
+    toast(said(r));paintTeamBrains();
+  };
+  box.querySelectorAll('select[data-agent]:not(.tb-add)').forEach(sel=>sel.onchange=()=>
+    put(sel.dataset.agent,{model:sel.value},r=>sel.dataset.agent+' now answers on '+(r.brain.provider_name||'the default')));
+  const upsOf=n=>((list.find(x=>x.name===n)||{}).backups||[]).slice();
+  box.querySelectorAll('select.tb-add').forEach(sel=>sel.onchange=()=>{if(!sel.value)return;
+    put(sel.dataset.agent,{backups:[...upsOf(sel.dataset.agent),sel.value]},()=>'Backup added for '+sel.dataset.agent)});
+  box.querySelectorAll('[data-drop]').forEach(x=>x.onclick=()=>{const u=upsOf(x.dataset.agent);u.splice(+x.dataset.drop,1);
+    put(x.dataset.agent,{backups:u},()=>'Backup removed')});
 }
 
 /* The matrix: rows ask, columns answer. Each cell is a grant row (fabric.matrix);
