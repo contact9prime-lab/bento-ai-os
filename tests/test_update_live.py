@@ -98,7 +98,9 @@ def test_an_update_reaches_the_copy_the_server_runs():
     assert "desktop.served_root()" in up and "fall through" in up
     assert '"update", "--apply"' in up and '"--no-restart"]' in up
     assert up.index("other = desktop.served_root()") < up.index("desktop.service_restart()")
-    assert "if not moved:\n        return 0" in up, "no restart when nothing changed anywhere"
+    nomove = up[up.index("if not moved:"):up.index("if args.no_restart:")]
+    assert "service_restart" not in nomove and "return 1 if other_failed else 0" in nomove, \
+        "no restart when nothing changed anywhere, and a failed served copy is a failure"
     d = (ROOT / "agentos/desktop.py").read_text()
     sr = d[d.index("def served_root("):][:1600]
     sr = d[d.index("def served_root("):][:2600]

@@ -32,6 +32,7 @@ Four rules this module keeps:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import re
 import subprocess
@@ -660,6 +661,27 @@ def tip_release(cfg: dict) -> dict:
     return integrity.release_state(root, _run(["git", "rev-parse", f"{remote}/{branch}"], cwd=root)[1].strip())
 
 
+
+def in_the_way(root: Path, ref: str) -> dict:
+    """Untracked files at paths the update would add, split into those identical to
+    what arrives (`same`, safe to clear) and those that differ (`differ`, a person's).
+    Paths come from git and are relative to the checkout."""
+    same, differ = [], []
+    ok, out = _run(["git", "diff", "--name-only", "--diff-filter=A", "HEAD", ref], cwd=root, timeout=60)
+    if not ok:
+        return {"same": same, "differ": differ}
+    for rel in out.splitlines():
+        rel = rel.strip()
+        p = root / rel
+        if not rel or not p.is_file() or p.is_symlink():
+            continue
+        if _run(["git", "ls-files", "--error-unmatch", "--", rel], cwd=root)[0]:
+            continue                                  # tracked here: not this case
+        mine = _run(["git", "hash-object", "--", rel], cwd=root)[1].strip()
+        theirs = _run(["git", "rev-parse", f"{ref}:{rel}"], cwd=root)[1].strip()
+        (same if mine and mine == theirs else differ).append(rel)
+    return {"same": same, "differ": differ}
+
 async def apply(cfg: dict, run_tests: bool = True, log=None, switch: bool = False,
                 need_verified: bool = False, allow_unsigned: bool = False) -> dict:
     """`_apply` on a worker thread. Every step is a blocking subprocess (git, uv, the
@@ -755,6 +777,24 @@ def _apply(cfg: dict, run_tests: bool = True, log=None, switch: bool = False,
         if not ok:
             return {"ok": False, "error": f"could not check out {ref}: {out[-400:]}"}
         switched = on.strip()
+
+    # A file the update adds may already sit here untracked: copied in by hand to try
+    # a change early, or left by an earlier attempt. git refuses the fast-forward
+    # over it ("untracked working tree files would be overwritten"), and the page
+    # showed that refusal raw. One that is byte for byte what arrives is no loss, so
+    # it goes; one that differs is somebody's, so it stops the update in a sentence.
+    clash = in_the_way(root, ref)
+    if clash["differ"]:
+        names = ", ".join(clash["differ"][:6]) + (" and more" if len(clash["differ"]) > 6 else "")
+        return {"ok": False, "in_the_way": clash["differ"], "error": (
+            f"Some files in {root} are not part of this copy, and the update brings files with the "
+            f"same names but different content: {names}. Move or delete them, then try again. "
+            "Nothing changed.")}
+    for rel in clash["same"]:
+        with contextlib.suppress(OSError):
+            (root / rel).unlink()
+    if clash["same"]:
+        say(f"cleared {len(clash['same'])} untracked file(s) identical to what the update brings")
 
     say("applying…")
     # --ff-only: an update is meant to be what upstream published, not a merge

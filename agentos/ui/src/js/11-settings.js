@@ -896,7 +896,9 @@ async function updateNow(btn,sw){
   try{
     const r=await fetch('/api/update',{method:'POST',headers:{'Content-Type':'application/json'},body:sw?'{"switch":true}':'{}'});
     const d=await r.json();
-    if(!d.ok&&d.error){btn.disabled=false;btn.textContent='Try again';toast(d.error)}
+    if(!d.ok&&d.error){btn.disabled=false;btn.textContent='Try again';toast(d.error,{kind:'err'});
+      // the socket's update_done carries the same refusal: said once (updateFailed)
+      if(typeof UPD_FAILED!=='undefined'){UPD_FAILED.msg=String(d.error);UPD_FAILED.at=Date.now()}}
   }catch(e){/* the server restarts mid-request on success — update_done is the real signal */}
 }
 /* The same two coupled selects as the chat header, painted from the same
