@@ -37,6 +37,8 @@ with which is chosen on the agent, in **Agents**. The tab has five sections:
   another one for it first. Below the switches are each agent's settings, then one row for
   each agent that isn't installed, with **Install** and **Docs**. The ⓘ shows the exact
   command Install runs. In a terminal: `bento brain agents [on|off <id>]`.
+
+  ![Installed agents: a switch for each, then Claude Code's own settings](screenshots/settings-installed-agents.png)
 - **Images**: which service makes pictures.
 - **Voice**: which service speaks (this browser, this computer, ElevenLabs, OpenAI or Google
   Cloud) and its key. How replies are read aloud stays in Settings → Voice.
@@ -212,7 +214,13 @@ relative path taken from the workspace, and `..` and symlinks resolved. A folder
 
 The **Lead agent** group names your agent, sets its **look**, its brain and its hands. **Thinks
 with** is its first choice; **Then, in this order** lists the backups asked in turn when that one
-can't answer (`bento brain fallbacks`). **How it works** holds the rest: the workspace, the most steps a turn
+can't answer (`bento brain fallbacks`).
+
+![Agents → Lead agent: thinks with Claude Code · opus, then its backups in order](screenshots/settings-lead-brain.png)
+
+On a phone the same rows stack:
+
+![Agents → Lead agent on a 390px phone](screenshots/settings-lead-brain-phone.png) **How it works** holds the rest: the workspace, the most steps a turn
 may take, what happens to a conversation that outgrows the model, and the model App Studio
 builds with. Below them, **Your agents** shows each specialist on one card:
 
