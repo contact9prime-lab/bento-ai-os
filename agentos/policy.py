@@ -224,18 +224,25 @@ _SPACE = {"list_spaces": ("space.read", "space:*"),
           "timeline": ("space.read", "")}
 
 
-TALK_MODES = ("off", "matrix", "swarm", "democracy")
+TALK_MODES = ("off", "matrix", "swarm")
 
 
 def team_talk(cfg: dict) -> str:
     """How specialists may message each other: 'off', 'matrix' (the default — each
     pair is a grant, and an empty cell asks) or 'swarm' (every cell a person has not
-    explicitly blocked is open), or 'democracy': you are asked, and the team's view of the
-    step is on the card (fabric.ControlPlane.council). A vote never decides: no security is
-    controlled by AI. One reading, used by the gate, the tool and every surface that shows
-    the switch."""
+    explicitly blocked is open). 'democracy' was removed (2026-11) and reads as 'matrix', so a
+    machine that had it asks as before. One reading, used by the gate, the tool and every
+    surface that shows the switch."""
     v = str(((cfg or {}).get("team") or {}).get("talk") or "matrix").lower()
     return v if v in TALK_MODES else "matrix"
+
+
+def talk_own(cfg: dict, co: dict | None) -> str:
+    """A company's own talk mode, or '' when it uses the Default company's."""
+    if not co or not co.get("id"):
+        return ""
+    from . import fabric as _fabric
+    return _fabric.talk_mode_of(cfg, co["id"])
 
 
 def effective_autonomy(cfg: dict, surface: str = "") -> str:
@@ -1273,6 +1280,19 @@ class PDP(usersmod.Scoped):
                         f"{principal.label} was quarantined: {reason}.",
                         rule="quarantined")
 
+    def _talk_here(self, ctx: dict) -> tuple[str, dict | None]:
+        """(talk mode, company) for where this work is: the company whose space it is in,
+        with its own mode when it set one, else the Default company's (team.talk)."""
+        co = None
+        sid = str((ctx or {}).get("space_id") or "")
+        if sid:
+            try:
+                from . import company as _co
+                co = _co.of_space(self.cfg, sid)
+            except Exception:
+                co = None
+        return (talk_own(self.cfg, co) or team_talk(self.cfg)), co
+
     def _swarm_may(self, ctx: dict) -> bool:
         """Is this a turn swarm was switched on for? Somebody is there, and nothing from
         outside has been read: both are checked before an empty cell opens."""
@@ -1280,9 +1300,8 @@ class PDP(usersmod.Scoped):
 
     def _swarm_opens(self, principal: Principal, action: str, resource: str, ctx: dict) -> bool:
         """Does swarm let the lead start this specialist, or this huddle, without asking the
-        person? Democracy names the same places: there it means the person is asked with the
-        team's view on the card."""
-        if principal.kind != "user" or team_talk(self.cfg) not in ("swarm", "democracy"):
+        person?"""
+        if principal.kind != "user" or self._talk_here(ctx)[0] != "swarm":
             return False
         if not self._swarm_may(ctx):
             return False                 # nobody is there, or a page's words: it still asks
@@ -1638,9 +1657,18 @@ class PDP(usersmod.Scoped):
         # other, so a matrix grant written at the desk must not widen it; and with
         # the team's talk switch off, the matrix is not consulted at all.
         if action == "agent.message":
-            if team_talk(self.cfg) == "off":
-                return Decision("deny", "agent-to-agent messages are switched off "
-                                        "(Settings → Team & Communications)", rule="message-off")
+            # Which company's rules: the one whose space this work is in (a chat in Acme's
+            # space, a run of Acme's desk or mission). Outside every company it is the
+            # Default company's, which is every agent. Asked for as "if A can talk to B in
+            # default but not in the company, and that company is selected, A cannot talk
+            # to B unless you switch the company or change the permission".
+            mode, co = self._talk_here(ctx)
+            if mode == "off":
+                return Decision("deny", (f"agents can't message each other in {co['name']} "
+                                         f"(Settings → Companies → Working together)") if co and
+                                talk_own(self.cfg, co) == "off" else
+                                "agent-to-agent messages are switched off "
+                                "(Settings → Companies → Working together)", rule="message-off")
             # The matrix is decided here in full, because WHICH grants count depends on
             # where the ask happens. Inside a mission only that mission's own consent
             # counts ("its specialists may consult each other", a definition grant) —
@@ -1654,7 +1682,22 @@ class PDP(usersmod.Scoped):
                 rows = [g for g in rows if g.get("source") == "definition"
                         and (g.get("source_ref") or "") == f"flow:{flow}"]
             else:
-                rows = [g for g in rows if g.get("source") != "definition"]
+                cref = f"company:{co['id']}" if co and co.get("id") else ""
+                own = [g for g in rows if cref and (g.get("source_ref") or "") == cref]
+                rows = [g for g in rows if g.get("source") != "definition"
+                        and not str(g.get("source_ref") or "").startswith("company:")]
+                # the company's own cell decides first, either way; an empty one falls back
+                # to the Default company's below
+                to = resource.rsplit("/", 1)[-1]
+                for g in own:
+                    if g.get("effect") == "deny":
+                        return Decision("deny", f"in {co['name']}, {principal.id} may not ask {to}. "
+                                                f"Work in another company, or change it in Settings → "
+                                                f"Companies → {co['name']} → Working together",
+                                        rule=g["id"])
+                for g in own:
+                    if g.get("effect", "allow") == "allow":
+                        return Decision("allow", rule=g["id"])
             for g in rows:
                 if g.get("effect") == "deny":
                     return Decision("deny", g.get("note") or "blocked in the team's matrix",
@@ -1765,14 +1808,8 @@ class PDP(usersmod.Scoped):
             # something from outside, or that nobody is watching, was not what they opened
             # it for: a page's words must not recruit an agent, so those go back to asking.
             opened = "@" not in to and self._swarm_may(ctx)
-            if team_talk(self.cfg) == "swarm" and opened:
+            if self._talk_here(ctx)[0] == "swarm" and opened:
                 return Decision("allow", rule="swarm")
-            if team_talk(self.cfg) == "democracy" and opened:
-                # the same empty cell swarm would open: the person is asked, and the agent
-                # loop puts the team's view on their card
-                return Decision("ask", f"{principal.id} wants to ask {to} a question. The team's "
-                                       f"view is below, and the answer is yours.",
-                                rule="democracy", grant_offer=offer)
             return Decision("ask", f"{principal.id} wants to ask {to} a question. "
                                    f"{to} answers on its own model with its own permissions. "
                                    f"'Allow & remember' fills this cell of the team's matrix.",
@@ -1908,10 +1945,6 @@ class PDP(usersmod.Scoped):
         # still wins because grants are read before this default.
         if action in ("agent.invoke", "agent.huddle") and autonomy != "full" \
                 and self._swarm_opens(principal, action, resource, ctx):
-            if team_talk(self.cfg) == "democracy":
-                return Decision("ask", (reason or self._invoke_reason(resource))
-                                + " The team's view is below, and the answer is yours.",
-                                rule="democracy", grant_offer=offer)
             return Decision("allow", rule="swarm")
         if action in ("agent.invoke", "agent.huddle") and autonomy != "full":
             return Decision("ask", reason or self._invoke_reason(resource),

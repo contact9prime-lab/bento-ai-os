@@ -317,27 +317,23 @@ contient une carte de qui atteint quoi, et « Draft it » rédige un nouveau sp�
 (persona, outils, compétences et apparence) que vous vérifiez avant d'enregistrer.
 [Agents →](../agents.md) · [L'équipe →](../team.md)
 
-### Huddles, swarm et démocratie
+### Huddles et swarm
 
 Mentionnez deux agents ou plus dans un même message (`@researcher @validator should we…`) et ils
 en discutent dans un **huddle** (une réunion éclair), chacun sur son propre cerveau, à tour de
 rôle et de façon lisible.
 
 La façon dont les agents peuvent se demander de l'aide est une matrice que vous contrôlez, une
-case par paire. Il y a quatre façons de la faire fonctionner :
+case par paire. Il y a trois façons de la faire fonctionner :
 
 | Mode | Ce que fait une case vide |
 |---|---|
 | **Off** | les agents ne s'envoient jamais de messages |
 | **Ask me first** | on vous demande, et « Allow & remember » remplit la case |
 | **Swarm** | autorisé, et l'agent principal peut confier librement du travail à vos spécialistes |
-| **Democracy** | un conseil vote : votre agent principal et deux autres agents, et **2 sur 3 décident** |
 
-Les cases « autoriser » et « bloquer » l'emportent toujours sur le mode. En mode démocratie, un
-huddle se termine par un vote sur la dernière chose dite, et chaque vote est écrit dans le
-registre. Tout ce qui doit être la décision d'une personne va toujours à une personne.
+Les cases « autoriser » et « bloquer » l'emportent toujours sur le mode. Tout ce qui doit être la décision d'une personne va toujours à une personne.
 
-![Un huddle dans le chat : le chercheur et le vérificateur donnent chacun leur avis, puis « The team agreed · 2 of 2 » avec chaque vote](../screenshots/huddle-vote.png)
 
 ### L'Office : les regarder travailler
 

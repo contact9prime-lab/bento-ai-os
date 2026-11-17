@@ -39,9 +39,14 @@ def test_the_tabs_sit_after_agents():
 
 def test_every_team_option_has_a_home():
     agent = _tab("agent")
-    for piece in ("s-team-own", "s-team-list", "s-team-talk", "s-team-freetalk", "s-team-talklog",
-                  "s-team-limits", "s-team-matrix"):
+    for piece in ("s-team-own", "s-team-list", "s-team-freetalk", "s-team-talklog"):
         assert piece in agent, piece
+    # who may ask whom, its mode and its limits are the Default company's and each company's
+    # (Settings → Companies → Working together); Agents points there
+    co = (JS / "11k-companies.js").read_text()
+    for piece in ('id="co-talk"', "s-team-limits", "/api/companies/talk", "/api/team/matrix"):
+        assert piece in co, piece
+    assert "settingsGo(\\'companies\\',\\'Working together\\')" in agent
     for kept in ('id="agents-list"', 'id="agents-graph"', "s-hist-compact", "agent-share-box"):
         assert kept in agent, kept
     net = _tab("network")

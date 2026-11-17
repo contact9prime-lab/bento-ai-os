@@ -4303,6 +4303,58 @@ def _company_cli(args):
                           action="company.review")
         print(f"✓ {words[want]}.")
         return
+    if a == "talk":
+        # bento company talk [COMPANY] [off|matrix|swarm|default]   a company's own talk mode
+        # bento company talk COMPANY A B allow|block|default         one of its own cells
+        from . import fabric as _fab
+        if len(rest) >= 4:
+            name, frm, to, eff = rest[0], rest[1], rest[2], rest[3].lower()
+            eff = {"allow": "allow", "block": "deny", "deny": "deny", "default": "ask", "ask": "ask"}.get(eff)
+            if not eff:
+                sys.exit("  the last word is allow, block or default")
+            if up:
+                d = _api_call(port, "/api/team/matrix", "PUT", {"company": name, "from": frm, "to": to, "effect": eff})
+                if d.get("error"):
+                    sys.exit(f"✗ {d['error']}")
+            else:
+                try:
+                    cid = co.ensure_id(cfg, store, name)
+                    _cfgmod.save_config(cfg)
+                    _fab.set_cell(store, frm, to, eff, company=cid)
+                except (KeyError, ValueError) as e:
+                    sys.exit(f"✗ {e}")
+            print(f"✓ in {name}, {frm} → {to}: " + {"allow": "may ask", "deny": "may not ask",
+                                                    "ask": "as the Default company says"}[eff])
+            return
+        if len(rest) >= 2:
+            if up:
+                d = _api_call(port, "/api/companies/talk", "PUT", {"company": rest[0], "talk": rest[1]})
+                if d.get("error"):
+                    sys.exit(f"✗ {d['error']}")
+            else:
+                try:
+                    got = co.set_talk(cfg, co.ensure_id(cfg, store, rest[0]), rest[1])
+                except ValueError as e:
+                    sys.exit(f"✗ {e}")
+                _cfgmod.save_config(cfg)
+                _fab.audit_team(store, "team.write", f"company:{got['id']}",
+                                f"agents message each other in {got['name']}: {got['talk'] or 'as the Default company'}")
+            print(f"✓ {rest[0]}: agents message each other "
+                  + ({"off": "never", "matrix": "when a cell allows it, else asking you",
+                      "swarm": "freely unless blocked"}.get(rest[1].lower(), "as the Default company says")))
+            return
+        from .policy import team_talk
+        print(f"  Default company (every agent): {team_talk(cfg)}")
+        for c in co.companies(cfg):
+            own = _fab.talk_mode_of(cfg, c["id"]) if c.get("id") else ""
+            m = _fab.matrix(store, cfg, c["id"]) if c.get("id") else {"cells": {}}
+            print(f"  {c['name']:<22} {own or 'as the Default company'}"
+                  + (f", {len(m['cells'])} cells of its own" if m["cells"] else ""))
+            for k, v in sorted(m["cells"].items()):
+                print(f"      {k.replace('>', ' → ')}: {'allow' if v == 'allow' else 'block'}")
+        print("\n  bento company talk COMPANY off|matrix|swarm|default"
+              "\n  bento company talk COMPANY ASKER ANSWERER allow|block|default")
+        return
     if a == "permissions":
         # bento company permissions agent|department   who decides who may ask whom
         m = co.dept_matrix(cfg, store)
@@ -7165,13 +7217,12 @@ def _team_cli(args):
         return
     if act == "talk":
         want = (args.name or "").strip().lower()
-        if want not in ("off", "matrix", "swarm", "democracy"):
+        if want not in ("off", "matrix", "swarm"):
             from .policy import team_talk
             print(f"  agents message each other: {team_talk(cfg)}\n"
-                  f"  bento team talk matrix|swarm|democracy|off\n"
+                  f"  bento team talk matrix|swarm|off\n"
                   f"    matrix: each pair asks you first\n"
-                  f"    swarm: they work together, and your agent hands them work, without asking\n"
-                  f"    democracy: you are asked for the same steps, with what three of your agents think")
+                  f"    swarm: they work together, and your agent hands them work, without asking")
             return
         mcfg = cfgmod.load_config()
         mcfg.setdefault("team", {})["talk"] = want
@@ -7209,7 +7260,7 @@ def _team_cli(args):
         if len(names) < 2:
             print("  two or more specialists are needed before any of them can message another")
             return
-        blank = {"swarm": "swarm", "democracy": "vote"}.get(m["talk"], "ask")
+        blank = {"swarm": "swarm"}.get(m["talk"], "ask")
         w = max(len(n) for n in names) + 2
         print(f"  agents message each other: {m['talk']}   (rows ask, columns answer)\n")
         print(" " * (w + 2) + "".join(f"{n[:9]:<10}" for n in names))
@@ -10403,7 +10454,7 @@ def main():
                       choices=["show", "list", "templates", "setup", "task", "name", "audit",
                                "review", "chain", "check", "objective", "todo", "start",
                                "companies", "new", "open", "drop", "edit", "permissions", "allow", "block",
-                               "ask", "hands", "kit", "code", "folders"], metavar="ACTION")
+                               "ask", "hands", "kit", "code", "folders", "talk"], metavar="ACTION")
     p_co.add_argument("args", nargs="*", help="setup: what the company does · task: DEPARTMENT \"the task\""
                                               " · name: the company's name · audit: on|off"
                                               " · review: lead|heads|off"
@@ -10411,6 +10462,7 @@ def main():
                                               " · objective: what it is for · start: TODO-ID"
                                               " · new/open/drop/edit: a company's name"
                                               " · permissions: agent|department"
+                                              " · talk: COMPANY off|matrix|swarm|default, or COMPANY A B allow|block|default"
                                               " · allow/block/ask: DEPARTMENT DEPARTMENT"
                                               " · hands: DEPARTMENT EXECUTOR|own · kit: DEPARTMENT"
                                               " · code: DEPARTMENT on|off"
@@ -10590,7 +10642,7 @@ def main():
                         choices=["list", "set", "backups", "own", "talk", "matrix", "allow", "block", "ask",
                                  "limits", "draft", "freetalk", "log"])
     p_team.add_argument("name", nargs="?", default="",
-                        help="set: the agent · own: on|off · talk: matrix|swarm|democracy|off · allow/block/ask: the asker "
+                        help="set: the agent · own: on|off · talk: matrix|swarm|off · allow/block/ask: the asker "
                              "· draft: what the new agent should do, in words "
                              "· freetalk: what they talk about, or stop")
     p_team.add_argument("model", nargs="?", default="",

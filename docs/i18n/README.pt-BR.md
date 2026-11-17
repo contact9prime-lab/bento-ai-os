@@ -309,26 +309,23 @@ teto que nenhuma concessão ultrapassa. Settings → Agents tem um mapa de quem 
 it" escreve um especialista novo inteiro (persona, ferramentas, habilidades e aparência) para você
 revisar antes de salvar. [Agentes →](../agents.md) · [A equipe →](../team.md)
 
-### Huddles, swarm e democracia
+### Huddles e swarm
 
 Mencione dois ou mais agentes numa mensagem (`@researcher @validator should we…`) e eles discutem o
 assunto num **huddle** (reunião rápida), cada um no seu próprio cérebro, em turnos que você pode ler.
 
 A forma como os agentes podem pedir ajuda uns aos outros é uma matriz que você controla, com uma
-célula por par. Há quatro modos:
+célula por par. Há três modos:
 
 | Modo | O que uma célula vazia faz |
 |---|---|
 | **Off** | os agentes nunca trocam mensagens |
 | **Ask me first** | perguntam a você, e "Allow & remember" preenche a célula |
 | **Swarm** | permitido, e o líder pode passar trabalho aos seus especialistas à vontade |
-| **Democracy** | um conselho vota: seu líder e mais dois agentes, e **2 de 3 decidem** |
 
-Células de permitir e de bloquear sempre valem mais que o modo. No modo democracia, um huddle termina
-com uma votação sobre a última coisa dita, e cada voto é gravado no livro-razão. Tudo o que precisa
+Células de permitir e de bloquear sempre valem mais que o modo. Tudo o que precisa
 ser decisão de uma pessoa continua indo para uma pessoa.
 
-![Um huddle no chat: o pesquisador e o validador dão cada um a sua opinião, depois "The team agreed · 2 of 2" com cada voto](../screenshots/huddle-vote.png)
 
 ### O Office: veja eles trabalhando
 

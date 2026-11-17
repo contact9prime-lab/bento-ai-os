@@ -63,7 +63,8 @@ function zmLayout(st){
     g.slice(0,24).forEach((gc,j)=>{const b=a+(g.length>1?(j/(Math.min(g.length,24)-1)-.5)*span:0);
       pos[gc.id]={x:Math.cos(b)*R2,y:Math.sin(b)*R2,d:2,n:gc,a:b};vis.push(gc.id);edges.push([c.id,gc.id,'ghost'])});
   });
-  zmTalkEdges(st,kids,edges);
+  const coId=([...hit.path,f].reverse().find(n=>n.coId)||{}).coId||'';
+  zmTalkEdges(st,kids,edges,coId);
   return {pos,vis,edges,up:hit.path[hit.path.length-1]||null};
 }
 /* Who may ask whom among the people on the ring: a solid line where a question is allowed
@@ -75,8 +76,9 @@ function zmTalkOf(t,a,b){
   const v=(t.cells||{})[a+'>'+b]||'';
   return v==='allow'?'ok':v==='deny'?'no':t.talk==='swarm'?'ok':'';
 }
-function zmTalkEdges(st,kids,edges){
-  const t=st.o&&st.o.talk;if(!t)return;
+function zmTalkFor(o,coId){return (o&&coId&&o.talkBy&&o.talkBy[coId])||(o&&o.talk)||null}
+function zmTalkEdges(st,kids,edges,coId){
+  const t=zmTalkFor(st.o,coId);if(!t)return;
   const ppl=kids.filter(c=>c.agent);
   for(let i=0;i<ppl.length;i++)for(let j=i+1;j<ppl.length;j++){
     const a=ppl[i],b=ppl[j],ab=zmTalkOf(t,a.agent,b.agent),ba=zmTalkOf(t,b.agent,a.agent);
@@ -240,13 +242,13 @@ function zmPersonDetail(p){
 }
 /* In the panel: whom this agent may ask, whom it may not, and whom it asks you about first. */
 function zmTalkRows(p){
-  let t=null;for(const k in ZM){if(ZM[k].o&&ZM[k].o.talk){t=ZM[k].o.talk;break}}
+  let t=null;for(const k in ZM){if(ZM[k].o&&ZM[k].o.talk){t=zmTalkFor(ZM[k].o,p.coId);break}}
   if(!t||p.lead||!p.name)return '';
   if(t.talk==='off')return '<div><span class="ag-k">Asks</span><span class="mut">nobody: agents can’t message each other</span></div>';
   const others=(t.agents||[]).filter(n=>n!==p.name),by={ok:[],no:[],'':[]};
   others.forEach(n=>by[zmTalkOf(t,p.name,n)].push(n));
   const row=(k,w)=>by[k].length?`<div><span class="ag-k">${w}</span>${by[k].map(esc).join(', ')}</div>`:'';
-  return row('ok','May ask')+row('no','Can’t ask')+row('','Asks you first');
+  return row('ok','May ask')+row('no','Can’t ask')+row('','Asks first');
 }
 function zmAvatar(key){try{return typeof avatarSrc==='function'?avatarSrc(key):''}catch(e){return ''}}
 function zmTieNode(t,where){
@@ -265,7 +267,7 @@ function zmLogical(tree){
   const L=tree.lead||{};
   const person=(p,pre)=>({id:pre+':'+p.name,agent:p.name,label:p.label||p.name,kind:'person'+(p.head?' head':''),kindWord:p.head?'head':'agent',
     sub:p.hands&&p.hands!=='default'?p.hands:'',img:zmAvatar(p.name),detail:()=>zmPersonDetail(p)});
-  const companies=(tree.companies||[]).map((c,ci)=>({id:'co:'+ci,label:c.name,kind:'company'+(c.default?' default':''),kindWord:c.default?'':'company',
+  const companies=(tree.companies||[]).map((c,ci)=>({id:'co:'+ci,coId:c.id||'',label:c.name,kind:'company'+(c.default?' default':''),kindWord:c.default?'':'company',
     sub:c.about||(c.open&&!c.default?'open':''),big:true,glyph:'▦',
     detail:()=>`<div class="zm-rows"><div><span class="ag-k">Departments</span>${(c.departments||[]).length}</div>
       <div class="zm-acts"><button class="endbtn" onclick="openApp('office');setTimeout(()=>{if(typeof officeCompany==='function')officeCompany(true)},900)">Company panel</button></div></div>`,
@@ -273,8 +275,8 @@ function zmLogical(tree){
         sub:(d.people||[]).length+' people'+(d.head?' · head '+d.head:''),openAtStart:false,
         detail:()=>`<div class="zm-rows">${d.about?`<div>${esc(d.about)}</div>`:''}${d.head?`<div><span class="ag-k">Head</span>${esc(d.head)}</div>`:''}
           ${(d.ties||[]).length?`<div><span class="ag-k">Talking to it</span>${d.ties.map(t=>esc(t.name||t.label)).join(', ')}</div>`:''}</div>`,
-        children:[...zmTieGroup(d.ties,d.name,`t:${ci}:${di}`),...(d.people||[]).map(p=>person(p,`p:${ci}:${di}`))]})),
-      ...(c.people||[]).map(p=>person(p,`p:${ci}`)),
+        children:[...zmTieGroup(d.ties,d.name,`t:${ci}:${di}`),...(d.people||[]).map(p=>person({...p,coId:c.id||''},`p:${ci}:${di}`))]})),
+      ...(c.people||[]).map(p=>person({...p,coId:c.id||''},`p:${ci}`)),
       ...(c.auditor?[person({...c.auditor,label:c.auditor.name+' (auditor)'},`a:${ci}`)]:[])]}));
   return {id:'lead',label:L.name||'Bento',kind:'lead',kindWord:'lead agent',big:true,img:zmAvatar('@agent'),
     detail:()=>zmPersonDetail({...L,lead:true}),

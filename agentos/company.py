@@ -3710,3 +3710,67 @@ def apply_kit(cfg: dict, store, department: str, kit: dict) -> dict:
     return {"department": hit["name"], "kit": kit_status(cfg, kit), "skills_made": made,
             "agents": changed, "dropped": dropped}
 
+
+
+# ---------------------------------------------------------------------------
+# Working together, company by company
+#
+# The Default company is every agent and everything outside a company; its talk mode is
+# `team.talk` and its cells are the matrix rows with no company. A company may set its own
+# mode (`talk` on the company: off, matrix or swarm; absent = the Default company's) and its
+# own cells (fabric.set_cell(company=)), which the gate reads first while work is in that
+# company's space (policy.PDP._talk_here). Asked for as "by default there is a Default
+# Company (all agents) that defines how every agent talks to each other, and then you can
+# define it at the company level".
+# ---------------------------------------------------------------------------
+
+TALK_OWN = ("", "off", "matrix", "swarm")
+
+
+def ensure_id(cfg: dict, store, ref: str = "") -> str:
+    """The id of a company by id or name ('' = the open one), giving the open company an id
+    and a space of its own first if it has none (a single company may not have one yet, and
+    cells and the gate need one). ValueError in a sentence for no such company."""
+    want = str(ref or "").strip().lower()
+    cur = (cfg or {}).get("company") or {}
+    if not want or want in (str(cur.get("id") or "").lower(), str(cur.get("name") or "").lower()):
+        if not _has_company(cur, (cfg or {}).get("office") or {}):
+            raise ValueError("you don't keep a company yet")
+        if not _CID.match(str(cur.get("id") or "")) or not cur.get("space_id"):
+            _ensure_identity(cfg, store)
+        return str(cfg["company"]["id"])
+    for cid, rec in _parked(cfg).items():
+        if want in (cid.lower(), str(rec["company"].get("name") or "").lower()):
+            return cid
+    names = ", ".join(c["name"] for c in companies(cfg)) or "none yet"
+    raise ValueError(f"no company called '{ref}'. Yours: {names}")
+
+
+def set_talk(cfg: dict, cid: str, mode: str) -> dict:
+    """A company's own talk mode; '' uses the Default company's. Mutates cfg; the caller
+    saves and writes the ledger row."""
+    mode = str(mode or "").strip().lower()
+    if mode in ("default", "inherit", "same"):
+        mode = ""
+    if mode not in TALK_OWN:
+        raise ValueError("a company's talk is off, matrix, swarm, or the Default company's")
+    cur = dict((cfg or {}).get("company") or {})
+    if cid and str(cur.get("id") or "") == cid:
+        if mode:
+            cur["talk"] = mode
+        else:
+            cur.pop("talk", None)
+        cfg["company"] = cur
+        return {"id": cid, "name": cur.get("name") or "", "talk": mode}
+    parked = dict(_parked(cfg))
+    rec = parked.get(cid)
+    if not rec:
+        raise ValueError(f"no company with id '{cid}'")
+    co = dict(rec["company"])
+    if mode:
+        co["talk"] = mode
+    else:
+        co.pop("talk", None)
+    parked[cid] = {**rec, "company": co}
+    cfg["companies"] = parked
+    return {"id": cid, "name": co.get("name") or "", "talk": mode}

@@ -218,5 +218,11 @@ async function renderAgentsGraph(){
   // Working together's grid, fabric.matrix): asked for as "the map should also show which
   // agent can talk to what agent"
   let talk=null;try{talk=await apiJSON('/api/team/matrix')}catch(e){}
-  zmMount(box,zmLogical(tree),{label:'Your agents',talk});
+  // inside a company the map draws THAT company's rules: its own cells over the Default
+  // company's, and its own mode (fabric.matrix(company=), what the gate reads there)
+  const talkBy={};
+  await Promise.all((tree.companies||[]).filter(c=>c.id).map(async c=>{
+    try{const m=await apiJSON('/api/team/matrix?company='+encodeURIComponent(c.id));
+      talkBy[c.id]={talk:m.talk,agents:m.agents,cells:{...(m.base||{}),...(m.cells||{})}}}catch(e){}}));
+  zmMount(box,zmLogical(tree),{label:'Your agents',talk,talkBy});
 }

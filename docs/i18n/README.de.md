@@ -315,26 +315,23 @@ Karte, wer was erreicht, und „Draft it“ schreibt einen ganzen neuen Speziali
 Skills und Aussehen), den Sie vor dem Speichern prüfen.
 [Agenten →](../agents.md) · [Das Team →](../team.md)
 
-### Huddles, Swarm und Democracy
+### Huddles und Swarm
 
 Erwähnen Sie zwei oder mehr Agenten in einer Nachricht (`@researcher @validator should we…`), und sie
 besprechen es in einem **Huddle**, jeder auf seinem eigenen Gehirn, in Runden, die Sie mitlesen können.
 
 Wie Agenten einander um Hilfe bitten dürfen, ist eine Matrix, die Sie steuern, mit einer Zelle pro
-Paar. Es gibt vier Betriebsarten:
+Paar. Es gibt drei Betriebsarten:
 
 | Modus | Was eine leere Zelle bewirkt |
 |---|---|
 | **Off** | Agenten schreiben sich nie gegenseitig |
 | **Ask me first** | Sie werden gefragt, und „Allow & remember“ füllt die Zelle |
 | **Swarm** | erlaubt, und der leitende Agent kann Ihren Spezialisten frei Arbeit übergeben |
-| **Democracy** | ein Rat stimmt ab: Ihr leitender Agent und zwei andere Agenten, und **2 von 3 entscheiden** |
 
-Erlaubende und blockierende Zellen haben immer Vorrang vor dem Modus. Im Democracy-Modus endet ein
-Huddle mit einer Abstimmung über das zuletzt Gesagte, und jede Stimme wird ins Protokoll geschrieben.
+Erlaubende und blockierende Zellen haben immer Vorrang vor dem Modus.
 Alles, was eine Entscheidung eines Menschen sein muss, geht weiterhin an einen Menschen.
 
-![Ein Huddle im Chat: der Rechercheur und der Prüfer sagen jeweils ihre Meinung, dann „The team agreed · 2 of 2“ mit jeder Stimme](../screenshots/huddle-vote.png)
 
 ### Das Office: ihnen bei der Arbeit zusehen
 

@@ -165,7 +165,7 @@ def graph(ov: dict) -> dict:
                               + (f" · {lk['standing']} standing" if lk.get("standing") else "")})
             for m in lk.get("their_missions") or []:
                 edges.append({"from": tid, "to": aid, "kind": "roster", "label": f"their mission {m}"})
-    if ov.get("talk") in ("swarm", "democracy"):
+    if ov.get("talk") == "swarm":
         names = [a["key"] for a in ov["agents"] if not a["master"]]
         have = {(e["from"], e["to"]) for e in edges if e["kind"] in ("talk", "blocked")}
         for f in names:

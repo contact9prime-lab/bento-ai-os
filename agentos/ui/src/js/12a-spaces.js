@@ -11,7 +11,7 @@ var tlSince=168;
 
 function activeSpace(){return (SPACES.active||{}).gui||''}
 function spaceById(id){return (SPACES.list||[]).find(s=>s.id===id)||null}
-function spaceName(id){const s=spaceById(id);return s?s.name:'Everywhere'}
+function spaceName(id){const s=spaceById(id);return s?s.name:'Default company'}
 
 async function loadSpaces(force){
   if(SPACES.loaded&&!force)return SPACES;
@@ -30,7 +30,7 @@ async function loadSpaces(force){
 function spaceChipHTML(){
   const id=activeSpace(),s=spaceById(id);
   const dot=s&&s.colour?`<span class="spdot" style="background:${esc(s.colour)}"></span>`:'';
-  const name=s?((s.icon?s.icon+' ':'')+s.name):'Everywhere';
+  const name=s?((s.icon?s.icon+' ':'')+s.name):'Default company';
   // the name is its own span: on a narrow bar it is shortened with an ellipsis (menubarFit)
   return `<button class="spchip" onclick="spaceMenu(event)" title="${esc(name)}: the project you are working in. Memory and facts you save belong to it; what is true everywhere stays shared.">
     ${dot}<span class="spname">${esc(name)}</span></button>`;
@@ -50,7 +50,7 @@ async function spaceMenu(ev){
   await loadSpaces(true);
   const cur=activeSpace();
   const tick=id=>(id===cur?'● ':'   ');
-  const items=[{label:tick('')+'Everywhere',fn:()=>switchSpace('')}]
+  const items=[{label:tick('')+'Default company',fn:()=>switchSpace('')}]
     .concat(SPACES.list.map(s=>({
       label:tick(s.id)+esc((s.icon?s.icon+' ':'')+s.name),
       fn:()=>switchSpace(s.id)})))
@@ -104,7 +104,7 @@ async function renderSpaces(body){
   const pb=panelShell(body,{title:'Spaces',sub:'the things you are working on',
     actions:`<button class="pact" onclick="newSpace()">New space</button>`});
   pb.innerHTML=`
-    <div class="item"><div class="grow"><b>Everywhere</b>
+    <div class="item"><div class="grow"><b>Default company</b>
       ${cur===''?'<span class="badge" style="margin-left:6px">active</span>':''}
       <div class="sub">Shared context: what is true about you no matter what you are working on. Always visible from inside every space.</div></div>
       <button onclick="switchSpace('')" ${cur===''?'disabled':''}>Work here</button></div>

@@ -5248,7 +5248,7 @@ async def api_put_config(patch: dict):
             return JSONResponse({"error": str(e)}, status_code=400)
         fabricmod.audit_team(state["store"], "team.write", "team:limits",
                              "limits: " + ", ".join(f"{k}={v}" for k, v in got.items()))
-    if isinstance(patch.get("team"), dict) and patch["team"].get("talk") in ("off", "matrix", "swarm", "democracy"):
+    if isinstance(patch.get("team"), dict) and patch["team"].get("talk") in ("off", "matrix", "swarm"):
         cfg.setdefault("team", {})["talk"] = patch["team"]["talk"]
         fabricmod.audit_team(state["store"], "team.write", "team:talk",
                              f"agents message each other: {cfg['team']['talk']}")
@@ -18641,11 +18641,19 @@ async def api_agent_hands(key: str, body: dict):
 
 
 @app.get("/api/team/matrix")
-async def api_team_matrix():
+async def api_team_matrix(request: Request):
     """Who may ask whom (fabric.matrix — grants rows, drawn as a grid), and the same
     question between the company's departments (company.dept_matrix), with the level
     the company decides it at."""
     from . import company as companymod
+    ref = str(request.query_params.get("company") or "")
+    if ref:
+        # one company's own cells and mode, with the Default company's beneath them
+        co = companymod.find(state["cfg"], ref)
+        if not co:
+            return JSONResponse({"error": f"no company called '{ref}'"}, status_code=404)
+        return {**fabricmod.matrix(state["store"], state["cfg"], co.get("id") or ""),
+                "company_name": co.get("name") or "", "company_id": co.get("id") or ""}
     return {**fabricmod.matrix(state["store"], state["cfg"]),
             "departments": companymod.dept_matrix(state["cfg"], state["store"])}
 
@@ -18663,8 +18671,17 @@ async def api_team_matrix_set(body: dict):
             cell = companymod.set_dept_cell(state["cfg"], state["store"], str(b.get("from") or ""),
                                             str(b.get("to") or ""), str(b.get("effect") or ""))
         else:
+            # a company's own cell (Settings → Companies → Working together); none is the
+            # Default company's
+            cid = companymod.ensure_id(state["cfg"], state["store"], str(b["company"])) \
+                if str(b.get("company") or "") else ""
+            if cid:
+                cfgmod.save_config(state["cfg"])
             cell = fabricmod.set_cell(state["store"], str(b.get("from") or ""),
-                                      str(b.get("to") or ""), str(b.get("effect") or ""))
+                                      str(b.get("to") or ""), str(b.get("effect") or ""), company=cid)
+            if cid:
+                await state["broadcast"]({"type": "grants"})
+                return {"ok": True, "cell": cell, **fabricmod.matrix(state["store"], state["cfg"], cid)}
     except KeyError as e:
         return JSONResponse({"error": f"no {'department' if dept else 'agent'} called '{e.args[0]}'"},
                             status_code=404)
@@ -18673,6 +18690,23 @@ async def api_team_matrix_set(body: dict):
     await state["broadcast"]({"type": "grants"})
     return {"ok": True, "cell": cell, **fabricmod.matrix(state["store"], state["cfg"]),
             "departments": companymod.dept_matrix(state["cfg"], state["store"])}
+
+
+@app.put("/api/companies/talk")
+async def api_company_talk(body: dict):
+    """A company's own talk mode: off, matrix (ask me first), swarm, or '' for the Default
+    company's. The person's choice, a cookie door and no tool, like the matrix. A ledger row."""
+    from . import company as companymod
+    try:
+        cid = companymod.ensure_id(state["cfg"], state["store"], str((body or {}).get("company") or ""))
+        got = companymod.set_talk(state["cfg"], cid, str((body or {}).get("talk") or ""))
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    cfgmod.save_config(state["cfg"])
+    fabricmod.audit_team(state["store"], "team.write", f"company:{cid}",
+                         f"agents message each other in {got['name']}: {got['talk'] or 'as the Default company'}")
+    await state["broadcast"]({"type": "grants"})
+    return {"ok": True, **got, **fabricmod.matrix(state["store"], state["cfg"], cid)}
 
 
 @app.put("/api/company/permissions")
