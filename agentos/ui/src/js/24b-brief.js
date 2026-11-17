@@ -86,7 +86,8 @@ async function renderBrief(body){
   const c=pg.counts||{};
   const tiles=[['needs_you','Need you'],['decide','Decide'],['fyi','FYI'],['done','Done for you']]
     .map(([k,l])=>`<button class="br-tile k-${k}" onclick="briefJump('${jsq(k)}')" ${c[k]?'':'disabled'}><b>${c[k]||0}</b><span>${l}</span></button>`).join('');
-  const h=new Date().getHours(),greet=h<5?'Good evening':h<12?'Good morning':h<17?'Good afternoon':'Good evening';
+  const h=new Date().getHours(),greet=(h<5?'Good evening':h<12?'Good morning':h<17?'Good afternoon':'Good evening')
+    +(pg.person?', '+pg.person:'');      // by name, as the delivered Brief greets (server._brief_person)
   body.innerHTML=`<div class="pad br-app">
     <div class="br-hero"><div class="br-glow"></div>
       <div class="br-day">${esc(day)}</div>
@@ -109,7 +110,10 @@ function briefWhen(ts){if(!ts)return '';const d=new Date(ts*1000),t=d.toLocaleTi
 function briefSchedLine(s){
   if(!s)return '';
   const on=s.times&&s.times.length;
-  return `<span>${on?`Your Brief comes at ${s.times.map(esc).join(', ')}${s.days==='weekdays'?' on weekdays':' every day'}${s.next_at?' · next '+esc(briefWhen(s.next_at)):''}`:'No scheduled Brief'}</span>
+  if(s.on===false)return `<span>Your Brief is switched off${on?' (it was set for '+s.times.map(esc).join(', ')+')':''}</span>
+    <button class="linkbtn" onclick="briefSwitch(true)">Turn it on</button>`;
+  const cos=((BRIEF.page&&BRIEF.page.companies)||[]).filter(c=>!c.on).map(c=>c.name);
+  return `<span>${on?`Your Brief comes at ${s.times.map(esc).join(', ')}${s.days==='weekdays'?' on weekdays':' every day'}${s.next_at?' · next '+esc(briefWhen(s.next_at)):''}`:'No scheduled Brief'}${cos.length?' · without '+cos.map(esc).join(', '):''}</span>
     <button class="linkbtn" onclick="briefSchedEdit(this)">${on?'Change':'Set times'}</button>`;
 }
 function briefSchedEdit(btn){
@@ -119,7 +123,25 @@ function briefSchedEdit(btn){
     <label class="tlk-chk"><input type="checkbox" class="br-wk" ${s.days==='weekdays'?'checked':''}> weekdays only</label>
     <label class="tlk-chk"><input type="checkbox" class="br-ai" ${s.summary==='ai'?'checked':''}> AI summary on top${pInfoB('One short model call per Brief, from your brain.')}</label>
     <label class="tlk-chk"><input type="checkbox" class="br-tg" ${s.telegram!==false?'checked':''}> on Telegram too</label>
-    <button class="endbtn" onclick="briefSchedSave(this)">Save</button>`;
+    ${briefCompanyTicks()}
+    <button class="endbtn" onclick="briefSchedSave(this)">Save</button>
+    <button class="linkbtn" onclick="briefSwitch(false)">Turn my Brief off</button>`;
+}
+/* Which of your companies are in your Brief: one tick each, only when you keep more than
+   one. A company's items stay in this app either way; unticked, they are left out of the
+   Brief that is delivered. */
+function briefCompanyTicks(){
+  const cos=(BRIEF.page&&BRIEF.page.companies)||[];
+  if(cos.length<2)return '';
+  return `<span class="br-cos">In the Brief: ${cos.map(c=>`<label class="tlk-chk"><input type="checkbox" class="br-co" data-co="${esc(c.name)}" ${c.on?'checked':''}> ${esc(c.name)}</label>`).join('')}</span>`;
+}
+/* This account's Brief on or off. Off keeps the times. */
+async function briefSwitch(on){
+  try{const r=await fetch('/api/brief/schedule',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({on:!!on})});
+    const j=await r.json();if(!r.ok)throw new Error(j.error||r.status);
+    toast(on?'Your Brief is on':'Your Brief is off. Nothing is delivered until you turn it on');
+    await briefLoad();refreshApp('brief');
+  }catch(e){toast('could not save: '+(e.message||e))}
 }
 function pInfoB(t){return typeof pInfo==='function'?pInfo(t):''}
 async function briefSchedSave(btn){
@@ -127,7 +149,8 @@ async function briefSchedSave(btn){
   const times=box.querySelector('.br-times').value.split(/[,\s]+/).map(x=>x.trim()).filter(Boolean);
   try{const r=await fetch('/api/brief/schedule',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       times,days:box.querySelector('.br-wk').checked?'weekdays':'daily',summary:box.querySelector('.br-ai').checked?'ai':'plain',
-      telegram:box.querySelector('.br-tg').checked})});
+      telegram:box.querySelector('.br-tg').checked,
+      companies:Object.fromEntries([...box.querySelectorAll('.br-co')].map(c=>[c.dataset.co,c.checked]))})});
     const j=await r.json();if(!r.ok)throw new Error(j.error||r.status);
     toast(j.times.length?'The Brief comes at '+j.times.join(', '):'No more scheduled Briefs');
     await briefLoad();refreshApp('brief');

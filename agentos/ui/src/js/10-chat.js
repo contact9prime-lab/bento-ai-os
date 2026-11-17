@@ -360,6 +360,9 @@ async function openConv(cid){
           curBody.parentNode.insertBefore(el,curBody)});}
       curText=s.text;curBody.innerHTML=md(curText);
     }
+    // a department's card is put back on its run; one that began before this page asks
+    if(curBody&&typeof deptCardRestore==='function'){deptCardRestore(feed);
+      deptCardCatchUp(cid,curBody.parentNode,curBody)}
     showWorking();
   }
   if(typeof fileChips==='function')fileChips(feed);

@@ -8071,9 +8071,14 @@ def _brief_cli(args):
         try:
             if args.id:
                 import re as _re
-                times = [] if args.id == "off" else [x for x in _re.split(r"[,\s]+", args.id) if x]
-                sch = briefmod.set_schedule(cfg, times=times, days="weekdays" if args.weekdays else "daily",
-                                            summary=("ai" if args.ai == "on" else "plain") if args.ai else None)
+                if args.id in ("on", "off"):
+                    # this account's Brief on or off; off keeps the times
+                    sch = briefmod.set_schedule(cfg, on=args.id == "on")
+                else:
+                    times = [x for x in _re.split(r"[,\s]+", args.id) if x]
+                    sch = briefmod.set_schedule(cfg, times=times, on=True,
+                                                days="weekdays" if args.weekdays else "daily",
+                                                summary=("ai" if args.ai == "on" else "plain") if args.ai else None)
                 from . import config as _cfgmod
                 _cfgmod.save_config(cfg)
             else:
@@ -8081,6 +8086,11 @@ def _brief_cli(args):
         except ValueError as e:
             print(f"✗ {e}")
             sys.exit(2)
+        if not sch["on"]:
+            print("  your Brief is switched off"
+                  + (f" (it was set for {', '.join(sch['times'])})" if sch["times"] else "")
+                  + ". bento brief schedule on brings it back")
+            return
         if not sch["times"]:
             print("  no scheduled Brief. bento brief schedule 08:00,18:00 sets one")
             return
@@ -8088,6 +8098,27 @@ def _brief_cli(args):
         print(f"  the Brief comes at {', '.join(sch['times'])} {'on weekdays' if sch['days'] == 'weekdays' else 'every day'}"
               f"{', with an AI summary' if sch['summary'] == 'ai' else ''}"
               + (f"; next {_t.strftime('%a %H:%M', _t.localtime(nxt))}" if nxt else ""))
+        return
+    if act == "company":
+        # which of your companies are in your Brief: `bento brief company` lists them,
+        # `bento brief company "Bhav Capital" off` leaves one out (the same switch the page has)
+        from . import company as companymod, config as _cfgmod
+        if args.id:
+            if args.choice not in ("on", "off"):
+                print('say on or off:  bento brief company "<name>" off')
+                sys.exit(2)
+            try:
+                got = companymod.set_brief(cfg, args.id, args.choice == "on")
+            except ValueError as e:
+                print(f"✗ {e}")
+                sys.exit(2)
+            _cfgmod.save_config(cfg)
+            print(f"✓ {got['name']} is {'in' if got['on'] else 'left out of'} your Brief")
+        rows = companymod.brief_list(cfg)
+        if not rows:
+            print("  no company yet, so the Brief has everything in it")
+        for c in rows:
+            print(f"  {'✓' if c['on'] else '·'} {c['name']}" + ("" if c["on"] else "  (left out of your Brief)"))
         return
     if act == "play":
         # the story the Brief page plays, as the terminal prints a scene
@@ -10219,10 +10250,11 @@ def main():
 
     p_brief = verb("brief", help="today's Brief — what your missions found, as things to act on")
     p_brief.add_argument("action", nargs="?", default="show",
-                         choices=["show", "done", "later", "reopen", "decide", "play", "schedule"])
+                         choices=["show", "done", "later", "reopen", "decide", "play", "schedule", "company"])
     p_brief.add_argument("id", nargs="?", default="",
-                         help="the item's id (from `bento brief`); schedule: times like 08:00,18:00, or off")
-    p_brief.add_argument("choice", nargs="?", default="", help="decide: the choice, in the item's words")
+                         help="the item's id (from `bento brief`); schedule: times like 08:00,18:00, or on/off; "
+                              "company: a company's name")
+    p_brief.add_argument("choice", nargs="?", default="", help="decide: the choice, in the item's words; company: on or off")
     p_brief.add_argument("--weekdays", action="store_true", help="schedule: on weekdays only")
     p_brief.add_argument("--ai", choices=["on", "off"], help="schedule: an AI summary on top")
     p_sk = verb("skills", help="Bento's Stage, Blueprint, Brief and Mission as Agent Skills to download")

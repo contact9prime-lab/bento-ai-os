@@ -59,7 +59,31 @@ in since the last Brief, and delivers it:
 - **On your screen**, a card: *Your 08:00 Brief: 3 need you · 2 decisions*, with **▶ Play**. If you
   weren't looking, it's offered once when you come back.
 - **On Telegram**, the digest with its buttons, then the story as pictures.
+  The message greets you by the hour and by name, then lists what waits for you company by
+  company. Each line starts with what is asked: **Do** or **Decide**, then who asked and
+  why. FYI and finished work are only counted. The numbers match the buttons under the
+  message. When this machine has a voice of its own (Settings → Voice), the Brief is also
+  read to you as an audio message; with only the browser's voice a phone gets no sound, and
+  the Brief says so once.
 - **In Missions → History**, as a run, so you can see it happened.
+
+**Switch it off, for yourself or for one company.** The Brief is each account's own: your
+times and switches move nobody else's. Under the schedule, **Turn my Brief off** stops it
+coming and keeps your times; **Turn it on** brings it back. If you keep more than one
+company, **In the Brief** has a tick for each. An unticked company's items are left out of
+the Brief that is delivered (the story, the phone's message, the counts) and stay in the
+Brief app, where you can still act on them.
+
+```
+bento brief schedule off              # this account's Brief off, times kept
+bento brief schedule on
+bento brief company                   # which companies are in it
+bento brief company "Kidstube" off    # leave one out
+```
+
+![The Brief's schedule with its switches: times, Telegram, a tick per company, and off](screenshots/brief-switches.png)
+
+![The same switches on a phone](screenshots/brief-switches-phone.png)
 
 **▶ Play your Brief** turns it into a Stage story, narrated when voice is on: how much is waiting,
 what needs you, the decisions with their choices, which missions it came from, and what's worth

@@ -89,7 +89,11 @@ def test_the_digest_and_the_buttons_come_from_the_same_rows(store):
     items = brief.page(store)["items"]
     text = brief.digest(items, "inbox-triage")
     assert text.splitlines()[0] == "▲ inbox-triage · 1 needs you · 1 decision · 1 FYI"
-    assert "1. • Sign the SOW — Jane (by Thu)" in text and "Accept / Counter" in text
+    # each line starts with what is asked of the person, then who asked
+    assert "1. Do: Sign the SOW (by Thu)" in text and "   Asked by Jane" in text
+    assert "2. Decide: Pricing" in text and "Choices: Accept / Counter" in text
+    assert "Answer with a button below" in text.splitlines()[1]
+    assert text.splitlines()[-1] == "Also, nothing to do for these: 1 FYI."
     rows = brief.telegram_rows(items)
     assert rows[0][0]["callback_data"].endswith(":done") and rows[0][1]["callback_data"].endswith(":later")
     assert [b["callback_data"].split(":")[-1] for b in rows[1]] == ["Accept", "Counter"]

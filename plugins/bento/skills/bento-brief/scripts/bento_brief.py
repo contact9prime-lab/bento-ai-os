@@ -186,28 +186,103 @@ def decide_prompt(item: dict, choice: str) -> str:
     return "\n".join(ln for ln in lines if ln)
 
 
-def digest(items: list, mission: str = "", limit: int = 8) -> str:
-    """The Brief as text: for Telegram, a notification and the voice. Counts,
-    then the items that need the person, numbered so a reply can name one."""
-    live = [i for i in items if i["state"] in ("open", "later")]
-    live.sort(key=lambda i: ORDER.get(i["kind"], 9))
-    c = counts_of(live)
-    head = f"▲ {mission + ' · ' if mission else ''}{headline(c)}"
-    lines = [head]
-    n = 0
+# What each kind asks of the person, as the first word of its line. Reported with the 08:00
+# Brief on Telegram: "it is very unclear what is expected to be done by the user in the brief,
+# which company, what is it saying". Its lines were a bullet and a title ("• The auditor failed
+# Tech's task — auditor"), forty-five of them, from three companies in one list.
+ASKS = {"needs_you": "Do", "decide": "Decide"}
+
+
+# What a kind of item expects of the person, for the ones this OS files itself (their titles
+# say what happened, not what to do about it): keyed on the item's own key.
+EXPECT = (("audit-", "Read what the auditor found, then accept the work or have it redone."),
+          ("review-", "A boss did not sign this off. Read why, then accept it or send it back."),
+          ("parked:", "A mission is paused until you answer."))
+
+
+def expects(i: dict) -> str:
+    k = str(i.get("key") or "")
+    return next((words for prefix, words in EXPECT if k.startswith(prefix)), "")
+
+
+def _company_name(i: dict, company_of) -> str:
+    if not company_of:
+        return ""
+    try:
+        return str(company_of(i.get("mission") or "") or "")
+    except Exception:
+        return ""
+
+
+def kept(items: list, company_of=None, off=()) -> list:
+    """The items of the companies whose Brief is on. Asked for as "an option of the brief
+    being set or unset per account and per company": a company switched off is left out of
+    the Brief that is delivered (the story, the phone's message, the count), and its items
+    stay in the Brief app, where they can still be acted on."""
+    gone = {str(n).lower() for n in off or () if n}
+    if not gone or not company_of:
+        return list(items)
+    return [i for i in items if _company_name(i, company_of).lower() not in gone]
+
+
+def actionable(items: list, company_of=None) -> list:
+    """The items that wait for the person (to do, to decide), in the order every surface
+    numbers them: company by company, the one with most waiting first and what belongs to
+    no company last, to-dos before decisions. The digest's numbers and the buttons under
+    it both read this, so "2" is the same item in both."""
+    live = [i for i in items if i["state"] in ("open", "later") and i["kind"] in ASKS]
+    per: dict = {}
     for i in live:
-        if i["kind"] == "fyi" and n >= limit:
-            continue
-        n += 1
-        if n > limit:
-            lines.append(f"… and {len(live) - limit} more in the Brief")
-            break
-        tag = {"needs_you": "•", "decide": "?", "fyi": "·", "done": "✓"}.get(i["kind"], "·")
-        who = f" — {i['who']}" if i.get("who") else ""
-        due = f" (by {i['due']})" if i.get("due") else ""
-        lines.append(f"{n}. {tag} {i['title']}{who}{due}")
+        per[_company_name(i, company_of)] = per.get(_company_name(i, company_of), 0) + 1
+    rank = {c: n for n, c in enumerate(sorted(per, key=lambda c: (c == "", -per[c], c.lower())))}
+    return sorted(live, key=lambda i: (rank[_company_name(i, company_of)], ORDER.get(i["kind"], 9),
+                                       -(i.get("updated_at") or 0)))
+
+
+def digest(items: list, mission: str = "", limit: int = 8, company_of=None) -> str:
+    """The Brief as text, for Telegram, WhatsApp and a notification: the counts, one line
+    saying what to do with it, then what waits for the person, numbered, company by
+    company (`company_of(mission) -> name`), each line starting with what is asked (Do,
+    Decide) and followed by who asked and why. FYI and finished work are counted, not
+    listed: nothing is expected for them."""
+    live = [i for i in items if i["state"] in ("open", "later")]
+    c = counts_of(live)
+    lines = [f"▲ {mission + ' · ' if mission else ''}{headline(c)}"]
+    todo = actionable(live, company_of)
+    if todo:
+        lines.append("These wait for you. Answer with a button below (✓ done, ⏸ later, or a "
+                     "choice), or open the Brief.")
+    shown = todo[:limit]
+    groups = [_company_name(i, company_of) for i in todo]
+    named = any(groups)
+    last = None
+    for n, i in enumerate(shown, 1):
+        co = _company_name(i, company_of)
+        if named and co != last:
+            mine = [x for x in todo if _company_name(x, company_of) == co]
+            do, dec = (sum(1 for x in mine if x["kind"] == k) for k in ("needs_you", "decide"))
+            lines.append("")
+            lines.append(f"▦ {co or 'Not in a company'} · "
+                         + " · ".join(p for p in (f"{do} to do" if do else "", f"{dec} to decide" if dec else "") if p))
+            last = co
+        lines.append(f"{n}. {ASKS[i['kind']]}: {_short(i['title'], 110)}"
+                     + (f" (by {i['due']})" if i.get("due") else ""))
+        why = _sentence(i.get("body") or "", 150)
+        about = " · ".join(p for p in (f"Asked by {i['who']}" if i.get("who") else "",
+                                       why if why and why.lower() != i["title"].strip().lower() else "") if p)
+        if expects(i):
+            lines.append("   " + expects(i))
+        if about:
+            lines.append("   " + about)
         if i["kind"] == "decide" and i.get("options"):
-            lines.append("   " + " / ".join(i["options"]))
+            lines.append("   Choices: " + " / ".join(i["options"]))
+    if len(todo) > len(shown):
+        lines.append("")
+        lines.append(f"… and {len(todo) - len(shown)} more to do or decide in the Brief.")
+    rest = [f"{c[k]} {w}" for k, w in (("fyi", "FYI"), ("done", "done for you")) if c.get(k)]
+    if rest:
+        lines.append(("Also, nothing to do for these: " if todo else "Nothing waits for you. ")
+                     + ", ".join(rest) + ".")
     return "\n".join(lines)
 
 
@@ -226,11 +301,12 @@ def spoken(items: list) -> str:
     return " ".join(parts)
 
 
-def telegram_rows(items: list, limit: int = 6) -> list[list[dict]]:
+def telegram_rows(items: list, limit: int = 6, company_of=None) -> list[list[dict]]:
     """Inline buttons: Done and Later per item that needs the person, and the
-    choices for a decision. `br:<id>:<action>[:<choice>]`, read by telegram.py."""
+    choices for a decision. `br:<id>:<action>[:<choice>]`, read by telegram.py. Numbered
+    as the digest numbers them (`actionable`)."""
     rows = []
-    live = [i for i in items if i["state"] in ("open", "later") and i["kind"] in ("needs_you", "decide")]
+    live = actionable(items, company_of)
     for n, i in enumerate(live[:limit], 1):
         if i["kind"] == "decide":
             rows.append([{"text": f"{n}: {o}"[:30], "callback_data": f"br:{i['id']}:decide:{o}"[:64]}
@@ -269,12 +345,17 @@ def schedule(cfg: dict) -> dict:
                 times.append(hhmm)
     return {"times": sorted(times)[:6], "days": raw.get("days") if raw.get("days") in DAYS else "daily",
             "summary": "ai" if raw.get("summary") == "ai" else "plain",
-            "telegram": raw.get("telegram") is not False, "last_at": float(raw.get("last_at") or 0)}
+            "telegram": raw.get("telegram") is not False, "last_at": float(raw.get("last_at") or 0),
+            # the person's own switch: off keeps the times, and nothing comes until it is on again
+            "on": raw.get("on") is not False}
 
 
-def set_schedule(cfg: dict, times=None, days=None, summary=None, telegram=None) -> dict:
-    """Write the schedule; a bad time is refused in a sentence. [] switches it off."""
+def set_schedule(cfg: dict, times=None, days=None, summary=None, telegram=None, on=None) -> dict:
+    """Write the schedule; a bad time is refused in a sentence. `on` False switches this
+    person's Brief off and keeps its times; [] for times clears them."""
     cur = cfg.setdefault("brief", {})
+    if on is not None:
+        cur["on"] = bool(on)
     if times is not None:
         bad = [t for t in times if not _HHMM.match(str(t).strip())]
         if bad:
@@ -295,7 +376,7 @@ def due_at(sched: dict, now: float) -> float:
     """The scheduled moment that is due now (the latest one passed today and not yet
     delivered), or 0. A machine that was off at 08:00 gives the 08:00 Brief when it wakes,
     the same day; it never gives yesterday's."""
-    if not sched["times"]:
+    if not sched["times"] or sched.get("on") is False:
         return 0
     t = dt.datetime.fromtimestamp(now)
     if sched["days"] == "weekdays" and t.weekday() >= 5:
@@ -312,7 +393,7 @@ def due_at(sched: dict, now: float) -> float:
 
 def next_at(sched: dict, now: float) -> float:
     """When the next Brief comes, for the page and the terminal (0 when switched off)."""
-    if not sched["times"]:
+    if not sched["times"] or sched.get("on") is False:
         return 0
     base = dt.datetime.fromtimestamp(now)
     for d in range(8):
@@ -343,9 +424,18 @@ def fold(items: list) -> list:
     return out
 
 
-def _greeting(now: float) -> str:
+def greeting(now: float, name: str = "") -> str:
+    """'Good morning, Piyush': the hour's greeting and the person's name when it is known.
+    Asked for as "the brief should be personalized, it should start with good morning or
+    evening or afternoon with the name"."""
     h = dt.datetime.fromtimestamp(now).hour
-    return "Good morning" if 5 <= h < 12 else "Good afternoon" if h < 17 else "Good evening"
+    hello = "Good morning" if 5 <= h < 12 else "Good afternoon" if h < 17 else "Good evening"
+    first = " ".join(str(name or "").split()).split(" ")[0][:24] if str(name or "").strip() else ""
+    return hello + (f", {first[0].upper() + first[1:]}" if first else "")
+
+
+def _greeting(now: float) -> str:
+    return greeting(now)
 
 
 def _sentence(text: str, n: int = 140) -> str:
@@ -376,7 +466,8 @@ MEANS = {"needs_you": "only you can do these", "decide": "an agent is waiting fo
          "fyi": "worth knowing, nothing to do", "done": "finished for you"}
 
 
-def story(items: list, now: float, since: float = 0, agent: str = "", summary: str = "") -> list[dict]:
+def story(items: list, now: float, since: float = 0, agent: str = "", summary: str = "",
+          name: str = "") -> list[dict]:
     """The Brief as Stage scenes (stage.clean's shapes), from the rows alone.
 
     Numbers carry their source ("your Brief"), because they are counts of rows here, and
@@ -391,12 +482,14 @@ def story(items: list, now: float, since: float = 0, agent: str = "", summary: s
             for k in KINDS if c.get(k)]
     if new:
         nums.append({"label": "New since the last Brief", "value": str(len(new))})
-    head = f"{_greeting(now)}. " + (headline(c).replace(" · ", ", ") + "." if live else "Nothing is waiting for you.")
+    head = f"{greeting(now, name)}. " + (headline(c).replace(" · ", ", ") + "." if live else "Nothing is waiting for you.")
     # the first thing heard says what this is: what the missions filed, to act on
     about = ("This is what your missions filed for you. Tap a card to act on it." if live else "")
     scenes.append({"kind": "numbers", "title": "Your Brief", "source": "your Brief",
                    "caption": (summary or head) + (" " + about if about else ""),
-                   "say": (summary or head) + (f" {len(new)} of them came in since the last Brief." if new else ""),
+                   # the greeting is said even over an AI summary: it is who this is for
+                   "say": (f"{greeting(now, name)}. " if summary else "") + (summary or head)
+                          + (f" {len(new)} of them came in since the last Brief." if new else ""),
                    "items": nums or [{"label": "Waiting for you", "value": "0"}]})
     need = [i for i in live if i["kind"] == "needs_you"]
     if need:

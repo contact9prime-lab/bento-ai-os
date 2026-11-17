@@ -131,7 +131,9 @@ def test_a_scheduled_brief_goes_to_the_phone_and_history(monkeypatch):
         monkeypatch.setattr(servermod.state, "get", lambda k, d=None: TG() if k == "telegram" else real(k, d))
         due = _at(8)
         r = asyncio.run(servermod._brief_deliver(scheduled_at=due))
-        assert sent[0] == ("digest", "▲ Your 08:00 Brief") and sent[1] == ("story", r["cid"])
+        # it greets by the hour (and by name when the account has one), then says which Brief
+        assert sent[0][0] == "digest" and sent[0][1] == "Good morning. Your 08:00 Brief"
+        assert sent[1] == ("story", r["cid"])
         assert servermod.state["cfg"]["brief"]["last_at"] == due
         row = store.db.execute("SELECT task_id, status FROM task_runs WHERE task_id='brief'").fetchone()
         assert tuple(row) == ("brief", "ok"), "a scheduled Brief is in Missions → History"

@@ -1084,6 +1084,117 @@ def _task_rows(cfg: dict, store, waiting: list | None, now: float) -> list[dict]
     return rows
 
 
+def brief_list(cfg: dict) -> list[dict]:
+    """Each company the person keeps and whether its items are in their Brief (on unless
+    switched off). The flag lives on the company, so it parks and comes back with it."""
+    out = []
+    cur = (cfg or {}).get("company") or {}
+    if _has_company(cur, (cfg or {}).get("office") or {}):
+        out.append({"id": str(cur.get("id") or ""), "name": cur.get("name") or "", "active": True,
+                    "on": cur.get("brief") is not False})
+    for cid, rec in _parked(cfg).items():
+        out.append({"id": cid, "name": rec["company"].get("name") or "", "active": False,
+                    "on": rec["company"].get("brief") is not False})
+    return out
+
+
+def brief_off(cfg: dict) -> set:
+    return {c["name"] for c in brief_list(cfg) if not c["on"] and c["name"]}
+
+
+def set_brief(cfg: dict, ref: str, on: bool) -> dict:
+    """Put one company's items in the Brief, or leave them out. By id or name; ValueError
+    in a sentence when there is no such company."""
+    want = str(ref or "").strip().lower()
+    cur = dict((cfg or {}).get("company") or {})
+    if want and want in (str(cur.get("id") or "").lower(), str(cur.get("name") or "").lower()) \
+            and _has_company(cur, cfg.get("office") or {}):
+        cur["brief"] = bool(on)
+        cfg["company"] = cur
+        return {"name": cur.get("name") or "", "on": bool(on)}
+    parked = dict(_parked(cfg))
+    for cid, rec in parked.items():
+        if want and want in (cid.lower(), str(rec["company"].get("name") or "").lower()):
+            parked[cid] = {**rec, "company": {**rec["company"], "brief": bool(on)}}
+            cfg["companies"] = parked
+            return {"name": rec["company"].get("name") or "", "on": bool(on)}
+    names = ", ".join(c["name"] for c in brief_list(cfg)) or "none yet"
+    raise ValueError(f"no company called '{ref}'. Yours: {names}")
+
+
+def of_mission(cfg: dict, store):
+    """`mission name -> company name` ('' when it is no company's), for a list that has to
+    say whose each item is: the Brief's digest, company by company (brief.digest)."""
+    seen: dict = {}
+
+    def name(mission: str) -> str:
+        m = str(mission or "")
+        if m not in seen:
+            try:
+                flow = store.get_flow(m) if m else None
+                co = of_flow(cfg, flow or ({"name": m} if m else None))
+                seen[m] = (co or {}).get("name") or ""
+            except Exception:
+                seen[m] = ""
+        return seen[m]
+    return name
+
+
+LIVE_LINES = 40
+
+
+def live(store, conversation_id: str) -> list[dict]:
+    """The department tasks still open in one chat, each with what its people have done
+    so far, in the words the chat card writes as it happens (10a-handoff.js deptCardLive).
+
+    A card follows its desk's run only while the page holds the link it made when the run
+    started. Reported with a screenshot: `department_task … running · 10m 20s` and nothing
+    under it, while the Office's log named who had got which piece. The person had left
+    that chat and come back, the panel redrew the card from a snapshot, and the link was
+    gone; a page opened after the run began never had one. This is what a page asks for
+    then: read from `fabric_runs` and `fabric_events`, so it cannot disagree with them."""
+    out = []
+    if not conversation_id:
+        return out
+    rows = store.db.execute(
+        "SELECT * FROM fabric_runs WHERE kind='flow' AND conversation_id=? AND status IN "
+        "('running','parked') ORDER BY started_at", (conversation_id,)).fetchall()
+    for r in rows:
+        top = dict(r)
+        evs = store.fabric_events_for(top["id"], limit=2000)
+        start = next((e["payload"] for e in evs if e["type"] == "flow_start"), {}) or {}
+        dept = str(start.get("department") or "")
+        if not dept:
+            continue                              # a mission started from the chat, not a desk
+        head = str(start.get("head") or "")
+        timed = [(e["ts"], f"→ {e['payload'].get('agent')}: "
+                           f"{' '.join(str(e['payload'].get('task') or '').split())[:160]}")
+                 for e in evs if e["type"] == "node_add"]
+        timed.append((float(top.get("started_at") or 0), f"{dept} has it" + (f", led by {head}" if head else "")))
+        kids = []
+        for k in store.fabric_runs(parent_run=top["id"]):
+            if k.get("kind") in ("review", "audit"):
+                continue
+            kids.append(k["id"])
+            who = k.get("ref") or "the desk"
+            for e in store.fabric_events_for(k["id"], limit=2000):
+                p = e["payload"]
+                if e["type"] == "status" and p.get("ref"):
+                    st = p.get("status")
+                    timed.append((e["ts"], f"{p['ref']} is working" if st == "running" else
+                                  f"{p['ref']} " + ("finished" if st in ("ok", "done") else f"stopped ({st})")))
+                elif e["type"] == "step" and p.get("status") == "start":
+                    timed.append((e["ts"], f"  {who} · {p.get('tool')}"
+                                           + (f" · {str(p.get('detail'))[:80]}" if p.get("detail") else "")))
+        timed.sort(key=lambda t: t[0])
+        out.append({"run_id": top["id"], "department": dept, "head": head, "children":
+                    [{"run_id": k["id"], "who": k.get("ref") or ""} for k in store.fabric_runs(parent_run=top["id"])
+                     if k["id"] in kids],
+                    "status": top.get("status") or "", "started_at": top.get("started_at") or 0,
+                    "lines": [t for _, t in timed][-LIVE_LINES:]})
+    return out
+
+
 def stats(cfg: dict, store, waiting: list | None = None, now: float | None = None) -> list[dict]:
     """One card per department: people, doing, waiting, next, done this week, failed.
     Every number is a count of rows; nothing is estimated."""

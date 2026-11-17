@@ -180,6 +180,15 @@ agents and your departments. A name with spaces works as typed (`@Customer Care`
 
 ![A department's answer in Chat](screenshots/company-at-answer.png)
 
+**While a department works, its card says who is doing what.** The `department_task` card in
+the chat lists each hand-over and each step as it happens: who got which piece, which tool
+they are on, who finished. It keeps doing that when you switch to another chat and come
+back, and when you open the Office or Chat after the task has already started.
+
+![A department's card listing who is doing what, in the Office's chat](screenshots/department-card-follows.png)
+
+![The same card in Chat on a phone, opened after the task began](screenshots/department-card-follows-phone.png)
+
 **Or just ask your agent.** Your agent is told to hand real work to the department that
 fits, and has a tool for it (`department_task`). On the built-in brain and on Claude Code,
 Gemini CLI or Codex alike, asking "which products are going viral?" goes to Sales or

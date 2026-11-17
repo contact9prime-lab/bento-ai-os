@@ -578,6 +578,7 @@ class TelegramBridge(usersmod.Scoped):
         # first private chat to say anything becomes the owner
         if not (t.get("owner_chat_id") or 0) and ctype == "private":
             t["owner_chat_id"] = chat_id
+            t["owner_name"] = str(title or "")[:40]      # what the Brief greets them by, with no account
             cfgmod.save_config(self.cfg)
             self.store.tg_set_allowed(chat_id, 1, "pairing: the first chat to write")
             chat["allowed"] = 1

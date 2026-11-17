@@ -60,7 +60,7 @@ function tgGroupsTable(d){
       chanBadge(m.talks,m.talks?'yes':(m.state==='blocked'?'blocked':'not picked')),
       m.state?chanDecided(m):'<span class="mut">the group’s rule</span>',
       esc(m.msg_count||0),esc(chanWhen(m.last_seen)),
-      m.owner?'':`<span class="ct-act"><button class="endbtn" onclick="tgMember(${+g.chat_id},'${jsq(m.member_id)}','${m.talks?'blocked':'allowed'}')">${m.talks?'Block':'Allow'}</button>
+      m.owner?'':`<span class="ct-act"><button class="endbtn" onclick="tgMember(${+g.chat_id},'${jsq(m.member_id)}','${jsq(m.talks?'blocked':'allowed')}')">${m.talks?'Block':'Allow'}</button>
         ${m.state?`<button class="endbtn" title="Back to the group’s rule" onclick="tgMember(${+g.chat_id},'${jsq(m.member_id)}','')">Reset</button>`:''}</span>`])}</tr>`);
     const inner=ms.length?chanTable(TG_MEMBER_H,mrows,''):'<p class="mut ct-empty">Nobody has written to the agent in this group yet.</p>';
     return head+`<tr class="ct-sub"><td colspan="${TG_GROUP_H.length}"><details${g.allowed&&ms.length?' open':''}>

@@ -5963,7 +5963,23 @@ async def api_brief(day: str = ""):
     sched = briefmod.schedule(state["cfg"])
     pg["schedule"] = {**sched, "next_at": briefmod.next_at(sched, time.time())}
     pg["last_story"] = (state["cfg"].get("brief") or {}).get("last_story") or None
+    # which of the person's companies are in their Brief (the switch beside the schedule)
+    from . import company as _companymod
+    pg["companies"] = _companymod.brief_list(state["cfg"])
+    pg["person"] = (briefmod.greeting(time.time(), _brief_person(state["cfg"])).partition(", ")[2])
     return pg
+
+
+def _brief_person(cfg: dict) -> str:
+    """Who the Brief is for, by the name they are known by here: the account's, or the name
+    their Telegram chat was paired under on a machine with no accounts. '' when neither."""
+    try:
+        u = usersmod.get(usersmod.current()) if usersmod.enabled() and usersmod.current() else None
+        if u:
+            return str(u.get("display") or u.get("name") or "")
+    except Exception:
+        pass
+    return str(cfg.get("user_name") or ((cfg.get("telegram") or {}).get("owner_name")) or "")
 
 
 async def _brief_deliver(scheduled_at: float = 0, why: str = "asked") -> dict:
@@ -5976,7 +5992,11 @@ async def _brief_deliver(scheduled_at: float = 0, why: str = "asked") -> dict:
     sched = briefmod.schedule(cfg)
     now = time.time()
     trid = store.task_run_start({"id": "brief", "prompt": "Brief"}) if scheduled_at else None
-    items = store.brief_items(day=briefmod.today(), open_only=True)
+    from . import company as _companymod
+    whose = _companymod.of_mission(cfg, store)
+    # a company whose Brief is switched off is left out of what is delivered
+    items = briefmod.kept(store.brief_items(day=briefmod.today(), open_only=True), whose,
+                          _companymod.brief_off(cfg))
     summary = ""
     if sched["summary"] == "ai" and any(i["state"] in ("open", "later") for i in items):
         with contextlib.suppress(Exception):
@@ -5984,8 +6004,10 @@ async def _brief_deliver(scheduled_at: float = 0, why: str = "asked") -> dict:
                 cfg, "You write a two-sentence spoken summary of a to-do list. Plain words.",
                 briefmod.summary_prompt(items), timeout=90)
             summary = "" if why_not else " ".join(str(text or "").split())[:400]
-    scenes = briefmod.story(items, now, since=sched["last_at"], agent=cfg.get("agent_name") or "",
-                            summary=summary)
+    person = _brief_person(cfg)
+    # the hour it was due, not the minute it was built: an 08:00 Brief says good morning
+    scenes = briefmod.story(items, scheduled_at or now, since=sched["last_at"],
+                            agent=cfg.get("agent_name") or "", summary=summary, name=person)
     title = f"Brief · {time.strftime('%a %d %b')}"
     cid = next((c["id"] for c in store.list_conversations(limit=200)
                 if c.get("origin") == "brief" and c.get("title") == title), "") \
@@ -5997,7 +6019,9 @@ async def _brief_deliver(scheduled_at: float = 0, why: str = "asked") -> dict:
             stagemod.add(store, cid, stagemod.clean(sc)[0])
     pg = briefmod.page(store)
     head = briefmod.headline(pg["counts"])
-    store.add_message(cid, "assistant", (summary + "\n\n" if summary else "") + briefmod.digest(items))
+    # company by company: three companies' items in one list read as one company's
+    store.add_message(cid, "assistant", (summary + "\n\n" if summary else "")
+                      + briefmod.digest(items, company_of=whose))
     b = cfg.setdefault("brief", {})
     if scheduled_at:
         b["last_at"] = scheduled_at
@@ -6012,8 +6036,18 @@ async def _brief_deliver(scheduled_at: float = 0, why: str = "asked") -> dict:
         with contextlib.suppress(Exception):
             t = tg._t() if tg else {}
             if t.get("enabled") and t.get("bot_token") and t.get("owner_chat_id"):
-                await tg.send_brief(f"▲ Your {when} Brief\n" + briefmod.digest(items),
-                                    briefmod.telegram_rows(items))
+                # a phone hears the Brief only when this machine has a voice of its own (the
+                # browser's lives in a browser); said once, with where to choose one
+                from . import speech as _speech
+                quiet = ""
+                if _speech.conf(cfg).get("engine") in ("", "browser") and not b.get("voice_told"):
+                    quiet = ("\n\n🔇 No sound with this Brief: this machine has no voice of its own "
+                             "yet. Choose one in Settings → Voice and the next Brief is read to you.")
+                    b["voice_told"] = True
+                    cfgmod.save_config(cfg)
+                await tg.send_brief(f"{briefmod.greeting(scheduled_at or now, person)}. Your {when} Brief\n"
+                                    + briefmod.digest(items, company_of=whose) + quiet,
+                                    briefmod.telegram_rows(items, company_of=whose))
                 await tg.send_stage(cid, "", tg._t().get("owner_chat_id"))
                 sent = "telegram"
     if trid:
@@ -6030,13 +6064,22 @@ async def api_brief_story():
 
 @app.put("/api/brief/schedule")
 async def api_brief_schedule(body: dict):
+    """This account's Brief: when it comes, whether it comes at all (`on`), and which of
+    its companies are in it (`companies: {name: true|false}`). The account's own setting
+    (`brief` and `company` are USER_KEYS), so one person's switch moves nobody else's."""
+    from . import company as _companymod
+    cfg = state["cfg"]
     try:
-        sched = briefmod.set_schedule(state["cfg"], times=body.get("times"), days=body.get("days"),
-                                      summary=body.get("summary"), telegram=body.get("telegram"))
+        sched = briefmod.set_schedule(cfg, times=body.get("times"), days=body.get("days"),
+                                      summary=body.get("summary"), telegram=body.get("telegram"),
+                                      on=body.get("on"))
+        for name, on in (body.get("companies") or {}).items():
+            _companymod.set_brief(cfg, str(name), bool(on))
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
-    cfgmod.save_config(state["cfg"])
-    return {**sched, "next_at": briefmod.next_at(sched, time.time())}
+    cfgmod.save_config(cfg)
+    return {**sched, "next_at": briefmod.next_at(sched, time.time()),
+            "companies": _companymod.brief_list(cfg)}
 
 
 @app.post("/api/brief/{bid}/act")
@@ -15023,6 +15066,15 @@ async def api_company_task(body: dict, request: Request):
                                conversation_id=b.get("conversation_id", ""))
     return {"ok": True, "run_id": run_id, "flow": flow["name"],
             "department": str(b.get("department") or "")}
+
+
+@app.get("/api/company/live")
+async def api_company_live(conversation_id: str = ""):
+    """The department tasks still open in one chat and what their people have done so far:
+    what a chat card asks for when it was redrawn, or the page opened, after the task
+    began (company.live). Read-only, and only this account's runs (its own database)."""
+    from . import company as companymod
+    return {"tasks": companymod.live(state["store"], str(conversation_id or "")[:64])}
 
 
 @app.get("/api/chat/addresses")

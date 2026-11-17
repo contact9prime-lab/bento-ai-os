@@ -614,6 +614,18 @@ Office showed nothing for six minutes. Four rules:
 - **The chat card follows the desk's run**: flow_start names the chat, the department and the head; the page binds the
   open `department_task` card to that run and writes each hand-over, step, finish and sign-off into it.
 
+**A department's card is put back on its run whenever it is drawn again** (`deptCardRestore`/`deptCardCatchUp`/
+`deptCardPaint` in 10a-handoff.js, `company.live`, `/api/company/live`; `tests/test_brief_by_company.py`). Reported
+with a screenshot: `department_task … running · 10m 20s` and nothing under it, while the Office's log named who had
+got which piece. The events were all there (read from the owner's record). Replayed in a browser with those
+events: a card bound at `flow_start` filled in; after the panel left the chat and came back, the card was redrawn
+from `STREAMS[cid].html`, a string taken earlier, with no `data-dept-run` and no lines, and nothing bound it again.
+Three rules: a run is followed in `DEPTCARD.runs` even when no card is on screen (with its chat and department);
+both places that redraw a running chat (the panel's `replay`, Chat's `openConv`) call restore and then catch-up;
+and a page that was not there at `flow_start` asks the server, which reads `fabric_runs`/`fabric_events` in the
+card's own words and, with no card to write into, the page draws one from text nodes. A harness trap: a run
+seeded `running` BEFORE the server boots is swept to `interrupted`, so seed it after.
+
 **What is handed back is whole, and a run that stops keeps what it finished** (`tools.handed_back`/`HANDBACK`,
 `company._shown`/`REVIEW_CHARS`, `fabric._salvage`/`SALVAGED`; `tests/test_desk_handback.py`). Reported as "the company
 delegation is not very great, the answers fall short". Read from the owner's record and then measured live:
@@ -1065,6 +1077,26 @@ brief should periodically check on the schedule". Four rules:
   "what the brief is trying to do is missing": numbered steps with arrows, titles cut mid-word, bare options.
   A Brief list is `ordered: false`, each card says what it is about, who filed it and a decision's choices,
   and taps to that item in the Brief (a phone turns its stack to it). `open` takes only `brief:` doors.
+
+**On a phone the Brief says whose each item is and what is asked** (`brief.digest(company_of=)`/`actionable`/
+`expects`/`greeting`, `company.of_mission`, `server._brief_person`; `tests/test_brief_by_company.py`). Reported with
+the 08:00 Brief on Telegram, 45 lines of a bullet and a title from three companies: "very unclear what is expected
+to be done by the user, which company, what is it saying", then "it should start with good morning with the name
+and have some sort of audio", then "an option of the brief being set or unset per account and per company". Six rules:
+- **Only what waits is listed**, numbered company by company (most waiting first, no company last), each line
+  starting `Do:` or `Decide:`, then who asked and the first sentence of why. FYI and done are counted.
+- **The buttons read the same order** (`actionable`), so "2" is one item in the text and under it. They did not:
+  the text sorted by kind and the buttons did not.
+- **An item this OS files says what to do about it** (`EXPECT`, keyed on the item's key: `audit-`, `review-`,
+  `parked:`), because its title says what happened. The titles are left alone: `fold` and the boards key on them.
+- **brief.py still knows no company**: the server hands it `company_of(mission)`; it is copied into the skills.
+- **Off is the account's, and a company's** (`brief.on`, `company.brief` on the company itself, `brief.kept`,
+  `company.brief_list`/`set_brief`, `PUT /api/brief/schedule` `on`/`companies`, `bento brief schedule on|off`,
+  `bento brief company`). Off keeps the times (`due_at`/`next_at` answer 0). A company's flag parks and comes
+  back with it. Its items are left out of what is DELIVERED and stay in the Brief app.
+- **The greeting is for the hour the Brief was due** and uses the account's display name, or the name the Telegram
+  chat was paired under (`telegram.owner_name`). A phone hears it only with a server voice (`send_narration`); on
+  the browser engine the message says so once (`brief.voice_told`). This machine had no engine and no espeak-ng.
 
 Kept free of HTTP and asyncio, like `jobs.py`: `bento brief` reads and acts on the same
 rows with the server down. Option labels cut at a word (`_short`) because a button that
