@@ -5963,6 +5963,10 @@ async def api_brief(day: str = ""):
     sched = briefmod.schedule(state["cfg"])
     pg["schedule"] = {**sched, "next_at": briefmod.next_at(sched, time.time())}
     pg["last_story"] = (state["cfg"].get("brief") or {}).get("last_story") or None
+    # which of the person's companies are in their Brief (the switch beside the schedule)
+    from . import company as _companymod
+    pg["companies"] = _companymod.brief_list(state["cfg"])
+    pg["person"] = (briefmod.greeting(time.time(), _brief_person(state["cfg"])).partition(", ")[2])
     return pg
 
 
@@ -5988,7 +5992,11 @@ async def _brief_deliver(scheduled_at: float = 0, why: str = "asked") -> dict:
     sched = briefmod.schedule(cfg)
     now = time.time()
     trid = store.task_run_start({"id": "brief", "prompt": "Brief"}) if scheduled_at else None
-    items = store.brief_items(day=briefmod.today(), open_only=True)
+    from . import company as _companymod
+    whose = _companymod.of_mission(cfg, store)
+    # a company whose Brief is switched off is left out of what is delivered
+    items = briefmod.kept(store.brief_items(day=briefmod.today(), open_only=True), whose,
+                          _companymod.brief_off(cfg))
     summary = ""
     if sched["summary"] == "ai" and any(i["state"] in ("open", "later") for i in items):
         with contextlib.suppress(Exception):
@@ -6012,8 +6020,6 @@ async def _brief_deliver(scheduled_at: float = 0, why: str = "asked") -> dict:
     pg = briefmod.page(store)
     head = briefmod.headline(pg["counts"])
     # company by company: three companies' items in one list read as one company's
-    from . import company as _companymod
-    whose = _companymod.of_mission(cfg, store)
     store.add_message(cid, "assistant", (summary + "\n\n" if summary else "")
                       + briefmod.digest(items, company_of=whose))
     b = cfg.setdefault("brief", {})
@@ -6058,13 +6064,22 @@ async def api_brief_story():
 
 @app.put("/api/brief/schedule")
 async def api_brief_schedule(body: dict):
+    """This account's Brief: when it comes, whether it comes at all (`on`), and which of
+    its companies are in it (`companies: {name: true|false}`). The account's own setting
+    (`brief` and `company` are USER_KEYS), so one person's switch moves nobody else's."""
+    from . import company as _companymod
+    cfg = state["cfg"]
     try:
-        sched = briefmod.set_schedule(state["cfg"], times=body.get("times"), days=body.get("days"),
-                                      summary=body.get("summary"), telegram=body.get("telegram"))
+        sched = briefmod.set_schedule(cfg, times=body.get("times"), days=body.get("days"),
+                                      summary=body.get("summary"), telegram=body.get("telegram"),
+                                      on=body.get("on"))
+        for name, on in (body.get("companies") or {}).items():
+            _companymod.set_brief(cfg, str(name), bool(on))
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
-    cfgmod.save_config(state["cfg"])
-    return {**sched, "next_at": briefmod.next_at(sched, time.time())}
+    cfgmod.save_config(cfg)
+    return {**sched, "next_at": briefmod.next_at(sched, time.time()),
+            "companies": _companymod.brief_list(cfg)}
 
 
 @app.post("/api/brief/{bid}/act")

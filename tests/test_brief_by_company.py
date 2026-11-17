@@ -20,6 +20,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 os.environ.setdefault("AGENTOS_HOME", tempfile.mkdtemp(prefix="agentos-test-home-"))
 os.environ.setdefault("AGENTOS_VAULT_KEYRING", "0")
 
+import pytest                                                        # noqa: E402
+
 from agentos import brief, company, tools                           # noqa: E402
 from agentos.memory import Store                                     # noqa: E402
 
@@ -184,3 +186,64 @@ def test_a_phone_is_told_once_when_the_machine_has_no_voice():
     assert 'in ("", "browser") and not b.get("voice_told")' in src and "Settings → Voice" in src
     assert "briefmod.greeting(scheduled_at or now, person)" in src
     assert "owner_name" in inspect.getsource(server._brief_person)
+
+
+# ---- the Brief is the account's to switch, and each company's -------------------------------------
+
+def test_an_accounts_brief_is_switched_off_and_keeps_its_times():
+    import datetime as dt
+    cfg = {}
+    brief.set_schedule(cfg, times=["08:00"])
+    at = dt.datetime(2026, 11, 17, 9, 0).timestamp()
+    assert brief.schedule(cfg)["on"] is True and brief.due_at(brief.schedule(cfg), at)
+    brief.set_schedule(cfg, on=False)
+    s = brief.schedule(cfg)
+    assert s["on"] is False and s["times"] == ["08:00"], "off keeps the times"
+    assert brief.due_at(s, at) == 0 and brief.next_at(s, at) == 0, "and nothing is due"
+    brief.set_schedule(cfg, on=True)
+    assert brief.due_at(brief.schedule(cfg), at)
+    from agentos import users
+    assert "brief" in users.USER_KEYS and "company" in users.USER_KEYS and "companies" in users.USER_KEYS, \
+        "one person's switch is their own"
+
+
+def test_a_company_is_left_out_of_the_brief_and_comes_back(tmp_path):
+    cfg = {"agent_name": "Aria"}
+    store = Store(tmp_path / "h.db")
+    names = [t["name"] for t in tools.TOOL_SCHEMAS]
+    plan, _ = company.normalize(company.template_plan(["sales"], "Brightdesk"), names)
+    company.apply(cfg, store, plan, {"mail": True, "calendar": True}, talk=False)
+    company.create(cfg, store, "Kidstube")
+    plan, _ = company.normalize(company.template_plan(["support"], "Kidstube"), names)
+    company.apply(cfg, store, plan, {"mail": True, "calendar": True}, talk=False)
+    assert [(c["name"], c["on"]) for c in company.brief_list(cfg)] == [("Kidstube", True), ("Brightdesk", True)]
+    assert company.set_brief(cfg, "brightdesk", False) == {"name": "Brightdesk", "on": False}
+    assert company.brief_off(cfg) == {"Brightdesk"}
+    brief.add(store, "sales-desk", "r1", "needs_you", "Call the clinic")
+    brief.add(store, "kidstube-support-desk", "r2", "needs_you", "Answer the parent")
+    whose = company.of_mission(cfg, store)
+    items = brief.kept(brief.page(store)["items"], whose, company.brief_off(cfg))
+    assert [i["title"] for i in items] == ["Answer the parent"]
+    assert len(brief.page(store)["items"]) == 2, "its items stay in the Brief app"
+    # the switch is the company's own, so it parks and comes back with it
+    bright = next(c for c in company.companies(cfg) if c["name"] == "Brightdesk")
+    company.switch(cfg, store, bright["id"])
+    assert company.brief_off(cfg) == {"Brightdesk"}
+    company.set_brief(cfg, "Brightdesk", True)
+    assert company.brief_off(cfg) == set()
+    with pytest.raises(ValueError, match="no company called"):
+        company.set_brief(cfg, "Nobody Ltd", False)
+
+
+def test_every_face_has_the_two_switches():
+    import inspect
+    from agentos import __main__ as cli, server
+    route = inspect.getsource(server.api_brief_schedule)
+    assert 'on=body.get("on")' in route and "set_brief(cfg, str(name), bool(on))" in route
+    assert "brief_off(cfg)" in inspect.getsource(server._brief_deliver), "the delivered Brief leaves them out"
+    assert 'pg["companies"]' in inspect.getsource(server.api_brief)
+    page = (JS / "24b-brief.js").read_text()
+    assert "function briefSwitch(" in page and "function briefCompanyTicks(" in page
+    assert "Your Brief is switched off" in page and "Turn my Brief off" in page
+    src = inspect.getsource(cli)
+    assert 'act == "company"' in src and 'args.id in ("on", "off")' in src

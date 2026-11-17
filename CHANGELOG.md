@@ -10,6 +10,8 @@
 - **The Brief on your phone.** It greets you by the hour and by name, lists what waits for you company
   by company, and starts each line with what is asked (Do or Decide), who asked and why. FYI and
   finished work are only counted. The buttons carry the same numbers as the text.
+- **Your Brief, your switches.** Turn your own Brief off (the times are kept) or leave one company
+  out of it, from the Brief app or `bento brief schedule off` and `bento brief company "<name>" off`.
 - **Sound.** The Brief is read to you on Telegram when this machine has a voice of its own. With only
   the browser's voice, it says so once and points to Settings → Voice.
 

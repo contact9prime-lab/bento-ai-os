@@ -1083,6 +1083,44 @@ def _task_rows(cfg: dict, store, waiting: list | None, now: float) -> list[dict]
     return rows
 
 
+def brief_list(cfg: dict) -> list[dict]:
+    """Each company the person keeps and whether its items are in their Brief (on unless
+    switched off). The flag lives on the company, so it parks and comes back with it."""
+    out = []
+    cur = (cfg or {}).get("company") or {}
+    if _has_company(cur, (cfg or {}).get("office") or {}):
+        out.append({"id": str(cur.get("id") or ""), "name": cur.get("name") or "", "active": True,
+                    "on": cur.get("brief") is not False})
+    for cid, rec in _parked(cfg).items():
+        out.append({"id": cid, "name": rec["company"].get("name") or "", "active": False,
+                    "on": rec["company"].get("brief") is not False})
+    return out
+
+
+def brief_off(cfg: dict) -> set:
+    return {c["name"] for c in brief_list(cfg) if not c["on"] and c["name"]}
+
+
+def set_brief(cfg: dict, ref: str, on: bool) -> dict:
+    """Put one company's items in the Brief, or leave them out. By id or name; ValueError
+    in a sentence when there is no such company."""
+    want = str(ref or "").strip().lower()
+    cur = dict((cfg or {}).get("company") or {})
+    if want and want in (str(cur.get("id") or "").lower(), str(cur.get("name") or "").lower()) \
+            and _has_company(cur, cfg.get("office") or {}):
+        cur["brief"] = bool(on)
+        cfg["company"] = cur
+        return {"name": cur.get("name") or "", "on": bool(on)}
+    parked = dict(_parked(cfg))
+    for cid, rec in parked.items():
+        if want and want in (cid.lower(), str(rec["company"].get("name") or "").lower()):
+            parked[cid] = {**rec, "company": {**rec["company"], "brief": bool(on)}}
+            cfg["companies"] = parked
+            return {"name": rec["company"].get("name") or "", "on": bool(on)}
+    names = ", ".join(c["name"] for c in brief_list(cfg)) or "none yet"
+    raise ValueError(f"no company called '{ref}'. Yours: {names}")
+
+
 def of_mission(cfg: dict, store):
     """`mission name -> company name` ('' when it is no company's), for a list that has to
     say whose each item is: the Brief's digest, company by company (brief.digest)."""

@@ -214,6 +214,17 @@ def _company_name(i: dict, company_of) -> str:
         return ""
 
 
+def kept(items: list, company_of=None, off=()) -> list:
+    """The items of the companies whose Brief is on. Asked for as "an option of the brief
+    being set or unset per account and per company": a company switched off is left out of
+    the Brief that is delivered (the story, the phone's message, the count), and its items
+    stay in the Brief app, where they can still be acted on."""
+    gone = {str(n).lower() for n in off or () if n}
+    if not gone or not company_of:
+        return list(items)
+    return [i for i in items if _company_name(i, company_of).lower() not in gone]
+
+
 def actionable(items: list, company_of=None) -> list:
     """The items that wait for the person (to do, to decide), in the order every surface
     numbers them: company by company, the one with most waiting first and what belongs to
@@ -334,12 +345,17 @@ def schedule(cfg: dict) -> dict:
                 times.append(hhmm)
     return {"times": sorted(times)[:6], "days": raw.get("days") if raw.get("days") in DAYS else "daily",
             "summary": "ai" if raw.get("summary") == "ai" else "plain",
-            "telegram": raw.get("telegram") is not False, "last_at": float(raw.get("last_at") or 0)}
+            "telegram": raw.get("telegram") is not False, "last_at": float(raw.get("last_at") or 0),
+            # the person's own switch: off keeps the times, and nothing comes until it is on again
+            "on": raw.get("on") is not False}
 
 
-def set_schedule(cfg: dict, times=None, days=None, summary=None, telegram=None) -> dict:
-    """Write the schedule; a bad time is refused in a sentence. [] switches it off."""
+def set_schedule(cfg: dict, times=None, days=None, summary=None, telegram=None, on=None) -> dict:
+    """Write the schedule; a bad time is refused in a sentence. `on` False switches this
+    person's Brief off and keeps its times; [] for times clears them."""
     cur = cfg.setdefault("brief", {})
+    if on is not None:
+        cur["on"] = bool(on)
     if times is not None:
         bad = [t for t in times if not _HHMM.match(str(t).strip())]
         if bad:
@@ -360,7 +376,7 @@ def due_at(sched: dict, now: float) -> float:
     """The scheduled moment that is due now (the latest one passed today and not yet
     delivered), or 0. A machine that was off at 08:00 gives the 08:00 Brief when it wakes,
     the same day; it never gives yesterday's."""
-    if not sched["times"]:
+    if not sched["times"] or sched.get("on") is False:
         return 0
     t = dt.datetime.fromtimestamp(now)
     if sched["days"] == "weekdays" and t.weekday() >= 5:
@@ -377,7 +393,7 @@ def due_at(sched: dict, now: float) -> float:
 
 def next_at(sched: dict, now: float) -> float:
     """When the next Brief comes, for the page and the terminal (0 when switched off)."""
-    if not sched["times"]:
+    if not sched["times"] or sched.get("on") is False:
         return 0
     base = dt.datetime.fromtimestamp(now)
     for d in range(8):
