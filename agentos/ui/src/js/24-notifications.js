@@ -133,7 +133,12 @@ function updateProgress(ev){
   const p=document.getElementById('upd-prog');
   if(p){p.style.display='';p.textContent=ev.message||''}
 }
+/* The POST's reply and the socket's update_done both carry a refusal: said once. */
+var UPD_FAILED={msg:'',at:0};
 function updateFailed(d){
+  const why=String((d&&d.error)||'');
+  if(why&&why===UPD_FAILED.msg&&Date.now()-UPD_FAILED.at<8000)return;
+  UPD_FAILED.msg=why;UPD_FAILED.at=Date.now();
   const c=document.getElementById('updcard');
   if(!c){toast('update failed: '+(d.error||''));return}
   c.querySelector('#upd-prog').innerHTML=`<span style="color:var(--err)">${esc(d.error||'update failed')}</span>`;

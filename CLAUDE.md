@@ -4584,6 +4584,15 @@ code is (only a server whose `X-Bento-Home` is this home: the suite once updated
 checkout), updates that checkout with its own Python, and restarts once, only when something moved. The
 page notes its build (`PAGE_BUILD`) and offers Refresh after a reconnect into another one.
 
+**A file already where the update puts one is judged, never left to git** (`updates.in_the_way`;
+`tests/test_update_untracked.py`). Reported as Settings showing git's "untracked working tree files would
+be overwritten … Aborting" twice while the terminal said up to date: the service ran a development tree
+holding five files the update adds, byte for byte what arrived, and `bento update` had updated its own
+clone. Identical is cleared before the fast-forward; different stops it in a sentence naming the files.
+`bento update` names the served copy when it is behind (`_served_behind`), and `--apply` ends on ✗ when
+that copy failed: the line saying so scrolled away under the restart. The page says a refusal once
+(`UPD_FAILED`): the POST and the socket's `update_done` both carry it.
+
 **The verify gate refuses REGRESSIONS, not a fragile machine.** `apply()` runs the
 suite on the new code, and if anything fails, runs those same tests on the OLD
 code before deciding. A test already red on this machine — pytest's temp dir

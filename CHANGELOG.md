@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.9.30 — 2026-11-17
+
+**An update gets past files that are already there, and says which copy it updated.**
+
+- **Files in the way.** An update stopped with git's "untracked working tree files would be
+  overwritten" when a file it brings was already in the folder. A file that is exactly what the
+  update brings is now cleared and the update goes on. One that differs stops it with a sentence
+  naming the file, and nothing changes.
+- **Which copy.** When Bento runs from another folder than the `bento` you typed (a development
+  tree), `bento update` now says whether that copy is behind, and `bento update --apply` ends on a
+  failure line when it could not update it.
+- **Said once.** Settings showed the same refusal twice.
+
 ## 0.9.29 — 2026-11-17
 
 **Companies are in Settings, long Settings pages have sections, and a change no longer sends you to the top.**

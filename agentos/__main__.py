@@ -8823,6 +8823,29 @@ def _confirm(question: str) -> bool:
         return False
 
 
+def _served_behind(tracked: str) -> None:
+    """This copy is current; the one the running server comes from may not be.
+    Reported as "I upgraded from the backend and it worked, but the front end shows the
+    error": the terminal's clone said up to date while the service ran a development
+    tree (a systemd drop-in) three releases behind. Said here, so "up to date" is
+    never read as being about the desktop the person is looking at."""
+    import subprocess
+    from . import desktop
+    other = desktop.served_root()
+    if not other:
+        return
+    ref = tracked
+    subprocess.run(["git", "fetch", "-q", *ref.split("/", 1)], cwd=str(other), capture_output=True, timeout=120)
+    n = subprocess.run(["git", "rev-list", "--count", f"HEAD..{ref}"], cwd=str(other),
+                       capture_output=True, text=True).stdout.strip()
+    ver = (other / "agentos" / "VERSION").read_text().strip() if (other / "agentos" / "VERSION").exists() else "?"
+    if n and n != "0":
+        print(f"! but Bento runs from {other}, which is on {ver}, {n} commit(s) behind {tracked}.\n"
+              f"  update that copy too:  bento update --apply")
+    else:
+        print(f"  Bento runs from {other}, which is current too ({ver}).")
+
+
 def _update_cli(args) -> int:
     """`bento update` — is there a newer version, and pull it.
 
@@ -8926,6 +8949,7 @@ def _update_cli(args) -> int:
         else:
             print(f"\n✓ up to date with {tracked} "
                   f"(published version {state.get('latest') or 'unknown'})")
+        _served_behind(tracked)
         return 0 if not state.get("error") else 1
 
     # Two different pieces of news. A version bump is a release; commits waiting on
@@ -9064,6 +9088,7 @@ def _update_cli(args) -> int:
     # updated too, by its own code, before the one restart.
     from . import desktop
     other = desktop.served_root()
+    other_failed = ""
     moved = not result.get("unchanged")
     if other:
         print(f"\n  Bento runs from {other}, not from this copy; updating that one too")
@@ -9076,16 +9101,26 @@ def _update_cli(args) -> int:
                    ["--allow-unsigned"] if getattr(args, "allow_unsigned", False) else [])
         rc = subprocess.run(cmd, cwd=str(other)).returncode
         if rc:
+            # Said last as well as here: the line above scrolls away under the restart, and
+            # this copy's "updated" read as the desktop's (reported as "the backend worked,
+            # the front end shows the error")
+            other_failed = f"{other} (the copy Bento runs) was not updated: see the ✗ above"
             print(f"✗ {other} could not be updated (exit {rc}); the server keeps running it as it is")
         moved = moved or head() != before
     if not moved:
-        return 0                     # nothing new anywhere: restarting for nothing is noise
+        if other_failed:
+            print(f"\n✗ {other_failed}")
+        return 1 if other_failed else 0   # nothing new anywhere: restarting for nothing is noise
     if args.no_restart:
         print("  load it:  bento service restart")
-        return 0
+        if other_failed:
+            print(f"\n✗ {other_failed}")
+        return 1 if other_failed else 0
     started, msg = desktop.service_restart()
     print(("✓ " if started else "✗ ") + msg)
-    return 0 if started else 1
+    if other_failed:
+        print(f"\n✗ {other_failed}")
+    return 0 if started and not other_failed else 1
 
 
 def _service_cli(args) -> int:

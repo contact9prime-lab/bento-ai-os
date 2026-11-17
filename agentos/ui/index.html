@@ -22318,7 +22318,9 @@ async function updateNow(btn,sw){
   try{
     const r=await fetch('/api/update',{method:'POST',headers:{'Content-Type':'application/json'},body:sw?'{"switch":true}':'{}'});
     const d=await r.json();
-    if(!d.ok&&d.error){btn.disabled=false;btn.textContent='Try again';toast(d.error)}
+    if(!d.ok&&d.error){btn.disabled=false;btn.textContent='Try again';toast(d.error,{kind:'err'});
+      // the socket's update_done carries the same refusal: said once (updateFailed)
+      if(typeof UPD_FAILED!=='undefined'){UPD_FAILED.msg=String(d.error);UPD_FAILED.at=Date.now()}}
   }catch(e){/* the server restarts mid-request on success — update_done is the real signal */}
 }
 /* The same two coupled selects as the chat header, painted from the same
@@ -33611,7 +33613,12 @@ function updateProgress(ev){
   const p=document.getElementById('upd-prog');
   if(p){p.style.display='';p.textContent=ev.message||''}
 }
+/* The POST's reply and the socket's update_done both carry a refusal: said once. */
+var UPD_FAILED={msg:'',at:0};
 function updateFailed(d){
+  const why=String((d&&d.error)||'');
+  if(why&&why===UPD_FAILED.msg&&Date.now()-UPD_FAILED.at<8000)return;
+  UPD_FAILED.msg=why;UPD_FAILED.at=Date.now();
   const c=document.getElementById('updcard');
   if(!c){toast('update failed: '+(d.error||''));return}
   c.querySelector('#upd-prog').innerHTML=`<span style="color:var(--err)">${esc(d.error||'update failed')}</span>`;
