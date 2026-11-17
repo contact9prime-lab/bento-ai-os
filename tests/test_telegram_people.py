@@ -59,7 +59,10 @@ def test_the_owner_is_asked_about_somebody_new(tmp_path):
     assert asyncio.run(tb.decide_newcomer(222, True)) == "allowed"
     assert any(c[0] == "send" and c[1]["chat_id"] == 222 and "You're in" in c[1]["text"] for c in calls)
     src = (ROOT / "agentos/telegram.py").read_text()
-    cb = src[src.index("async def _handle_callback("):][:4000]
+    # the whole handler, not its first 4,000 characters: it grew a branch at the top (a phone
+    # chat's sessions) and the newcomer's buttons fell outside a fixed window
+    cb = src[src.index("async def _handle_callback("):]
+    cb = cb[:cb.index("\n    async def ", 10)]
     assert 'data.startswith("who:")' in cb and "decide_newcomer" in cb
     assert cb.index("owner_chat_id") < cb.index('"who:"'), "only the owner's buttons count"
     srv = (ROOT / "agentos/server.py").read_text()
