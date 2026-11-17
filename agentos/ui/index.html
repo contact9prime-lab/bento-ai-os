@@ -43131,7 +43131,7 @@ function zmTalkRows(p){
   const others=(t.agents||[]).filter(n=>n!==p.name),by={ok:[],no:[],'':[]};
   others.forEach(n=>by[zmTalkOf(t,p.name,n)].push(n));
   const row=(k,w)=>by[k].length?`<div><span class="ag-k">${w}</span>${by[k].map(esc).join(', ')}</div>`:'';
-  return row('ok','May ask')+row('no','Can’t ask')+row('','Asks you first');
+  return row('ok','May ask')+row('no','Can’t ask')+row('','Asks first');
 }
 function zmAvatar(key){try{return typeof avatarSrc==='function'?avatarSrc(key):''}catch(e){return ''}}
 function zmTieNode(t,where){
