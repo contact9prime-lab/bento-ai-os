@@ -47,6 +47,7 @@ Three faces (per CLAUDE.md):
 from __future__ import annotations
 
 import asyncio
+import re
 import contextlib
 import hashlib
 import hmac
@@ -588,6 +589,11 @@ class WhatsAppBridge(usersmod.Scoped):
             return
         text = ((msg.get("text") or {}).get("body") or "").strip()
         kind = msg.get("type") or ""
+        if msg.get("group"):
+            # a WhatsApp group (the linked device only): its own door, quiet by default
+            if text:
+                await self._group(wa_id, msg["group"], text)
+            return
         if not text:
             # Media, location, contacts, reactions. Saying so is better than silence:
             # a photo sent to an assistant that never answers reads as broken.
@@ -738,6 +744,55 @@ class WhatsAppBridge(usersmod.Scoped):
             _cdpb.unreach(_wall_uid, f"wa:{wa_id}")
             self._busy = False
 
+    def _addressed(self, g: dict, text: str) -> bool:
+        """Was the agent spoken to in a group: @mentioned, replied to, or named?"""
+        if g.get("addressed"):
+            return True
+        agent = (self.cfg.get("agent_name") or "Bento").strip()
+        return bool(agent) and re.search(rf"(?<!\w){re.escape(agent)}(?!\w)", text, re.I) is not None
+
+    async def _group(self, gid: str, g: dict, text: str) -> None:
+        """A message in a WhatsApp group. Reported as "when I message it from the group it
+        doesn't come in for authorization, and so it is not in WhatsApp too": the linked
+        device dropped every group message before Python saw it. Now a group is a row like
+        a person, asked about once, and silent until the owner allows it. Once allowed the
+        agent answers only when it is addressed (a group is people talking to each other),
+        a member the owner blocked is never answered, and approvals go to the owner's own
+        chat, never into the group."""
+        subject = g.get("subject") or f"group {gid}"
+        pid = g.get("participant") or ""
+        pname = g.get("name") or (f"+{pid}" if pid else "somebody")
+        chat = self.store.wa_upsert_chat(gid, subject, "group")
+        if pid:
+            self.store.member_seen("whatsapp", gid, pid, pname)
+        self.store.log("whatsapp", f"← {pname} in the group {subject}: {text[:160]}",
+                       {"wa_id": gid, "group": True, "participant": pid})
+        if not chat.get("allowed"):
+            self.store.log("whatsapp", f"refused the group {subject} ({gid}) — not allowed yet",
+                           {"wa_id": gid, "group": True, "msg_count": chat.get("msg_count") or 0,
+                            "text": text[:160]})
+            if not chat.get("decided_at") and (chat.get("msg_count") or 0) <= 1:
+                await self.ask_owner_about(gid, subject, text, group=True, said_by=pname)
+            await self.broadcast({"type": "whatsapp_chats"})
+            return
+        await self.broadcast({"type": "whatsapp_chats"})
+        m = next((x for x in self.store.members("whatsapp", gid) if x["member_id"] == pid), None)
+        if m and m.get("state") == "blocked":
+            self.store.log("whatsapp", f"ignored {pname} in the group {subject} — blocked there")
+            return
+        if not self._addressed(g, text):
+            return
+        if self._busy:
+            await self.send("⏳ Still working on the last message…", gid)
+            return
+        self._busy = True
+        try:
+            await self._turn(chat, gid, f"[{pname}, in the WhatsApp group {subject}] {text}")
+        except Exception as e:
+            await self.send(f"[error] {type(e).__name__}: {e}", gid)
+        finally:
+            self._busy = False
+
     async def ask_wall(self, wa_id: str, att: dict, png: bytes) -> None:
         """The shared browser met a page only a person can get past during this chat's
         turn: a picture of the page and one question (cdpbrowser.tool_wait). No button: a
@@ -751,16 +806,23 @@ class WhatsAppBridge(usersmod.Scoped):
                 return
         await self.send(text, wa_id)
 
-    async def ask_owner_about(self, wa_id: str, name: str, text: str) -> None:
+    async def ask_owner_about(self, wa_id: str, name: str, text: str,
+                              group: bool = False, said_by: str = "") -> None:
         """Somebody new wrote: the account that owns this channel decides. Asked on its
         WhatsApp owner chat, on its Telegram owner chat when that is paired (buttons),
         and on its desktop. Before, the newcomer was sent to Settings and the owner
         was told nothing."""
         owner = self._c().get("owner_wa_id") or ""
         agent = self.cfg.get("agent_name") or "Bento"
-        who = f"{name} (+{wa_id})" if name and name != wa_id else f"+{wa_id}"
-        words = (f"📩 {who} wants to talk to {agent} on WhatsApp. They wrote:\n“{text[:300]}”\n\n"
-                 f"Allowing them lets them chat with {agent}, under your settings and permissions.")
+        if group:
+            who = name or f"group {wa_id}"
+            words = (f"📩 {said_by or 'Somebody'} wrote in the WhatsApp group {who}:\n“{text[:300]}”\n\n"
+                     f"I'll say nothing there until you decide. Allowing this group lets its members "
+                     f"talk to {agent} when they mention it, under your settings and permissions.")
+        else:
+            who = f"{name} (+{wa_id})" if name and name != wa_id else f"+{wa_id}"
+            words = (f"📩 {who} wants to talk to {agent} on WhatsApp. They wrote:\n“{text[:300]}”\n\n"
+                     f"Allowing them lets them chat with {agent}, under your settings and permissions.")
         if owner and owner != wa_id:
             with contextlib.suppress(Exception):
                 await self.send(words + f"\n\nReply /allow {wa_id} or /block {wa_id}.", owner, quiet=True)
@@ -773,7 +835,8 @@ class WhatsAppBridge(usersmod.Scoped):
                                   {"text": "✓ Allow", "callback_data": f"wan:{wa_id}:1"},
                                   {"text": "✗ Block", "callback_data": f"wan:{wa_id}:0"}]]})
         with contextlib.suppress(Exception):
-            await self.broadcast({"type": "whatsapp_request", "wa_id": wa_id, "title": who, "text": text[:160]})
+            await self.broadcast({"type": "whatsapp_request", "wa_id": wa_id, "title": who,
+                                  "text": text[:160], "group": bool(group)})
 
     async def decide_newcomer(self, wa_id: str, allow: bool, by: str = "the owner, on WhatsApp") -> str:
         """The owner's answer, from WhatsApp, Telegram or the desktop: one door."""
@@ -786,9 +849,11 @@ class WhatsAppBridge(usersmod.Scoped):
                        {"wa_id": wa_id, "allowed": allow, "by": by})
         if allow:
             agent = self.cfg.get("agent_name") or "Bento"
+            hello = (f"▲ Hello everyone, I'm {agent}. Mention me or reply to me and I'll answer."
+                     if (self.store.wa_get_chat(wa_id) or {}).get("kind") == "group" else
+                     f"▲ You're in. I'm {agent}. Send me anything; /new starts a new session.")
             with contextlib.suppress(Exception):
-                await self.send(f"▲ You're in. I'm {agent}. Send me anything; /new starts a new session.",
-                                wa_id, quiet=True)
+                await self.send(hello, wa_id, quiet=True)
         with contextlib.suppress(Exception):
             await self.broadcast({"type": "whatsapp_chats"})
         return "allowed" if allow else "blocked"
@@ -808,7 +873,19 @@ class WhatsAppBridge(usersmod.Scoped):
             if waiting:
                 out += "\n\nWrote, not allowed\n" + "\n".join(waiting)
             return out + "\n\n/allow <number> lets somebody in. /block <number> stops them."
-        num = "".join(ch for ch in arg.split(" ")[0] if ch.isdigit())
+        first = arg.split(" ")[0]
+        if first.lower().startswith("tg:"):
+            # a Telegram person or group, asked here because this account's WhatsApp is paired
+            tg = getattr(self.toolbox, "telegram", None)
+            try:
+                tid = int(first[3:])
+            except ValueError:
+                return f"▲ Which chat? {cmd} tg:<chat id>."
+            if tg is None:
+                return "▲ Telegram isn't running here."
+            said = await tg.decide_newcomer(tid, cmd == "/allow", "the owner, on WhatsApp")
+            return f"▲ Telegram {tid}: {said}."
+        num = "".join(ch for ch in first if ch.isdigit())
         if not num:
             return f"▲ Who? {cmd} <number>. /people lists them."
         said = await self.decide_newcomer(num, cmd == "/allow")
@@ -871,7 +948,11 @@ class WhatsAppBridge(usersmod.Scoped):
             from .policy import effective_autonomy, needs_person
             if effective_autonomy(self.cfg, "whatsapp") == "full" and not needs_person():
                 return True
-            return await self.ask_approval(wa_id, name, args, reason, offer=offer)
+            # a group's turn is asked in the owner's own chat: in the group anybody would see it
+            ask = (self._c().get("owner_wa_id") or "") if chat.get("kind") == "group" else wa_id
+            if not ask:
+                return False
+            return await self.ask_approval(ask, name, args, reason, offer=offer)
 
         model = self.cfg.get("default_model") or ""
         from . import executors as execmod

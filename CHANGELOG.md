@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.9.35 — 2026-11-18
+
+**Groups ask for approval, and one Authorization list holds every channel.**
+
+- Telegram lists a group, and asks you, the moment the bot is added or made an admin there. When
+  Telegram is hiding group messages from the bot (privacy mode), the request and the Telegram app say
+  how to change that.
+- WhatsApp groups work through the QR-code link: a new group asks you first and stays quiet until you
+  allow it, then the agent answers when it is mentioned or named. Approvals go to your own chat.
+- A request is asked on your Telegram and your WhatsApp, whichever channel it came from.
+- Settings → Channels → Authorization: everybody and every group, waiting first, with Allow and Block.
+  `bento channels who` is the same list in a terminal.
+
 ## 0.9.34 — 2026-11-17
 
 **Video: short clips from a description, with the cost said before each one.**

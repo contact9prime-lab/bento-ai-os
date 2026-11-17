@@ -304,7 +304,9 @@ class BaileysTransport:
         # A bare "1"/"2"/"3" is a button tap — but ONLY while something is actually
         # waiting to be answered. Without that check, texting "2" to your own agent
         # would silently resolve nothing and be swallowed instead of answered.
-        val = REPLY_TO_VALUE.get(text)
+        # A bare "1" in a group is somebody talking, never an approval: approvals are
+        # asked in the owner's own chat.
+        val = None if ev.get("group") else REPLY_TO_VALUE.get(text)
         btn = self.pending_button(val) if val is not None else ""
         msg: dict
         if btn:
@@ -315,6 +317,13 @@ class BaileysTransport:
             msg = {"from": wa_id, "id": ev.get("id") or "",
                    "type": "text" if text else (ev.get("kind") or "unknown"),
                    "text": {"body": text}}
+        if ev.get("group"):
+            # who wrote inside the group, its name, and whether this device was
+            # addressed; WhatsAppBridge._group reads these (the Cloud API has no groups)
+            msg["group"] = {"subject": str(ev.get("subject") or "")[:120],
+                            "participant": str(ev.get("participant") or "")[:40],
+                            "name": str(ev.get("name") or "")[:80],
+                            "addressed": bool(ev.get("addressed"))}
         val = {"contacts": [{"wa_id": wa_id,
                              "profile": {"name": ev.get("name") or ""}}]}
         try:

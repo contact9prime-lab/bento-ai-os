@@ -101,7 +101,8 @@ async function start() {
       try {
         if (!m.message || m.key.fromMe) continue;
         const jid = m.key.remoteJid || '';
-        if (jid.endsWith('@g.us') || jid === 'status@broadcast') continue;  // DMs only
+        if (jid === 'status@broadcast') continue;
+        const group = jid.endsWith('@g.us');
         const msg = m.message;
         const text = msg.conversation
           || (msg.extendedTextMessage && msg.extendedTextMessage.text)
@@ -109,7 +110,7 @@ async function start() {
           || (msg.videoMessage && msg.videoMessage.caption)
           || '';
         const kind = text ? 'text' : Object.keys(msg)[0] || 'unknown';
-        out({
+        const ev = {
           type: 'message',
           from: jid.split('@')[0],
           jid,
@@ -117,10 +118,41 @@ async function start() {
           name: m.pushName || '',
           id: (m.key && m.key.id) || '',
           kind,
-        });
+        };
+        if (group) {
+          // A group: who wrote, the group's name, and whether this device was addressed
+          // (@mentioned, or a reply to one of its messages). Python decides the rest.
+          const ctx = (msg.extendedTextMessage && msg.extendedTextMessage.contextInfo)
+            || (msg.imageMessage && msg.imageMessage.contextInfo) || {};
+          const mine = myIds();
+          const said = (ctx.mentionedJid || []).map(bare);
+          ev.group = true;
+          ev.participant = bare(m.key.participant || m.participant || '');
+          ev.subject = await groupName(jid);
+          ev.addressed = said.some(x => mine.has(x)) || mine.has(bare(ctx.participant || ''));
+        }
+        out(ev);
       } catch (e) { fail('messages.upsert', e); }
     }
   });
+}
+
+// ---- groups ------------------------------------------------------------------
+
+// the number part of a jid, without the device suffix: '9198…:12@s.whatsapp.net' → '9198…'
+function bare(j) { return String(j || '').split('@')[0].split(':')[0]; }
+// this device's own ids: its number and, on newer accounts, its lid
+function myIds() {
+  const u = (sock && sock.user) || {};
+  return new Set([bare(u.id), bare(u.lid)].filter(Boolean));
+}
+const NAMES = new Map();   // group jid → subject, asked once per run
+async function groupName(jid) {
+  if (NAMES.has(jid)) return NAMES.get(jid);
+  let name = '';
+  try { name = ((await sock.groupMetadata(jid)) || {}).subject || ''; } catch (e) {}
+  NAMES.set(jid, name);
+  return name;
 }
 
 // ---- commands from Python -------------------------------------------------

@@ -52,6 +52,11 @@ class TelegramBridge(usersmod.Scoped):
         self.status = "off"          # off | polling | error
         self.error = ""
         self.bot_username = ""
+        # Whether Telegram hands this bot every message in a group (getMe's
+        # can_read_all_group_messages). None until asked. With privacy mode on, a bot
+        # sees only messages that @mention it, start with / or reply to it, so "I wrote
+        # in the group and nothing happened" is Telegram, and the owner is told so.
+        self.reads_groups = None
         self._busy = False             # kept for callers that read it: any chat working
         # Per chat, so two people (or two chats) work at once; and within a chat, what is
         # said while it works reaches the running turn or waits for the next one.
@@ -1054,8 +1059,53 @@ class TelegramBridge(usersmod.Scoped):
         """The groups and channels a message has come in from, newest first."""
         return [c for c in self.store.tg_list_chats() if (c.get("type") or "private") != "private"]
 
+    async def _membership(self, ev: dict) -> None:
+        """The bot was added to a group or channel, made an admin there, or taken out.
+        Reported as "even though I reply in the group it doesn't show up for
+        authorization": the owner's record had not one group message, because with
+        Telegram's privacy mode on a plain message never reaches a bot, and a group was
+        listed only when a message did. So a group is listed, and the owner asked, the
+        moment the bot is added or promoted (promoting it is also how it reads the group)."""
+        chat = ev.get("chat") or {}
+        ctype = chat.get("type") or "private"
+        chat_id = chat.get("id")
+        if not chat_id or ctype == "private":
+            return      # a person blocking or unblocking the bot is not a group
+        new = ((ev.get("new_chat_member") or {}).get("status") or "")
+        frm = ev.get("from") or {}
+        by = " ".join(filter(None, [frm.get("first_name", ""), frm.get("last_name", "")])).strip() \
+            or frm.get("username") or str(frm.get("id") or "")
+        title = chat.get("title") or str(chat_id)
+        username = chat.get("username") or ""
+        if new in ("left", "kicked"):
+            self.store.log("telegram", f"taken out of the group {title} ({chat_id}) by {by}",
+                           {"chat_id": chat_id, "type": ctype, "by": by})
+            with contextlib.suppress(Exception):
+                await self.broadcast({"type": "telegram_chats"})
+            return
+        if new not in ("member", "administrator"):
+            return
+        row = self.store.tg_upsert_chat(chat_id, title, username, ctype)
+        self.store.log("telegram", f"{'made an admin in' if new == 'administrator' else 'added to'} "
+                                   f"the group {title} ({chat_id}) by {by}",
+                       {"chat_id": chat_id, "type": ctype, "by": by, "status": new})
+        if not row.get("allowed") and not row.get("decided_at"):
+            await self.ask_owner_about(chat_id, title, username, "", group=True,
+                                       added_by=by, admin=new == "administrator")
+        with contextlib.suppress(Exception):
+            await self.broadcast({"type": "telegram_chats"})
+
+    def privacy_words(self, admin: bool = False) -> str:
+        """What Telegram lets this bot see in a group, in one sentence, or ''."""
+        if self.reads_groups is not False or admin:
+            return ""
+        at = f"@{self.bot_username}" if self.bot_username else "the bot"
+        return (f"Telegram only shows me group messages that mention {at}, start with / or "
+                f"reply to me. To let me read the whole group, make me an admin there, or "
+                f"send /setprivacy to @BotFather and choose Disable.")
+
     async def ask_owner_about(self, chat_id: int, title: str, username: str, text: str,
-                              group: bool = False) -> None:
+                              group: bool = False, added_by: str = "", admin: bool = False) -> None:
         """Somebody new wrote: the owner decides, with Allow / Block on their phone and an
         Allow on the desktop. Reported as "I am not getting an option to authorize other
         people on Telegram": the newcomer was told "the owner can enable it in the Telegram
@@ -1066,10 +1116,15 @@ class TelegramBridge(usersmod.Scoped):
         if owner and owner != chat_id:
             if group:
                 off = not self.groups_on()
-                words = (f"📩 A message came in from the group {who}:\n“{text[:300]}”\n\n"
-                         + ("Group chats are off, so I said nothing there. " if off else "")
+                head = (f"📩 {added_by} added me to the group {who}." if added_by else
+                        f"📩 A message came in from the group {who}:\n“{text[:300]}”")
+                privacy = self.privacy_words(admin)
+                words = (head + "\n\n"
+                         + ("I'll say nothing there until you decide. " if added_by else
+                            "Group chats are off, so I said nothing there. " if off else "")
                          + f"Allowing this group lets everybody in it talk to {name}, under your "
-                           f"settings and permissions." + (" It also turns group chats on." if off else ""))
+                           f"settings and permissions." + (" It also turns group chats on." if off else "")
+                         + (f"\n\n{privacy}" if privacy else ""))
                 yes = "✓ Allow this group"
             else:
                 words = (f"📩 {who} wants to talk to {name}. They wrote:\n“{text[:300]}”\n\n"
@@ -1083,9 +1138,18 @@ class TelegramBridge(usersmod.Scoped):
                                     {"text": "✗ Block", "callback_data": f"who:{chat_id}:0"}]]})
             except Exception as e:
                 self.store.log("telegram", f"could not ask the owner about {who}: {e}")
+            # and on the same account's WhatsApp, when that is paired: the owner answers
+            # wherever they are (WhatsApp asks Telegram the same way, `wan:`)
+            wa = getattr(getattr(self, "toolbox", None), "whatsapp", None)
+            wa_owner = wa is not None and (wa._c().get("owner_wa_id") or "")
+            if wa_owner:
+                with contextlib.suppress(Exception):
+                    await wa.send(f"(Telegram) {words}\n\nReply /allow tg:{chat_id} or /block tg:{chat_id}.",
+                                  wa_owner, quiet=True)
         with contextlib.suppress(Exception):
             await self.broadcast({"type": "telegram_request", "chat_id": chat_id, "title": who,
-                                  "text": text[:160]})
+                                  "text": (text or (f"added by {added_by}" if added_by else ""))[:160],
+                                  "group": bool(group)})
 
     async def decide_newcomer(self, chat_id: int, allow: bool, by: str = "the owner, on Telegram") -> str:
         """The owner's answer, from a button or the desktop: one door for both."""
@@ -1306,6 +1370,7 @@ class TelegramBridge(usersmod.Scoped):
                 if not self.bot_username:
                     me = await self._api("getMe")
                     self.bot_username = me.get("username", "")
+                    self.reads_groups = bool(me.get("can_read_all_group_messages"))
                     try:
                         # a leftover webhook blocks getUpdates polling — clear it
                         await self._api("deleteWebhook")
@@ -1321,7 +1386,7 @@ class TelegramBridge(usersmod.Scoped):
                     self._alive_write(seen=self._seen_at)
                 updates = await self._api("getUpdates", offset=self._offset, timeout=50,
                                           allowed_updates=["message", "channel_post",
-                                                           "callback_query"])
+                                                           "callback_query", "my_chat_member"])
                 for u in updates:
                     self._offset = max(self._offset, u["update_id"] + 1)
                     if "message" in u:
@@ -1332,6 +1397,8 @@ class TelegramBridge(usersmod.Scoped):
                         asyncio.create_task(self._handle(u["channel_post"]))
                     elif "callback_query" in u:
                         asyncio.create_task(self._handle_callback(u["callback_query"]))
+                    elif "my_chat_member" in u:
+                        asyncio.create_task(self._membership(u["my_chat_member"]))
             except Exception as e:
                 self.status = "error"
                 self.error = str(e)[:300]
@@ -1353,4 +1420,5 @@ class TelegramBridge(usersmod.Scoped):
         return {"enabled": bool(t.get("enabled")), "has_token": bool(t.get("bot_token")),
                 "owner_chat_id": t.get("owner_chat_id") or 0,
                 "status": self.status, "error": self.error, "bot_username": self.bot_username,
-                "groups": self.groups_on(), "chats": self.store.tg_list_chats(), **self.table()}
+                "groups": self.groups_on(), "reads_groups": self.reads_groups,
+                "privacy": self.privacy_words(), "chats": self.store.tg_list_chats(), **self.table()}

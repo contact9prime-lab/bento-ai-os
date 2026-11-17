@@ -124,8 +124,22 @@ table.
 
 **A request to let somebody in goes to the account that owns the channel.** It is asked on that
 account's owner chat (Telegram buttons, or `/allow <number>` on WhatsApp), and on its desktop. A
-new WhatsApp number is also asked on the account's Telegram when that is paired. WhatsApp groups
-are not read at all: the Business API does not carry them and the linked device skips them.
+new WhatsApp number is also asked on the account's Telegram when that is paired, and a new Telegram
+person or group on the account's WhatsApp (`/allow tg:<chat id>`).
+
+**Groups are asked about as soon as they appear.** On Telegram the bot is listed, and you are
+asked, the moment it is added to a group or made an admin there, so no message is needed. Telegram
+only gives a bot the group messages that mention it, start with / or reply to it, unless it is an
+admin or privacy mode is off (@BotFather → `/setprivacy` → Disable); the Telegram app and the
+request say so when that applies. A group the bot was already in shows up once you make it an admin.
+On WhatsApp, groups work through the QR-code link (the Business API does not carry them): the first
+message in a group asks you, nothing is said there until you allow it, and then the agent answers
+when somebody mentions it, replies to it or uses its name. Approvals for a group's turn come to
+your own chat, never into the group, and a person you block in a group is not answered.
+
+**Settings → Channels → Authorization** lists every person and group from Telegram and WhatsApp,
+waiting first, with Allow and Block. In a terminal it is `bento channels who`, and
+`bento channels who --allow tg:<id>` or `--allow wa:<id>` decides one.
 
 **Letting somebody in before they write.** That toggle only exists once there is a row, and there is
 no row until somebody has messaged you — so on its own it means a colleague has to be turned away
