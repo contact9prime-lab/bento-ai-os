@@ -21718,6 +21718,22 @@ function setTab(body,all){
         {desc:'Auto tries Google, then OpenAI, then the free pollinations.ai.',f:'image provider'}),
       pRow('Model',pText('s-img-model',(cfg.image&&cfg.image.model)||'','the provider’s default'),{f:'image model'}),
     ],{f:'image generation wallpaper'}));
+    /* Video (agentos/videogen.py): Google's Gemini Omni Flash is the one video API left, so the
+       section says what is gone and what each clip costs before anyone asks for one. The tool
+       (generate_video) asks the person each time with the cost on the card. */
+    {const v=cfg.video||{},gk=!!(p.google&&(p.google._has_key||p.google.api_key)),res=v.resolution||'720p';
+     const price={'360p':0.023,'720p':0.07,'1080p':0.104,'4k':0.209}[res]||0.07;
+     P.push(pGroup('Video',[
+      pRow('Provider',pSelect('s-vid-prov',[['auto','Google (Gemini Omni Flash)'],['off','Off']],v.provider==='off'?'off':'auto'),
+        {desc:gk?'Short clips from a description, 3 to 15 seconds.':'Needs a Google key: add it under Providers.',
+         more:'OpenAI shut down Sora on 24 September 2026, and Google replaced Veo in the Gemini API with Gemini Omni Flash on 22 October 2026. Your agent asks you before each video.',
+         f:'video generation provider google gemini omni flash veo sora'}),
+      pRow('Quality',pSelect('s-vid-res',[['360p','360p'],['720p','720p'],['1080p','1080p'],['4k','4K']],res),
+        {desc:`About $${(price*8).toFixed(2)} for an 8-second clip at this quality.`,
+         more:'Google bills video per second and has no free tier: $0.023 a second at 360p, $0.07 at 720p, $0.104 at 1080p, $0.209 at 4K (checked 17 November 2026). Each clip is recorded in Usage.',
+         f:'video resolution quality cost price per second'}),
+      pRow('Model',pText('s-vid-model',v.model||'','gemini-omni-1.2-flash'),{f:'video model'}),
+    ],{f:'video generation clips movie'}));}
     /* The engine that speaks (agentos/speech.py, 11f-speech.js): which service and its
        key live here with the other providers; how replies are read aloud (on or off,
        speed, each agent's voice) stays in Voice. */
@@ -22478,6 +22494,7 @@ async function saveSettings(){
   if(Object.keys(providers).length)patch.providers=providers;
   if(val('s-build-model')!==undefined)patch.build={model:val('s-build-model')};
   if(val('s-img-prov')!==undefined)patch.image={provider:val('s-img-prov'),model:(val('s-img-model')||'').trim()};
+  if(val('s-vid-prov')!==undefined)patch.video={provider:val('s-vid-prov'),resolution:val('s-vid-res'),model:(val('s-vid-model')||'').trim()};
   const ght=(val('s-gh-token')||'').trim();
   if((ght&&!ght.startsWith('•'))||val('s-gh-user')!==undefined)
     patch.github={...(ght&&!ght.startsWith('•')?{token:ght}:{}),username:(val('s-gh-user')||'').trim()};
@@ -22520,7 +22537,7 @@ async function saveSettings(){
    before its first await, so a field committed by clicking another tab is still in the
    page when it is read. Cards with a form of their own (a channel, a mail account, the
    locale) keep their own button: those talk to another service and can be refused. */
-var SET_AUTO=/^(s-(workspace|steps|name|sb-on|sb-root|taint|fetch-allow|audit-strict|hist-compact|ollama-url|ant-|oai-|or-|cus-|goo-|build-model|img-|gh-|upd-on|upd-repo|upd-branch|exec-)|v-(tts|voice|rate|lang|agents|live)$)/;
+var SET_AUTO=/^(s-(workspace|steps|name|sb-on|sb-root|taint|fetch-allow|audit-strict|hist-compact|ollama-url|ant-|oai-|or-|cus-|goo-|build-model|img-|vid-|gh-|upd-on|upd-repo|upd-branch|exec-)|v-(tts|voice|rate|lang|agents|live)$)/;
 function setAutoSave(e){
   const t=e&&e.target;if(!t)return;
   if(!(t.dataset&&t.dataset.tool)&&!SET_AUTO.test(t.id||''))return;
@@ -25408,7 +25425,7 @@ async function coSetDesign(ctl){
    GUI and SUI: this page. TUI: `bento config` and the verbs each card names; there is no pane to
    scroll. */
 var SETSUBS={
-  ai:[['In use','In use'],['Providers','Model providers'],['Installed agents','AI agents installed here'],['Images','Image generation'],['Voice','Voice']],
+  ai:[['In use','In use'],['Providers','Model providers'],['Installed agents','AI agents installed here'],['Images','Image generation'],['Video','Video'],['Voice','Voice']],
   agent:[['Lead agent','Lead agent'],['Models','Models'],['Huddles','Huddles and free talk'],['Your agents','Your agents'],['Map','The map'],['Sharing','Share this agent']],
   companies:[['About','About'],['Working together','Working together'],['Departments','Departments'],['Folders','Folders'],['Brief','In your Brief'],['New company','A new company']],
   network:[['Discovery','Discovery and linkage'],['Linked teams','Linked teams'],['Community','Community'],['Messages','Messages'],['Mapping','Team to agent mapping'],['Maps','Maps']],

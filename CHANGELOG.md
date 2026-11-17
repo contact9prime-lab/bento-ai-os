@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.9.34 — 2026-11-17
+
+**Video: short clips from a description, with the cost said before each one.**
+
+- **AI providers → Video**: Google's Gemini Omni Flash (`gemini-omni-1.2-flash`, the Interactions
+  API) with your Google key, a quality (360p to 4K) and what an 8-second clip costs. It is the one
+  video API left: OpenAI shut down Sora on 24 September 2026, and Google replaced Veo in the Gemini
+  API on 22 October 2026. Google bills per second with no free tier.
+- **`generate_video`**: 3 to 15 seconds, 16:9 or 9:16. It is risky, so your agent asks you each time,
+  and the card says what it will cost; `media.generate` on `media:video`, metered like a model call.
+  The clip is kept in the gallery and its cost recorded in Usage.
+- **`bento video "…" [--seconds] [--aspect] [--yes]`**: the same request and price from a terminal;
+  without `--yes` it only says what it would cost.
+
 ## 0.9.33 — 2026-11-17
 
 **The Default company is every agent, each company decides who may ask whom in it, and Democracy is gone.**

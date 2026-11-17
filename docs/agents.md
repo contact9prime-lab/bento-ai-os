@@ -40,6 +40,14 @@ with which is chosen on the agent, in **Agents**. The tab has five sections:
 
   ![Installed agents: a switch for each, then Claude Code's own settings](screenshots/settings-installed-agents.png)
 - **Images**: which service makes pictures.
+- **Video**: short clips (3 to 15 seconds) from a description, made by Google's Gemini Omni Flash
+  with your Google key. It is the one video API left: OpenAI shut down Sora on 24 September 2026,
+  and Google replaced Veo in the Gemini API on 22 October 2026. Google bills per second with no
+  free tier (about $0.07 a second at 720p), so your agent asks you before every clip and the card
+  says what it will cost; each clip is kept in the gallery and recorded in Usage. In a terminal:
+  `bento video "…" [--seconds 8] [--aspect 9:16]` shows the cost, and `--yes` makes it.
+
+  ![AI providers → Video: Google (Gemini Omni Flash), the quality and what an 8-second clip costs](screenshots/settings-video.png)
 - **Voice**: which service speaks (this browser, this computer, ElevenLabs, OpenAI or Google
   Cloud) and its key. How replies are read aloud stays in Settings → Voice.
 

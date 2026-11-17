@@ -127,6 +127,8 @@ DEFAULTS = {
     # (defaults: google → gemini-2.5-flash-image "nano banana", openai → gpt-image-1).
     # auto picks google, then openai (whichever has a key), else free pollinations.ai.
     "image": {"provider": "auto", "model": ""},
+    # video (agentos/videogen.py): auto|google|off, the model and the resolution it bills at
+    "video": {"provider": "auto", "model": "", "resolution": "720p"},
     # Where and when the user is. Blank fields are auto-detected from the machine
     # (/etc/timezone, LANG); the wizard confirms them and Settings edits them. This
     # is what makes "news today" mean the right country and "tonight" the right hour.

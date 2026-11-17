@@ -6381,6 +6381,54 @@ def _fallbacks_cli(spec: str):
         print(f"    {i}. {fb.words(f)}" + ("" if fb.usable(cfg, f) else "   (not on this machine right now, skipped)"))
 
 
+def _video_cli(args):
+    """`bento video "…" [--seconds N] [--aspect 9:16] [--yes]`: the same request and price as
+    the generate_video tool (agentos/videogen.py). Without --yes it only says what it would
+    cost, because a clip is billed per second and has no free tier."""
+    import asyncio as _aio
+    import httpx
+    from . import assets as assetmod
+    from . import usage as usagemod
+    from . import videogen
+    cfg, store = _open_store("")
+    prompt = " ".join(args.prompt or []).strip()
+    c = videogen.conf(cfg)
+    ok, why = videogen.ready(cfg)
+    print(f"  Video: google/{c['model']}, {c['resolution']}. "
+          + ("Ready." if ok else why))
+    for k, w in videogen.GONE.items():
+        print(f"    ({w})")
+    if not prompt:
+        sys.exit("  usage: bento video \"what happens\" [--seconds 8] [--aspect 9:16] [--yes]")
+    secs = videogen.seconds_of(args.seconds)
+    print(f"  {secs} s, {args.aspect}: {videogen.cost_words(secs, c['resolution'])}")
+    if not ok:
+        sys.exit(1)
+    if not args.yes:
+        print("  Add --yes to make it.")
+        return
+    google = cfg["providers"]["google"]
+    base = (google.get("base_url") or "https://generativelanguage.googleapis.com").rstrip("/")
+    print("  Making it (this can take a minute or two)…")
+    r = httpx.post(base + videogen.ENDPOINT, timeout=600.0, headers={"x-goog-api-key": google["api_key"]},
+                   json=videogen.request(prompt, secs, args.aspect, c["resolution"], c["model"]))
+    try:
+        ans = r.json()
+    except ValueError:
+        ans = r.text
+    if r.status_code != 200:
+        sys.exit("  ✗ " + videogen.refusal(r.status_code, ans))
+    data = videogen.video_of(ans if isinstance(ans, dict) else {})
+    if not data:
+        sys.exit("  ✗ Google answered, but the answer carried no video")
+    row = _aio.run(assetmod.put_bytes(store, data, name="generated.mp4", mime="video/mp4",
+                                      title=prompt[:80], prompt=prompt,
+                                      source=f"bento video (google/{c['model']}, {secs}s {c['resolution']})"))
+    usagemod.record(store, cfg, f"google/{c['model']}", {}, kind="video", surface="cli",
+                    cost_usd=videogen.cost(secs, c["resolution"]))
+    print(f"  ✓ asset {row['id']}  ·  bento assets path {row['id']}")
+
+
 def _brain_agents_cli(spec: str):
     """`bento brain agents [on|off ID]`: which installed agents (Claude Code, Gemini CLI, Codex,
     Hermes, OpenClaw) may be a brain here. Settings → AI providers → Agents installed here."""
@@ -10189,6 +10237,12 @@ def main():
     p_assets.add_argument("id", nargs="?", default="", help="asset id, for path/open/rm")
     p_assets.add_argument("--kind", default="", help="image | video | audio | doc")
 
+    p_video = verb("video", help="make a short video from a description (Google Gemini Omni Flash)")
+    p_video.add_argument("prompt", nargs="*", help="what happens, the look and the camera")
+    p_video.add_argument("--seconds", type=int, default=8, help="3 to 15 (default 8)")
+    p_video.add_argument("--aspect", default="16:9", choices=["16:9", "9:16"])
+    p_video.add_argument("--yes", action="store_true", help="make it; without this only the cost is shown")
+
     p_audit = verb("audit", help="the access ledger — who was allowed to do what")
     p_audit.add_argument("--since", default="24h", help="e.g. 1h, 24h, 7d (default 24h)")
     p_audit.add_argument("--effect", default="", choices=["", "allow", "deny", "ask"])
@@ -10915,6 +10969,8 @@ def main():
         _space_cli(args)
     elif args.cmd == "timeline":
         _timeline_cli(args)
+    elif args.cmd == "video":
+        _video_cli(args)
     elif args.cmd == "assets":
         _assets_cli(args)
     elif args.cmd == "audit":

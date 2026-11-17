@@ -5378,6 +5378,14 @@ async def api_put_config(patch: dict):
         for k in ("provider", "model"):
             if k in patch["image"]:
                 img[k] = patch["image"][k]
+    if isinstance(patch.get("video"), dict):
+        # read field by field (videogen.conf): an unknown provider or resolution falls back
+        from . import videogen as _vg
+        vid = cfg.setdefault("video", {})
+        for k in ("provider", "model", "resolution"):
+            if k in patch["video"]:
+                vid[k] = str(patch["video"][k] or "")[:80]
+        cfg["video"] = {**vid, **{k: v for k, v in _vg.conf(cfg).items() if k != "model"}}
     if isinstance(patch.get("desktop"), dict):
         desk = cfg.setdefault("desktop", {})
         from . import runmode as _rm

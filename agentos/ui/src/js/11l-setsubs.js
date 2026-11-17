@@ -21,7 +21,7 @@
    GUI and SUI: this page. TUI: `bento config` and the verbs each card names; there is no pane to
    scroll. */
 var SETSUBS={
-  ai:[['In use','In use'],['Providers','Model providers'],['Installed agents','AI agents installed here'],['Images','Image generation'],['Voice','Voice']],
+  ai:[['In use','In use'],['Providers','Model providers'],['Installed agents','AI agents installed here'],['Images','Image generation'],['Video','Video'],['Voice','Voice']],
   agent:[['Lead agent','Lead agent'],['Models','Models'],['Huddles','Huddles and free talk'],['Your agents','Your agents'],['Map','The map'],['Sharing','Share this agent']],
   companies:[['About','About'],['Working together','Working together'],['Departments','Departments'],['Folders','Folders'],['Brief','In your Brief'],['New company','A new company']],
   network:[['Discovery','Discovery and linkage'],['Linked teams','Linked teams'],['Community','Community'],['Messages','Messages'],['Mapping','Team to agent mapping'],['Maps','Maps']],

@@ -208,7 +208,8 @@ _MEDIA = {"list_assets": ("media.read", "media:*"),
           "get_asset": ("media.read", ""),
           "save_asset": ("media.write", ""),
           "delete_asset": ("media.write", ""),
-          "generate_image": ("media.generate", "media:image")}
+          "generate_image": ("media.generate", "media:image"),
+          "generate_video": ("media.generate", "media:video")}
 # Mail and calendar are read on the PERSON's behalf and are the most personal
 # data on the machine, so they are their own actions — "may read my mail" and
 # "may fetch a page" must be grantable apart — and a flow declares them as grants
@@ -741,7 +742,7 @@ APP_FREE_TOOLS = {"system_info", "notify", "search_docs", "list_themes", "deskto
 # things. Six model calls a minute from a dashboard is money leaving at a rate nobody asked
 # for; six fetches is a page refreshing. Counting them together would either quarantine
 # every working app or catch no runaway at all.
-LLM_TOOLS = {"llm_generate", "generate_image", "appLLM.stream", "app→appLLM.stream",
+LLM_TOOLS = {"llm_generate", "generate_image", "generate_video", "appLLM.stream", "app→appLLM.stream",
              "generate_wallpaper", "create_theme", "create_app",
              "pool_llm"}          # a community member thinking with this machine's brain
 
