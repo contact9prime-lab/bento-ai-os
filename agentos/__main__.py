@@ -4349,7 +4349,7 @@ def _company_cli(args):
             own = _fab.talk_mode_of(cfg, c["id"]) if c.get("id") else ""
             m = _fab.matrix(store, cfg, c["id"]) if c.get("id") else {"cells": {}}
             print(f"  {c['name']:<22} {own or 'as the Default company'}"
-                  + (f", {len(m['cells'])} cells of its own" if m["cells"] else ""))
+                  + (f", {len(m['cells'])} cell{'' if len(m['cells']) == 1 else 's'} of its own" if m["cells"] else ""))
             for k, v in sorted(m["cells"].items()):
                 print(f"      {k.replace('>', ' → ')}: {'allow' if v == 'allow' else 'block'}")
         print("\n  bento company talk COMPANY off|matrix|swarm|default"
