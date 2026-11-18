@@ -806,6 +806,55 @@ def _folder_path_of(entry) -> str:
     return os.path.realpath(os.path.expanduser(str(raw)))
 
 
+def channels_approvals(sets: list | None = None, account: str = "") -> None:
+    """Where approvals are asked besides the screens: Settings → Channels → Approvals in a
+    terminal. `--set telegram=off` (or on, or whatsapp=…) for this machine, or for one
+    account with `--account NAME`. Whether a phone is connected is the server's to say;
+    this prints only the switch."""
+    from . import config as cfgmod
+    from . import users as usersmod
+    names = {"telegram": "Telegram", "whatsapp": "WhatsApp"}
+    accts = []
+    try:
+        accts = usersmod.list_users() if usersmod.enabled() else []
+    except Exception:
+        accts = []
+    if account:
+        u = next((x for x in accts if account in (x.get("name"), x.get("id"))), None)
+        if not u:
+            print(f"✗ no account named {account}")
+            return
+        homes = [(u.get("name") or u["id"], u["id"])]
+    else:
+        homes = [("this machine", "")] if not accts else [(u.get("name") or u["id"], u["id"]) for u in accts]
+    if sets and len(homes) > 1:
+        print("✗ name the account: --account <name>")
+        return
+    for label, uid in homes:
+        cfg = usersmod.cfg_for(uid) if uid else cfgmod.load_config()
+        ap = cfg.setdefault("approvals", {})
+        off = [c for c in (ap.get("off") or []) if c in names]
+        for kv in sets or []:
+            k, _, v = kv.partition("=")
+            k, v = k.strip().lower(), v.strip().lower()
+            if k not in names or v not in ("on", "off"):
+                print(f"✗ {kv}: use telegram=on|off or whatsapp=on|off")
+                return
+            off = [c for c in off if c != k] + ([k] if v == "off" else [])
+        if sets:
+            ap["off"] = off
+            if uid:
+                usersmod.save_user_cfg(uid, cfg)
+            else:
+                cfgmod.save_config(cfg)
+        print(f"  {label}: approvals are asked on the desktop"
+              + "".join(f", {names[c]}" for c in names if c not in off)
+              + ". A chat that asked from a phone is always asked there too.")
+    if sets:
+        print("  A running server keeps its own copy: restart it (bento restart), or change it in "
+              "Settings → Channels → Approvals instead.")
+
+
 def channels_who(allow: str = "", block: str = "") -> None:
     """Who may talk to the agent on Telegram and WhatsApp, waiting first: Settings →
     Channels → Authorization, in a terminal. Reads the machine's home and every
@@ -10289,6 +10338,8 @@ def main():
                         help="with `channels who`: let in tg:<chat id> or wa:<number or group id>")
     p_chan.add_argument("--block", default="", metavar="REF",
                         help="with `channels who`: block tg:<chat id> or wa:<number or group id>")
+    p_chan.add_argument("--account", default="", metavar="NAME",
+                        help="with `channels approvals`: the account whose phones to change")
     p_chan.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
                         help="set one of this channel's fields, e.g. --set verify_token=hunter2 "
                              "(repeatable; `agentos channels <id>` lists the fields it needs)")
@@ -10932,7 +10983,9 @@ def main():
     elif args.cmd == "folders":
         folders_cmd(args.action, args.path, args.mode, args.users)
     elif args.cmd == "channels":
-        if args.channel == "who":
+        if args.channel == "approvals":
+            channels_approvals(args.set, args.account)
+        elif args.channel == "who":
             channels_who(args.allow, args.block)
         else:
             channels_cmd(args.channel, args.on, args.off, args.posture, args.set)

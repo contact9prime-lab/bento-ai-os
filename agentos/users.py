@@ -696,6 +696,9 @@ def confine_folder(cfg: dict, path) -> str:
 #: not, and a user picking a different model reaches nothing they could not
 #: already reach.
 USER_KEYS = ("channels", "telegram", "whatsapp", "mcp_servers", "credentials", "signin",
+             # where this person's approvals are asked besides their screens (server.
+             # approval_channels): their phones, so theirs
+             "approvals",
              "desktop", "widgets", "shortcuts", "spaces",
              "agent_name", "soul", "onboarding", "setup_complete",
              "autonomy", "default_model", "brain_fallbacks", "max_steps", "workspace",

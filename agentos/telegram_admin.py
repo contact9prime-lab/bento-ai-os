@@ -328,6 +328,12 @@ class Console:
                                       "none yet. Add me to a group and write there")
         if rows:
             text += "\n\n/members <group> shows who talks to me there." 
+        # a group shows up when I'm added to it or made an admin there (my_chat_member);
+        # one I was already in, before that existed, needs one of the two
+        link = self.tg.group_link()
+        if link:
+            text += (f"\n\nAdd me to a group: {link}\nAlready in one that isn't listed? Make me an "
+                     f"admin there and it shows up here.")
         buttons = [[{"text": (f"Stop {c.get('title') or c['chat_id']}" if c["allowed"]
                               else f"Allow {c.get('title') or c['chat_id']}")[:40],
                      "callback_data": f"who:{c['chat_id']}:{0 if c['allowed'] else 1}"}] for c in rows[:12]]

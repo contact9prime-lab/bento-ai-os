@@ -56,7 +56,7 @@ def test_a_departments_question_is_asked_in_the_chat_it_came_from():
     src = (ROOT / "agentos/server.py").read_text()
     fa = src[src.index("async def _flow_approval("):][:2400]
     assert "conversation_id=_run_conversation(run)" in fa
-    ra = src[src.index("async def request_approval("):][:2200]
+    ra = src[src.index("async def _desk_approval("):][:2200]
     assert 'ev["conversation_id"] = conversation_id' in ra
     rc = src[src.index("def _run_conversation("):][:700]
     assert '"chat"' in rc and "get_conversation(cid)" in rc

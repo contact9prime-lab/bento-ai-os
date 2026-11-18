@@ -249,6 +249,9 @@ DEFAULTS = {
     # already streaming, on memory.model if one is set, and steer_triage_timeout bounds
     # it — past that the message's wording decides, and waiting is the safe default.
     "steer_queued_messages": True,
+    # phones this account's approvals also go to; a channel listed in `off` gets only the
+    # approvals of chats that came from it (server.approval_channels)
+    "approvals": {"off": []},
     "steer_triage_timeout": 30,
     "workspace": str(Path.home() / "AgentOS"),
     "port": 8321,
