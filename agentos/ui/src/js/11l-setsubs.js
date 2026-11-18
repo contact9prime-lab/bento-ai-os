@@ -26,7 +26,7 @@ var SETSUBS={
   companies:[['About','About'],['Working together','Working together'],['Departments','Departments'],['Folders','Folders'],['Brief','In your Brief'],['New company','A new company']],
   network:[['Discovery','Discovery and linkage'],['Linked teams','Linked teams'],['Community','Community'],['Messages','Messages'],['Mapping','Team to agent mapping'],['Maps','Maps']],
   permissions:[['Autonomy','On their own'],['Security','Security'],['Ledger','The ledger']],
-  channels:[['Authorization','Authorization'],['Overview','Ways to reach it'],['Remote browser','Remote browser'],['Telegram','Telegram'],['WhatsApp','WhatsApp'],['Built in','Built in']],
+  channels:[['Authorization','Authorization'],['Approvals','Approvals'],['Overview','Ways to reach it'],['Remote browser','Remote browser'],['Telegram','Telegram'],['WhatsApp','WhatsApp'],['Built in','Built in']],
   accounts:[['Sign in','Sign in'],['Mail & calendar','Mail'],['App registration','App registration'],['Vault','Vault'],['GitHub','GitHub']],
   voice:[['Speech','Speech'],['Listening','Listening']],
   look:[['Look','Look'],['Characters','Characters'],['Office','Office'],['This screen','On this screen']],

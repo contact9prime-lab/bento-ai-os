@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.9.38 — 2026-11-18
+
+**Approvals reach you on every channel, the same card.**
+
+- Every approval for your account shows on your screens and on your paired Telegram and WhatsApp. The
+  first answer counts and the other cards close. A department run started from Telegram used to ask only
+  the desktop, and the phone sat on "Taken into what I'm working on".
+- Settings → Channels → Approvals switches each phone off; a chat that came from a phone is still asked
+  there. `bento channels approvals` in a terminal.
+- On a machine with accounts, the bridges and Settings now reach the account's own Telegram and WhatsApp.
+  They sometimes reached the machine's.
+- Authorization has **Add the bot to a group**, Telegram's own link, and `/groups` prints it on the phone.
+
 ## 0.9.37 — 2026-11-18
 
 **An admin can clear a security hold from their phone or from Settings.**

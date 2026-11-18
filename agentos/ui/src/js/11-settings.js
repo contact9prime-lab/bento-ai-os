@@ -1390,11 +1390,13 @@ async function renderChannels(){
      on the part nobody came for. */
   const own=d.channels.filter(c=>!c.builtin),built=d.channels.filter(c=>c.builtin);
   var html=`<h3 class="chsec">Authorization</h3><div class="pgroup chan" id="chan-auth"><p class="mut">checking…</p></div>`
+    +`<h3 class="chsec">Approvals</h3><div class="pgroup chan" id="chan-approvals"><p class="mut">checking…</p></div>`
     +(own.length?`<h3 class="chsec">Ways to reach it</h3>`+own.map(chanCard).join(''):'')
     +(built.length?`<h3 class="chsec">Built in <span class="mut">always on</span></h3>`+built.map(chanCard).join(''):'');
   box.innerHTML=html;
   if(typeof waPanel==='function'&&document.getElementById('wa-extra'))waPanel();
   if(typeof chanAuthPaint==='function')chanAuthPaint();
+  if(typeof chanApprovalsPaint==='function')chanApprovalsPaint();
 }
 function chanCard(c){
   const dot={on:'ok',off:'mut',needs:'warn'}[c.status]||'mut';

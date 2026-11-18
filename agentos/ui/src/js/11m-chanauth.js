@@ -31,6 +31,8 @@ async function chanAuthPaint(){
   });
   const empty=f==='waiting'?'Nobody is waiting.':'Nobody here yet. When somebody or a group writes to your Telegram bot or WhatsApp, they show up here.';
   const notes=[];
+  if(d.telegram_group_link)notes.push(`<div class="wa-line"><b>Telegram groups.</b> ${d.telegram_groups?'':'None has shown up yet. '}A group appears here when you add the bot to it or make it an admin there.
+    <a class="endbtn" href="${esc(d.telegram_group_link)}" target="_blank" rel="noopener">Add the bot to a group</a> ${pInfo('A group the bot was already in only shows up once you make the bot an admin there.')}</div>`);
   if(d.telegram_privacy)notes.push(`<div class="wa-line warn"><b>Telegram groups.</b> ${esc(d.telegram_privacy)}</div>`);
   if(d.whatsapp_mode==='cloud')notes.push(`<div class="wa-line mut">WhatsApp groups need the QR-code link. ${pInfo('The Business (Cloud) API does not deliver group messages.')}</div>`);
   box.innerHTML=`<div class="ghint">Who may talk to your agent on Telegram and WhatsApp. New people and groups wait here until you decide. ${pInfo('You get the same question on your Telegram and WhatsApp, and can answer there.')}</div>
@@ -50,3 +52,33 @@ async function chanAuthDecide(ref,allow){
   chanAuthPaint();
 }
 function chanAuthShow(k){CHAN_AUTH.filter=k;chanAuthPaint()}
+
+/* ---- Settings → Channels → Approvals ----
+   Where this account's approvals are asked besides its screens. Asked for as "the approvals
+   should be done in Telegram, whatever concerns the account, and on WhatsApp too; the
+   channels should be defined, and consistent". Every approval goes through one door on the
+   server (request_approval): the desktop and each phone switched on here get the same card,
+   the first answer counts, and the others close. A chat that came from a phone is always
+   asked there. GUI and SUI draw this; the TUI is `bento channels approvals`. */
+async function chanApprovalsPaint(){
+  const box=document.getElementById('chan-approvals');if(!box)return;
+  let d=null;
+  try{d=await apiJSON('/api/channels/approvals')}catch(e){box.innerHTML=`<p class="mut">${esc(String(e.message||e))}</p>`;return}
+  const rows=(d.channels||[]).map(c=>pRow('Ask on '+c.title,
+    c.connected?pSwitch('ap-ch-'+c.id,c.on):`<span class="mut">${esc(c.why||'not connected')}</span>`,
+    {desc:c.connected?(c.on?'Every approval is also sent to your '+c.title+'.':'Only approvals asked from a '+c.title+' chat go there.'):'',
+     f:'approvals '+c.id})).join('');
+  box.innerHTML=`<div class="ghint">Every approval shows on your screens. Switch on the phones that should get it too. The first answer counts and the other cards close. ${pInfo('A chat that started on Telegram or WhatsApp is always asked there as well.')}</div>${rows}`;
+  (d.channels||[]).forEach(c=>{const el=document.getElementById('ap-ch-'+c.id);
+    if(el)el.onchange=()=>chanApprovalsSet(c.id,el.checked)});
+}
+async function chanApprovalsSet(ch,on){
+  try{
+    const r=await fetch('/api/channels/approvals',{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({channel:ch,on:!!on})});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok||d.ok===false){toast('Could not change that: '+(d.message||r.status));return}
+  }catch(e){toast('could not reach the server');return}
+  toast(on?'Approvals will also come to your '+(ch==='telegram'?'Telegram':'WhatsApp')+'.':'Approvals stay off '+(ch==='telegram'?'Telegram':'WhatsApp')+' unless a chat there asked.');
+  chanApprovalsPaint();
+}

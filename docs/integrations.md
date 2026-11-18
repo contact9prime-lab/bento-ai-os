@@ -141,6 +141,17 @@ your own chat, never into the group, and a person you block in a group is not an
 waiting first, with Allow and Block. In a terminal it is `bento channels who`, and
 `bento channels who --allow tg:<id>` or `--allow wa:<id>` decides one.
 
+A group the bot is not in yet is added with **Add the bot to a group** there (or the link `/groups`
+prints on your phone), which opens Telegram's own "add to a group" screen.
+
+**Approvals reach you on every channel, the same card.** Every approval for an account (a chat at
+the desk, a department's step, a mission, a phone turn) is shown on your screens and sent to your
+Telegram and your WhatsApp when they are paired. The first answer counts, and the other cards close
+and say it was answered elsewhere. **Settings → Channels → Approvals** switches each phone off; a chat
+that started on Telegram or WhatsApp is still asked there. A group's question goes to your own chat.
+In a terminal: `bento channels approvals`, and `--set telegram=off` (with `--account <name>` on a
+machine with accounts).
+
 **Letting somebody in before they write.** That toggle only exists once there is a row, and there is
 no row until somebody has messaged you — so on its own it means a colleague has to be turned away
 first and then found in a list. The **Also allow** field is the standing list, written in advance:

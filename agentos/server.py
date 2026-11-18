@@ -104,6 +104,13 @@ class _State(dict):
                     return got
         return dict.__getitem__(self, k)
 
+    def get(self, k, default=None):
+        """The same lookup as `state[k]`. dict.get skips __getitem__, so
+        `state.get("telegram")` was the MACHINE's bridge inside an account's request:
+        Settings → Channels decided an account's Telegram request through a bot it did not
+        own, and a flow's Telegram answer was checked against the wrong one."""
+        return self[k] if k in self else default
+
     def machine_cfg(self) -> dict:
         """The machine's own config, never a user's view of it. Admin-only writes:
         providers, models, remote access, components."""
@@ -346,6 +353,11 @@ async def startup():
     # exists from startup so its state can be reported before it is configured.
     whatsapp = WhatsAppBridge(cfg, store, toolbox, _owner_send())
     toolbox.whatsapp = whatsapp
+    # The bridges find each other through these, never through toolbox.telegram /
+    # toolbox.whatsapp: those are the machine's, and on a machine with accounts a
+    # WhatsApp request "asked on your Telegram" went to the machine's bot.
+    toolbox.bridge = lambda name: (state[name] if name in state else None)
+    toolbox.approve = request_approval      # the one approval door (every channel)
     toolbox.broadcast = broadcast
     toolbox.broadcast_user = broadcast_user
     control = fabricmod.ControlPlane(cfg, store, toolbox, broadcast)
@@ -5139,6 +5151,8 @@ async def api_channels_authorization():
     tg = state.get("telegram")
     return {"items": items, "summary": chanauth.summary(items),
             "telegram_privacy": tg.privacy_words() if tg is not None and hasattr(tg, "privacy_words") else "",
+            "telegram_group_link": tg.group_link() if tg is not None and hasattr(tg, "group_link") else "",
+            "telegram_groups": sum(1 for r in items if r["channel"] == "telegram" and r["kind"] == "group"),
             "whatsapp_mode": wamod.mode(state["cfg"])}
 
 
@@ -5159,6 +5173,27 @@ async def api_channels_authorization_decide(body: dict):
         said = chanauth.decide(state["store"], ref, allow, _desk_by())
     await state["broadcast"]({"type": f"{channel}_chats"})
     return {"ok": said in ("allowed", "blocked"), "message": said}
+
+
+@app.get("/api/channels/approvals")
+async def api_approval_channels():
+    """Where this account's approvals are asked besides its screens."""
+    return {"channels": approval_channels()}
+
+
+@app.put("/api/channels/approvals")
+async def api_approval_channels_set(body: dict):
+    """Switch one phone channel's approvals on or off for this account."""
+    ch, on = str(body.get("channel") or ""), bool(body.get("on"))
+    if ch not in APPROVAL_CHANNELS:
+        return JSONResponse({"ok": False, "message": "the channel is telegram or whatsapp"}, status_code=400)
+    ap = state["cfg"].setdefault("approvals", {})
+    off = [c for c in (ap.get("off") or []) if c in APPROVAL_CHANNELS and c != ch]
+    ap["off"] = off if on else off + [ch]
+    cfgmod.save_config(state["cfg"])
+    state["store"].log("policy", f"approvals on {ch} switched {'on' if on else 'off'} ({_desk_by()})",
+                       {"channel": ch, "on": on})
+    return {"ok": True, "channels": approval_channels()}
 
 
 @app.put("/api/channels/{channel_id}")
@@ -8965,6 +9000,33 @@ async def request_approval(name: str, args: dict, reason: str, offer: dict | Non
                            evsend=None, ws=None, timeout: float = 300,
                            run_id: str = "", flow: str = "", unanswered=None,
                            conversation_id: str = "") -> bool:
+    """The one door every approval for an account goes through. The card goes to the
+    account's screens and, at the same time, to its phones (`_approval_phones`): the chat
+    a conversation came from, and every phone channel the account turned approvals on
+    for. The first answer counts and every other card is closed. Asked for as "the
+    approvals should be done in Telegram, be it whatever concerning the account, and on
+    WhatsApp too; the channels should be defined, and consistent". A card sent to one
+    particular person (`evsend`, a linked team's owner) stays where it was sent."""
+    once = {"done": False}
+
+    async def missed_once():
+        if unanswered and not once["done"]:
+            once["done"] = True
+            await unanswered()
+    desk = _desk_approval(name, args, reason, offer=offer, evsend=evsend, ws=ws, timeout=timeout,
+                          run_id=run_id, flow=flow, unanswered=missed_once if unanswered else None,
+                          conversation_id=conversation_id)
+    phones = [] if evsend is not None else _phone_asks(
+        conversation_id, name, args, reason, offer, timeout, missed_once if unanswered else None)
+    if not phones:
+        return await desk
+    return await _first_answer(desk, *phones)
+
+
+async def _desk_approval(name: str, args: dict, reason: str, offer: dict | None = None,
+                         evsend=None, ws=None, timeout: float = 300,
+                         run_id: str = "", flow: str = "", unanswered=None,
+                         conversation_id: str = "") -> bool:
     """Raise an approval card and wait for the user's answer. `offer` is a ready-to-write
     grant: when the user picks "allow & remember", it is persisted before resolving True.
     evsend routes the card to one chat's client; otherwise it broadcasts to every client.
@@ -9012,6 +9074,9 @@ async def request_approval(name: str, args: dict, reason: str, offer: dict | Non
             with contextlib.suppress(Exception):
                 await unanswered()
         return False
+    except asyncio.CancelledError:
+        outcome["how"] = "elsewhere"      # answered on a phone (request_approval)
+        raise
     finally:
         state["pending_approvals"].pop(aid, None)
         # Every screen that drew this card is told it is settled. The card goes to
@@ -9387,6 +9452,116 @@ async def _flow_approval(run_id: str, name: str, args: dict, reason: str,
         from .agent import PARK
         return PARK
     return ok
+
+
+def _phone_of(cid: str) -> tuple[str, str] | None:
+    """The phone chat a conversation belongs to: ('telegram', chat id) or ('whatsapp',
+    number), or None for a conversation that started at a screen. A group's question
+    goes to the owner's own chat: in the group anybody could answer it."""
+    if not cid:
+        return None
+    try:
+        row = state["store"].get_conversation(cid) or {}
+    except Exception:
+        return None
+    channel, _, key = str(row.get("channel_ref") or "").partition(":")
+    if channel not in ("telegram", "whatsapp"):
+        # a thread from before sessions had a ref: the chat that points at it
+        channel = row.get("origin") or ""
+        if channel == "telegram":
+            key = next((str(c["chat_id"]) for c in state["store"].tg_list_chats()
+                        if c.get("conversation_id") == cid), "")
+        elif channel == "whatsapp":
+            key = next((c["wa_id"] for c in state["store"].wa_list_chats()
+                        if c.get("conversation_id") == cid), "")
+        else:
+            return None
+    if not key:
+        return None
+    if channel == "telegram":
+        chat = next((c for c in state["store"].tg_list_chats() if str(c["chat_id"]) == key), {})
+        if (chat.get("type") or "private") != "private":
+            tg = state["telegram"] if "telegram" in state else None
+            key = str((tg._t().get("owner_chat_id") or "") if tg is not None else "")
+    else:
+        chat = state["store"].wa_get_chat(key) or {}
+        if (chat.get("kind") or "") == "group":
+            wa = state["whatsapp"] if "whatsapp" in state else None
+            key = str((wa._c().get("owner_wa_id") or "") if wa is not None else "")
+    return (channel, key) if key else None
+
+
+APPROVAL_CHANNELS = ("telegram", "whatsapp")
+
+
+def approval_channels(cfg: dict | None = None) -> list[dict]:
+    """Where this account's approvals are asked besides its screens, and why not when one
+    can't be. A channel is on unless the person switched it off (`approvals.off`): a
+    connected phone is where somebody away from the desk answers."""
+    cfg = state["cfg"] if cfg is None else cfg
+    off = set(((cfg.get("approvals") or {}).get("off")) or [])
+    out = []
+    tg = state["telegram"] if "telegram" in state else None
+    tg_owner = (tg._t().get("owner_chat_id") or 0) if tg is not None else 0
+    tg_ok = bool(tg is not None and tg_owner and getattr(tg, "status", "") == "polling")
+    out.append({"id": "telegram", "title": "Telegram", "connected": tg_ok,
+                "on": "telegram" not in off, "to": str(tg_owner or ""),
+                "why": "" if tg_ok else ("Pair your Telegram first: Settings → Channels → Telegram."
+                                         if not tg_owner else "Telegram isn't connected right now.")})
+    wa = state["whatsapp"] if "whatsapp" in state else None
+    wa_owner = (wa._c().get("owner_wa_id") or "") if wa is not None else ""
+    from . import whatsapp as _wamod
+    wa_ok = bool(wa is not None and wa_owner and _wamod.configured(cfg))
+    out.append({"id": "whatsapp", "title": "WhatsApp", "connected": wa_ok,
+                "on": "whatsapp" not in off, "to": str(wa_owner or ""),
+                "why": "" if wa_ok else ("Pair your WhatsApp first: Settings → Channels → WhatsApp."
+                                         if not wa_owner else "WhatsApp isn't connected right now.")})
+    return out
+
+
+def _approval_phones(cid: str) -> list[tuple[str, str]]:
+    """Every phone chat an approval goes to: the one its conversation came from (always,
+    when that channel is connected, even if switched off: the person is right there),
+    then the owner's chat on each connected channel that is switched on."""
+    out: list[tuple[str, str]] = []
+    chans = {c["id"]: c for c in approval_channels()}
+    own = _phone_of(cid)
+    if own and chans.get(own[0], {}).get("connected"):
+        out.append(own)
+    for c in chans.values():
+        if c["connected"] and c["on"] and c["to"] and not any(ch == c["id"] for ch, _ in out):
+            out.append((c["id"], c["to"]))
+    return out
+
+
+def _phone_asks(cid: str, name: str, args: dict, reason: str, offer, timeout, missed) -> list:
+    asks = []
+    for channel, key in _approval_phones(cid):
+        if channel == "telegram":
+            asks.append(state["telegram"].ask_approval(int(key), name, args, reason, offer=offer,
+                                                       timeout=timeout, unanswered=missed))
+        else:
+            asks.append(state["whatsapp"].ask_approval(key, name, args, reason, offer=offer,
+                                                       timeout=timeout))
+    return asks
+
+
+async def _first_answer(*asks) -> bool:
+    """Ask in several places at once; the first answer counts and the other cards are
+    closed (each one's own cancel path says it was answered elsewhere)."""
+    tasks = [asyncio.ensure_future(a) for a in asks]
+    try:
+        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        for t in pending:
+            t.cancel()
+        for t in pending:
+            with contextlib.suppress(BaseException):
+                await t
+        return bool(next(iter(done)).result())
+    except BaseException:
+        for t in tasks:
+            t.cancel()
+        raise
 
 
 async def _linked_approval(lk: dict, frm: str, agent: str, name: str, args: dict,

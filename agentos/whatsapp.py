@@ -840,7 +840,7 @@ class WhatsAppBridge(usersmod.Scoped):
         if owner and owner != wa_id:
             with contextlib.suppress(Exception):
                 await self.send(words + f"\n\nReply /allow {wa_id} or /block {wa_id}.", owner, quiet=True)
-        tg = getattr(self.toolbox, "telegram", None)
+        tg = chanmod.sibling(self.toolbox, "telegram")
         tg_owner = tg is not None and (tg._t().get("owner_chat_id") or 0)
         if tg_owner and getattr(tg, "status", "") == "polling":
             with contextlib.suppress(Exception):
@@ -890,7 +890,7 @@ class WhatsAppBridge(usersmod.Scoped):
         first = arg.split(" ")[0]
         if first.lower().startswith("tg:"):
             # a Telegram person or group, asked here because this account's WhatsApp is paired
-            tg = getattr(self.toolbox, "telegram", None)
+            tg = chanmod.sibling(self.toolbox, "telegram")
             try:
                 tid = int(first[3:])
             except ValueError:
@@ -963,6 +963,11 @@ class WhatsAppBridge(usersmod.Scoped):
             if effective_autonomy(self.cfg, "whatsapp") == "full" and not needs_person():
                 return True
             # a group's turn is asked in the owner's own chat: in the group anybody would see it
+            door = getattr(self.toolbox, "approve", None)
+            if callable(door):
+                # the account's one door: this chat (or, for a group, the owner's), the
+                # desktop and Telegram, the first answer counts
+                return bool(await door(name, args, reason, offer=offer, conversation_id=cid))
             ask = (self._c().get("owner_wa_id") or "") if chat.get("kind") == "group" else wa_id
             if not ask:
                 return False
@@ -1051,6 +1056,11 @@ class WhatsAppBridge(usersmod.Scoped):
             return False
         try:
             val = await asyncio.wait_for(fut, timeout=timeout)
+        except asyncio.CancelledError:
+            # answered on another screen (server.request_approval asks every channel)
+            with contextlib.suppress(Exception):
+                await asyncio.shield(self.send("↪ That one was answered on another screen.", wa_id, quiet=True))
+            raise
         except asyncio.TimeoutError:
             await self.send("⌛ Approval timed out — action not taken. The run continues "
                             "without it.", wa_id)

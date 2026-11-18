@@ -768,6 +768,11 @@ class TelegramBridge(usersmod.Scoped):
                 from .policy import effective_autonomy, needs_person
                 if effective_autonomy(self.cfg, "telegram") == "full" and not needs_person():
                     return True
+                # through the account's one approval door when the server has one: this
+                # chat, the desktop and the other phone all show it, the first answer counts
+                door = getattr(self.toolbox, "approve", None)
+                if callable(door):
+                    return bool(await door(name, args, reason, offer=offer, conversation_id=cid))
                 return await self.ask_approval(chat_id, name, args, reason, offer=offer)
 
             model = self.cfg.get("default_model") or ""
@@ -937,13 +942,22 @@ class TelegramBridge(usersmod.Scoped):
         fut = asyncio.get_event_loop().create_future()
         self._pending[aid] = fut
         try:
-            await self._api("sendMessage", chat_id=chat_id, text=text,
-                            reply_markup={"inline_keyboard": [row]})
+            sent = await self._api("sendMessage", chat_id=chat_id, text=text,
+                                   reply_markup={"inline_keyboard": [row]})
         except Exception:
             self._pending.pop(aid, None)
             return False
         try:
             val = await asyncio.wait_for(fut, timeout=timeout)
+        except asyncio.CancelledError:
+            # answered on another screen (server.request_approval asks every channel at
+            # once): the buttons go, so this card is not a control that does nothing
+            mid = (sent or {}).get("message_id") if isinstance(sent, dict) else None
+            if mid:
+                with contextlib.suppress(Exception):
+                    await asyncio.shield(self._api("editMessageText", chat_id=chat_id, message_id=mid,
+                                                   text=text[:3900] + "\n\n→ Answered on another screen."))
+            raise
         except asyncio.TimeoutError:
             # Nobody tapped. Same rule as the desktop's broker: silence is not a
             # refusal, so the question is filed where it will be seen rather than
@@ -1107,6 +1121,12 @@ class TelegramBridge(usersmod.Scoped):
         with contextlib.suppress(Exception):
             await self.broadcast({"type": "telegram_chats"})
 
+    def group_link(self) -> str:
+        """Telegram's own "add this bot to a group" link. Adding it that way is the event
+        that lists the group and asks the owner (`_membership`), which a group the bot was
+        already in never sends. '' until the bot's name is known."""
+        return f"https://t.me/{self.bot_username}?startgroup=true" if self.bot_username else ""
+
     def privacy_words(self, admin: bool = False) -> str:
         """What Telegram lets this bot see in a group, in one sentence, or ''."""
         if self.reads_groups is not False or admin:
@@ -1152,7 +1172,7 @@ class TelegramBridge(usersmod.Scoped):
                 self.store.log("telegram", f"could not ask the owner about {who}: {e}")
             # and on the same account's WhatsApp, when that is paired: the owner answers
             # wherever they are (WhatsApp asks Telegram the same way, `wan:`)
-            wa = getattr(getattr(self, "toolbox", None), "whatsapp", None)
+            wa = chanmod.sibling(getattr(self, "toolbox", None), "whatsapp")
             wa_owner = wa is not None and (wa._c().get("owner_wa_id") or "")
             if wa_owner:
                 with contextlib.suppress(Exception):
@@ -1279,7 +1299,7 @@ class TelegramBridge(usersmod.Scoped):
         if data.startswith("wan:"):
             # somebody new on WHATSAPP, asked here because this account's Telegram is paired
             parts = data.split(":")
-            wa = getattr(self.toolbox, "whatsapp", None)
+            wa = chanmod.sibling(self.toolbox, "whatsapp")
             if wa is None or len(parts) < 3:
                 return
             said = await wa.decide_newcomer(parts[1], parts[2] == "1", "the owner, on Telegram")

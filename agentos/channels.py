@@ -571,3 +571,17 @@ def save(cfg: dict, channel_id: str, patch: dict) -> tuple[bool, str]:
     if refused:
         return False, "still needs " + ", ".join(missing)
     return True, "saved"
+
+
+def sibling(toolbox, name: str):
+    """This account's other phone bridge ('telegram' or 'whatsapp'), or None. Through
+    `toolbox.bridge`, which resolves per account; `toolbox.telegram`/`.whatsapp` are the
+    machine's, and reading them sent an account's request to the machine's bot."""
+    f = getattr(toolbox, "bridge", None)
+    b = None
+    if callable(f):
+        try:
+            b = f(name)
+        except Exception:
+            b = None
+    return b if b is not None else getattr(toolbox, name, None)
