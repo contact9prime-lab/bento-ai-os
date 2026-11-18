@@ -32,6 +32,8 @@ MACHINE_ONLY: tuple[tuple[frozenset, str], ...] = (
     (ANY, "/remote-desktop"),
     (ANY, "/novnc/*"),
     (WRITE, "/api/screenshot"),
+    # accepting a security hold, and its authenticator code (holdclear): the machine's code
+    (WRITE, "/api/security/*"),
     # native apps run outside every account's jail
     (WRITE, "/api/native/launch"),
     (WRITE, "/api/native/store"),

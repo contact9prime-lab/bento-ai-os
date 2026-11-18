@@ -520,8 +520,9 @@ def held() -> dict | None:
     return _cache[1]
 
 
-REFUSAL = ("This OS's security files changed and agents are stopped. Nothing can run until a "
-           "person checks it and clears it at this machine's terminal with bento integrity accept.")
+REFUSAL = ("This OS's security files changed and agents are stopped. Nothing can run until an "
+           "admin checks it and accepts it in Settings → Permissions → Security, from their paired "
+           "phone, or at this machine's terminal with bento integrity accept.")
 
 
 def refusal() -> str:
@@ -933,7 +934,8 @@ def needs_key() -> bool:
     return bool(personal_keys())
 
 
-def seal(root: Path | None = None, key_path=None, by: str = "seal", dev: bool | None = None) -> dict:
+def seal(root: Path | None = None, key_path=None, by: str = "seal", dev: bool | None = None,
+         via: str = "") -> dict:
     """Write the record for the code as it is now, and take the locked files as they are.
     A person's act: `bento integrity seal` and `accept` check `person_problem` first, and on a
     machine with a key this can't be done without it. Clears the hold."""
@@ -945,6 +947,8 @@ def seal(root: Path | None = None, key_path=None, by: str = "seal", dev: bool | 
     keep_dev = old.get("dev") if dev is None else dev
     if keep_dev:
         extra["dev"] = True
+    if via:
+        extra["via"] = secevents.plain(via, 120)     # holdclear: an admin's phone or Settings
     entry = _entry(root, hash_tree(root), by, **extra)
     if key_path:
         entry = _sign_entry(entry, key_path)
@@ -1122,8 +1126,8 @@ def line(s: dict) -> str:
     if s.get("held"):
         names = s["held"].get("files") or []
         what = ", ".join(names[:3]) or "a security file"
-        return (f"Agents are stopped because {what} changed. If that was you, run "
-                "bento integrity accept at this machine's terminal.")
+        return (f"Agents are stopped because {what} changed. An admin can accept it in Settings → "
+                "Permissions → Security, from their paired phone, or with bento integrity accept.")
     if s.get("sealed") == "bad":
         return "The integrity record doesn't check out. Run bento integrity seal at this machine's terminal."
     how = {"signed": "sealed and signed by your key", "release": "a signed release",

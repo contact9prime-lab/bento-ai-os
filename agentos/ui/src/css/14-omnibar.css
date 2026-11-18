@@ -505,6 +505,14 @@ body.deck-dragging .deck-tile,body.deck-dragging .deck-gname{cursor:grabbing}
 .sec-card .sec-file{display:block;font:var(--fs-xs,12px) var(--mono,monospace);overflow-wrap:anywhere;margin-top:3px}
 .sec-card .sec-alert{margin-top:6px;overflow-wrap:anywhere}
 .sec-card .sec-alert small{display:block}
+.sec-card .sec-diff{max-height:320px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:var(--fs-xs,12px) var(--mono,monospace);background:color-mix(in srgb,var(--bg) 70%,transparent);border-radius:8px;padding:8px;margin:6px 0}
+.sec-card .sec-accept{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;align-items:center}
+.sec-card .sec-accept input{min-height:var(--tap,40px);flex:1 1 160px;min-width:0}
+.sec-card .sec-accept .endbtn,.sec-card .sec-show{min-height:var(--tap,40px)}
+.sec-card .sec-show{margin-top:6px}
+.sec-card .sec-accept .endbtn:disabled{opacity:.45;cursor:not-allowed}
+.sec-card .sec-note{display:block;margin-top:6px}
+.sec-card .sec-err{display:block;margin-top:6px;color:var(--red,#e5484d)}
 
 /* Stop the voice: one pill while anything is being said, on every surface (speechPill).
    Bottom left, clear of the "agent is working" bubble and the approval card on the right.

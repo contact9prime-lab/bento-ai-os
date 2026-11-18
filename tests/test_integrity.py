@@ -190,14 +190,17 @@ def test_a_cli_already_running_is_stopped():
 
 
 def test_no_tool_or_route_names_the_door():
-    """Only the terminal clears it. The card explains and has nothing to press."""
+    """No tool can clear it, and the server only through holdclear (an admin with proof, tests in
+    test_holdclear.py). The card shows the attacker's words as text."""
     srv = (ROOT / "agentos/server.py").read_text()
     tools = (ROOT / "agentos/tools.py").read_text()
+    for needle in ("integrity.seal(", "integrity.trust(", "integrity._release", "rebaseline(", "holdclear"):
+        assert needle not in tools, needle
     for needle in ("integrity.seal(", "integrity.trust(", "integrity._release", "rebaseline("):
-        assert needle not in srv and needle not in tools, needle
+        assert needle not in srv, needle
     page = (ROOT / "agentos/ui/src/js/11j-security.js").read_text()
     assert "innerHTML" not in page, "an alert's detail is an attacker's words"
-    assert "fetch(" not in page and "method:" not in page, "the card only reads"
+    assert "fetch(" not in page, "the card goes through apiJSON"
 
 
 # ----------------------------------------------------------------- only a person clears it
@@ -975,7 +978,9 @@ def test_the_status_route_is_admin_only_and_read_only():
     srv = (ROOT / "agentos/server.py").read_text()
     h = srv[srv.index("async def api_security_status"):srv.index('@app.get("/api/security/events")')]
     assert "_require_admin()" in h
-    assert not [ln for ln in srv.splitlines() if "/api/security" in ln and ".post(" in ln], "no route clears it"
+    posts = sorted(ln for ln in srv.splitlines() if "/api/security" in ln and ".post(" in ln)
+    assert posts == ['@app.post("/api/security/accept")', '@app.post("/api/security/code")'], \
+        "the only doors are holdclear's, which ask for proof"
 
 
 def test_the_phones_hear_one_line_with_only_the_os_words():

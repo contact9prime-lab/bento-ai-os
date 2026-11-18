@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.9.37 — 2026-11-18
+
+**An admin can clear a security hold from their phone or from Settings.**
+
+- When Bento stops its agents because a security file changed, it now works out what the change is:
+  back to normal (it was undone), matches GitHub (a clean commit on your branch), or unknown.
+- Every admin's paired Telegram or WhatsApp hears about it when it happens and again each time Bento
+  starts while it holds. Reply show, accept or keep; Telegram has buttons too.
+- Settings → Permissions → Security shows what changed, with the diff or the new file, and an Accept
+  button that asks for your password.
+- An unknown change needs the 6-digit code from an authenticator app. Set one up in the same card or
+  with `bento integrity code`.
+- `bento integrity accept` at the terminal still works, and a machine whose record is signed with a key
+  still accepts only there. `bento integrity changes` shows the diff.
+
 ## 0.9.36 — 2026-11-17
 
 No release notes were written for this one; the commits since 0.9.35 are what changed (`bento update` lists them).
