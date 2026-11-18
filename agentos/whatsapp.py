@@ -613,6 +613,20 @@ class WhatsAppBridge(usersmod.Scoped):
                 await self.send(_cdpb.reply_of(said), wa_id)
             return
 
+        # The agents are held (integrity): the owner's chat, when it is an admin's, answers the
+        # hold here, before any agent. Its words (a code, maybe) are never logged or saved.
+        from . import holdclear, integrity as _integrity
+        if _integrity.held():
+            uid = usersmod.current() or ""
+            owner = wa_id == (self._c().get("owner_wa_id") or "") and usersmod.is_admin(uid)
+            said = holdclear.from_phone(f"wa:{wa_id}", text, owner,
+                                        ((usersmod.get(uid) or {}).get("name") if uid else "") or "the admin",
+                                        "whatsapp")
+            if said:
+                self.store.log("whatsapp", f"the owner's chat {wa_id} answered the security hold")
+                await self.send(said, wa_id)
+                return
+
         name = self._profile_name(val, wa_id)
         chat = self.store.wa_upsert_chat(wa_id, name)
         self.store.log("whatsapp", f"← {name} ({wa_id}): {text[:160]}")

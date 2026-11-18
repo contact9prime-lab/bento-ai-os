@@ -12644,7 +12644,9 @@ def _security_alert(alert: dict) -> None:
         ev = {"type": "security_alert", "kind": alert["kind"], "words": alert["words"],
               "source": alert["source"], "count": alert["count"], "at": alert["at"]}
         await _tell_admins(ev)
-        if alert["kind"] != "integrity.dev":      # a developer's own edits are for their screen
+        # A developer's own edits are for their screen, and a hold gets its own message with what
+        # to do about it (_hold_phones), so the phone isn't told twice.
+        if alert["kind"] not in ("integrity.dev", "integrity.changed"):
             await _security_phone(f"⚠ Bento security: {alert['words']}. See Settings → Permissions.")
 
     with contextlib.suppress(RuntimeError):
@@ -12675,9 +12677,25 @@ def _integrity_held(hold: dict) -> None:
         if build.get("task") and not build["task"].done():
             asyncio.create_task(_force_cancel(build["task"], grace=15.0))
         await _tell_admins({"type": "security_hold", "at": hold.get("at"), "files": hold.get("files") or []})
+        await _hold_phones()
 
     with contextlib.suppress(RuntimeError):
         loop.call_soon_threadsafe(lambda: loop.create_task(stop()))
+
+
+async def _hold_phones() -> None:
+    """Every admin's paired phone hears what the hold is about and how to answer it (holdclear).
+    Sent when it trips and again at every start while it holds, because a machine nobody can
+    log into is exactly the one whose admin has to hear it on the phone."""
+    from . import holdclear
+    pic = await asyncio.to_thread(holdclear.picture)
+    if not pic.get("held"):
+        return
+    text = holdclear.phone_message(pic)
+    for b in _admin_phones():
+        with contextlib.suppress(Exception):
+            fn = getattr(b, "send_hold", None)
+            await asyncio.wait_for(fn(text) if fn else b.send(text), 10)
 
 
 LEDGER_CHECK_S = 600        # new rows only, so this costs what the new rows cost
@@ -12692,6 +12710,13 @@ async def _integrity_loop():
     w = None
     try:
         w = await asyncio.to_thread(integrity.start_watching, None, standbymod.passive)
+        # The first thing checked at start: a hold that outlived the restart is told to the admins'
+        # phones now, once the bridges have had a moment to come up.
+        if integrity.held():
+            async def _tell_later():
+                await asyncio.sleep(8)
+                await _hold_phones()
+            asyncio.create_task(_tell_later())
         state["ledger_checks"] = await asyncio.to_thread(integrity.verify_ledgers, True)
     except Exception as e:  # noqa: BLE001
         print(f"  ! the integrity watcher could not start: {type(e).__name__}: {e}")
@@ -12712,13 +12737,110 @@ async def _integrity_loop():
 
 
 @app.get("/api/security/status")
-async def api_security_status():
+async def api_security_status(request: Request):
     """What the watcher knows, for an admin: the card's one read. Details are shown as text."""
     denied = _require_admin()
     if denied:
         return denied
+    from . import holdclear
     st = await asyncio.to_thread(integrity.status, None, state.get("ledger_checks"))
-    return {**st, "alerts": secevents.recent(10, alerts_only=True)}
+    return {**st, "alerts": secevents.recent(10, alerts_only=True), "code_set": holdclear.code_set(),
+            "needs_password": usersmod.enabled() or not _at_machine(request)}
+
+
+@app.get("/api/security/picture")
+async def api_security_picture(request: Request):
+    """What a hold is about, worked out (holdclear.picture), with the diff behind it. Admin only."""
+    denied = _require_admin()
+    if denied:
+        return denied
+    from . import holdclear
+    pic = await asyncio.to_thread(holdclear.picture)
+    return {**pic, "changes": await asyncio.to_thread(holdclear.changes, pic, None, False) if pic["held"] else "",
+            "code_set": holdclear.code_set(), "needs_key": integrity.needs_key(),
+            "needs_password": usersmod.enabled() or not _at_machine(request),
+            "paused": holdclear.paused()}
+
+
+def _accept_proof(request, body: dict):
+    """An admin, and proof it's them now: their password on a machine with accounts, the passphrase
+    from another device on one without, nothing more from somebody at this machine's own keyboard.
+    A wrong answer counts towards holdclear's pause."""
+    from . import holdclear
+    denied = _require_admin()
+    if denied:
+        return denied
+    if holdclear.paused():
+        return JSONResponse({"error": "Too many wrong answers. Wait 15 minutes and try again."}, status_code=429)
+    pw = str(body.get("password") or "")
+    if usersmod.enabled():
+        if usersmod.check_password(usersmod.current(), pw):
+            return None
+    elif _at_machine(request):
+        return None
+    else:
+        cfg = state.machine_cfg()
+        if remotemod.lock_kind(cfg) == "passphrase" and remotemod.check_passphrase(cfg, pw):
+            return None
+    holdclear.missed()
+    return JSONResponse({"error": "That password isn't right."}, status_code=403)
+
+
+def _accept_who() -> str:
+    u = usersmod.get(usersmod.current()) if usersmod.enabled() else None
+    return (u or {}).get("name") or "the admin"
+
+
+def _accept_ledger(who: str, via: str, pic: dict, outcome: str) -> None:
+    with contextlib.suppress(Exception):
+        usersmod.store_for("").audit_add(
+            principal_kind="user", principal_id=who[:60], surface=via, action="integrity.accept",
+            resource="code:" + str(pic.get("root") or ""), effect="allow" if outcome == "ok" else "deny",
+            rule="person", reason=str(pic.get("kind") or ""), outcome=outcome,
+            detail=", ".join((pic.get("files") or [])[:10])[:500])
+
+
+@app.post("/api/security/accept")
+async def api_security_accept(request: Request, body: dict):
+    """An admin accepts the change that holds the agents (holdclear). Never for a machine whose
+    record is signed with a key, and an unknown change needs the authenticator's code too."""
+    from . import holdclear
+    refused = _accept_proof(request, body)
+    if refused:
+        return refused
+    pic = await asyncio.to_thread(holdclear.picture)
+    why = holdclear.why_not(pic, str(body.get("code") or ""))
+    if why:
+        return JSONResponse({"error": why, "kind": pic.get("kind")}, status_code=409 if pic["held"] else 400)
+    who = _accept_who()
+    got = await asyncio.to_thread(holdclear.accept, who, "settings", pic)
+    _accept_ledger(who, "gui", pic, "ok")
+    await _tell_admins({"type": "security_hold", "released": True, "at": time.time(), "files": []})
+    return got
+
+
+@app.post("/api/security/code")
+async def api_security_code(request: Request, body: dict):
+    """Set up the authenticator code that an unknown change needs. Shown once. Replacing one
+    needs the current code as well, so somebody holding a session can't swap it for theirs."""
+    from . import holdclear
+    refused = _accept_proof(request, body)
+    if refused:
+        return refused
+    if holdclear.code_set() and not holdclear.code_ok(str(body.get("code") or "")):
+        holdclear.missed()
+        return JSONResponse({"error": "A code is set up already. Give its current 6 digits to replace it."},
+                            status_code=403)
+    try:
+        got = await asyncio.to_thread(holdclear.new_code, _accept_who())
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"error": f"The vault couldn't keep it: {e}"}, status_code=500)
+    with contextlib.suppress(Exception):
+        usersmod.store_for("").audit_add(principal_kind="user", principal_id=_accept_who()[:60], surface="gui",
+                                         action="integrity.code", resource="vault:integrity.totp",
+                                         effect="allow", rule="person", outcome="ok")
+    secevents.flag("integrity.code", "set up or replaced")
+    return got
 
 
 @app.get("/api/security/events")

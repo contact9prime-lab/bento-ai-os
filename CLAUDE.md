@@ -2410,9 +2410,18 @@ autonomy level. The audit and its 97 fixes are in `docs/security-testing.md`; th
 - **`netguard` is the one client for an address somebody named.** `safeopen` opens what was checked.
   `constcmp.same` compares secrets.
 - **The watcher** (`agentos/integrity.py`) is off until `serve()` arms it; a hold is step 0 of the gate and only
-  `bento integrity accept` at a person's terminal clears it. Only `updates.apply`/`rollback` re-baseline. A new
+  a person clears it. Only `updates.apply`/`rollback` re-baseline. A new
   writer of `config.json` or `users.json` calls `integrity.noted`. The ledger is an HMAC under `ledger.key`
   with `ledger.anchor` outside the database.
+- **An admin may accept a hold from their phone or Settings** (`agentos/holdclear.py`, `/api/security/picture|
+  accept|code`, `_hold_phones`, Telegram's `_hold_answer`/`send_hold`, WhatsApp's `_one`, `bento integrity
+  changes|code`; `tests/test_holdclear.py`). The owner's call (2026-11), because a machine nobody can log into
+  stayed stopped. Five rules: while held no agent runs, so no agent can press it; the picture decides the proof
+  (`settled` undone, `known` a clean commit on the remote: a tap; `unknown` anything else, a held key file or the
+  record: the authenticator's code, never a password in a chat); a held home file counts even after `noted`
+  (the hold's own list), or a replaced key read as settled; a machine with a signing key still accepts only at
+  its terminal; every accept is an `integrity.accepted` alert and an `integrity.accept` ledger row. The phones
+  hear the hold when it trips and at every start while it holds. Replacing the code needs the current one.
 - **Attacks go in `secevents.flag`**, one alert per incident, the OS's words only to a model.
 - **The suite has its own home** (`tests/conftest.py` sets `AGENTOS_HOME` before anything imports agentos;
   `tests/test_suite_home.py`). The in-process server opened the real `~/.agentos/agentos.db` at import, and

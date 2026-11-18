@@ -41,6 +41,11 @@ CHUNK = 3900  # Telegram hard limit is 4096
 TG_FILE_LIMIT = 50 * 1024 * 1024  # what the Bot API lets a bot upload
 
 
+def _hold_help() -> str:
+    from . import holdclear
+    return holdclear.PHONE_HELP
+
+
 class TelegramBridge(usersmod.Scoped):
     def __init__(self, cfg: dict, store, toolbox, broadcast):
         self.cfg = cfg
@@ -569,6 +574,13 @@ class TelegramBridge(usersmod.Scoped):
             self.store.log("telegram", f"a reply from {chat_id} answered the browser")
             if _cdpb.reply_of(said):
                 await self.send(_cdpb.reply_of(said), chat_id)
+            return
+        # The agents are held (integrity): the paired chat of an admin answers the hold here,
+        # before any agent, and its words (a code, maybe) are never logged or saved.
+        said = self._hold_answer(chat_id, chat_info.get("type", "private"), text)
+        if said:
+            self.store.log("telegram", f"the paired chat {chat_id} answered the security hold")
+            await (self.send_hold(said) if said.endswith(_hold_help()) else self.send(said, chat_id))
             return
         frm = msg.get("from", {})
         title = (chat_info.get("title")
@@ -1168,6 +1180,32 @@ class TelegramBridge(usersmod.Scoped):
             await self.broadcast({"type": "telegram_chats"})
         return "allowed" if allow else "blocked"
 
+    def _hold_answer(self, chat_id, ctype: str, text: str) -> str | None:
+        """holdclear's answer when this is the paired private chat of an admin and agents are held."""
+        from . import holdclear, integrity as _integrity
+        if not _integrity.held():
+            return None
+        owner = chat_id and chat_id == (self._t().get("owner_chat_id") or 0) and ctype == "private"
+        uid = usersmod.current() or ""
+        who = ((usersmod.get(uid) or {}).get("name") if uid else "") or "the admin"
+        return holdclear.from_phone(f"tg:{chat_id}", text, bool(owner) and usersmod.is_admin(uid),
+                                    who, "telegram")
+
+    async def send_hold(self, text: str, chat_id: int | None = None) -> str:
+        """The hold's message with its three buttons, to the paired chat."""
+        chat_id = chat_id or self._t().get("owner_chat_id")
+        if not chat_id or not self._t().get("bot_token"):
+            return "Telegram isn't paired."
+        rows = [[{"text": "Show changes", "callback_data": "ig:show"}],
+                [{"text": "Accept", "callback_data": "ig:accept"},
+                 {"text": "Keep stopped", "callback_data": "ig:keep"}]]
+        try:
+            await self._api("sendMessage", chat_id=chat_id, text=text[:4000],
+                            reply_markup={"inline_keyboard": rows})
+            return ""
+        except Exception as e:  # noqa: BLE001
+            return f"Telegram refused it: {e}"
+
     async def _handle_callback(self, cq: dict):
         if (cq.get("data") or "").startswith("ss:"):
             # A session button (/sessions). Any enabled chat has sessions, so this is
@@ -1195,6 +1233,14 @@ class TelegramBridge(usersmod.Scoped):
             await self._api("answerCallbackQuery", callback_query_id=cq["id"])
         except Exception:
             pass
+        if data.startswith("ig:"):
+            # the hold's buttons (send_hold): Show changes, Accept, Keep stopped
+            chat_id = ((cq.get("message") or {}).get("chat") or {}).get("id") or cq.get("from", {}).get("id")
+            said = self._hold_answer(chat_id, "private", data)
+            if said:
+                self.store.log("telegram", "the paired chat answered the security hold")
+                await self.send(said, chat_id)
+            return
         if data == "bw:done":
             # "Done, carry on" under a page the browser was waiting on
             from . import cdpbrowser as _cdpb

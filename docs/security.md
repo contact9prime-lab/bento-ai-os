@@ -242,12 +242,39 @@ When one changes without the OS having done it:
 1. The security record gets a line naming the file, and an alert reaches your screens and your Telegram or WhatsApp.
 2. **The agents stop.** The gate refuses every step (`integrity-hold`, ahead of every grant and autonomy level),
    new turns are refused with a sentence, running turns are ended, and running agent CLIs are stopped.
-3. It stays that way across a restart until a person clears it, at a terminal outside Bento:
+3. It stays that way across a restart until an admin accepts it. Every admin's paired Telegram or WhatsApp
+   hears it when it trips and again each time Bento starts while it holds.
+
+Bento works out what the change is, so you know how much to worry:
+
+| What Bento says | What it means | To accept it |
+|---|---|---|
+| **Back to normal** | The files match the record again. Whatever changed them was undone. | A tap |
+| **Matches GitHub** | The code is a clean checkout of a commit on the branch your remote has. It just wasn't installed through `bento update`. | A tap |
+| **Unknown change** | Content git can't vouch for, a changed key file, or a record that doesn't check out. | The 6-digit code from your authenticator app |
+
+You can accept it in three places:
+
+- **Your phone.** Reply `show`, `accept` or `keep` in the paired chat of an admin (Telegram also has buttons).
+  For an unknown change Bento then asks for the code. The reply is read before any agent and never saved.
+- **Settings → Permissions → Security.** Show changes, then Accept with your password. Details has
+  *Authenticator code* to set one up, and replacing it needs the current code.
+- **The terminal**, as before:
 
 ```bash
-bento integrity status     # what changed, sealed or not, signed or not, locked or not
+bento integrity status     # what changed, and what Bento makes of it
+bento integrity changes    # the diff behind it
 bento integrity accept     # after you've looked. It lists what it takes as correct, and you type the word.
+bento integrity code       # set up the authenticator code that an unknown change needs
 ```
+
+![A planted file: unknown, with what it says and the code to accept it](screenshots/security-hold-unknown.png)
+![The same stopped-agents card on a 390px phone](screenshots/security-hold-unknown-phone.png)
+![A change that was undone: back to normal, one tap](screenshots/security-hold-settled.png)
+
+A machine whose record is signed with a key (`bento integrity trust`) accepts only at its terminal, with the
+key. A phone can't hold it. Every accept is a security alert to every admin and a row in the ledger.
+Five wrong codes or passwords pause accepting for 15 minutes.
 
 What it looks like, after a file appeared in the code tree:
 
@@ -281,7 +308,7 @@ With nothing wrong it is one quiet line, and details open under it:
 ![The Security card, quiet, on a phone](screenshots/security-card-quiet-phone.png)
 ![The Security card with its details open](screenshots/security-card-details.png)
 
-There is no route, button or tool that clears it. The card in Settings → Permissions → Security only reads.
+No agent tool can clear it, and while it holds every agent is stopped, so no agent can press Accept either.
 
 The server and anything that isn't in a jail run as the same Unix user, so here is exactly what each layer does
 about somebody with that access:
@@ -291,7 +318,7 @@ about somebody with that access:
 | Memory baseline | Change a file unseen while the server runs | Kill the server and change files while it's down |
 | Record, unsigned (`bento integrity seal`) | Change code while stopped with nothing noticing, unless it also rewrites the record | Rewrite the record too. It reads "unsigned" everywhere for that reason |
 | Record, signed (`keygen`, `trust`, `seal --key`) | Forge a record, or accept a change, without the key that stays off this machine | Replace `integrity.py` itself so it stops checking, then restart |
-| The hold | Lift it through any tool, route or model | Detach from the server, fake a terminal and type the phrase. On a machine with a signing key that gets nowhere, because accept needs the key |
+| The hold | Lift it through any tool or model | Detach from the server, fake a terminal and type the phrase; read the authenticator's secret out of the vault and accept as an admin. On a machine with a signing key that gets nowhere, because accept needs the key |
 | **Root lock (`bento integrity lock`)** | **Write its own gate at all, or swap a dependency in `.venv`** | Read what this user can read, and run its own programs as this user |
 | Ledger key | (Reaching only the database) rewrite a row and have it verify | (Reading `ledger.key`) re-chain the ledger and move the anchor |
 

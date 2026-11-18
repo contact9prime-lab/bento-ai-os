@@ -9733,6 +9733,12 @@ def _integrity_cli(args):
             print(json.dumps(st, indent=2))
             return 0
         print(f"  {st['line']}")
+        if st["held"]:
+            from . import holdclear
+            pic = holdclear.picture(root)
+            print(f"  what it is: {pic['words']}")
+            print("  more: bento integrity changes" + ("" if pic["kind"] != holdclear.UNKNOWN else
+                                                       ". Accepting from a phone or Settings needs the authenticator code"))
         print(f"  code: {st['root']}")
         if st["state"] == "changed":
             print("  differs from the record: " + ", ".join(st["changed"][:8]))
@@ -9748,6 +9754,26 @@ def _integrity_cli(args):
             if st["open_parents"] else "") if st["locked"] else
             "no. Whoever runs as this user can change it. bento integrity lock is the real boundary."))
         return 0 if not st["held"] else 1
+    if act == "changes":
+        from . import holdclear
+        print(holdclear.changes(root=root))
+        return 0
+    if act == "code":
+        # The authenticator code an unknown change needs before a phone or Settings may accept it.
+        from . import holdclear
+        if not _integrity_person(args, "code", "  This makes the authenticator code that accepting an unknown "
+                                 "change from a phone or Settings needs." + ("\n  It replaces the one set up now."
+                                                                           if holdclear.code_set() else "")):
+            return 1
+        try:
+            got = holdclear.new_code()
+        except Exception as e:  # noqa: BLE001
+            print(f"✗ The vault couldn't keep it: {e}")
+            return 1
+        print("✓ Add this to your authenticator app (it is shown once):")
+        print(f"  secret: {got['secret']}")
+        print(f"  link:   {got['uri']}")
+        return 0
     if act in ("seal", "accept"):
         phrase = integrity.SEAL_PHRASE if act == "seal" else integrity.ACCEPT_PHRASE
         entry = integrity.record_for(root)
@@ -10323,8 +10349,8 @@ def main():
 
     p_integrity = verb("integrity", help="the code watcher: status, seal, accept a change, keys, the root lock")
     p_integrity.add_argument("action", nargs="?", default="status",
-                             choices=["status", "seal", "accept", "dev", "keygen", "trust",
-                                      "sign-release", "lock", "unlock"])
+                             choices=["status", "changes", "seal", "accept", "code", "dev", "keygen",
+                                      "trust", "sign-release", "lock", "unlock"])
     p_integrity.add_argument("value", nargs="?", default="")
     p_integrity.add_argument("--key", default="", help="the private key's path, when you use one")
     p_integrity.add_argument("--root", default="", help="which copy of the code (default: the one the server runs)")

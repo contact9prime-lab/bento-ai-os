@@ -741,7 +741,8 @@ function handle(ev){
       if(typeof secCardPaint==='function')secCardPaint();
       break;}
     case 'security_hold':{
-      toast('Agents are stopped because a security file changed.',{kind:'err',label:'Review',go:()=>{if(typeof settingsGo==='function')settingsGo('permissions');else openApp('settings')}});
+      if(ev.released){if(typeof secCardPaint==='function')secCardPaint();break}   // the security_alert toasts it
+      toast('Agents are stopped because a security file changed.',{kind:'err',label:'Review',go:()=>placeSettings('permissions','Security')()});
       if(typeof secCardPaint==='function')secCardPaint();
       break;}
     case 'approval_resolved':{
