@@ -95,6 +95,12 @@ can consent.**
 
 ![An ethics card in Chat: 1,240 files measured, and the words to type before Go ahead](screenshots/ethics-card.png)
 
+![The ethics reviewer's concern on the card, with the conversation's score](screenshots/ethics-reviewer-card.png)
+
+![The chip past the hold line, and the flags that built the score](screenshots/ethics-score-flags.png)
+
+![Settings: this week by MIT AI Risk category, and the library's sources](screenshots/ethics-week-library.png)
+
 A machine counts as yours when it is this one, one Bento set up or logs into (Settings →
 Network), or a site that served Bento's proof file. A sentence from you or the AI never makes a
 machine yours. To prove a site: `bento ethics prove example.com`, put the line it prints at
