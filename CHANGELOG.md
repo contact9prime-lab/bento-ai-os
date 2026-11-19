@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.39 — 2026-11-19
+
+**When Claude Code can't sign in inside the sandbox, Bento says so.** On some machines, such as a
+Claude Code cloud session, Claude Code keeps its sign-in in a file outside your home folder.
+Bento's sandbox hides that on purpose, so every answer failed with "Authentication error · This
+may be a temporary network issue", which sent people to check a network that was fine. Now Chat,
+the phone channels, Settings → AI providers → Installed agents and `bento doctor` say what
+actually happened and name the file. Nothing is let through the sandbox to make it work: choose
+another brain, or run Bento where Claude Code is signed in to your own account. If you've set a
+fallback brain, it takes the turn.
+
 ## 0.9.38 — 2026-11-18
 
 **Approvals reach you on every channel, the same card.**

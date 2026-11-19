@@ -220,6 +220,19 @@ So what they can reach is fixed before they start.
 What the jail can't do: the CLI and its shell share it, so a shell can read the CLI's own sign-in.
 That is why a non-admin's shell needs an admin's yes (Settings → Executors).
 
+The jail keeps only the sign-in in the CLI's own folder (`~/.claude/.credentials.json` for Claude
+Code). Some machines keep it somewhere else. In a Claude Code cloud session, for example, it's a
+token file in another user's home, named by `CLAUDE_SESSION_INGRESS_TOKEN_FILE`. The jail hides
+that on purpose, so Claude Code can't sign in there. Bento says so in Chat, on Settings → AI
+providers → Installed agents and in `bento doctor`, and names the file. Claude Code's own words
+for it are "This may be a temporary network issue", which isn't the cause. Nothing is let through
+to make it work. Choose another brain, or run Bento where Claude Code is signed in to your own
+account. If you have a fallback brain set, it takes the turn.
+
+![Chat saying Claude Code can't sign in inside Bento's sandbox, naming the hidden token file](screenshots/signin-hidden-chat.png)
+
+![Settings, Installed agents: the Claude Code card warning that it can't sign in inside the sandbox here](screenshots/signin-hidden-settings.png)
+
 Where no jail can start, the shell is off until you accept that in Settings → Executors, and a
 non-admin gets no file tools and no shell. The envelope sentence on that page says which applies.
 
