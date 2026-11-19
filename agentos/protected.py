@@ -33,7 +33,8 @@ SECURITY_MODULES = frozenset({
     "agentos/config.py",
     "agentos/constcmp.py",
     "agentos/edgecode.py",
-    "agentos/ethics.py",
+    "agentos/ethics.py", "agentos/ethicslib.py", "agentos/ethicsctx.py", "agentos/ethicseval.py",
+    "agentos/ethics_library.json",
     "agentos/executors.py",
     "agentos/fabric.py",
     "agentos/flows.py",
@@ -76,7 +77,7 @@ SECRET_FILES = frozenset({
     "git-askpass.sh", "registry_signing.key", "timetravel.key",
     "session-denied.json", "session.locked",
 })
-WRITE_LOCKED_FILES = frozenset({"inventory.json", "update-history.json"})
+WRITE_LOCKED_FILES = frozenset({"inventory.json", "update-history.json", "ethics-library.json"})
 # Sign-ins (MCP tokens, the WhatsApp device, the browser's cookies), and whole copies of a home
 # with all of the above in them (snapshots, time travel's blobs, a restore's staging).
 SECRET_DIRS = frozenset({"pki", ".standby", ".keep", "oauth", "whatsapp", "browser", "appwindow",

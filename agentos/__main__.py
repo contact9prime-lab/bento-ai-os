@@ -3541,8 +3541,137 @@ def _ethics_cli(args):
         else:
             print(f"✓ {host} no longer counts as yours.")
         return
-    print("bento ethics [show | check \"COMMAND\" | own on|off | prove SITE | proved SITE | forget SITE]")
+    if act in ("flags", "report", "score", "clear", "library", "reviewer"):
+        _ethics_cli2(act, rest, cfg, port, live, ledger)
+        return
+    print("bento ethics [show | check \"COMMAND\" | own on|off | prove SITE | proved SITE | forget SITE |\n"
+          "              flags | report | score CONVERSATION | clear CONVERSATION | library [update] |\n"
+          "              reviewer off|flagged|risky]")
     sys.exit(2)
+
+
+def _ethics_cli2(act, rest, cfg, port, live, ledger):
+    """The ethics score, its flags, the week's report, the library and the reviewer, from a terminal.
+    Read from this machine's database when the server is down (ethicsctx.py)."""
+    import datetime
+    from . import config as cfgmod
+    from . import ethics as eth
+    from . import ethicsctx
+    from . import ethicslib
+    from .memory import Store
+
+    def store():
+        return Store(cfgmod.DB_PATH)
+
+    def when(ts):
+        return datetime.datetime.fromtimestamp(ts).strftime("%d %b %H:%M")
+
+    def flags_out(rows):
+        if not rows:
+            print("  no flags")
+        for f in rows:
+            done = " (cleared)" if f.get("cleared_at") else ""
+            print(f"  {when(f['ts'])}  +{f['weight']:<2} {f['words']}{done}")
+            if f.get("detail"):
+                print(f"           {str(f['detail'])[:110]}")
+            if f.get("category_words"):
+                print(f"           MIT AI Risk {f['category']}: {f['category_words']}")
+
+    if act == "flags":
+        rows = (_api_call(port, "/api/ethics/flags?limit=40") if live is not None else
+                {"flags": ethicsctx.recent(store(), limit=40)}).get("flags", [])
+        print("Ethics flags, last 7 days, newest first:\n")
+        flags_out(rows)
+        return
+    if act == "report":
+        rep = _api_call(port, "/api/ethics/report") if live is not None else ethicsctx.report(store())
+        print(f"Ethics report, last {rep['days']:g} days: {rep['flags']} flags. "
+              f"Account score {rep['account']} ({rep['account_level']}).\n")
+        for c in rep["by_category"][:8]:
+            print(f"  {c['weight']:>4}  {c['id']}  {c['words']}")
+        if rep["conversations"]:
+            print("\n  Conversations that rose:")
+            for c in rep["conversations"]:
+                t = c.get("title") or c["ctx"]
+                print(f"  {c['score']:>4}  {c['level']:<8} {t[:60]}{'  (reviewed)' if c['cleared'] else ''}")
+        return
+    if act in ("score", "clear"):
+        if not rest:
+            print(f"bento ethics {act} CONVERSATION_ID")
+            sys.exit(2)
+        cid = rest[0]
+        if act == "score":
+            st = (_api_call(port, f"/api/ethics/score?conversation={cid}") if live is not None
+                  else ethicsctx.state(store(), cid, flags=True))
+            t = st["thresholds"]
+            print(f"Ethics score {st['score']} ({st['conversation_level']}); account {st['account']} "
+                  f"({st['account_level']}). Lines: watch {t['watch']}, caution {t['caution']}, hold {t['hold']}"
+                  f" (the account's are ×{t['account_x']}).\n")
+            flags_out(st.get("flags") or [])
+            return
+        phrase = "clear the flags"
+        try:
+            typed = input(f"Type “{phrase}” to clear this conversation's flags: ")
+        except EOFError:
+            typed = ""
+        if not eth.typed_ok(phrase, typed):
+            print("✗ not cleared")
+            sys.exit(1)
+        if live is not None:
+            got = _api_call(port, "/api/ethics/clear", "POST", {"conversation": cid, "typed": typed})
+            if got.get("error"):
+                print(f"✗ {got['error']}")
+                sys.exit(1)
+            n = got.get("cleared", 0)
+        else:
+            n = ethicsctx.clear(store(), cid)
+            ledger("ethics.clear", f"conversation:{cid}", f"{n} flags reviewed and cleared")
+        print(f"✓ {n} flag{'s' if n != 1 else ''} cleared for that conversation. The account keeps them for a day.")
+        return
+    if act == "library":
+        if rest and rest[0] == "update":
+            if live is not None:
+                got = _api_call(port, "/api/ethics/library/update", "POST", {})
+                if got.get("error"):
+                    print(f"✗ {got['error']}")
+                    sys.exit(1)
+            else:
+                got = asyncio.run(ethicslib.update())
+                ledger("ethics.library", "ethics:library",
+                       f"added {got['added_programs']} programs and {got['added_phrases']} phrases")
+            print(f"✓ added {got['added_programs']} programs and {got['added_phrases']} phrases.")
+        sm = ethicslib.summary()
+        print(f"Ethics library: {sm['programs']} programs, {sm['phrases']} phrases, {sm['curated']} of Bento's own.")
+        for k, v in sorted(sm["kinds"].items()):
+            print(f"  {v:>5} {k}")
+        print()
+        for src in sm["sources"]:
+            print(f"  {src['name']} ({src['licence']})" + (f": {src['url']}" if src.get('url') else ""))
+            if src.get("notice"):
+                print(f"    {src['notice']}")
+        return
+    if act == "reviewer":
+        from . import ethicseval
+        if not rest:
+            print(f"The ethics reviewer reads: {eth.conf(cfg)['evaluator']}. bento ethics reviewer off|flagged|risky")
+            return
+        m = rest[0]
+        if m not in ethicseval.MODES:
+            print("bento ethics reviewer off|flagged|risky")
+            sys.exit(2)
+        if live is not None:
+            got = _api_call(port, "/api/ethics", "PUT", {"evaluator": m})
+            if got.get("error"):
+                print(f"✗ {got['error']}")
+                sys.exit(1)
+        else:
+            cfg.setdefault("ethics", {})["evaluator"] = m
+            cfgmod.save_config(cfg)
+            ledger("ethics.write", "ethics:evaluator", f"the ethics reviewer reads: {m}")
+        print({"off": "✓ The reviewer is off. The deterministic check still runs.",
+               "flagged": "✓ The reviewer reads risky steps in conversations that have flags.",
+               "risky": "✓ The reviewer reads every risky step."}[m])
+        return
 
 
 def _handoff_cli(args):
@@ -10993,9 +11122,9 @@ def main():
     p_team.add_argument("--messages", type=int, default=20, help="freetalk: stop after this many messages (up to 40)")
     p_team.add_argument("--agents", default="", help="freetalk: who talks, comma-separated (default: all)")
     p_team.add_argument("--act", action="store_true", help="freetalk: let them use their tools too")
-    p_ethics = verb("ethics", help="the ethics check: its rules, your switch, check a command, prove a site is yours")
+    p_ethics = verb("ethics", help="the ethics check: its rules, your switch, check a command, the score and flags, the library")
     p_ethics.add_argument("action", nargs="?", default="",
-                          choices=["", "show", "check", "own", "prove", "proved", "forget"])
+                          choices=["", "show", "check", "own", "prove", "proved", "forget", "flags", "report", "score", "clear", "library", "reviewer"])
     p_ethics.add_argument("rest", nargs=argparse.REMAINDER)
     p_handoff = verb("handoff", help="sign-in links for your phone: are they offered, what is open, close it")
     p_handoff.add_argument("action", nargs="?", default="status", choices=["status", "on", "off", "close"])

@@ -19239,17 +19239,97 @@ async def api_ethics_set(body: dict):
     of your own things. The rest has no switch, because nobody's yes covers someone else."""
     from . import ethics as ethics_mod
     b = body or {}
-    if "own" not in b:
-        return JSONResponse({"error": "only `own` can be switched; the other rules have no switch"},
+    if "own" not in b and "evaluator" not in b:
+        return JSONResponse({"error": "only `own` and `evaluator` can be set; the other rules have no switch"},
                             status_code=400)
-    on = bool(b.get("own"))
     e = state["cfg"].setdefault("ethics", {})
-    if (e.get("own", True) is not False) != on:
-        e["own"] = on
-        _ledger("ethics.write", "ethics:own",
-                "typed confirmation before deleting a lot of your own things: " + ("on" if on else "off"))
+    changed = False
+    if "own" in b:
+        on = bool(b.get("own"))
+        if (e.get("own", True) is not False) != on:
+            e["own"] = on
+            changed = True
+            _ledger("ethics.write", "ethics:own",
+                    "typed confirmation before deleting a lot of your own things: " + ("on" if on else "off"))
+    if "evaluator" in b:
+        from . import ethicseval
+        m = str(b.get("evaluator") or "")
+        if m not in ethicseval.MODES:
+            return JSONResponse({"error": "the reviewer is off, flagged or risky"}, status_code=400)
+        if ethics_mod.conf(state["cfg"])["evaluator"] != m:
+            e["evaluator"] = m
+            changed = True
+            _ledger("ethics.write", "ethics:evaluator", f"the ethics reviewer reads: {m}")
+    if changed:
         cfgmod.save_config(state["cfg"])
     return {"ok": True, **ethics_mod.summary(state["cfg"])}
+
+
+ETHICS_CLEAR_PHRASE = "clear the flags"
+
+
+@app.get("/api/ethics/score")
+async def api_ethics_score(conversation: str = ""):
+    """A conversation's ethics score, its level, the account's, and its latest flags."""
+    from . import ethicsctx
+    return ethicsctx.state(state["store"], conversation[:80], flags=True)
+
+
+@app.get("/api/ethics/flags")
+async def api_ethics_flags(conversation: str = "", days: float = 7, limit: int = 60):
+    from . import ethicsctx
+    return {"flags": ethicsctx.recent(state["store"], ctx=conversation[:80], limit=max(1, min(int(limit), 500)),
+                                      days=max(0.1, min(float(days), 90)))}
+
+
+@app.get("/api/ethics/report")
+async def api_ethics_report(days: float = 7):
+    """The week's flags by kind and by MIT AI Risk category, and the conversations that rose."""
+    from . import ethicsctx
+    rep = ethicsctx.report(state["store"], days=max(0.1, min(float(days), 90)))
+    titles = {c["id"]: c.get("title") for c in state["store"].list_conversations(limit=2000)} \
+        if hasattr(state["store"], "list_conversations") else {}
+    for c in rep["conversations"]:
+        c["title"] = titles.get(c["ctx"]) or ""
+    return rep
+
+
+@app.post("/api/ethics/clear")
+async def api_ethics_clear(body: dict):
+    """A person reviewed a conversation's flags: they stop counting for it. Typed, and only ever
+    the conversation's score; the account's keeps them for its window."""
+    from . import ethicsctx
+    from . import ethics as ethics_mod
+    b = body or {}
+    cid = str(b.get("conversation") or "")[:80]
+    if not cid:
+        return JSONResponse({"error": "name the conversation"}, status_code=400)
+    if not ethics_mod.typed_ok(ETHICS_CLEAR_PHRASE, str(b.get("typed") or "")):
+        return JSONResponse({"error": f"type “{ETHICS_CLEAR_PHRASE}” to clear them", "phrase": ETHICS_CLEAR_PHRASE},
+                            status_code=400)
+    n = ethicsctx.clear(state["store"], cid)
+    _ledger("ethics.clear", f"conversation:{cid}", f"{n} flag{'s' if n != 1 else ''} reviewed and cleared")
+    return {"ok": True, "cleared": n, **ethicsctx.state(state["store"], cid, flags=True)}
+
+
+@app.get("/api/ethics/library")
+async def api_ethics_library():
+    """What the ethics library holds and where it came from (ethicslib.py)."""
+    from . import ethicslib
+    return ethicslib.summary()
+
+
+@app.post("/api/ethics/library/update")
+async def api_ethics_library_update():
+    """Fetch MITRE ATT&CK and ATLAS again; what is new is ADDED to this machine's overlay. Admin only."""
+    from . import ethicslib
+    try:
+        got = await ethicslib.update()
+    except Exception as e:
+        return JSONResponse({"error": f"couldn't update the library: {e}"}, status_code=502)
+    _ledger("ethics.library", "ethics:library",
+            f"added {got['added_programs']} programs and {got['added_phrases']} phrases")
+    return {"ok": True, **got, **ethicslib.summary()}
 
 
 @app.post("/api/ethics/prove")

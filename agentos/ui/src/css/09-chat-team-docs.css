@@ -390,3 +390,20 @@ select.modelchip option{background:var(--bg2);color:var(--txt)}
 .eth-verdict.refuse{border-color:color-mix(in srgb,var(--err,#e05d5d) 55%,var(--line))}
 .eth-verdict.caution{border-color:color-mix(in srgb,var(--warn,#e0a040) 55%,var(--line))}
 .eth-verdict.ok{border-color:color-mix(in srgb,var(--ok,#4caf7d) 45%,var(--line))}
+/* The ethics score (ethicsctx.py): the chat's chip, the card's line, Settings' week and library */
+.approval .aeth-rev{font-size:var(--fs-xs,12px);color:var(--txt2,var(--txt));margin:-2px 0 6px}
+.approval .aeth-ctx{font-size:var(--fs-sm);margin:0 0 8px;padding:5px 9px;border-radius:var(--r-md);border:1px solid var(--line)}
+.lv-watch{--lv:var(--acc,#7c8cff)}.lv-caution{--lv:var(--warn,#e0a040)}.lv-hold{--lv:var(--err,#e05d5d)}
+.approval .aeth-ctx[class*=lv-]:not(.lv-ok),.eth-tag[class*=lv-]:not(.lv-ok){border-color:color-mix(in srgb,var(--lv) 55%,var(--line));color:var(--lv)}
+#ethchip.ethchip{font-variant-numeric:tabular-nums}
+#ethchip.ethchip[class*=lv-]:not(.lv-ok){color:var(--lv);border-color:color-mix(in srgb,var(--lv) 50%,var(--line))}
+.eth-flagcard{margin:8px auto 12px;max-width:760px;padding:12px 14px;border-radius:var(--r-lg,12px);border:1px solid var(--line);background:var(--bg2);display:flex;flex-direction:column;gap:6px;font-size:var(--fs-sm)}
+.eth-flagcard ul{margin:2px 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px}
+.eth-flagcard li,.eth-cats li{display:flex;gap:8px;overflow-wrap:anywhere;line-height:1.4}
+.eth-flagcard button{align-self:flex-start}
+.eth-n{font-family:var(--mono);color:var(--txt2,var(--txt));min-width:2.2em;flex:0 0 auto}
+.eth-cats{margin:6px 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:3px;font-size:var(--fs-sm)}
+.eth-conv{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:4px 0}
+.eth-ct{flex:1 1 160px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-sm)}
+.eth-srcs{margin:6px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:5px;font-size:var(--fs-sm)}
+.eth-srcs .mut{font-size:var(--fs-xs,12px)}

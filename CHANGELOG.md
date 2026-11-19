@@ -16,6 +16,19 @@ only the party who would be hurt can consent.
   yours, and Try a command. `bento ethics` does the same in a terminal, and Permissions → Flow shows
   the new Ethics step.
 
+**And it builds up.** Bento now recognises tools, techniques and harm to people from MITRE ATT&CK,
+MITRE ATLAS and the MIT AI Risk Repository's categories, shipped with their licences and notices.
+Every refusal, caution, worrying request and secret read is a flag on its conversation, and the
+flags add up to an ethics score shown on Chat's header. Past 10, every risky step is typed; past
+20, none runs, though reading still works. Trying another way after a refusal adds more.
+
+- Sending something to a host nobody named, or sending anything out after reading a key or a
+  password file, asks you to type.
+- An ethics reviewer (your brain, with no tools) reads risky steps in a conversation that has
+  flags. It can only ask you to type, never allow anything. Settings → Permissions → Ethics has
+  its switch, This week, Clear and the library. `bento ethics flags | report | score | clear |
+  library | reviewer` in a terminal.
+
 ## 0.9.39 — 2026-11-19
 
 **When Claude Code can't sign in inside the sandbox, Bento says so.** On some machines, such as a

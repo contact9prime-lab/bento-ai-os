@@ -261,7 +261,9 @@ def test_no_agent_can_reach_the_switch():
     s = (ROOT / "agentos" / "server.py").read_text()
     put = s[s.index('@app.put("/api/ethics")'):s.index('@app.post("/api/ethics/prove")')]
     assert '"ethics.write"' in put, "a switch is a ledger row"
-    assert "only `own` can be switched" in put
+    assert "only `own` and `evaluator` can be set" in put
+    for m in ("agentos/ethicslib.py", "agentos/ethicsctx.py", "agentos/ethicseval.py"):
+        assert m in __import__("agentos.protected", fromlist=["x"]).SECURITY_MODULES
 
 
 def test_the_settings_card_and_the_cli(tmp_path, capsys, monkeypatch):

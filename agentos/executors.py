@@ -2250,6 +2250,7 @@ def open_team_door(env: "Envelope", cfg: dict, toolbox, store, emit, approver,
     agent = Agent(cfg, toolbox, "", emit or _quiet, approver, conversation_id=conversation_id,
                   surface=surface, tool_filter=list(door), space_id=space_id)
     agent._task_text = text
+    agent._ethics_note(text)            # a forwarded turn's words count for its ethics score too
     if taint:
         agent.taint = list(taint)       # the task came from outside: so does every hand-over
     schemas = [t for t in agent._tools() if t["name"] in door]

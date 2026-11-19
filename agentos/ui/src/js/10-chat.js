@@ -31,6 +31,7 @@ function renderChat(body){
           <option value="balanced">Balanced</option>
           <option value="full">Full autonomy</option>
         </select>
+        <button id="ethchip" class="endbtn ethchip" hidden title="This conversation's ethics score" onclick="ethChipOpen()"></button>
         <button id="ttsbtn" class="endbtn" title="Speak replies aloud"></button>
         <button id="phonebtn" class="endbtn" title="Carry this chat on in Telegram or WhatsApp, or send its last answer or its story there" onclick="phoneSend()">➤ Phone</button>
         <button id="tracebtn" class="endbtn" title="Download everything this chat did as one JSON file: messages, every run, the gate's decisions, the office and who had which tools (secrets masked). Give it to an AI to find what went wrong." onclick="chatTrace()">⤓ JSON</button>
@@ -307,6 +308,7 @@ async function openConv(cid){
   currentConv=cid;
   officeChatFollow();
   restoreDraft(cid);
+  if(typeof ethChipLoad==='function')ethChipLoad(cid);
   const r=await fetch('/api/conversations/'+cid);const d=await r.json();
   if(!feed)return;
   curBody=null;curThink=null;curText='';

@@ -59,7 +59,103 @@ async function ethicsPaint(){
   kids.push(sitesRow);
   if(ETHICS.prove)kids.push(ethProveBox(d));
   kids.push(ethCheckBox());
+  // the second reading, by the machine's brain with no tools: it can only add typing
+  const sel=ethEl('select');sel.id='eth-eval';
+  [['flagged','When there are flags'],['risky','Every risky step'],['off','Off']].forEach(([v,l])=>{
+    const o=ethEl('option','',l);o.value=v;if((d.evaluator||'flagged')===v)o.selected=true;sel.appendChild(o)});
+  sel.onchange=async()=>{
+    try{await apiJSON('/api/ethics',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({evaluator:sel.value})});
+      toast('The ethics reviewer: '+sel.options[sel.selectedIndex].textContent.toLowerCase(),{kind:'ok'})}
+    catch(e){toast(e.message||String(e),{kind:'err'})}
+  };
+  kids.push(ethRow('Ethics reviewer','A second reading of risky steps by your brain, with no tools.',sel,
+    'It can only ask for typing, never allow anything. It costs a model call each time it reads.'));
+  kids.push(ethEl('div','eth-sub'),ethEl('div','eth-lib'));
   box.replaceChildren(...kids);
+  ethReportPaint(box.querySelector('.eth-sub'));
+  ethLibraryPaint(box.querySelector('.eth-lib'));
+}
+const ETH_CLEAR='clear the flags';
+async function ethReportPaint(el){
+  if(!el)return;
+  let rep;try{rep=await apiJSON('/api/ethics/report')}catch(e){return}
+  const r=ethEl('div','prow stack eth-report'),pl=ethEl('div','pl');
+  pl.append(ethEl('b','','This week'),
+    ethEl('small','',rep.flags?(rep.flags+' flag'+(rep.flags===1?'':'s')+'. Your account’s score today is '+rep.account+' ('+rep.account_level+').'):'No flags this week.'));
+  if(rep.by_category&&rep.by_category.length){
+    const ul=ethEl('ul','eth-cats');
+    rep.by_category.slice(0,5).forEach(c=>{const li=ethEl('li');li.append(ethEl('span','eth-n','+'+c.weight),ethEl('span','',c.words));ul.appendChild(li)});
+    pl.appendChild(ul);
+  }
+  (rep.conversations||[]).filter(c=>c.ctx).slice(0,6).forEach(c=>{
+    const w=ethEl('div','eth-conv');
+    w.append(ethTag(c.score+' · '+c.level,'lv-'+c.level),ethEl('span','eth-ct',c.title||c.ctx));
+    if(!c.cleared){const b=ethEl('button','endbtn','Clear…');b.type='button';b.onclick=()=>ethClearAsk(c.ctx,w);w.appendChild(b)}
+    else w.appendChild(ethEl('small','mut','reviewed'));
+    pl.appendChild(w);
+  });
+  r.appendChild(pl);el.replaceWith(r);
+}
+function ethClearAsk(cid,row){
+  const box=ethEl('div','eth-line');
+  const inp=ethEl('input');inp.type='text';inp.placeholder=ETH_CLEAR;inp.autocomplete='off';inp.spellcheck=false;
+  inp.setAttribute('aria-label','Type '+ETH_CLEAR+' to clear');
+  const go=ethEl('button','endbtn','Clear');go.type='button';go.disabled=true;
+  inp.oninput=()=>{go.disabled=inp.value.trim().toLowerCase()!==ETH_CLEAR};
+  go.onclick=async()=>{
+    try{const j=await apiJSON('/api/ethics/clear',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({conversation:cid,typed:inp.value})});
+      toast(j.cleared+' flag'+(j.cleared===1?'':'s')+' cleared for that conversation',{kind:'ok'});
+      if(cid===currentConv)ethChipPaint(j);ethicsPaint()}
+    catch(e){toast(e.message||String(e),{kind:'err'})}
+  };
+  box.append(ethEl('small','','Type “'+ETH_CLEAR+'”'),inp,go);row.after(box);inp.focus();
+}
+async function ethLibraryPaint(el){
+  if(!el)return;
+  let lib;try{lib=await apiJSON('/api/ethics/library')}catch(e){return}
+  const up=ethEl('button','endbtn','Update');up.type='button';
+  up.onclick=async()=>{up.disabled=true;up.textContent='Fetching…';
+    try{const j=await apiJSON('/api/ethics/library/update',{method:'POST'});toast('Added '+j.added_programs+' programs and '+j.added_phrases+' phrases',{kind:'ok'});ethicsPaint()}
+    catch(e){toast(e.message||String(e),{kind:'err'});up.disabled=false;up.textContent='Update'}};
+  const row=ethRow('Library',lib.programs+' programs and '+lib.phrases+' phrases it recognises, from public sources.',up,
+    'Updating fetches MITRE ATT&CK and ATLAS again and only adds to what shipped. Admins only.');
+  const ul=ethEl('ul','eth-srcs');
+  (lib.sources||[]).forEach(s=>{const li=ethEl('li');li.append(ethEl('b','',s.name),ethEl('small','',' '+s.licence));
+    if(s.notice)li.appendChild(ethEl('div','mut',s.notice));ul.appendChild(li)});
+  row.querySelector('.pl').appendChild(ul);
+  el.replaceWith(row);
+}
+/* The chat's chip: the open conversation's ethics score, shown once it is above nothing.
+   Tap it for the flags that built it. */
+var ETH_CHIP={cid:'',st:null};
+async function ethChipLoad(cid){
+  ETH_CHIP.cid=cid||'';ETH_CHIP.st=null;ethChipPaint(null);
+  if(!cid)return;
+  try{const st=await apiJSON('/api/ethics/score?conversation='+encodeURIComponent(cid));if(ETH_CHIP.cid===cid)ethChipPaint(st)}catch(e){}
+}
+function ethChipPaint(st){
+  const chip=document.getElementById('ethchip');if(!chip)return;
+  if(st)ETH_CHIP.st=st;
+  const s=ETH_CHIP.st;
+  if(!s||(!s.score&&(s.account_level||'ok')==='ok')){chip.hidden=true;return}
+  const lv=s.level||'ok';
+  chip.hidden=false;chip.className='endbtn ethchip lv-'+lv;
+  chip.textContent='⚖ '+s.score+(lv==='ok'?'':' · '+lv);
+  chip.title='Ethics score '+s.score+' here ('+(s.conversation_level||lv)+'), '+s.account+' across your account. Tap for the flags.';
+}
+async function ethChipOpen(){
+  const feed=document.getElementById('feed');if(!feed||!currentConv)return;
+  const old=feed.querySelector('.eth-flagcard');if(old){old.remove();return}
+  let st;try{st=await apiJSON('/api/ethics/score?conversation='+encodeURIComponent(currentConv))}catch(e){toast(e.message||String(e),{kind:'err'});return}
+  ethChipPaint(st);
+  const c=ethEl('div','eth-flagcard'),t=st.thresholds||{};
+  c.append(ethEl('b','','⚖ Ethics score '+st.score+' ('+st.conversation_level+')'),
+    ethEl('small','','Typed from '+t.caution+', and past '+t.hold+' no risky step runs. Your account today: '+st.account+'.'));
+  const ul=ethEl('ul');
+  (st.flags||[]).forEach(f=>{const li=ethEl('li');li.append(ethEl('span','eth-n','+'+f.weight),ethEl('span','',f.words+(f.detail?': '+f.detail:'')));ul.appendChild(li)});
+  if(!ul.children.length)ul.appendChild(ethEl('li','mut','Only your account’s score is up.'));
+  const rv=ethEl('button','endbtn','Review in Settings');rv.type='button';rv.onclick=()=>placeSettings('permissions','Ethics');
+  c.append(ul,rv);feed.prepend(c);
 }
 function ethProveBox(d){
   const p=ETHICS.prove,r=ethEl('div','prow stack eth-prove'),pl=ethEl('div','pl');

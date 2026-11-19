@@ -34,6 +34,8 @@ MACHINE_ONLY: tuple[tuple[frozenset, str], ...] = (
     (WRITE, "/api/screenshot"),
     # accepting a security hold, and its authenticator code (holdclear): the machine's code
     (WRITE, "/api/security/*"),
+    # the ethics library's overlay is the machine's (ethicslib.py): it only adds, and only an admin adds
+    (WRITE, "/api/ethics/library/*"),
     # native apps run outside every account's jail
     (WRITE, "/api/native/launch"),
     (WRITE, "/api/native/store"),

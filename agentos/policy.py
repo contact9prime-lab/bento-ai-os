@@ -1517,6 +1517,8 @@ class PDP(usersmod.Scoped):
             from . import ethics as _ethics
             dec = Decision("ask", _ethics.caution_words(caution), rule="ethics",
                            ethics=caution.to_dict())
+        if ctx.get("tool") and dec.rule != "integrity-hold":
+            dec = self._ethics_context(principal, ctx, dec)
         dec.action, dec.resource = action, resource
         dec.audit_id = self._record(principal, action, resource, ctx, dec)
         # Fail-closed: if the ledger could not record an ALLOW, refuse it. An
@@ -1532,6 +1534,51 @@ class PDP(usersmod.Scoped):
                             "refused: this machine requires every action to be recorded, and "
                             "the audit ledger could not be written (see Logs).",
                             rule="audit-unavailable", action=action, resource=resource)
+        return dec
+
+    def _ethics_context(self, principal: Principal, ctx: dict, dec: Decision) -> Decision:
+        """The conversation's ethics score (ethicsctx.py): read it, apply its thresholds to a risky
+        step, and write the flags this decision raised. A probe reads and writes nothing."""
+        from . import ethics as _ethics
+        from . import ethicsctx as _ectx
+        store = getattr(self, "store", None)
+        if store is None:
+            return dec
+        key = ctx.get("_ethics_key") if "_ethics_key" in ctx else _ectx.key_of(ctx)
+        risky = (ctx.get("base_risk") or ctx.get("risk") or "safe") != "safe"
+        probe = ctx.get("audit") is False
+        st = _ectx.state(store, key) if (risky or dec.rule == "ethics") else None
+        if st and risky and dec.effect != "deny":
+            if st["level"] == "hold":
+                dec = Decision("deny", _ectx.hold_words(st), rule="ethics", ethics=_ethics.Verdict(
+                    "refuse", "context", _ectx.hold_words(st), [f"score {st['score']} (account {st['account']})"],
+                    "", "everyone").to_dict())
+            elif st["level"] == "caution" and dec.rule != "ethics":
+                why = (f"this {'account' if st['by'] == 'account' else 'conversation'} has built up an ethics "
+                       f"score of {st['account'] if st['by'] == 'account' else st['score']}, so every risky "
+                       f"step is confirmed by typing.")
+                v = _ethics.Verdict("caution", "context", why[0].upper() + why[1:],
+                                    [f"score {st['score']} here, {st['account']} across the account"],
+                                    "I understand the risk", "everyone")
+                dec = Decision("ask", _ethics.caution_words(v), rule="ethics", ethics=v.to_dict())
+        if dec.ethics is not None and st is not None:
+            dec.ethics["context"] = {k: st[k] for k in ("score", "level", "account", "account_level", "by")}
+        if probe:
+            return dec
+        tool, args = ctx.get("tool") or "", ctx.get("args") or {}
+        who = f"{principal.kind}:{principal.id}" if principal.id else principal.kind
+        rule = (dec.ethics or {}).get("rule") if dec.rule == "ethics" else ""
+        if rule and rule != "context":
+            if dec.effect == "deny" and any(_ectx.has_recent(store, key, k) for k in
+                                            ("wreck", "attack", "range", "credentials")):
+                _ectx.flag(store, key, "again", "refused again: " + (dec.ethics or {}).get("why", "")[:200],
+                           principal=who)
+            _ectx.flag(store, key, rule, (dec.ethics or {}).get("why", ""), principal=who,
+                       category=_ectx.CATEGORY_OF.get(rule, ""))
+        if dec.effect != "deny":
+            sr = _ethics.secret_read(tool, args)
+            if sr:
+                _ectx.flag(store, key, "secret_read", f"read {sr}", principal=who)
         return dec
 
     def _record(self, principal: Principal, action: str, resource: str,
@@ -1584,7 +1631,10 @@ class PDP(usersmod.Scoped):
         # never a model, so nothing a model says can move it.
         if ctx.get("tool") and isinstance(ctx.get("args"), dict) and ctx["args"]:
             from . import ethics as _ethics
-            v = _ethics.judge(ctx["tool"], ctx["args"], self.cfg)
+            from . import ethicsctx as _ectx
+            ctx["_ethics_key"] = _ectx.key_of(ctx)
+            v = _ethics.judge(ctx["tool"], ctx["args"], self.cfg,
+                              store=getattr(self, "store", None), ctx=ctx["_ethics_key"])
             if v.level == "refuse":
                 return Decision("deny", _ethics.refusal_words(v), rule="ethics", ethics=v.to_dict())
             if v.level == "caution":

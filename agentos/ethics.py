@@ -56,6 +56,17 @@ RULES = (
      "A destructive command Bento can't read fully, so it can't tell what it would hit."),
     ("own", "you", "caution", True,
      "Deleting a lot of your own files, or files outside your workspace."),
+    # phase 2: the library, where a target came from, and what a conversation has been doing
+    ("credentials", "others", "caution", False,
+     "Dumping the passwords and keys saved on a machine (a tool MITRE ATT&CK lists for it)."),
+    ("untraced", "others", "caution", False,
+     "Sending to, or acting on, a host or address nobody named: the agent chose it itself."),
+    ("leak", "others", "caution", False,
+     "Sending anything out after reading a secret, like a key or a password file."),
+    ("context", "everyone", "caution", False,
+     "A conversation whose ethics score has built up: risky steps are typed, and past the hold line none run."),
+    ("evaluator", "others", "caution", False,
+     "A second reading by the machine's brain with no tools found a concern. It can only ask for typing."),
 )
 RULE = {r[0]: r for r in RULES}
 HARMED_WORDS = {"you": "you", "others": "someone else", "everyone": "everyone on this machine"}
@@ -118,7 +129,9 @@ OK = Verdict()
 def conf(cfg: dict | None) -> dict:
     """The person's ethics settings (`ethics`, a USER_KEY). Only `own` is a switch."""
     e = (cfg or {}).get("ethics") if isinstance((cfg or {}).get("ethics"), dict) else {}
+    ev = str(e.get("evaluator") or "flagged")
     return {"own": e.get("own", True) is not False,
+            "evaluator": ev if ev in ("off", "flagged", "risky") else "flagged",
             "sites": [s for s in (e.get("sites") or []) if isinstance(s, dict) and s.get("host")],
             "pending": dict(e.get("pending") or {})}
 
@@ -300,6 +313,8 @@ def _targets(prog: str, args: list[str], cfg: dict | None = None) -> list[str]:
         val = a.split("=", 1)[1] if a.startswith("--") and "=" in a else a
         if val.startswith("-") or not val:
             continue
+        if "@" in val and "://" not in val:          # user@host, DOMAIN/user:pass@host
+            val = val.rsplit("@", 1)[1]
         if "://" in val:
             out.append(val)
             continue
@@ -492,6 +507,12 @@ def judge_command(line: str, cfg: dict, cwd: str = "") -> Verdict:
             if v:
                 found.append(v)
             continue
+        lib = _library_program(prog)
+        if lib:
+            v = _judge_library(prog, lib, words[1:], cfg)
+            if v:
+                found.append(v)
+            continue
         if prog in DESTROY_PROGRAMS:
             v = _judge_delete(words, cwd, cfg, exact)
             if v:
@@ -533,22 +554,179 @@ def judge_python(code: str, cfg: dict) -> Verdict:
     return _judge_targets(sorted(hits)[0], targets, cfg) or OK
 
 
-def judge(tool: str, args: dict, cfg: dict) -> Verdict:
+def _library_program(prog: str) -> dict | None:
+    """A program the ethics library (MITRE ATT&CK) lists as an attack tool; dual-use tools of
+    the operating system carry no weight here."""
+    try:
+        from . import ethicslib
+        e = ethicslib.program(prog)
+    except Exception:
+        return None
+    return e if e and e.get("kind") in ("probe", "credentials", "remote-control") else None
+
+
+def _judge_library(prog: str, lib: dict, args: list[str], cfg: dict) -> Verdict | None:
+    ref = f"MITRE ATT&CK {lib.get('ref')}" if lib.get("ref") else "MITRE ATT&CK"
+    targets = _targets(prog, [a.lstrip("\\") for a in args], cfg)
+    if lib["kind"] == "remote-control":
+        return Verdict("refuse", "attack",
+                       f"{prog} is a framework for remote control of other machines ({ref} lists it as "
+                       f"{lib.get('name')}).", [f"program: {prog}", f"source: {ref}"], "", "others")
+    if targets:
+        v = _judge_targets(prog, targets, cfg)
+        if v:
+            v.facts.append(f"source: {ref}")
+            return v
+    if lib["kind"] == "credentials":
+        return Verdict("caution", "credentials",
+                       f"{prog} dumps saved passwords and keys ({ref} lists {lib.get('name')} for it). "
+                       f"Those belong to everyone who signs in here, not only you.",
+                       [f"program: {prog}", f"source: {ref}"], "dump the passwords", "others")
+    if not targets:
+        return Verdict("caution", "unread",
+                       f"{prog} probes machines ({ref}), and Bento couldn't tell which one this points at.",
+                       [f"program: {prog}", f"source: {ref}"], "run it anyway", "you")
+    return None
+
+
+# --- what a step sends out, and what it read ------------------------------------------------
+
+_SECRETISH = re.compile(r"(^|/)(\.env(\.[\w-]+)?|id_(rsa|ed25519|ecdsa|dsa)|[^/]*\.(pem|key|p12|pfx|kdbx)|"
+                        r"credentials(\.json)?|\.netrc|\.npmrc|\.pypirc|\.git-credentials|wallet\.dat|"
+                        r"cookies\.sqlite|login data|keychain[^/]*|secrets?(\.\w+)?|token(s)?(\.\w+)?)$|"
+                        r"(^|/)\.(ssh|aws|gnupg|docker)/", re.I)
+_READERS = frozenset({"cat", "less", "more", "head", "tail", "base64", "xxd", "od", "strings", "cp", "scp",
+                      "tar", "zip", "gpg", "openssl", "python", "python3", "jq", "sed", "awk", "grep"})
+_SENDERS = frozenset({"curl", "wget", "http", "https", "nc", "ncat", "netcat", "socat", "telnet", "ssh",
+                      "scp", "sftp", "rsync", "ftp", "mail", "sendmail", "mutt"})
+
+
+def secret_read(tool: str, args: dict) -> str:
+    """The secret-looking file a step reads ('' when it reads none)."""
+    args = args or {}
+    if tool == "read_file":
+        p = str(args.get("path") or "")
+        return p if _SECRETISH.search(p) else ""
+    if tool in ("run_command", "terminal_send"):
+        line = str(args.get("command") or args.get("text") or "")
+        segs, _ = _segments(line)
+        for words in segs:
+            words = _unwrap(words)
+            if words and os.path.basename(words[0]) in _READERS:
+                for w in words[1:]:
+                    if not w.startswith("-") and _SECRETISH.search(w):
+                        return w
+    return ""
+
+
+def outward(tool: str, args: dict) -> list[str]:
+    """The hosts or addresses a step SENDS to or acts on: a POST, an upload, a remote shell, a
+    copy to another machine, a mail. Reading a page is not sending."""
+    args = args or {}
+    out: list[str] = []
+    if tool == "mail_send":
+        to = args.get("to") or ""
+        to = to if isinstance(to, list) else re.split(r"[,;\s]+", str(to))
+        out += [t.strip().lower() for t in to if "@" in str(t)]
+    elif tool in ("browser_type", "browser_click") and (tool == "browser_click" or args.get("submit")):
+        if args.get("_site"):
+            out.append(str(args["_site"]).lower())
+    elif tool in ("run_command", "terminal_send"):
+        line = str(args.get("command") or args.get("text") or "")
+        segs, _ = _segments(line)
+        for words in segs:
+            words = _unwrap(words)
+            if not words:
+                continue
+            prog = os.path.basename(words[0])
+            if prog not in _SENDERS:
+                continue
+            rest = words[1:]
+            sends = prog not in ("curl", "wget", "http", "https") or any(
+                a in ("-d", "-F", "-T", "--form", "--json", "--upload-file", "--post-data", "--post-file")
+                or a.startswith(("--data", "--form", "--json", "--post", "-d", "-F", "-T"))
+                or (a in ("-X", "--request", "--method") and i + 1 < len(rest)
+                    and rest[i + 1].upper() in ("POST", "PUT", "PATCH", "DELETE"))
+                or re.fullmatch(r"(-X|--request=|--method=)(POST|PUT|PATCH|DELETE)", a, re.I)
+                for i, a in enumerate(rest))
+            if not sends:
+                continue
+            for a in rest:
+                if "://" in a:
+                    h = urlsplit(a).hostname
+                    if h:
+                        out.append(h.lower())
+                elif prog in ("ssh", "scp", "sftp", "rsync") and not a.startswith("-"):
+                    m = re.fullmatch(r"(?:[\w.-]+@)?([a-z0-9][\w.-]*):?.*", a, re.I)
+                    if m and ("@" in a or ":" in a or prog == "ssh") and "/" not in m.group(1):
+                        out.append(m.group(1).lower())
+                        if prog == "ssh":
+                            break
+                elif prog in ("nc", "ncat", "netcat", "telnet", "socat") and not a.startswith("-") \
+                        and (_HOST_RE.match(a) or re.fullmatch(r"(\d{1,3}\.){3}\d{1,3}", a)):
+                    out.append(a.lower())
+    elif tool == "run_python":
+        code = str(args.get("code") or "")
+        if re.search(r"\.(post|put|patch|delete)\(|method\s*=\s*['\"](POST|PUT|PATCH|DELETE)|sendall\(|smtplib",
+                     code, re.I):
+            out += [urlsplit(u).hostname.lower() for u in re.findall(r"https?://[^\s'\"]+", code)
+                    if urlsplit(u).hostname]
+    seen, uniq = set(), []
+    for h in out:
+        if h and h not in seen:
+            seen.add(h)
+            uniq.append(h)
+    return uniq[:12]
+
+
+def _judge_outward(tool: str, args: dict, cfg: dict, store=None, ctx: str = "") -> Verdict | None:
+    """Where a step's targets came from (ethicsctx.PURPOSE), and whether it sends after a secret."""
+    targets = outward(tool, args)
+    if not targets:
+        return None
+    from . import ethicsctx
+    if store is not None and ctx and ethicsctx.has_recent(store, ctx, "secret_read"):
+        return Verdict("caution", "leak",
+                       "This sends something out after this conversation read a secret (a key or a "
+                       "password file). That is how keys leave a machine.",
+                       [f"sends to: {', '.join(targets[:4])}"], "send it anyway", "others")
+    untraced = []
+    for t in targets:
+        host = t.split("@", 1)[1] if "@" in t else t
+        if owned(host, cfg) or ethicsctx.traced(host):
+            continue
+        untraced.append(t)
+    if untraced:
+        return Verdict("caution", "untraced",
+                       f"This sends to {', '.join(untraced[:3])}, which you never named. The agent chose "
+                       f"it itself, so you confirm it.",
+                       [f"not in your request: {', '.join(untraced[:4])}"],
+                       f"send to {untraced[0]}", "others")
+    return None
+
+
+def judge(tool: str, args: dict, cfg: dict, store=None, ctx: str = "") -> Verdict:
     """The one entry: the verdict on a tool call. Only the tools that can reach these harms are
-    read; everything else is OK here and decided by the rest of the gate as before."""
+    read; everything else is OK here and decided by the rest of the gate as before. With the
+    person's store and the conversation (`ctx`), where its targets came from is judged too."""
     args = args or {}
     try:
+        v = OK
         if tool == "run_command":
-            return judge_command(str(args.get("command") or ""), cfg, str(args.get("cwd") or ""))
-        if tool == "terminal_send" and not args.get("_fg"):
-            return judge_command(str(args.get("text") or ""), cfg, "")
-        if tool == "run_python":
-            return judge_python(str(args.get("code") or ""), cfg)
+            v = judge_command(str(args.get("command") or ""), cfg, str(args.get("cwd") or ""))
+        elif tool == "terminal_send" and not args.get("_fg"):
+            v = judge_command(str(args.get("text") or ""), cfg, "")
+        elif tool == "run_python":
+            v = judge_python(str(args.get("code") or ""), cfg)
+        if v.level != "refuse":
+            o = _judge_outward(tool, args, cfg, store, ctx)
+            if o:
+                v = strictest([v, o]) if v.level != "ok" else o
+        return v
     except Exception as e:                              # noqa: BLE001
         # a reader that broke is not a reason to wave a step through
         return Verdict("caution", "unread", f"Bento's ethics check couldn't read this step ({type(e).__name__}).",
                        [], "run it anyway", "you")
-    return OK
 
 
 # --- the typed confirmation ----------------------------------------------------------------
@@ -660,7 +838,7 @@ def caution_words(v: Verdict) -> str:
 def summary(cfg: dict) -> dict:
     """What the Settings card, `bento ethics` and /api/ethics show."""
     c = conf(cfg)
-    return {"own": c["own"],
+    return {"own": c["own"], "evaluator": c["evaluator"],
             "rules": [{"id": r[0], "harmed": r[1], "harmed_words": HARMED_WORDS[r[1]], "level": r[2],
                        "switchable": r[3], "words": r[4],
                        "on": c["own"] if r[0] == "own" else True} for r in RULES],

@@ -267,13 +267,18 @@ function apEthics(box,ev){
   const ul=document.createElement('ul');ul.className='aeth-facts';
   (e.facts||[]).forEach(f=>{const li=document.createElement('li');li.textContent=f;ul.appendChild(li)});
   why.after(ul);
+  if(e.reviewer){const rv=document.createElement('div');rv.className='aeth-rev';
+    rv.textContent='Read by the ethics reviewer'+(e.reviewer.who?' ('+e.reviewer.who+')':'')+', which can only ask for typing.';ul.after(rv)}
+  if(e.context&&e.context.score!=null){const cx=document.createElement('div');cx.className='aeth-ctx lv-'+(e.context.level||'ok');
+    cx.textContent='Ethics score here: '+e.context.score+' ('+(e.context.level||'ok')+'). Across your account today: '+e.context.account+'.';
+    (box.querySelector('.aeth-rev')||ul).after(cx)}
   const lab=document.createElement('label');lab.className='aeth-type';
   const t1=document.createElement('span');t1.textContent='Type ';
   const q=document.createElement('b');q.textContent=e.confirm||'';
   const t2=document.createElement('span');t2.textContent=' to go ahead';
   const inp=document.createElement('input');inp.type='text';inp.autocomplete='off';inp.spellcheck=false;
   inp.setAttribute('aria-label','Type '+(e.confirm||'')+' to go ahead');
-  lab.append(t1,q,t2,inp);ul.after(lab);
+  lab.append(t1,q,t2,inp);(box.querySelector('.aeth-ctx')||box.querySelector('.aeth-rev')||ul).after(lab);
   const allow=box.querySelector('.allow');allow.textContent='Go ahead';allow.disabled=true;
   const norm=x=>String(x||'').trim().toLowerCase().replace(/,/g,'').replace(/\s+/g,' ');
   inp.oninput=()=>{allow.disabled=norm(inp.value)!==norm(e.confirm)};
@@ -446,6 +451,9 @@ function handle(ev){
       currentConv=ev.id; officeChatFollow(); loadConvs(); break;}
     case 'executor_install':
       if(typeof execInstallLine==='function')execInstallLine(ev);
+      break;
+    case 'ethics_score':
+      if(typeof ethChipPaint==='function'&&(!ev.conversation_id||ev.conversation_id===currentConv))ethChipPaint(ev);
       break;
     case 'engine_info':{
       // A forwarded run reporting who it is and what it woke up on. Relabel the

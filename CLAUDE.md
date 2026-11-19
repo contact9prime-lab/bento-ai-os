@@ -2465,6 +2465,28 @@ for after the OpenAI/Hugging Face breach as "not whether the user rejects rm -rf
 - **Said, not hidden**: it reads what a step names (the jail keeps the network, so code can open its own sockets),
   not intent, not a CLI's own native tools, not a person's terminal. Keep `docs/security.md` saying so.
 
+**It builds up: a library, flags, a score, and a reviewer that can only raise** (`agentos/ethicslib.py`,
+`ethics_library.json`, `ethicsctx.py`, `ethicseval.py`, `PDP._ethics_context`, `Agent._ethics_review`/`_ethics_note`,
+the chat's `#ethchip`, `/api/ethics/score|flags|report|clear|library`, `bento ethics flags|report|score|clear|library|
+reviewer`; `tests/test_ethics_context.py`). Asked for as "an ethics evaluator, and the context built up with ethical flags
+and scores … auto populate the ethics library from some big source". Six rules:
+- **The library is built, shipped and only added to.** `ethicslib.build` is pure over MITRE ATT&CK's STIX and ATLAS's
+  YAML (rebuild: `python -m agentos.ethicslib ATTACK.json ATLAS.yaml`); flags are sorted under the MIT AI Risk
+  Repository's categories (names only, cited). Their licences and notices stay in `SOURCES`. The machine's overlay
+  (`ethics-library.json`, WRITE_LOCKED, admin route in MACHINE_ONLY) adds names and raises weights, never lowers.
+  A dual-use tool weighs nothing alone; a known program is judged by its target, like the attack list.
+- **A request's words are context, never a refusal**: `note_request` flags a phrase once per conversation per window.
+- **The purpose is the outermost turn's words** (`ethicsctx.PURPOSE`, set in `Agent.call_tool`, and on the team door's
+  Agent for a forwarded turn). Sending out to a host they never named is `untraced`; anything sent out within the hour
+  after a secret read is `leak`. No purpose (an app, a test) is not judged on provenance.
+- **Every ethics decision is a flag, and the lines are the gate's** (`_ethics_context`, after the caution half):
+  CAUTION makes any risky step a typed ask, HOLD refuses it, reading still runs. A repeat after a refusal is `again`.
+  A probe (`audit=False`) writes nothing. The account's lines are ×3, so a new chat is not a way round a hold.
+- **Clearing is typed and is the conversation's only** ("clear the flags", an `ethics.clear` row).
+- **The reviewer is a model, so it only raises**: `ask_fenced` with no tools as `system:ethics`, the request fenced,
+  first word OK/CONCERN/HARM or `unchecked`; never sent a refusal; CONCERN/HARM is a typed caution quoting it and a
+  flag. Its mode (`ethics.evaluator`) is the person's. It reads agents' steps, not an app's `/api/tool` calls.
+
 ## Everything a principal does goes in the ledger
 
 `PDP.decide()` writes one `audit` row per decision. That is the only place it happens, and

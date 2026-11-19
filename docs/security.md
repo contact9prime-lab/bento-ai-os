@@ -119,6 +119,17 @@ What it can't do, said plainly:
   (missions switch them off).
 - It doesn't stop you running a command yourself in a terminal.
 
+- **It builds up.** Each refusal, caution, worrying request (matched against MITRE ATT&CK, MITRE
+  ATLAS and Bento's own phrases about harm to people) and secret read is a flag on its
+  conversation. Past a score of 10 every risky step is typed, and past 20 none runs. Trying
+  another way after a refusal adds more. Clearing the flags is typed, and the account keeps them
+  for a day.
+- **Where a target came from counts.** Sending to a host nobody named, or sending anything out
+  after reading a secret, is typed.
+- **A reviewer can only add caution.** The machine's brain, with no tools, reads risky steps in a
+  conversation that has flags and answers OK, CONCERN or HARM. A concern is typed; nothing it says
+  allows anything.
+
 ## IO gates: surface-scoped permissions
 
 Every capability call arrives via one of the OS's **surfaces** — `gui` (the desktop and its
