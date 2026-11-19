@@ -1576,7 +1576,7 @@ class Agent:
         except Exception:
             return dec
         new = ethicseval.raise_(dec, res, store, ctx, principal=self.principal.label)
-        if res.get("verdict") in ("concern", "harm") and new is not dec:
+        if new is not dec:              # the reviewer raised it (ethicseval.raise_ only ever raises)
             st = ethicsctx.state(store, ctx)
             new.ethics["context"] = {k: st[k] for k in ("score", "level", "account", "account_level", "by")}
         return new

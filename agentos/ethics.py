@@ -679,6 +679,24 @@ def outward(tool: str, args: dict) -> list[str]:
     return uniq[:12]
 
 
+def _granted(store, target: str) -> bool:
+    """A rule a person wrote on purpose that names this target (Permissions, a mission's definition)
+    is a person naming it, the same as saying it in the request."""
+    if store is None or not target:
+        return False
+    from .policy import wrote_on_purpose
+    t = target.lower()
+    try:
+        rows = store.list_grants()
+    except Exception:
+        return False
+    for g in rows:
+        res = str(g.get("resource") or "").lower()
+        if ":" in res and res.split(":", 1)[1] in (t, f"*@{t.split('@', 1)[-1]}") and wrote_on_purpose(g):
+            return True
+    return False
+
+
 def _judge_outward(tool: str, args: dict, cfg: dict, store=None, ctx: str = "") -> Verdict | None:
     """Where a step's targets came from (ethicsctx.PURPOSE), and whether it sends after a secret."""
     targets = outward(tool, args)
@@ -693,7 +711,7 @@ def _judge_outward(tool: str, args: dict, cfg: dict, store=None, ctx: str = "") 
     untraced = []
     for t in targets:
         host = t.split("@", 1)[1] if "@" in t else t
-        if owned(host, cfg) or ethicsctx.traced(host):
+        if owned(host, cfg) or ethicsctx.traced(t) or ethicsctx.traced(host) or _granted(store, t):
             continue
         untraced.append(t)
     if untraced:

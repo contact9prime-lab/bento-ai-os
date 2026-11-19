@@ -309,3 +309,16 @@ def test_the_chip_and_the_card_draw_with_text_nodes():
     assert "innerHTML" not in js and "ethChipPaint" in js and "/api/ethics/score" in js
     ws = (ROOT / "agentos" / "ui" / "src" / "js" / "09-websocket.js").read_text()
     assert "case 'ethics_score'" in ws and "aeth-ctx" in ws
+
+
+def test_a_rule_a_person_wrote_names_the_target_as_their_words_do(tmp_path):
+    c, store, pdp = _pdp(tmp_path)
+    store.add_grant("user", "", "mail.send", "mail:boss@x.example", source="user", note="my boss is fine")
+    tok = ethicsctx.enter("send the weekly summary", "g1")
+    try:
+        boss = ethics.judge("mail_send", {"to": "boss@x.example", "subject": "s", "body": "b"}, c, store=store)
+        other = ethics.judge("mail_send", {"to": "someone@y.example", "subject": "s", "body": "b"}, c, store=store)
+    finally:
+        ethicsctx.leave(tok)
+    assert boss.level == "ok"
+    assert other.level == "caution" and other.rule == "untraced"
