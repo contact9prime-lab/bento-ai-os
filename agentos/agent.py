@@ -783,6 +783,10 @@ class Agent:
         tools = [s for s in steps if s.get("type") == "tool"]
         if tools:
             out = str(tools[-1].get("output") or "").strip()
+            if out.startswith("[denied]"):
+                # a refusal is the answer, from the gate, the ethics check or a person. Pushing
+                # "do it NOW with your tools" after one asks the model to find a way round it.
+                return False
             failed = (not tools[-1].get("ok")) or not out or out.startswith("(no output)") \
                 or out.startswith("[4") or out.startswith("[5")     # [401]/[500] fetch_url bodies
             said_so = any(w in t.lower() for w in
@@ -1266,15 +1270,33 @@ class Agent:
             tok = _NEEDS_PERSON.set(must_person) if must_person else None
             # what the agent said it was doing, for the card's first line
             tok_said = _SAID.set(getattr(self, "_said", "") or "")
+            # An ethics caution (ethics.py): the card asks for the phrase, and only a screen that
+            # had it typed confirms the token. Every other approver leaves it unconfirmed.
+            eth_tok = eth_ctx = None
+            if dec.rule == "ethics" and dec.ethics:
+                from . import ethics as ethics_mod
+                eth_tok, eth_ctx = ethics_mod.ask(dec.ethics)
             try:
                 approved = await self.approver(name, args, why, dec.grant_offer)
             finally:
                 _SAID.reset(tok_said)
                 if tok is not None:
                     _NEEDS_PERSON.reset(tok)
+                if eth_ctx is not None:
+                    ethics_mod.done(eth_ctx)
+            unconfirmed = False
+            if eth_tok and approved and approved is not PARK and not ethics_mod.consume(eth_tok):
+                approved, unconfirmed = False, True
+            if approved is PARK and eth_tok:
+                approved, unconfirmed = False, True     # a Brief answer types nothing
             if approved is PARK:
                 return await self._park_here(name, args, call_id, dec, why)
-            if approved:
+            if unconfirmed:
+                output = (f"[denied] Bento's ethics check needs a person to type "
+                          f"“{dec.ethics.get('confirm')}” at a screen, and nobody did. A tap, a "
+                          f"grant or the autonomy level does not answer it. Tell the user what you "
+                          f"wanted to do, why, and what it would remove.")
+            elif approved:
                 await self._checkpoint(name, args)
                 tok_jail = tools_mod._jail_waived.set(True) if jail_gap else None
                 try:

@@ -244,6 +244,7 @@ function buildApprovalBox(ev,cur){
   // wrapping can make a short body tall (one 300-character line): measure once placed
   requestAnimationFrame(()=>{if(pre&&!pre.classList.contains('open')&&pre.scrollHeight>pre.clientHeight+2){
     pre.classList.add('clip');more.hidden=false}});
+  if(ev.ethics){apEthics(box,ev);return box}
   box.querySelector('.allow').onclick=()=>resolveApproval(ev.id,true);
   box.querySelector('.deny:not(.always)').onclick=()=>resolveApproval(ev.id,false);
   box.querySelectorAll('.always').forEach(b=>b.onclick=()=>{
@@ -253,6 +254,32 @@ function buildApprovalBox(ev,cur){
     toast(o.note&&standing?o.note:('✓ '+who+' may do this '+words+' (Permissions)'));
   });
   return box;
+}
+/* An ethics caution (agentos/ethics.py): what Bento measured, who it would hurt, and a
+   phrase to type. Allow stays off until the words match, and the server checks them again:
+   a tap, a remembered grant or the autonomy level never answers this card. Text nodes only,
+   because the facts carry paths and commands. */
+function apEthics(box,ev){
+  const e=ev.ethics||{};
+  box.classList.add('ethics');
+  box.querySelector('.atitle').lastChild.textContent=' Ethics check · it would affect '+(e.harmed_words||'you');
+  const why=box.querySelector('.areason');why.textContent=e.why||'';
+  const ul=document.createElement('ul');ul.className='aeth-facts';
+  (e.facts||[]).forEach(f=>{const li=document.createElement('li');li.textContent=f;ul.appendChild(li)});
+  why.after(ul);
+  const lab=document.createElement('label');lab.className='aeth-type';
+  const t1=document.createElement('span');t1.textContent='Type ';
+  const q=document.createElement('b');q.textContent=e.confirm||'';
+  const t2=document.createElement('span');t2.textContent=' to go ahead';
+  const inp=document.createElement('input');inp.type='text';inp.autocomplete='off';inp.spellcheck=false;
+  inp.setAttribute('aria-label','Type '+(e.confirm||'')+' to go ahead');
+  lab.append(t1,q,t2,inp);ul.after(lab);
+  const allow=box.querySelector('.allow');allow.textContent='Go ahead';allow.disabled=true;
+  const norm=x=>String(x||'').trim().toLowerCase().replace(/,/g,'').replace(/\s+/g,' ');
+  inp.oninput=()=>{allow.disabled=norm(inp.value)!==norm(e.confirm)};
+  inp.onkeydown=k=>{if(k.key==='Enter'&&!allow.disabled)allow.click()};
+  allow.onclick=()=>resolveApproval(ev.id,true,false,inp.value);
+  box.querySelector('.deny').onclick=()=>resolveApproval(ev.id,false);
 }
 /* The price card. A cloud model with no price is held before it runs — and that
    hold is the ONE gate that happens before `turn_start`, so until this existed the
@@ -557,6 +584,11 @@ function handle(ev){
         pbox.addEventListener('click',()=>setTimeout(()=>{if(pbox.classList.contains('resolved'))pbox.remove()},1000));
       }
       toast('a price is needed before this model runs'); scrollDown(); break;}
+    case 'approval_typed':{
+      // the server didn't take the words: the card waits for them again
+      const b=$('#ap-'+ev.id);if(b){b.classList.remove('resolved');const t=b.querySelector('.atitle');
+        if(t)t.lastChild.textContent=' Ethics check · type the words exactly'}
+      toast(ev.error||'Type the words to confirm',{kind:'warn'});break;}
     case 'approval_request':{
       // a reconnect is sent every question still waiting: one already drawn is only re-homed
       if(APPROVALS[ev.id]){approvalHome(ev.id);break;}
@@ -899,9 +931,10 @@ function handle(ev){
   }
   if(ev.type==='thinking_delta')jrPulse=Math.min(1.6,jrPulse+.12);
 }
-function resolveApproval(id,approved,remember){
-  // remember is the scope the person chose ('chat' | 'hour' | 'always') or nothing
-  ws.send(JSON.stringify({type:'approval',id,approved,remember:remember||false}));
+function resolveApproval(id,approved,remember,typed){
+  // remember is the scope the person chose ('chat' | 'hour' | 'always') or nothing;
+  // typed is the phrase an ethics card asks for
+  ws.send(JSON.stringify({type:'approval',id,approved,remember:remember||false,...(typed!=null?{typed}:{})}));
   // it is no longer waiting on you — whatever was held for this answer runs now
   for(const k in ACT)if(ACT[k].phase==='approve')actMove(k,approved?'tool':'after');
   const box=$('#ap-'+id); if(box){box.classList.add('resolved');

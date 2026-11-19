@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.9.40 — 2026-11-19
+
+**Ethics: Bento decides whether a step should happen at all, whoever says yes.** The rule is that
+only the party who would be hurt can consent.
+
+- Scanning, breaking into or flooding a machine nobody here has shown is yours is refused, and so is
+  wiping the system, a disk or a home folder. No rule, remembered approval or autonomy level reaches
+  past it, and there's no switch, because your yes can't cover somebody else.
+- Before an agent deletes a lot of your own things (over 200 files or 200 MB, or anything outside
+  your workspace), Bento counts them itself and the card asks you to type the words it shows. A tap,
+  a phone or full autonomy never answers it. Force pushes, and deletes Bento can't read, ask the same way.
+- It's plain code over what Bento measures, never an AI's opinion, so nothing a model says can move it.
+- Settings → Permissions → Ethics has your one switch, what has no switch, the sites you proved are
+  yours, and Try a command. `bento ethics` does the same in a terminal, and Permissions → Flow shows
+  the new Ethics step.
+
 ## 0.9.39 — 2026-11-19
 
 **When Claude Code can't sign in inside the sandbox, Bento says so.** On some machines, such as a

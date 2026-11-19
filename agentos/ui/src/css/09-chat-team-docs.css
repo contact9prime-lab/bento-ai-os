@@ -367,3 +367,26 @@ select.modelchip option{background:var(--bg2);color:var(--txt)}
 .ats-dot{display:inline-grid;place-items:center;color:#fff;font-size:13px;background:var(--bg3)}
 .ats-name{font-weight:600;white-space:nowrap}
 .ats-sub{color:var(--dim);font-size:var(--fs-sm,12px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+/* An ethics caution (09-websocket.js apEthics): what was measured, and a phrase to type */
+.approval.ethics{border-color:color-mix(in srgb,var(--warn,#e0a040) 55%,var(--line))}
+.approval .aeth-facts{margin:6px 0 8px;padding-left:18px;font-size:var(--fs-sm);color:var(--txt);line-height:1.45}
+.approval .aeth-facts li{overflow-wrap:anywhere}
+.approval .aeth-type{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px;font-size:var(--fs-sm);color:var(--txt2,var(--txt));margin:4px 0 8px}
+.approval .aeth-type b{font-family:var(--mono);color:var(--txt)}
+.approval .aeth-type input{flex:1 1 100%;min-height:var(--tap,36px);font-family:var(--mono);font-size:var(--fs-md);padding:6px 10px;border-radius:var(--r-md);border:1px solid var(--line);background:var(--bg);color:var(--txt)}
+.approval .btns .allow:disabled{opacity:.45;cursor:not-allowed}
+/* Settings → Permissions → Ethics (11m-ethics.js) */
+.eth-tag{display:inline-block;padding:3px 10px;border-radius:999px;font-size:var(--fs-sm);font-weight:600;border:1px solid var(--line);white-space:nowrap}
+.eth-tag.no{color:var(--err,#e05d5d);border-color:color-mix(in srgb,var(--err,#e05d5d) 45%,var(--line))}
+.eth-tag.typed{color:var(--warn,#e0a040);border-color:color-mix(in srgb,var(--warn,#e0a040) 45%,var(--line))}
+.eth-sites{margin-top:6px;display:flex;flex-direction:column;gap:4px}
+.eth-siterow{display:flex;align-items:center;gap:8px}
+.eth-site{font-family:var(--mono);font-size:var(--fs-sm)}
+.eth-line{display:flex;gap:8px;margin:6px 0;flex-wrap:wrap}
+.eth-line input{flex:1 1 200px;min-width:0;min-height:var(--tap,36px);font-family:var(--mono)}
+.eth-prove code{font-family:var(--mono);overflow-wrap:anywhere}
+.eth-verdict{margin-top:6px;padding:8px 10px;border-radius:var(--r-md);border:1px solid var(--line);font-size:var(--fs-sm);line-height:1.45;overflow-wrap:anywhere}
+.eth-verdict ul{margin:4px 0;padding-left:18px}
+.eth-verdict.refuse{border-color:color-mix(in srgb,var(--err,#e05d5d) 55%,var(--line))}
+.eth-verdict.caution{border-color:color-mix(in srgb,var(--warn,#e0a040) 55%,var(--line))}
+.eth-verdict.ok{border-color:color-mix(in srgb,var(--ok,#4caf7d) 45%,var(--line))}

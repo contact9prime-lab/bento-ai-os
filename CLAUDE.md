@@ -2439,6 +2439,32 @@ autonomy level. The audit and its 97 fixes are in `docs/security-testing.md`; th
   empty (no system bus). `python -I` ignores PYTHONPATH and runs the installed checkout instead: don't. The
   tests reset the watcher's hold between tests (`conftest.py`).
 
+## Ethics: only the party who would be hurt can consent
+
+`agentos/ethics.py` + step 1b of `PDP._decide` + `apEthics` (09-websocket.js) + `11m-ethics.js` (Settings →
+Permissions → Ethics) + `/api/ethics*` + `bento ethics`; `docs/design/ethics.md`, `tests/test_ethics.py`. Asked
+for after the OpenAI/Hugging Face breach as "not whether the user rejects rm -rf, but whether it should be executed
+… calculated by the system in the most deterministic way, so the AI doesn't circumvent it". Six rules:
+- **Harm to someone else and wiping the machine are refused**, whatever a grant, Remember, autonomy or a person
+  says, and have no switch: a switch would be the operator consenting for somebody else. Only `own` (typed
+  confirmation before deleting a lot of your own things) is the person's (`ethics` USER_KEY, never in
+  CONFIG_SAFE_KEYS, each change an `ethics.write` ledger row).
+- **Plain code over facts it measures**: the parsed command (`_segments`, `_unwrap`), real paths counted
+  (`_measure`, capped and then "at least"), who owns each target (`owned`: this machine, the Network inventory's
+  machines, a site that served the proof file). No model, and the test checks nothing of the brain is imported.
+  A reader that breaks returns a caution, never OK. It is a SECURITY_MODULE.
+- **A caution never skips a later deny.** `_decide` keeps it in `ctx["_ethics"]` and `decide()` turns whatever the
+  rest allowed or asked into an `ask` with `rule="ethics"`, no grant offer, and `Decision.ethics`.
+- **The typed words fail closed.** The agent loop (and `/api/tool`) opens a token (`ethics.ask`) around the approver
+  and requires `ethics.consume(token)` after a yes. Only a screen that had the phrase typed confirms it
+  (`resolve_approval(typed=)`, the TUI card, the terminal chat, `bento flow allow --type`). Every other approver's
+  yes is refused, so a new approver is safe by default. Phones are told where it waits, never asked; a Brief answer
+  to a parked run types nothing. The page never gets the token (`_ethics_public`).
+- **A machine is yours by a fact, never a sentence.** "It's an authorised test" counts for nothing; a range of
+  addresses is always refused; a one-word host name counts only when it is known to be yours.
+- **Said, not hidden**: it reads what a step names (the jail keeps the network, so code can open its own sockets),
+  not intent, not a CLI's own native tools, not a person's terminal. Keep `docs/security.md` saying so.
+
 ## Everything a principal does goes in the ledger
 
 `PDP.decide()` writes one `audit` row per decision. That is the only place it happens, and

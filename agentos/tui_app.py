@@ -43,14 +43,27 @@ class ApprovalScreen(ModalScreen):
     """The approval card, in the terminal. With a grant on offer it has the same
     remember choices as the desktop's card: this chat, an hour, or always. Answers with
     (approved, remember) where remember is '' or one of those scopes."""
-    def __init__(self, name, detail, reason, offer=None, card=None):
+    def __init__(self, name, detail, reason, offer=None, card=None, ethics=None):
         super().__init__()
         self._name, self._detail, self._reason = name, detail, reason
-        self._offer = offer or None
+        self._offer = None if ethics else (offer or None)
         self._card = card or None
+        # an ethics caution (agentos/ethics.py): the phrase is typed here, and checked again
+        # by the server; a keypress alone never answers it
+        self._ethics = ethics or None
 
     def compose(self) -> ComposeResult:
         with Vertical(id="ap-box"):
+            if self._ethics:
+                e = self._ethics
+                yield Label(f"⚖  Ethics check · it would affect {e.get('harmed_words') or 'you'}", id="ap-title")
+                yield Static(_esc(e.get("why") or ""), id="ap-reason")
+                yield Static("\n".join("  • " + _esc(f) for f in (e.get("facts") or [])), id="ap-cmd")
+                yield Input(placeholder=f"Type “{e.get('confirm')}” to go ahead", id="ap-typed")
+                with Horizontal(id="ap-btns"):
+                    yield Button("Go ahead", variant="warning", id="ap-allow")
+                    yield Button("Deny", variant="error", id="ap-deny")
+                return
             yield Label("⚠  Approval needed", id="ap-title")
             if self._card:
                 # what it is for, then exactly what it does in a box that scrolls: a
@@ -81,6 +94,13 @@ class ApprovalScreen(ModalScreen):
         bid = e.button.id or ""
         if bid == "ap-deny":
             self.dismiss((False, ""))
+        elif self._ethics:
+            from . import ethics as ethics_mod
+            typed = self.query_one("#ap-typed", Input).value
+            if not ethics_mod.typed_ok(self._ethics.get("confirm", ""), typed):
+                self.query_one("#ap-title", Label).update(f"⚖  Type “{self._ethics.get('confirm')}” exactly")
+                return
+            self.dismiss((True, "", typed))
         else:
             self.dismiss((True, {"ap-chat": "chat", "ap-hour": "hour",
                                  "ap-always": "always"}.get(bid, "")))
@@ -929,11 +949,13 @@ class AgentTUI(App):
                                   f"[grey58]bento link requests · bento link approve {_esc(ev.get('id', ''))}[/]")
                     elif t == "approval_request":
                         detail = ev["args"].get("command", "") if ev["name"] == "run_command" else json.dumps(ev["args"])[:120]
-                        ok, rem = await self.push_screen_wait(ApprovalScreen(
+                        got = await self.push_screen_wait(ApprovalScreen(
                             ev["name"], detail, ev.get("reason", ""), ev.get("offer"),
-                            ev.get("card")))
+                            ev.get("card"), ev.get("ethics")))
+                        ok, rem = got[0], got[1]
                         await ws.send(json.dumps({"type": "approval", "id": ev["id"],
-                                                  "approved": bool(ok), "remember": rem or False}))
+                                                  "approved": bool(ok), "remember": rem or False,
+                                                  **({"typed": got[2]} if len(got) > 2 else {})}))
                     elif t == "error":
                         log.write(f"[red]error: {ev.get('message','')}[/]")
                     elif t == "turn_end":

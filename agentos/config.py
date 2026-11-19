@@ -239,6 +239,9 @@ DEFAULTS = {
     "device_alarms": [],
     # only MY voice wakes the screen (voiceprint.py). The print itself is a file in my home.
     "voiceprint": {"only": False},
+    # the ethics check (ethics.py): `own` is the person's one switch (typed confirmation before
+    # deleting a lot of their own things); `sites` are the ones they proved are theirs
+    "ethics": {"own": True, "sites": [], "pending": {}},
     # which of MY companies each machine is for (devboard.company_map): a view, not a permission
     "device_companies": {},
     "brief": {"times": ["08:00"], "days": "daily", "summary": "plain", "telegram": True},

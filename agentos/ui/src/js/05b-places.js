@@ -66,6 +66,7 @@ var PLACES=[
   ['Agents','settings','Settings → Agents',['agent','agents','specialist','specialists','lead','persona'],placeSettings('agent')],
   ['Agents working together','settings','Settings → Agents',['team','swarm','huddle','talk','working together','matrix','who may ask whom','own providers','departments talk'],placeSettings('agent','Working together')],
   ['Network & Teams','settings','Settings → Network & Teams',['linked teams','link','team chat','messages','communications','teams and communication','mapping','talks to','topology','logical map','physical map'],placeSettings('network')],
+  ['Ethics','settings','Settings → Permissions → Ethics',['ethics','ethical','harm','attack','hack','scan','wipe','delete my files','prove site','proof'],placeSettings('permissions','Ethics')],
   ['Permissions settings','settings','Settings → Permissions',['permissions','autonomy','paranoid','balanced','full autonomy','ledger','audit','untrusted','injection','grants','security'],placeSettings('permissions')],
   ['Free talk','settings','Settings → Agents',['free talk','let them talk','agent talk','agent to agent','agents talking','talk log','open floor'],placeSettings('agent','Working together')],
   ['Executors','settings','Settings → Executors',['executor','executors','hands','folders','folder access','claude code','codex','gemini cli','sandbox','reach'],placeSettings('executors')],

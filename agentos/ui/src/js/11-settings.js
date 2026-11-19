@@ -512,6 +512,9 @@ function setTab(body,all){
          more:'Either way it lasts for the rest of that turn, even at Full autonomy, which trusts your instructions and nobody else’s.',
          f:'taint injection untrusted prompt security web page mcp'}),
     ],{f:'autonomy security untrusted injection'}));
+    // Ethics (agentos/ethics.py, 11m-ethics.js): what is yours to switch, and what has no switch
+    P.push(`<div class="pgroup" data-f="ethics harm others attack scan delete wipe confirm type proof site rm nmap"><h3>Ethics</h3><div class="ghint">Whether a step should happen at all, whoever says yes. ${pInfo('Bento decides this itself from what it measures, before any permission. No AI can switch it, and only harm to your own things is yours to switch.')}</div><div id="s-ethics"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
+    setTimeout(ethicsPaint,0);
     P.push(`<div class="pgroup" data-f="grants permissions allowed remembered missions matrix linked community apps review quarantine held"><h3>What's allowed right now</h3><div id="s-perm-sum"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
     setTimeout(permSummaryPaint,0);
     P.push(`<div class="pgroup sec-card" data-f="security watcher integrity seal signed lock alerts held changed code files"><h3>Security</h3><div id="s-sec-card"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);

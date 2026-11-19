@@ -171,6 +171,10 @@ class Console:
         if dec.effect == "deny":
             close("denied", dec.reason or "")
             return False, f"refused: {dec.reason or 'policy'}"
+        if dec.rule == "ethics":
+            # typed at a screen, never a tap on a phone (ethics.py)
+            close("denied", "ethics: needs typing at a screen")
+            return False, f"{dec.reason} Do it at a screen."
         ok = await self.tg.ask_approval(chat_id, tool, args, dec.reason or reason or why,
                                         offer=dec.grant_offer)
         close("ok" if ok else "denied", "" if ok else "not approved")

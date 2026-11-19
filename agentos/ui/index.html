@@ -908,6 +908,29 @@ select.modelchip option{background:var(--bg2);color:var(--txt)}
 .ats-dot{display:inline-grid;place-items:center;color:#fff;font-size:13px;background:var(--bg3)}
 .ats-name{font-weight:600;white-space:nowrap}
 .ats-sub{color:var(--dim);font-size:var(--fs-sm,12px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+/* An ethics caution (09-websocket.js apEthics): what was measured, and a phrase to type */
+.approval.ethics{border-color:color-mix(in srgb,var(--warn,#e0a040) 55%,var(--line))}
+.approval .aeth-facts{margin:6px 0 8px;padding-left:18px;font-size:var(--fs-sm);color:var(--txt);line-height:1.45}
+.approval .aeth-facts li{overflow-wrap:anywhere}
+.approval .aeth-type{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px;font-size:var(--fs-sm);color:var(--txt2,var(--txt));margin:4px 0 8px}
+.approval .aeth-type b{font-family:var(--mono);color:var(--txt)}
+.approval .aeth-type input{flex:1 1 100%;min-height:var(--tap,36px);font-family:var(--mono);font-size:var(--fs-md);padding:6px 10px;border-radius:var(--r-md);border:1px solid var(--line);background:var(--bg);color:var(--txt)}
+.approval .btns .allow:disabled{opacity:.45;cursor:not-allowed}
+/* Settings → Permissions → Ethics (11m-ethics.js) */
+.eth-tag{display:inline-block;padding:3px 10px;border-radius:999px;font-size:var(--fs-sm);font-weight:600;border:1px solid var(--line);white-space:nowrap}
+.eth-tag.no{color:var(--err,#e05d5d);border-color:color-mix(in srgb,var(--err,#e05d5d) 45%,var(--line))}
+.eth-tag.typed{color:var(--warn,#e0a040);border-color:color-mix(in srgb,var(--warn,#e0a040) 45%,var(--line))}
+.eth-sites{margin-top:6px;display:flex;flex-direction:column;gap:4px}
+.eth-siterow{display:flex;align-items:center;gap:8px}
+.eth-site{font-family:var(--mono);font-size:var(--fs-sm)}
+.eth-line{display:flex;gap:8px;margin:6px 0;flex-wrap:wrap}
+.eth-line input{flex:1 1 200px;min-width:0;min-height:var(--tap,36px);font-family:var(--mono)}
+.eth-prove code{font-family:var(--mono);overflow-wrap:anywhere}
+.eth-verdict{margin-top:6px;padding:8px 10px;border-radius:var(--r-md);border:1px solid var(--line);font-size:var(--fs-sm);line-height:1.45;overflow-wrap:anywhere}
+.eth-verdict ul{margin:4px 0;padding-left:18px}
+.eth-verdict.refuse{border-color:color-mix(in srgb,var(--err,#e05d5d) 55%,var(--line))}
+.eth-verdict.caution{border-color:color-mix(in srgb,var(--warn,#e0a040) 55%,var(--line))}
+.eth-verdict.ok{border-color:color-mix(in srgb,var(--ok,#4caf7d) 45%,var(--line))}
 /* ===== gallery, spaces, timeline, audit =====
    Named 09a- deliberately: CSS parts are concatenated in filename order and
    16-glass.css must stay last, so anything numbered 17+ would land after it and
@@ -17203,6 +17226,7 @@ var PLACES=[
   ['Agents','settings','Settings → Agents',['agent','agents','specialist','specialists','lead','persona'],placeSettings('agent')],
   ['Agents working together','settings','Settings → Agents',['team','swarm','huddle','talk','working together','matrix','who may ask whom','own providers','departments talk'],placeSettings('agent','Working together')],
   ['Network & Teams','settings','Settings → Network & Teams',['linked teams','link','team chat','messages','communications','teams and communication','mapping','talks to','topology','logical map','physical map'],placeSettings('network')],
+  ['Ethics','settings','Settings → Permissions → Ethics',['ethics','ethical','harm','attack','hack','scan','wipe','delete my files','prove site','proof'],placeSettings('permissions','Ethics')],
   ['Permissions settings','settings','Settings → Permissions',['permissions','autonomy','paranoid','balanced','full autonomy','ledger','audit','untrusted','injection','grants','security'],placeSettings('permissions')],
   ['Free talk','settings','Settings → Agents',['free talk','let them talk','agent talk','agent to agent','agents talking','talk log','open floor'],placeSettings('agent','Working together')],
   ['Executors','settings','Settings → Executors',['executor','executors','hands','folders','folder access','claude code','codex','gemini cli','sandbox','reach'],placeSettings('executors')],
@@ -19472,6 +19496,7 @@ function buildApprovalBox(ev,cur){
   // wrapping can make a short body tall (one 300-character line): measure once placed
   requestAnimationFrame(()=>{if(pre&&!pre.classList.contains('open')&&pre.scrollHeight>pre.clientHeight+2){
     pre.classList.add('clip');more.hidden=false}});
+  if(ev.ethics){apEthics(box,ev);return box}
   box.querySelector('.allow').onclick=()=>resolveApproval(ev.id,true);
   box.querySelector('.deny:not(.always)').onclick=()=>resolveApproval(ev.id,false);
   box.querySelectorAll('.always').forEach(b=>b.onclick=()=>{
@@ -19481,6 +19506,32 @@ function buildApprovalBox(ev,cur){
     toast(o.note&&standing?o.note:('✓ '+who+' may do this '+words+' (Permissions)'));
   });
   return box;
+}
+/* An ethics caution (agentos/ethics.py): what Bento measured, who it would hurt, and a
+   phrase to type. Allow stays off until the words match, and the server checks them again:
+   a tap, a remembered grant or the autonomy level never answers this card. Text nodes only,
+   because the facts carry paths and commands. */
+function apEthics(box,ev){
+  const e=ev.ethics||{};
+  box.classList.add('ethics');
+  box.querySelector('.atitle').lastChild.textContent=' Ethics check · it would affect '+(e.harmed_words||'you');
+  const why=box.querySelector('.areason');why.textContent=e.why||'';
+  const ul=document.createElement('ul');ul.className='aeth-facts';
+  (e.facts||[]).forEach(f=>{const li=document.createElement('li');li.textContent=f;ul.appendChild(li)});
+  why.after(ul);
+  const lab=document.createElement('label');lab.className='aeth-type';
+  const t1=document.createElement('span');t1.textContent='Type ';
+  const q=document.createElement('b');q.textContent=e.confirm||'';
+  const t2=document.createElement('span');t2.textContent=' to go ahead';
+  const inp=document.createElement('input');inp.type='text';inp.autocomplete='off';inp.spellcheck=false;
+  inp.setAttribute('aria-label','Type '+(e.confirm||'')+' to go ahead');
+  lab.append(t1,q,t2,inp);ul.after(lab);
+  const allow=box.querySelector('.allow');allow.textContent='Go ahead';allow.disabled=true;
+  const norm=x=>String(x||'').trim().toLowerCase().replace(/,/g,'').replace(/\s+/g,' ');
+  inp.oninput=()=>{allow.disabled=norm(inp.value)!==norm(e.confirm)};
+  inp.onkeydown=k=>{if(k.key==='Enter'&&!allow.disabled)allow.click()};
+  allow.onclick=()=>resolveApproval(ev.id,true,false,inp.value);
+  box.querySelector('.deny').onclick=()=>resolveApproval(ev.id,false);
 }
 /* The price card. A cloud model with no price is held before it runs — and that
    hold is the ONE gate that happens before `turn_start`, so until this existed the
@@ -19785,6 +19836,11 @@ function handle(ev){
         pbox.addEventListener('click',()=>setTimeout(()=>{if(pbox.classList.contains('resolved'))pbox.remove()},1000));
       }
       toast('a price is needed before this model runs'); scrollDown(); break;}
+    case 'approval_typed':{
+      // the server didn't take the words: the card waits for them again
+      const b=$('#ap-'+ev.id);if(b){b.classList.remove('resolved');const t=b.querySelector('.atitle');
+        if(t)t.lastChild.textContent=' Ethics check · type the words exactly'}
+      toast(ev.error||'Type the words to confirm',{kind:'warn'});break;}
     case 'approval_request':{
       // a reconnect is sent every question still waiting: one already drawn is only re-homed
       if(APPROVALS[ev.id]){approvalHome(ev.id);break;}
@@ -20127,9 +20183,10 @@ function handle(ev){
   }
   if(ev.type==='thinking_delta')jrPulse=Math.min(1.6,jrPulse+.12);
 }
-function resolveApproval(id,approved,remember){
-  // remember is the scope the person chose ('chat' | 'hour' | 'always') or nothing
-  ws.send(JSON.stringify({type:'approval',id,approved,remember:remember||false}));
+function resolveApproval(id,approved,remember,typed){
+  // remember is the scope the person chose ('chat' | 'hour' | 'always') or nothing;
+  // typed is the phrase an ethics card asks for
+  ws.send(JSON.stringify({type:'approval',id,approved,remember:remember||false,...(typed!=null?{typed}:{})}));
   // it is no longer waiting on you — whatever was held for this answer runs now
   for(const k in ACT)if(ACT[k].phase==='approve')actMove(k,approved?'tool':'after');
   const box=$('#ap-'+id); if(box){box.classList.add('resolved');
@@ -21983,6 +22040,9 @@ function setTab(body,all){
          more:'Either way it lasts for the rest of that turn, even at Full autonomy, which trusts your instructions and nobody else’s.',
          f:'taint injection untrusted prompt security web page mcp'}),
     ],{f:'autonomy security untrusted injection'}));
+    // Ethics (agentos/ethics.py, 11m-ethics.js): what is yours to switch, and what has no switch
+    P.push(`<div class="pgroup" data-f="ethics harm others attack scan delete wipe confirm type proof site rm nmap"><h3>Ethics</h3><div class="ghint">Whether a step should happen at all, whoever says yes. ${pInfo('Bento decides this itself from what it measures, before any permission. No AI can switch it, and only harm to your own things is yours to switch.')}</div><div id="s-ethics"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
+    setTimeout(ethicsPaint,0);
     P.push(`<div class="pgroup" data-f="grants permissions allowed remembered missions matrix linked community apps review quarantine held"><h3>What's allowed right now</h3><div id="s-perm-sum"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
     setTimeout(permSummaryPaint,0);
     P.push(`<div class="pgroup sec-card" data-f="security watcher integrity seal signed lock alerts held changed code files"><h3>Security</h3><div id="s-sec-card"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
@@ -25529,7 +25589,7 @@ var SETSUBS={
   agent:[['Lead agent','Lead agent'],['Models','Models'],['Huddles','Huddles and free talk'],['Your agents','Your agents'],['Map','The map'],['Sharing','Share this agent']],
   companies:[['About','About'],['Working together','Working together'],['Departments','Departments'],['Folders','Folders'],['Brief','In your Brief'],['New company','A new company']],
   network:[['Discovery','Discovery and linkage'],['Linked teams','Linked teams'],['Community','Community'],['Messages','Messages'],['Mapping','Team to agent mapping'],['Maps','Maps']],
-  permissions:[['Autonomy','On their own'],['Security','Security'],['Ledger','The ledger']],
+  permissions:[['Autonomy','On their own'],['Ethics','Ethics'],['Security','Security'],['Ledger','The ledger']],
   channels:[['Authorization','Authorization'],['Approvals','Approvals'],['Overview','Ways to reach it'],['Remote browser','Remote browser'],['Telegram','Telegram'],['WhatsApp','WhatsApp'],['Built in','Built in']],
   accounts:[['Sign in','Sign in'],['Mail & calendar','Mail'],['App registration','App registration'],['Vault','Vault'],['GitHub','GitHub']],
   voice:[['Speech','Speech'],['Listening','Listening']],
@@ -25728,6 +25788,112 @@ async function chanApprovalsSet(ch,on){
   }catch(e){toast('could not reach the server');return}
   toast(on?'Approvals will also come to your '+(ch==='telegram'?'Telegram':'WhatsApp')+'.':'Approvals stay off '+(ch==='telegram'?'Telegram':'WhatsApp')+' unless a chat there asked.');
   chanApprovalsPaint();
+}
+/* ---------------- Settings → Permissions → Ethics (agentos/ethics.py) ----------------
+   Asked for as "ethics has to be built somewhere for people to enable or disable". The answer
+   drawn here: harm to YOU is yours to switch (typed confirmation before deleting a lot of your
+   own things), harm to OTHERS and wiping the machine have no switch, because nobody's yes covers
+   somebody else. The card says which is which, lists the sites you proved are yours, and lets you
+   ask what the check would say about a command without running anything.
+
+   Text nodes only: verdicts carry paths and commands. GUI and SUI: this card. TUI: `bento ethics`
+   (show, check, own on|off, prove, proved, forget), and the approval card in `bento tui` and the
+   terminal chat asks for the phrase the same way. */
+var ETHICS={data:null,check:null,prove:null,busy:false};
+function ethEl(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e}
+function ethRow(label,desc,control,more){
+  const r=ethEl('div','prow'),pl=ethEl('div','pl');
+  pl.appendChild(ethEl('b','',label));
+  if(more){const i=ethEl('button','pinfo','i');i.type='button';i.dataset.tip=more;i.setAttribute('aria-label',more);pl.appendChild(i)}
+  if(desc)pl.appendChild(ethEl('small','',desc));
+  r.appendChild(pl);
+  const pc=ethEl('div','pc');if(control)pc.appendChild(control);r.appendChild(pc);
+  return r;
+}
+function ethTag(text,kind){return ethEl('span','eth-tag '+(kind||''),text)}
+async function ethicsPaint(){
+  const box=document.getElementById('s-ethics');if(!box)return;
+  let d;
+  try{d=ETHICS.data=await apiJSON('/api/ethics')}
+  catch(e){box.replaceChildren(ethEl('div','ghint mut',e.message||String(e)));return}
+  const kids=[];
+  // the one switch: your own things
+  const sw=ethEl('label','psw'),cb=ethEl('input');cb.type='checkbox';cb.id='eth-own';cb.checked=!!d.own;
+  sw.append(cb,ethEl('i'));
+  cb.onchange=async()=>{
+    try{await apiJSON('/api/ethics',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({own:cb.checked})});
+      toast(cb.checked?'Deleting a lot of your own things is typed to confirm':'Your own deletes go through the ordinary gate',{kind:'ok'})}
+    catch(e){cb.checked=!cb.checked;toast(e.message||String(e),{kind:'err'})}
+  };
+  kids.push(ethRow('Your own files','Type to confirm before an agent deletes a lot of your things.',sw,
+    'Over 200 files or 200 MB, or anything outside your workspace. Bento counts them itself, so the AI can’t talk it down. This one is yours to switch off.'));
+  const fixed=[['Someone else’s machines','Scanning, breaking into or flooding a machine that isn’t shown to be yours.','Refused',
+                 'Nobody’s yes covers someone else, so there is no switch, at any autonomy level.'],
+               ['Wiping the machine','Deleting the system, a disk or a whole home folder.','Refused','Refused whoever asks.'],
+               ['Force pushes, and deletes it can’t read','History others share, or a delete whose target is hidden in a variable.','Typed',
+                'A person types the words at a screen. A tap on a phone or a remembered grant never answers it.']];
+  fixed.forEach(([l,desc,tag,more])=>kids.push(ethRow(l,desc,ethTag(tag,tag==='Refused'?'no':'typed'),more)));
+  // your sites
+  const sites=d.sites||[];
+  const sl=ethEl('div','eth-sites');
+  if(sites.length)sites.forEach(s=>{
+    const t=ethEl('span','eth-site',s.host);
+    const x=ethEl('button','endbtn','Forget');x.type='button';
+    x.onclick=async()=>{try{await apiJSON('/api/ethics/sites/'+encodeURIComponent(s.host),{method:'DELETE'});ethicsPaint()}
+      catch(e){toast(e.message||String(e),{kind:'err'})}};
+    const w=ethEl('div','eth-siterow');w.append(t,x);sl.appendChild(w)});
+  else sl.appendChild(ethEl('small','mut','None yet. This machine and the ones Bento set up already count.'));
+  const pv=ethEl('button','endbtn','Prove a site…');pv.type='button';pv.onclick=()=>{ETHICS.prove=ETHICS.prove||{host:'',step:0};ethicsPaint()};
+  const sitesRow=ethRow('Sites that are yours','Security tools may point only at machines shown to be yours.',pv,
+    'Bento gives you a line to put at /.well-known/bento-proof.txt on the site, then fetches it. A sentence from you or the AI doesn’t count.');
+  sitesRow.querySelector('.pl').appendChild(sl);
+  kids.push(sitesRow);
+  if(ETHICS.prove)kids.push(ethProveBox(d));
+  kids.push(ethCheckBox());
+  box.replaceChildren(...kids);
+}
+function ethProveBox(d){
+  const p=ETHICS.prove,r=ethEl('div','prow stack eth-prove'),pl=ethEl('div','pl');
+  const inp=ethEl('input');inp.type='text';inp.placeholder='example.com';inp.value=p.host||'';inp.autocomplete='off';
+  const go=ethEl('button','endbtn',p.token?'Check it':'Get the line');go.type='button';
+  const msg=ethEl('small','');
+  if(p.token){
+    msg.append(ethEl('span','','Put this line in '),ethEl('code','',p.url),ethEl('span','',': '),ethEl('code','',p.token));
+  }
+  if(p.err)msg.appendChild(ethEl('span','err',' '+p.err));
+  go.onclick=async()=>{
+    p.host=inp.value.trim();p.err='';
+    try{const j=await apiJSON('/api/ethics/prove',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({host:p.host,check:!!p.token})});
+      if(p.token){ETHICS.prove=null;toast(j.said||'Proved',{kind:'ok'})}else{p.token=j.token;p.url=j.url}}
+    catch(e){p.err=e.message||String(e)}
+    ethicsPaint();
+  };
+  const row=ethEl('div','eth-line');row.append(inp,go);
+  pl.append(ethEl('b','','Prove a site is yours'),row,msg);r.appendChild(pl);return r;
+}
+function ethCheckBox(){
+  const c=ETHICS.check||{line:'',v:null},r=ethEl('div','prow stack eth-check'),pl=ethEl('div','pl');
+  const inp=ethEl('input');inp.type='text';inp.placeholder='rm -rf ~/Documents';inp.value=c.line;inp.autocomplete='off';inp.spellcheck=false;
+  const go=ethEl('button','endbtn','Check');go.type='button';
+  const run=async()=>{
+    const line=inp.value.trim();if(!line)return;
+    try{const v=await apiJSON('/api/ethics/check?command='+encodeURIComponent(line));ETHICS.check={line,v}}
+    catch(e){ETHICS.check={line,v:{level:'error',why:e.message||String(e),facts:[]}}}
+    ethicsPaint();
+  };
+  go.onclick=run;inp.onkeydown=k=>{if(k.key==='Enter')run()};
+  const row=ethEl('div','eth-line');row.append(inp,go);
+  pl.append(ethEl('b','','Try a command'),ethEl('small','','What the check would say. Nothing runs.'),row);
+  if(c.v){
+    const v=c.v,out=ethEl('div','eth-verdict '+v.level);
+    out.appendChild(ethEl('b','',v.level==='ok'?'Nothing for the ethics check':v.level==='refuse'?'Refused':v.level==='caution'?'Typed to confirm':'Couldn’t check'));
+    if(v.why)out.appendChild(ethEl('div','',v.why));
+    const ul=ethEl('ul');(v.facts||[]).forEach(f=>ul.appendChild(ethEl('li','',f)));if(ul.children.length)out.appendChild(ul);
+    if(v.confirm)out.appendChild(ethEl('div','mut','A person would type “'+v.confirm+'” at a screen.'));
+    pl.appendChild(out);
+  }
+  r.appendChild(pl);return r;
 }
 /* ---------------- Settings → AI providers: what is in use, and which agents may think ----------------
    Asked for as "the AI providers section should show the list of the providers that are
@@ -32026,6 +32192,9 @@ function pfWhy(){
     doors=`<div class="pf-rule"><button class="endbtn" onclick="placeSettings('executors')()">Change its hands</button></div>`;
   }else if(stage==='folders'){
     doors=`<div class="pf-rule"><button class="endbtn" onclick="openApp('office');setTimeout(()=>officeCompany(true),300)">The company's folders</button></div>`;
+  }else if(stage==='ethics'){
+    doors=`<div class="pf-rule">No rule or autonomy level reaches past this step.
+      <button class="endbtn" onclick="placeSettings('permissions','Ethics')()">Ethics settings</button></div>`;
   }else if(stage==='channel'){
     doors=`<div class="pf-rule"><button class="endbtn" onclick="placeSettings('channels')()">Channel settings</button></div>`;
   }else if(stage==='rate'){

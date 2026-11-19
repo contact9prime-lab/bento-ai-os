@@ -60,6 +60,7 @@ class Decision:
     action: str = ""    # stamped by decide() so enforcement sites can log verbosely
     resource: str = ""
     audit_id: str = ""  # the ledger row for this decision; stamp its outcome when the call returns
+    ethics: dict | None = field(default=None)  # the ethics caution a person confirms by typing (ethics.py)
 
 
 # The gate's steps in the order `_decide` takes them, in words a person reads. The
@@ -69,6 +70,7 @@ class Decision:
 STAGES = (
     ("held", "Security hold", "A security file changed, so agents wait until a person clears it."),
     ("hard", "Hard blocks", "Commands that would wreck the machine are always refused."),
+    ("ethics", "Ethics", "Harm to others is refused whoever says yes. Deleting lots of yours is typed."),
     ("builtin", "Built-in protection", "Apps, agents and other machines may never change the OS's own rules."),
     ("reach", "Hands", "The tools, folders and sites this agent can reach at all."),
     ("folders", "Company folders", "A company with folders of its own keeps its agents inside them."),
@@ -81,7 +83,7 @@ STAGES = (
     ("person", "Always a person", "Power, installs, code from a specialist and setting a device are confirmed every time."),
 )
 _STAGE_OF_RULE = {
-    "integrity-hold": "held", "hard-block": "hard", "audit-unavailable": "hard",
+    "integrity-hold": "held", "hard-block": "hard", "audit-unavailable": "hard", "ethics": "ethics",
     "builtin-deny": "builtin", "reach": "reach", "company-folders": "folders", "channel-read-only": "channel",
     "taint": "taint", "quarantined": "rate", "steered": "rate",
     "message-off": "team", "message-flow": "team", "department-same": "team",
@@ -282,6 +284,10 @@ def person_rule(principal, name: str, args: dict, dec, pdp=None, level: str = ""
     from .tools import ALWAYS_ASK, ASK_FROM_SPECIALISTS, RADIO_TOOLS
     must = ""
     args = args or {}
+    if dec.rule == "ethics" and dec.effect == "ask":
+        # typed at a screen, every time; nothing remembers it (ethics.py)
+        dec.grant_offer = None
+        return "Bento's ethics check: a person types the words to confirm"
     # A radio's change is asked every time, and reading its status is not a change
     if (name in ALWAYS_ASK or (name in RADIO_TOOLS and level == "risky")) and dec.effect in ("allow", "ask"):
         # confirmed every time, full autonomy included, and never remembered from a card
@@ -1503,6 +1509,14 @@ class PDP(usersmod.Scoped):
             # here on, the ledger row included, sees where the file really is.
             resource = _fs_real(resource, self.cfg.get("workspace", ""))
         dec = self._decide(principal, action, resource, ctx)
+        caution = ctx.get("_ethics")
+        if caution is not None and dec.effect in ("allow", "ask"):
+            # Ethics (ethics.py), the caution half: every later step still had its say (a deny
+            # stands), and whatever they allowed or asked becomes a question only a person
+            # typing the words answers. No grant, Remember or autonomy level reaches past it.
+            from . import ethics as _ethics
+            dec = Decision("ask", _ethics.caution_words(caution), rule="ethics",
+                           ethics=caution.to_dict())
         dec.action, dec.resource = action, resource
         dec.audit_id = self._record(principal, action, resource, ctx, dec)
         # Fail-closed: if the ledger could not record an ALLOW, refuse it. An
@@ -1563,6 +1577,18 @@ class PDP(usersmod.Scoped):
         # 1. hard blocks (BLOCKED_PATTERNS + legacy deny policies, via risk_of)
         if risk == "blocked":
             return Decision("deny", ctx.get("reason") or "blocked", rule="hard-block")
+        # 1b. ethics (ethics.py): whether the step should be done at all, whoever asks and
+        # whatever any grant or autonomy says. Harm to someone else, or wiping the machine, is
+        # refused here; a caution (a lot of your own data) is carried to the end of the gate
+        # and turned into a typed confirmation by decide(). Plain code over facts it measures,
+        # never a model, so nothing a model says can move it.
+        if ctx.get("tool") and isinstance(ctx.get("args"), dict) and ctx["args"]:
+            from . import ethics as _ethics
+            v = _ethics.judge(ctx["tool"], ctx["args"], self.cfg)
+            if v.level == "refuse":
+                return Decision("deny", _ethics.refusal_words(v), rule="ethics", ethics=v.to_dict())
+            if v.level == "caution":
+                ctx["_ethics"] = v
         # 2. built-in denies for non-user principals
         for a, r in BUILTIN_DENY.get(principal.kind, ()):
             if _match(a, action) and _match(r, resource):

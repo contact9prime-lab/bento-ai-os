@@ -438,6 +438,18 @@ def ask(prompt: str, model: str | None, full: bool):
 
     async def approver(name, args, reason, offer=None) -> bool:
         # the agent loop passes the grant it would remember; `a` writes it for an hour
+        from . import ethics as ethics_mod
+        eth = ethics_mod.pending()
+        if eth:
+            # an ethics caution: typed here, never a y (agentos/ethics.py)
+            print(f"\n\033[33m⚖ ethics check · it would affect {eth.get('harmed_words') or 'you'}\n  {eth.get('why')}\033[0m")
+            for f in eth.get("facts") or []:
+                print(f"    • {f}")
+            try:
+                typed = input(f"  type “{eth.get('confirm')}” to go ahead, or Enter to refuse: ").strip()
+            except EOFError:
+                return False
+            return ethics_mod.confirm(eth.get("token", ""), eth.get("confirm", ""), typed)
         print(f"\n\033[33m⚠ approval needed: {name} {json.dumps(args)[:200]}\n  {reason}\033[0m")
         from .policy import needs_person, write_remembered
         q = "  allow? [y/N" + ("/h = for an hour" if offer and not needs_person() else "") + "] "
@@ -3166,6 +3178,11 @@ def _flow_cli(args):
             print(f"\n  {a['id']}  {approvalcard.headline(card)}")
             print("\n".join("      " + ln[:100] for ln in approvalcard.preview(card, lines=3).splitlines()))
             print(f"      {a.get('flow') or a.get('run_id', '')[:8]} · {a.get('reason', '')[:120]}")
+            if a.get("ethics"):
+                e = a["ethics"]
+                for f in e.get("facts") or []:
+                    print(f"      • {f[:100]}")
+                print(f"      ⚖ ethics check: agentos flow allow {a['id']} --type \"{e.get('confirm')}\"")
         print("\n  agentos flow allow <id> [--hour | --always]   |   agentos flow deny <id>")
         return
 
@@ -3173,7 +3190,9 @@ def _flow_cli(args):
         res = call(f"/api/fabric/approvals/{args.name}",
                    {"approved": act == "allow",
                     "remember": "always" if args.always else "hour" if getattr(args, "hour", False)
-                    else False})
+                    else False,
+                    # an ethics caution's phrase (agentos/ethics.py): `--type "delete 300 files"`
+                    **({"typed": args.type} if getattr(args, "type", None) else {})})
         print("✓ answered" if not res.get("error") else f"✗ {res['error']}")
         return
 
@@ -3405,6 +3424,125 @@ def _api_call(port: int, path: str, method: str = "GET", body: dict | None = Non
             return json.loads(e.read() or b"{}")
         except ValueError:
             return {"error": str(e)}
+
+
+def _ethics_cli(args):
+    """`bento ethics` — Bento's ethics check (agentos/ethics.py) from a terminal: the rules,
+    the one switch that is yours (typed confirmation before deleting a lot of your own
+    things), the sites you proved are yours, and `check` to ask what it would say about a
+    command without running anything."""
+    from . import config as cfgmod
+    from . import ethics as eth
+    cfg = cfgmod.load_config()
+    port = int(os.environ.get("AGENTOS_PORT") or cfg.get("port") or 8321)
+    act, rest = args.action, list(args.rest or [])
+    try:
+        live = _api_call(port, "/api/ethics")
+        if live.get("error"):
+            live = None
+    except OSError:
+        live = None
+
+    def ledger(action, resource, reason):
+        from .memory import Store
+        with contextlib.suppress(Exception):
+            Store(cfgmod.DB_PATH).audit_add(uid="", principal_kind="user", principal_id="",
+                                            surface="tui", action=action, resource=resource,
+                                            effect="allow", rule="person", reason=reason[:400],
+                                            outcome="ok")
+
+    def show(sm):
+        print("Bento's ethics check: whether a step should be done at all, whoever says yes.\n")
+        for r in sm["rules"]:
+            mark = "on " if r["on"] else "off"
+            sw = "your switch" if r["switchable"] else "no switch"
+            print(f"  {mark}  {r['level']:<8} {r['harmed_words']:<26} {r['words']}  ({sw})")
+        print()
+        if sm["sites"]:
+            print("  Sites you proved are yours: " + ", ".join(x["host"] for x in sm["sites"]))
+        for p in sm.get("pending") or []:
+            print(f"  Waiting for proof: {p['host']} (put {p['token']} in https://{p['host']}{eth.PROOF_PATH})")
+        print("\n  bento ethics own on|off · check \"COMMAND\" · prove SITE · proved SITE · forget SITE")
+
+    if act in ("", "show"):
+        show(live or eth.summary(cfg))
+        return
+    if act == "check":
+        line = " ".join(rest)
+        if not line:
+            print('bento ethics check "rm -rf ~/Documents"')
+            sys.exit(2)
+        v = eth.judge("run_command", {"command": line, "cwd": os.getcwd()}, cfg)
+        if v.level == "ok":
+            print("✓ ok: nothing here for the ethics check. The rest of the gate still decides.")
+            return
+        print(f"{'✗ refused' if v.level == 'refuse' else '⚖ caution'} ({v.rule}): {v.why}")
+        for f in v.facts:
+            print(f"  • {f}")
+        if v.confirm:
+            print(f"  A person would type “{v.confirm}” at a screen to go ahead.")
+        return
+    if act == "own":
+        if not rest or rest[0] not in ("on", "off"):
+            print("bento ethics own on|off")
+            sys.exit(2)
+        on = rest[0] == "on"
+        if live is not None:
+            got = _api_call(port, "/api/ethics", "PUT", {"own": on})
+            if got.get("error"):
+                print(f"✗ {got['error']}")
+                sys.exit(1)
+        else:
+            cfg.setdefault("ethics", {})["own"] = on
+            cfgmod.save_config(cfg)
+            ledger("ethics.write", "ethics:own",
+                   "typed confirmation before deleting a lot of your own things: " + ("on" if on else "off"))
+        print("✓ Deleting a lot of your own things is typed to confirm." if on else
+              "✓ Your own deletes go through the ordinary gate now. Harm to others is still refused.")
+        return
+    if act in ("prove", "proved", "forget"):
+        if not rest:
+            print(f"bento ethics {act} example.com")
+            sys.exit(2)
+        host = rest[0]
+        if live is not None:
+            if act == "forget":
+                got = _api_call(port, f"/api/ethics/sites/{host}", "DELETE")
+            else:
+                got = _api_call(port, "/api/ethics/prove", "POST", {"host": host, "check": act == "proved"})
+            if got.get("error"):
+                print(f"✗ {got['error']}")
+                sys.exit(1)
+        else:
+            try:
+                if act == "prove":
+                    got = eth.prove_start(cfg, host)
+                elif act == "forget":
+                    if not eth.forget_site(cfg, host):
+                        print("✗ that site isn't on your list")
+                        sys.exit(1)
+                    got = {}
+                else:
+                    ok, said = asyncio.run(eth.prove_check(cfg, host))
+                    if not ok:
+                        print(f"✗ {said}")
+                        sys.exit(1)
+                    ledger("ethics.site", f"site:{host}", said)
+                    got = {"said": said}
+            except ValueError as e:
+                print(f"✗ {e}")
+                sys.exit(1)
+            cfgmod.save_config(cfg)
+        if act == "prove":
+            print(f"Put this line in a file at {got['url']}:\n\n  {got['token']}\n")
+            print(f"Then run: bento ethics proved {got['host']}")
+        elif act == "proved":
+            print(f"✓ {got.get('said')}")
+        else:
+            print(f"✓ {host} no longer counts as yours.")
+        return
+    print("bento ethics [show | check \"COMMAND\" | own on|off | prove SITE | proved SITE | forget SITE]")
+    sys.exit(2)
 
 
 def _handoff_cli(args):
@@ -10523,6 +10661,8 @@ def main():
                         help="with `allow`: remember it as a grant, not just this once")
     p_flow.add_argument("--hour", action="store_true",
                         help="with `allow`: remember it for an hour")
+    p_flow.add_argument("--type", default="",
+                        help="with `allow`: the words an ethics check asks you to type")
     # authoring, so a headless machine can create what it can already run
     p_flow.add_argument("--mission", default="", help="with `add`: what the flow is for")
     p_flow.add_argument("--agents", default="",
@@ -10853,6 +10993,10 @@ def main():
     p_team.add_argument("--messages", type=int, default=20, help="freetalk: stop after this many messages (up to 40)")
     p_team.add_argument("--agents", default="", help="freetalk: who talks, comma-separated (default: all)")
     p_team.add_argument("--act", action="store_true", help="freetalk: let them use their tools too")
+    p_ethics = verb("ethics", help="the ethics check: its rules, your switch, check a command, prove a site is yours")
+    p_ethics.add_argument("action", nargs="?", default="",
+                          choices=["", "show", "check", "own", "prove", "proved", "forget"])
+    p_ethics.add_argument("rest", nargs=argparse.REMAINDER)
     p_handoff = verb("handoff", help="sign-in links for your phone: are they offered, what is open, close it")
     p_handoff.add_argument("action", nargs="?", default="status", choices=["status", "on", "off", "close"])
     p_voice = verb("voice", help="which engine reads your agents aloud: this browser, this computer, "
@@ -11200,6 +11344,8 @@ def main():
         sys.exit(0 if all(r["ok"] for r in rows) else 1)
     elif args.cmd in ("mail", "calendar"):
         _account_cli(args, args.cmd)
+    elif args.cmd == "ethics":
+        _ethics_cli(args)
     elif args.cmd == "handoff":
         _handoff_cli(args)
     elif args.cmd == "voice":

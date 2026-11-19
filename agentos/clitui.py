@@ -189,6 +189,16 @@ async def run_tui():
                             pv = "\n".join("  " + ln[:_w() - 4] for ln in approvalcard.preview(card).splitlines())
                             print(f"\n{C['warn']}⚠ approval: {approvalcard.headline(card)}{C['r']}\n"
                                   f"{C['dim']}{pv}{C['r']}\n{C['warn']}  {ev.get('reason','')}{C['r']}")
+                            eth = ev.get("ethics")
+                            if eth:
+                                # an ethics caution (agentos/ethics.py): typed, never a y
+                                print(f"{C['warn']}  ⚖ ethics check · it would affect {eth.get('harmed_words') or 'you'}{C['r']}")
+                                for f in eth.get("facts") or []:
+                                    print(f"{C['dim']}    • {f[:_w() - 8]}{C['r']}")
+                                typed = (await _ainput(f"{C['warn']}  type “{eth.get('confirm')}” to go ahead, or Enter to refuse: {C['r']}")).strip()
+                                await ws.send(json.dumps({"type": "approval", "id": ev["id"],
+                                                          "approved": bool(typed), "typed": typed}))
+                                continue
                             ans = (await _ainput(f"{C['warn']}  allow? [y/N] {C['r']}")).strip().lower()
                             await ws.send(json.dumps({"type": "approval", "id": ev["id"],
                                                       "approved": ans in ("y", "yes")}))

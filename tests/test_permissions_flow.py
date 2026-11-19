@@ -24,9 +24,9 @@ def test_every_named_rule_in_the_gate_lands_on_a_step():
 
 
 def test_the_steps_are_in_the_gates_order():
-    assert KEYS == ["held", "hard", "builtin", "reach", "folders", "channel", "taint", "rate", "team",
+    assert KEYS == ["held", "hard", "ethics", "builtin", "reach", "folders", "channel", "taint", "rate", "team",
                     "rules", "default", "person"]
-    assert stage_of("hard-block") == "hard"
+    assert stage_of("hard-block") == "hard" and stage_of("ethics") == "ethics"
     assert stage_of("taint") == "taint"
     assert stage_of("company-folders") == "folders"
     assert stage_of("quarantined") == "rate"

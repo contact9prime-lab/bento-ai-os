@@ -33,6 +33,7 @@ SECURITY_MODULES = frozenset({
     "agentos/config.py",
     "agentos/constcmp.py",
     "agentos/edgecode.py",
+    "agentos/ethics.py",
     "agentos/executors.py",
     "agentos/fabric.py",
     "agentos/flows.py",
