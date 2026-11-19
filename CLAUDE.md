@@ -2407,6 +2407,14 @@ autonomy level. The audit and its 97 fixes are in `docs/security-testing.md`; th
   ipc and uts unshared, `/run` blank). A caller that must hand a program a secret builds the env from
   `jail_env` and passes `own_env=True`, never `--setenv`. Agent CLIs run in `executors.jail_cli`, take words on
   stdin (`tests/test_cli_jail.py` scans argv), and read no folder's settings.
+- **A CLI's sign-in the jail hides is SAID, never let through** (`executors.SIGNIN_FILE_VARS`/`hidden_signin`/
+  `signin_words`, the `authentication_failed` branch of `translate`, `available()`'s `signin_hidden`, the Installed
+  agents card, `bento doctor`; `docs/security.md`, `tests/test_signin_hidden.py`). Found filming an ad in a cloud
+  session: Claude Code's token is a file in another user's home (`CLAUDE_SESSION_INGRESS_TOKEN_FILE`), the jail
+  blanks every home, and every turn read "Authentication error · This may be a temporary network issue". The check
+  only reads where the CLI is told to look and compares it with what the jail blanks and keeps; it opens, binds
+  and copies nothing (the test greps it). The owner chose to say so and not to bind the file in. The sentence
+  says "sign in", so `fallback.unavailable` hands the turn to a fallback brain.
 - **`netguard` is the one client for an address somebody named.** `safeopen` opens what was checked.
   `constcmp.same` compares secrets.
 - **The watcher** (`agentos/integrity.py`) is off until `serve()` arms it; a hold is step 0 of the gate and only

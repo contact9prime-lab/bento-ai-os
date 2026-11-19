@@ -1317,13 +1317,18 @@ def doctor(fix: bool = False, session: bool = False):
         _brain = _exec.brains(cfg, _models)
         _cur, _ex = _brain["current"], None
         _ex = next((e for e in _brain["executors"] if e["id"] == _cur["executor"]), None)
-        if _ex and _ex["available"]:
+        _hidden = _exec.hidden_signin("claude-code") if _exec.claude_exe() else ""
+        if _hidden and _cur["executor"] == "claude-code":
+            bad(_exec.signin_words("claude-code", _hidden))
+        elif _ex and _ex["available"]:
             ok(f"answering with {_ex['name']} · {_cur['model'] or 'its own default'}")
         elif _ex:
             bad(f"set to answer with {_ex['name']}, which cannot: {_ex['reason']}")
         else:
             warn("no brain set — nothing can answer a turn yet")
             todo("bento brain            # what could answer, and what would fix it")
+        if _hidden and _cur["executor"] != "claude-code":
+            warn(_exec.signin_words("claude-code", _hidden))
     except Exception as exc:
         warn(f"could not work out what answers turns here: {exc}")
 

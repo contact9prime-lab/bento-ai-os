@@ -315,6 +315,7 @@ class Run:
     denials: list = field(default_factory=list)
     stopped: bool = False
     reported_error: bool = False   # the result event already said why; don't say it twice
+    auth_failed: bool = False      # the CLI said it could not sign in (`authentication_failed`)
     # call_id -> (name, detail) for the calls seen so far. The CLI reports a tool
     # RESULT with only the id, so without this the end of a call is anonymous —
     # which is how a ten-minute build read as ten minutes of nothing.
@@ -1902,7 +1903,12 @@ def available() -> dict:
     except Exception as e:
         return {"available": False, "reason": f"Claude Code did not answer: {e}"}
     signed_in = billing().get("mode") == "subscription"
+    hidden = hidden_signin("claude-code")
     return {"available": True, "path": exe, "version": version,
+            # Signed in, but where the jail can't see it (a cloud session's token file):
+            # every turn would fail, so say so before the first one does.
+            "signin_hidden": hidden,
+            "signin_words": signin_words("claude-code", hidden) if hidden else "",
             "tools": list(KNOWN_TOOLS), "default_tools": list(DEFAULT_TOOLS),
             # Installed but nobody signed in is its own dead end, and a different
             # one: the fix is a terminal, not an installer.
@@ -2896,6 +2902,16 @@ def translate(event: dict, run: Run) -> list[dict]:
                                f" — reading the task"})
 
     elif kind == "assistant":
+        if event.get("error") == "authentication_failed":
+            # The CLI could not sign in. When the jail hid its sign-in file, its own words
+            # ("This may be a temporary network issue") are wrong, so say the real reason.
+            run.auth_failed = True
+            hidden = hidden_signin(run.engine)
+            if hidden:
+                out.append({"type": "error", "message": signin_words(run.engine, hidden),
+                            "kind": "signin_hidden"})
+                run.reported_error = True
+                return out
         for block in (event.get("message") or {}).get("content", []):
             if block.get("type") == "text" and block.get("text"):
                 run.saw_text = True
@@ -2964,7 +2980,7 @@ def translate(event: dict, run: Run) -> list[dict]:
             out.append({"type": "text_delta",
                         "text": f"\n\n_Blocked by the task's permissions: {', '.join(names)}. "
                                 f"Widen them in Settings → Executors if that was wrong._"})
-        if event.get("is_error") or event.get("subtype") != "success":
+        if (event.get("is_error") or event.get("subtype") != "success") and not run.reported_error:
             out.append({"type": "error", "message": _why(event, run)})
             run.reported_error = True
 
@@ -3467,6 +3483,49 @@ def jail_ready(refresh: bool = False) -> bool:
             except (OSError, subprocess.SubprocessError):
                 _jail_ok = False
     return _jail_ok
+
+
+#: Variables a CLI reads to find a sign-in kept OUTSIDE its state folder. Claude Code in a cloud
+#: session signs in with a token file named here, and that file sits in another user's home
+#: (measured on 2.1.327: `/home/claude/.claude/remote/.session_ingress_token`). The jail blanks
+#: every home on purpose, so the CLI finds nothing and says "Authentication error · This may be a
+#: temporary network issue", which sends people to check a network that is fine.
+SIGNIN_FILE_VARS = {"claude-code": ("CLAUDE_SESSION_INGRESS_TOKEN_FILE",)}
+
+
+def hidden_signin(engine: str, environ=None) -> str:
+    """The sign-in file this CLI is told to read that its jail hides, or ''.
+
+    It only SAYS so: nothing is opened, bound or copied here, and the jail is unchanged. A file
+    is hidden when it sits under something the jail blanks (`_HIDDEN`, the home, this OS's data)
+    and is not one of the state-folder entries the jail keeps for the CLI (`CLI_STATE[...]['keep']`)."""
+    environ = os.environ if environ is None else environ
+    if engine not in SIGNIN_FILE_VARS or not (JAIL_ENFORCED and jail_ready()):
+        return ""
+    from . import config as _cfgmod
+    spec = CLI_STATE[engine]
+    home = _real("~")
+    state = _real(environ.get(spec["env"]) or os.path.join(home, spec["dir"]))
+    kept = [os.path.join(state, k) for k in spec["keep"]]
+    blanked = [*_HIDDEN, home, _real(_cfgmod.AGENTOS_HOME)]
+    for var in SIGNIN_FILE_VARS[engine]:
+        raw = str(environ.get(var) or "").strip()
+        if not raw:
+            continue
+        path = _real(raw)
+        if not os.path.isfile(path) or any(_under(path, k) for k in kept):
+            continue
+        if any(_under(path, b) for b in blanked):
+            return path
+    return ""
+
+
+def signin_words(engine: str, path: str) -> str:
+    """What a person reads when the jail hides a CLI's sign-in. One sentence, then the way out."""
+    title = (EXECUTORS_BY_ID.get(engine) or {}).get("title") or engine
+    return (f"{title} can't sign in inside Bento's sandbox. Its sign-in is at {path}, which the "
+            f"sandbox hides on purpose, so this isn't a network problem. Choose another brain in "
+            f"Settings → AI providers, or run Bento where {title} is signed in to your own account.")
 
 
 def jail_state() -> dict:

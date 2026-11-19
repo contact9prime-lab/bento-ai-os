@@ -22726,8 +22726,9 @@ async function renderExecutors(){
     {subscription:'◆',api:'$',none:'!'}[b.mode]||'·'} ${esc(b.detail)}${
     (b.stripped||[]).length?` <span class="mut">(${esc(b.stripped.join(', '))} is set in the environment but is not passed to it)</span>`:''}</div>`:'';
   box.innerHTML=`<h3>Claude Code <span class="mut">${esc(String(ex.version||'').replace(/\s*\(Claude Code\)\s*$/i,''))}</span></h3>
-    <div class="ghint">${esc(ex.what||'')}</div>${bill}
+    <div class="ghint">${esc(ex.what||'')}</div>${ex.signin_hidden?'':bill}
     ${ex.needs_signin?`<div class="ghint bill none">! Installed, but nobody is signed in yet. Run <code>${esc(ex.signin_cmd||'claude')}</code> once in a terminal.</div>`:''}
+    ${ex.signin_hidden?`<div class="ghint bill none">! It can't sign in inside the sandbox here. ${pInfo(ex.signin_words||'')}</div>`:''}
     ${pRow('Folder',pText('s-exec-ws',c.workspace),
       {desc:'The only folder it can read or write.',
        more:'The same folder and tools also apply to Gemini CLI and Codex when one of them is the brain.',f:'executor workspace folder gemini codex'})}
