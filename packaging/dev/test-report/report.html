@@ -38,7 +38,7 @@ section{display:flex;flex-direction:column;gap:14px;min-width:0}
 .stat.pass .n{color:var(--pass)} .stat.fail .n{color:var(--fail)} .stat.skip .n{color:var(--skip)}
 .verdict{display:flex;gap:12px;align-items:flex-start;padding:14px 16px;border-radius:10px;border:1px solid var(--line);background:var(--panel)}
 .verdict .dot{width:10px;height:10px;border-radius:50%;margin-top:7px;flex:0 0 auto}
-.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+.tbl{max-width:100%;min-width:0;overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
 table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
 th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
 th{font:500 12px var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--mute);background:var(--soft);white-space:nowrap}
@@ -54,6 +54,7 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .chip.skipped{background:var(--skip-bg);color:var(--skip)} .chip.neutral{background:var(--soft);color:var(--mute)}
 .fail-card{border:1px solid var(--line);border-left:3px solid var(--fail);border-radius:8px;background:var(--panel);padding:12px 14px;display:flex;flex-direction:column;gap:6px;min-width:0}
 .fail-card.old{border-left-color:var(--skip)}
+.fail-card>*{min-width:0;overflow-wrap:anywhere}
 .fail-card pre{margin:0;font:12px/1.5 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;color:var(--mute);max-height:9em;overflow:auto}
 .controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 input[type=search],select{font:14px var(--sans);color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-height:38px}
@@ -109,6 +110,12 @@ pre.cmd{margin:0;font:12.5px/1.6 var(--mono);background:var(--soft);border-radiu
     <h2 id="h-sum">Summary</h2>
     <div class="strip" id="strip"><div class="stat"><span class="n">…</span><span class="l">loading the run</span></div></div>
     <div class="verdict" id="verdict" hidden></div>
+  </section>
+
+  <section aria-labelledby="h-find" id="findings-sec" hidden>
+    <h2 id="h-find">Findings</h2>
+    <p class="mut">What building this report turned up, and where each one stands.</p>
+    <div class="files" id="findings"></div>
   </section>
 
   <section aria-labelledby="h-areas">
@@ -189,7 +196,7 @@ python3 packaging/dev/test-report/build.py out/junit.xml out/report.json</pre>
 
   function paintHead(){
     var m=document.getElementById('meta');m.replaceChildren();
-    [['Version',R.version],['Commit',R.commit],['Branch',R.branch],['Python',R.python],['Built',R.made_at]].forEach(function(x){
+    [['Version',R.version],['Commit',R.commit],['Branch',R.branch],['Python',R.python],['Ran',R.ran_at],['Built',R.made_at]].forEach(function(x){
       if(!x[1])return;var s=el('span');s.append(x[0]+' ',el('b','',x[1]));m.appendChild(s)});
     var t=R.totals,failed=t.failed+t.error,code=R.failures.filter(function(f){return f.kind==='code'||f.kind==='unknown'}).length;
     var strip=document.getElementById('strip');strip.replaceChildren();
@@ -218,6 +225,21 @@ python3 packaging/dev/test-report/build.py out/junit.xml out/report.json</pre>
       tr.onclick=go;tr.onkeydown=function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();go()}};
       tb.appendChild(tr);
       var o=el('option','',a.area);o.value=a.area;sel.appendChild(o);
+    });
+  }
+
+  function paintFindings(){
+    var f=R.findings||[];if(!f.length)return;
+    document.getElementById('findings-sec').hidden=false;
+    var box=document.getElementById('findings');box.replaceChildren();
+    var STATE={open:['failed','open'],fixed:['passed','fixed here'],gap:['skipped','gap'],note:['neutral','note']};
+    f.forEach(function(x){
+      var k=STATE[x.state]||STATE.note,c=el('div','fail-card'+(x.state==='open'?'':' old'));
+      if(x.state==='fixed')c.style.borderLeftColor='var(--pass)';
+      var top=el('div','controls');top.append(chip(k[0],k[1]),el('span','mut',x.area||''));
+      c.append(top,el('b','',x.title),el('div','',x.detail||''));
+      if(x.next){var n=el('div','mut');n.append(el('b','','Next: '),document.createTextNode(x.next));c.appendChild(n)}
+      box.appendChild(c);
     });
   }
 
@@ -320,7 +342,7 @@ python3 packaging/dev/test-report/build.py out/junit.xml out/report.json</pre>
   Promise.all([fetch('report.json').then(function(r){return r.json()}),fetch('tests.json').then(function(r){return r.json()})]).then(function(x){
     R=x[0];T=x[1];
     var docs={};R.files.forEach(function(f){docs[f.file]=f.doc});T.forEach(function(t){t._doc=docs[t.file]||''});
-    paintHead();paintAreas();paintFails();render();paintBeyond();
+    paintHead();paintFindings();paintAreas();paintFails();render();paintBeyond();
   }).catch(function(e){
     document.getElementById('strip').replaceChildren(el('div','stat fail',"The report's data didn't load: "+e.message));
   });

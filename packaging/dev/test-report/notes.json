@@ -1,0 +1,70 @@
+{
+ "failures": {
+  "tests/test_edge_code.py::test_a_run_cannot_fork_without_limit": {
+   "kind": "code",
+   "cause": "The hub's process limit (prlimit --nproc inside the jail) is not enforced when the server runs as root: Linux exempts the root user from RLIMIT_NPROC whatever its capabilities, and bubblewrap started by root keeps the real uid 0. The test passes as an ordinary user (13/13 as nobody). Bento's Docker image sets no USER and its entrypoint never drops privileges, so a Docker or cloud hub runs another machine's code with no process limit."
+  },
+  "tests/test_net_guard.py::test_tls_is_still_checked_against_the_name": {
+   "kind": "environment",
+   "cause": "With HTTPS_PROXY set the guard takes the proxy's road, so this test reached the real network and the session's proxy refused it. Fixed in this change: the test sets no proxy, and two new tests pin the proxy road."
+  },
+  "tests/test_peercheck.py::test_a_child_that_hides_its_fds_is_still_ours": {
+   "kind": "environment",
+   "cause": "The suite ran as root, and root can read a process's fd table even after PR_SET_DUMPABLE 0, so the test's setup check failed. Fixed in this change: the setup check applies to other users only; the verdict is asserted for everyone. 13/13 as root and as nobody."
+  },
+  "test_device_install": {
+   "kind": "environment",
+   "cause": "No OpenSSH in the container, and these tests called ssh-keygen without the guard their neighbours have. Fixed: they skip with the same reason, and pass with OpenSSH installed."
+  },
+  "test_network_install": {
+   "kind": "environment",
+   "cause": "No OpenSSH in the container, and these tests called ssh-keygen without a guard. Fixed: they skip with the same reason, and pass with OpenSSH installed."
+  }
+ },
+ "findings": [
+  {
+   "title": "A hub running as root has no process limit for another machine's code",
+   "state": "open",
+   "area": "Devices, network and Zeros",
+   "detail": "Code a Zero sends to its hub (edge_run) runs in bubblewrap with prlimit --nproc=128. Linux never applies RLIMIT_NPROC to the root user, and the Docker image runs Bento as root with no privilege drop, so on a Docker or cloud hub a fork loop from an edge machine is limited only by the memory, CPU and time caps. Measured: test_a_run_cannot_fork_without_limit fails as root and passes as nobody.",
+   "next": "Run the jail as an unprivileged user when the server is root (chown the run folder to nobody and start bwrap under setpriv, or switch uid inside the jail with a writable /tmp), or give the Docker image a non-root USER. Either is a change to a security module, so it gets its own reviewed PR."
+  },
+  {
+   "title": "The network guard's proxy road had no test",
+   "state": "fixed",
+   "area": "Security and the gate",
+   "detail": "netguard sends a request through HTTPS_PROXY when one is set and judges the address first. Nothing tested that road, and the one TLS test silently used it whenever a proxy was set. Two tests now pin it: an address the guard refuses (169.254.169.254) is refused and the proxy is never asked; a name only the proxy can resolve is handed to it."
+  },
+  {
+   "title": "Seven tests needed ssh-keygen and did not say so",
+   "state": "fixed",
+   "area": "Devices, network and Zeros",
+   "detail": "test_device_install and test_network_install crashed with FileNotFoundError on a machine without OpenSSH while six tests beside them skipped with a reason. They skip with the same reason now. With OpenSSH installed all 67 pass."
+  },
+  {
+   "title": "A peercheck test assumed the suite was not root",
+   "state": "fixed",
+   "area": "Security and the gate",
+   "detail": "Its setup check (a hidden fd table cannot be read) is false for root. The verdict it protects is still asserted for every user."
+  },
+  {
+   "title": "A specialist the lead hands work to in chat cannot ask you anything",
+   "state": "gap",
+   "area": "Agents and teams",
+   "detail": "Read from the code, not measured live: delegate from chat passes no approver, so a specialist's gated step is answered by the headless approver, which allows it only when the lower of your autonomy and the specialist's cap (balanced by default) is full. Otherwise it is refused and no card reaches you. Department tasks and missions do escalate to a person.",
+   "next": "Hand the chat's approver to delegate, capped by the specialist's own autonomy cap."
+  },
+  {
+   "title": "Three modules no test imports by name",
+   "state": "gap",
+   "area": "Coverage",
+   "detail": "clitui, sessiondoctor and trainforge are not imported or reached as agentos.<name> by any test file. Some may be exercised through other modules; none is checked by name."
+  },
+  {
+   "title": "17 installer checks run only on a Mac",
+   "state": "note",
+   "area": "Updates, backup, standby and cloud",
+   "detail": "test_packaging_shell checks install.sh against bash 3.2, the version macOS ships. They skip on Linux by design."
+  }
+ ]
+}

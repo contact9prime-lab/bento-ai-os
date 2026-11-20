@@ -6,9 +6,10 @@
 Reads the junit XML pytest wrote, and the test files themselves (with `ast`, nothing is imported or run),
 so the report says what each file defends in its own words: the module docstring's first paragraph and
 each test's docstring or name. It also lists the live end-to-end harnesses under packaging/dev, which the
-suite does not run, and the modules no test names. `--notes` is a JSON object from a test id (or a file
-stem, for every test in it) to a sentence saying why it failed: what was found by reading the failure,
-written by whoever ran it. A failure with no note says so.
+suite does not run, and the modules no test names. `--notes` is a JSON object: `failures` maps a test id (or a
+file stem, for every test in it) to {cause, kind}, what was found by reading the failure, written by
+whoever ran it; `findings` is a list of {title, state, area, detail} for what the testing turned up.
+A failure with no note says so.
 
 Stdlib only, so it runs with a bare python3.
 """
@@ -170,8 +171,11 @@ def main(argv: list[str]) -> int:
     if "--live" in argv:
         live_runs = {v["path"]: v for v in json.loads(Path(argv[argv.index("--live") + 1]).read_text()).values()}
     notes: dict = {}
+    findings: list = []
     if "--notes" in argv:
         notes = json.loads(Path(argv[argv.index("--notes") + 1]).read_text())
+        findings = notes.pop("findings", [])
+        notes = notes.get("failures", notes)
     files = read_files()
     rows = read_junit(junit)
     for r in rows:
@@ -214,14 +218,27 @@ def main(argv: list[str]) -> int:
     except Exception:
         head = branch = ""
     version = (ROOT / "agentos" / "VERSION").read_text().strip() if (ROOT / "agentos" / "VERSION").exists() else ""
+    py = sys.version.split()[0]
+    venv = ROOT / ".venv" / "bin" / "python"
+    if venv.exists():       # the suite's own python, not the one building the report
+        try:
+            py = subprocess.run([str(venv), "--version"], capture_output=True, text=True,
+                                timeout=10).stdout.split()[-1]
+        except Exception:
+            pass
+    suite = ET.parse(junit).getroot()
+    suite = suite if suite.tag == "testsuite" else (suite.find("testsuite") or suite)
+    ran_at = (suite.get("timestamp") or "")[:16].replace("T", " ")
+    host = suite.get("hostname") or ""
     report = {
         "made_at": time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime()),
         "version": version, "commit": head, "branch": branch,
-        "python": sys.version.split()[0],
+        "python": py, "ran_at": ran_at + (" UTC" if ran_at else ""), "host": host,
         "totals": totals,
         "areas": sorted(areas.values(), key=lambda a: -a["count"]),
         "files": sorted(by_file.values(), key=lambda b: (b["area"], b["file"])),
         "failures": [r for r in rows if r["status"] in ("failed", "error")],
+        "findings": findings,
         "slowest": sorted(rows, key=lambda r: -r["time"])[:25],
         "live": [{**h, **{k: live_runs[h["path"]][k] for k in ("status", "why", "seconds", "tail", "at")
                           if h["path"] in live_runs}} for h in live_harnesses()],
