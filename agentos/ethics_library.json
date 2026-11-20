@@ -1,0 +1,7083 @@
+{
+"built_at": 1795115384,
+"categories": {
+"1.1": "Unfair discrimination and misrepresentation",
+"1.2": "Exposure to toxic content",
+"1.3": "Unequal performance across groups",
+"2.1": "Compromise of privacy",
+"2.2": "AI system security vulnerabilities and attacks",
+"3.1": "False or misleading information",
+"3.2": "Pollution of the information ecosystem",
+"4.1": "Disinformation, surveillance and influence at scale",
+"4.2": "Cyberattacks, weapons and mass harm",
+"4.3": "Fraud, scams and targeted manipulation",
+"5.1": "Overreliance and unsafe use",
+"5.2": "Loss of human agency and autonomy",
+"6.6": "Environmental harm",
+"7.1": "AI pursuing its own goals against people's interests",
+"7.2": "AI with dangerous capabilities",
+"7.3": "Lack of capability or robustness"
+},
+"curated": [
+{
+"category": "2.1",
+"pattern": "\\b(dox|doxx|doxxing|doxing)\\b",
+"source": "bento",
+"weight": 3
+},
+{
+"category": "2.1",
+"pattern": "\\b(home address|phone number|social security number|passport number) of\\b",
+"source": "bento",
+"weight": 2
+},
+{
+"category": "2.1",
+"pattern": "\\bwhere (does|do|did) [a-z][a-z .'-]{1,40} live\\b",
+"source": "bento",
+"weight": 2
+},
+{
+"category": "5.2",
+"pattern": "\\bwithout (them|him|her|anyone) knowing\\b",
+"source": "bento",
+"weight": 3
+},
+{
+"category": "4.1",
+"pattern": "\\b(track|spy on|monitor|read|follow) (my |his |her |their )?(wife|husband|girlfriend|boyfriend|partner|ex|employee|employees|neighbou?r|kid|child|daughter|son)('?s)?\\b",
+"source": "bento",
+"weight": 3
+},
+{
+"category": "4.1",
+"pattern": "\\b(stalk|stalking|stalkerware|spyware)\\b",
+"source": "bento",
+"weight": 4
+},
+{
+"category": "4.2",
+"pattern": "\\bhack(ing)? into\\b",
+"source": "bento",
+"weight": 3
+},
+{
+"category": "4.2",
+"pattern": "\\bbreak into (a |the |their |his |her |my )?(account|server|site|website|network|wifi|wi-fi|phone|email)\\b",
+"source": "bento",
+"weight": 3
+},
+{
+"category": "4.2",
+"pattern": "\\b(ddos|dos attack)\\b",
+"source": "bento",
+"weight": 4
+},
+{
+"category": "4.2",
+"pattern": "\\btake (it|them|their site|the site|the server|their server|their website) down\\b",
+"source": "bento",
+"weight": 3
+},
+{
+"category": "4.2",
+"pattern": "\\bbypass (the )?(login|authentication|2fa|mfa|captcha|paywall)\\b",
+"source": "bento",
+"weight": 3
+},
+{
+"category": "4.2",
+"pattern": "\\b(ransomware|keylogger|botnet|rootkit|zero[- ]day exploit)\\b",
+"source": "bento",
+"weight": 3
+},
+{
+"category": "4.2",
+"pattern": "\\bcrack (the |a |their |his |her )?(password|wifi|wi-fi|hash)",
+"source": "bento",
+"weight": 3
+},
+{
+"category": "2.1",
+"pattern": "\\bsteal (their |his |her |the |someone'?s )?(password|passwords|credentials|cookies|session|identity|data)\\b",
+"source": "bento",
+"weight": 4
+},
+{
+"category": "4.3",
+"pattern": "\\bphishing (email|page|site|kit|link|campaign)\\b",
+"source": "bento",
+"weight": 4
+},
+{
+"category": "4.3",
+"pattern": "\\bfake (invoice|review|reviews|receipt|id|identity|login page|bank statement)\\b",
+"source": "bento",
+"weight": 3
+},
+{
+"category": "4.3",
+"pattern": "\\bimpersonat(e|ing)\\b",
+"source": "bento",
+"weight": 2
+},
+{
+"category": "4.3",
+"pattern": "\\bpretend(ing)? to be (from )?(the |a |my |their )?(bank|police|irs|tax office|support|ceo|boss|manager)\\b",
+"source": "bento",
+"weight": 4
+},
+{
+"category": "4.3",
+"pattern": "\\b(scam|scamming|con them)\\b",
+"source": "bento",
+"weight": 2
+},
+{
+"category": "4.3",
+"pattern": "\\bdeepfake\\b",
+"source": "bento",
+"weight": 2
+},
+{
+"category": "1.2",
+"pattern": "\\bharass(ment|ing)?\\b",
+"source": "bento",
+"weight": 3
+},
+{
+"category": "1.2",
+"pattern": "\\b(threatening|threat) (message|letter|email|note)\\b",
+"source": "bento",
+"weight": 3
+},
+{
+"category": "3.1",
+"pattern": "\\b(fake news|disinformation|astroturf(ing)?)\\b",
+"source": "bento",
+"weight": 2
+},
+{
+"category": "3.1",
+"pattern": "\\b(spread|write|generate) (misinformation|propaganda)\\b",
+"source": "bento",
+"weight": 3
+}
+],
+"format": "bento-ethics-library/1",
+"phrases": {
+"3para rat": {
+"category": "4.2",
+"phrase": "3para rat",
+"ref": "S0066",
+"source": "attack",
+"title": "3PARA RAT (malware)",
+"weight": 1
+},
+"4h rat": {
+"category": "4.2",
+"phrase": "4h rat",
+"ref": "S0065",
+"source": "attack",
+"title": "4H RAT (malware)",
+"weight": 1
+},
+"acidpour": {
+"category": "4.2",
+"phrase": "acidpour",
+"ref": "S1167",
+"source": "attack",
+"title": "AcidPour (malware)",
+"weight": 1
+},
+"acidrain": {
+"category": "4.2",
+"phrase": "acidrain",
+"ref": "S1125",
+"source": "attack",
+"title": "AcidRain (malware)",
+"weight": 1
+},
+"acquire infrastructure": {
+"category": "2.2",
+"phrase": "acquire infrastructure",
+"ref": "AML.T0008",
+"source": "atlas",
+"title": "Acquire Infrastructure",
+"weight": 2
+},
+"acquire public ai artifacts": {
+"category": "2.2",
+"phrase": "acquire public ai artifacts",
+"ref": "AML.T0002",
+"source": "atlas",
+"title": "Acquire Public AI Artifacts",
+"weight": 2
+},
+"adversary in the middle": {
+"category": "2.1",
+"phrase": "adversary in the middle",
+"ref": "T1557",
+"source": "attack",
+"title": "Adversary-in-the-Middle",
+"weight": 3
+},
+"advstoreshell": {
+"category": "4.2",
+"phrase": "advstoreshell",
+"ref": "S0045",
+"source": "attack",
+"title": "ADVSTORESHELL (malware)",
+"weight": 1
+},
+"ai agent tool credential harvesting": {
+"category": "2.2",
+"phrase": "ai agent tool credential harvesting",
+"ref": "AML.T0098",
+"source": "atlas",
+"title": "AI Agent Tool Credential Harvesting",
+"weight": 2
+},
+"ai enabled exfiltration": {
+"category": "2.1",
+"phrase": "ai enabled exfiltration",
+"ref": "T1700",
+"source": "attack",
+"title": "AI-Enabled Exfiltration",
+"weight": 2
+},
+"ai supply chain compromise": {
+"category": "2.2",
+"phrase": "ai supply chain compromise",
+"ref": "AML.T0010",
+"source": "atlas",
+"title": "AI Supply Chain Compromise",
+"weight": 2
+},
+"ai supply chain reputation inflation": {
+"category": "2.2",
+"phrase": "ai supply chain reputation inflation",
+"ref": "AML.T0111",
+"source": "atlas",
+"title": "AI Supply Chain Reputation Inflation",
+"weight": 2
+},
+"ai supply chain rug pull": {
+"category": "2.2",
+"phrase": "ai supply chain rug pull",
+"ref": "AML.T0109",
+"source": "atlas",
+"title": "AI Supply Chain Rug Pull",
+"weight": 2
+},
+"akira v2": {
+"category": "4.2",
+"phrase": "akira v2",
+"ref": "S1194",
+"source": "attack",
+"title": "Akira _v2 (malware)",
+"weight": 1
+},
+"alienspy": {
+"category": "4.2",
+"phrase": "alienspy",
+"ref": "S0283",
+"source": "attack",
+"title": "jRAT (malware)",
+"weight": 1
+},
+"andromeda": {
+"category": "4.2",
+"phrase": "andromeda",
+"ref": "S1074",
+"source": "attack",
+"title": "ANDROMEDA (malware)",
+"weight": 1
+},
+"anelldr": {
+"category": "4.2",
+"phrase": "anelldr",
+"ref": "S9027",
+"source": "attack",
+"title": "ANELLDR (malware)",
+"weight": 1
+},
+"applejeus": {
+"category": "4.2",
+"phrase": "applejeus",
+"ref": "S0584",
+"source": "attack",
+"title": "AppleJeus (malware)",
+"weight": 1
+},
+"appleseed": {
+"category": "4.2",
+"phrase": "appleseed",
+"ref": "S0622",
+"source": "attack",
+"title": "AppleSeed (malware)",
+"weight": 1
+},
+"application exhaustion flood": {
+"category": "4.2",
+"phrase": "application exhaustion flood",
+"ref": "T1499.003",
+"source": "attack",
+"title": "Application Exhaustion Flood",
+"weight": 3
+},
+"application or system exploitation": {
+"category": "4.2",
+"phrase": "application or system exploitation",
+"ref": "T1499.004",
+"source": "attack",
+"title": "Application or System Exploitation",
+"weight": 3
+},
+"arp cache poisoning": {
+"category": "2.1",
+"phrase": "arp cache poisoning",
+"ref": "T1557.002",
+"source": "attack",
+"title": "ARP Cache Poisoning",
+"weight": 3
+},
+"as rep roasting": {
+"category": "2.1",
+"phrase": "as rep roasting",
+"ref": "T1558.004",
+"source": "attack",
+"title": "AS-REP Roasting",
+"weight": 3
+},
+"ashtag": {
+"category": "4.2",
+"phrase": "ashtag",
+"ref": "S9031",
+"source": "attack",
+"title": "AshTag (malware)",
+"weight": 1
+},
+"auditcred": {
+"category": "4.2",
+"phrase": "auditcred",
+"ref": "S0347",
+"source": "attack",
+"title": "AuditCred (malware)",
+"weight": 1
+},
+"auto stealer": {
+"category": "4.2",
+"phrase": "auto stealer",
+"ref": "S1029",
+"source": "attack",
+"title": "AuTo Stealer (malware)",
+"weight": 1
+},
+"autoit backdoor": {
+"category": "4.2",
+"phrase": "autoit backdoor",
+"ref": "S0129",
+"source": "attack",
+"title": "AutoIt backdoor (malware)",
+"weight": 1
+},
+"avoslocker": {
+"category": "4.2",
+"phrase": "avoslocker",
+"ref": "S1053",
+"source": "attack",
+"title": "AvosLocker (malware)",
+"weight": 1
+},
+"babyshark": {
+"category": "4.2",
+"phrase": "babyshark",
+"ref": "S0414",
+"source": "attack",
+"title": "BabyShark (malware)",
+"weight": 1
+},
+"backconfig": {
+"category": "4.2",
+"phrase": "backconfig",
+"ref": "S0475",
+"source": "attack",
+"title": "BackConfig (malware)",
+"weight": 1
+},
+"backdoor.apt.cookiecutter": {
+"category": "4.2",
+"phrase": "backdoor.apt.cookiecutter",
+"ref": "S0063",
+"source": "attack",
+"title": "SHOTPUT (malware)",
+"weight": 1
+},
+"backdoor.apt.fakewinhttphelper": {
+"category": "4.2",
+"phrase": "backdoor.apt.fakewinhttphelper",
+"ref": "S0043",
+"source": "attack",
+"title": "BUBBLEWRAP (malware)",
+"weight": 1
+},
+"backdoor.macos.oceanlotus.f": {
+"category": "4.2",
+"phrase": "backdoor.macos.oceanlotus.f",
+"ref": "S0352",
+"source": "attack",
+"title": "OSX_OCEANLOTUS.D (malware)",
+"weight": 1
+},
+"backdoor.sofacyx": {
+"category": "4.2",
+"phrase": "backdoor.sofacyx",
+"ref": "S0023",
+"source": "attack",
+"title": "CHOPSTICK (malware)",
+"weight": 1
+},
+"backspace": {
+"category": "4.2",
+"phrase": "backspace",
+"ref": "S0031",
+"source": "attack",
+"title": "BACKSPACE (malware)",
+"weight": 1
+},
+"backuposint v9.0 apex predator": {
+"category": "4.2",
+"phrase": "backuposint v9.0 apex predator",
+"ref": "S9045",
+"source": "attack",
+"title": "BACKUPOSINT v9.0 APEX PREDATOR (malware)",
+"weight": 1
+},
+"badcall": {
+"category": "4.2",
+"phrase": "badcall",
+"ref": "S0245",
+"source": "attack",
+"title": "BADCALL (malware)",
+"weight": 1
+},
+"badflick": {
+"category": "4.2",
+"phrase": "badflick",
+"ref": "S0642",
+"source": "attack",
+"title": "BADFLICK (malware)",
+"weight": 1
+},
+"badhatch": {
+"category": "4.2",
+"phrase": "badhatch",
+"ref": "S1081",
+"source": "attack",
+"title": "BADHATCH (malware)",
+"weight": 1
+},
+"badnews": {
+"category": "4.2",
+"phrase": "badnews",
+"ref": "S0128",
+"source": "attack",
+"title": "BADNEWS (malware)",
+"weight": 1
+},
+"badpatch": {
+"category": "4.2",
+"phrase": "badpatch",
+"ref": "S0337",
+"source": "attack",
+"title": "BadPatch (malware)",
+"weight": 1
+},
+"bandwidth hijacking": {
+"category": "4.2",
+"phrase": "bandwidth hijacking",
+"ref": "T1496.002",
+"source": "attack",
+"title": "Bandwidth Hijacking",
+"weight": 3
+},
+"beavertail": {
+"category": "4.2",
+"phrase": "beavertail",
+"ref": "S1246",
+"source": "attack",
+"title": "BeaverTail (malware)",
+"weight": 1
+},
+"bendybear": {
+"category": "4.2",
+"phrase": "bendybear",
+"ref": "S0574",
+"source": "attack",
+"title": "BendyBear (malware)",
+"weight": 1
+},
+"biscuit": {
+"category": "4.2",
+"phrase": "biscuit",
+"ref": "S0017",
+"source": "attack",
+"title": "BISCUIT (malware)",
+"weight": 1
+},
+"bitpaymer": {
+"category": "4.2",
+"phrase": "bitpaymer",
+"ref": "S0570",
+"source": "attack",
+"title": "BitPaymer (malware)",
+"weight": 1
+},
+"blackbyte 2.0 ransomware": {
+"category": "4.2",
+"phrase": "blackbyte 2.0 ransomware",
+"ref": "S1181",
+"source": "attack",
+"title": "BlackByte 2.0 Ransomware (malware)",
+"weight": 1
+},
+"blackbyte ransomware": {
+"category": "4.2",
+"phrase": "blackbyte ransomware",
+"ref": "S1180",
+"source": "attack",
+"title": "BlackByte Ransomware (malware)",
+"weight": 1
+},
+"blackcat": {
+"category": "4.2",
+"phrase": "blackcat",
+"ref": "S1068",
+"source": "attack",
+"title": "BlackCat (malware)",
+"weight": 1
+},
+"blackcoffee": {
+"category": "4.2",
+"phrase": "blackcoffee",
+"ref": "S0069",
+"source": "attack",
+"title": "BLACKCOFFEE (malware)",
+"weight": 1
+},
+"blackenergy": {
+"category": "4.2",
+"phrase": "blackenergy",
+"ref": "S0089",
+"source": "attack",
+"title": "BlackEnergy (malware)",
+"weight": 1
+},
+"blackmould": {
+"category": "4.2",
+"phrase": "blackmould",
+"ref": "S0564",
+"source": "attack",
+"title": "BlackMould (malware)",
+"weight": 1
+},
+"blindingcan": {
+"category": "4.2",
+"phrase": "blindingcan",
+"ref": "S0520",
+"source": "attack",
+"title": "BLINDINGCAN (malware)",
+"weight": 1
+},
+"bluelight": {
+"category": "4.2",
+"phrase": "bluelight",
+"ref": "S0657",
+"source": "attack",
+"title": "BLUELIGHT (malware)",
+"weight": 1
+},
+"boldmove": {
+"category": "4.2",
+"phrase": "boldmove",
+"ref": "S1184",
+"source": "attack",
+"title": "BOLDMOVE (malware)",
+"weight": 1
+},
+"bondupdater": {
+"category": "4.2",
+"phrase": "bondupdater",
+"ref": "S0360",
+"source": "attack",
+"title": "BONDUPDATER (malware)",
+"weight": 1
+},
+"bookworm": {
+"category": "4.2",
+"phrase": "bookworm",
+"ref": "S1226",
+"source": "attack",
+"title": "BOOKWORM (malware)",
+"weight": 1
+},
+"boombox": {
+"category": "4.2",
+"phrase": "boombox",
+"ref": "S0635",
+"source": "attack",
+"title": "BoomBox (malware)",
+"weight": 1
+},
+"boostwrite": {
+"category": "4.2",
+"phrase": "boostwrite",
+"ref": "S0415",
+"source": "attack",
+"title": "BOOSTWRITE (malware)",
+"weight": 1
+},
+"bootrash": {
+"category": "4.2",
+"phrase": "bootrash",
+"ref": "S0114",
+"source": "attack",
+"title": "BOOTRASH (malware)",
+"weight": 1
+},
+"botgenstudios": {
+"category": "4.2",
+"phrase": "botgenstudios",
+"ref": "S0050",
+"source": "attack",
+"title": "CosmicDuke (malware)",
+"weight": 1
+},
+"boxcaon": {
+"category": "4.2",
+"phrase": "boxcaon",
+"ref": "S0651",
+"source": "attack",
+"title": "BoxCaon (malware)",
+"weight": 1
+},
+"brickstorm": {
+"category": "4.2",
+"phrase": "brickstorm",
+"ref": "S9015",
+"source": "attack",
+"title": "BRICKSTORM (malware)",
+"weight": 1
+},
+"brushfire": {
+"category": "4.2",
+"phrase": "brushfire",
+"ref": "S9011",
+"source": "attack",
+"title": "BRUSHFIRE (malware)",
+"weight": 1
+},
+"brute force": {
+"category": "2.1",
+"phrase": "brute force",
+"ref": "T1110",
+"source": "attack",
+"title": "Brute Force",
+"weight": 3
+},
+"bs2005": {
+"category": "4.2",
+"phrase": "bs2005",
+"ref": "S0014",
+"source": "attack",
+"title": "BS2005 (malware)",
+"weight": 1
+},
+"bubblewrap": {
+"category": "4.2",
+"phrase": "bubblewrap",
+"ref": "S0043",
+"source": "attack",
+"title": "BUBBLEWRAP (malware)",
+"weight": 1
+},
+"bugjuice": {
+"category": "4.2",
+"phrase": "bugjuice",
+"ref": "S0153",
+"source": "attack",
+"title": "RedLeaves (malware)",
+"weight": 1
+},
+"bushwalk": {
+"category": "4.2",
+"phrase": "bushwalk",
+"ref": "S1118",
+"source": "attack",
+"title": "BUSHWALK (malware)",
+"weight": 1
+},
+"cached domain credentials": {
+"category": "2.1",
+"phrase": "cached domain credentials",
+"ref": "T1003.005",
+"source": "attack",
+"title": "Cached Domain Credentials",
+"weight": 3
+},
+"caddywiper": {
+"category": "4.2",
+"phrase": "caddywiper",
+"ref": "S0693",
+"source": "attack",
+"title": "CaddyWiper (malware)",
+"weight": 1
+},
+"calendar": {
+"category": "4.2",
+"phrase": "calendar",
+"ref": "S0025",
+"source": "attack",
+"title": "CALENDAR (malware)",
+"weight": 1
+},
+"callme": {
+"category": "4.2",
+"phrase": "callme",
+"ref": "S0077",
+"source": "attack",
+"title": "CallMe (malware)",
+"weight": 1
+},
+"canisterworm": {
+"category": "4.2",
+"phrase": "canisterworm",
+"ref": "S9042",
+"source": "attack",
+"title": "CanisterWorm (malware)",
+"weight": 1
+},
+"canonstager": {
+"category": "4.2",
+"phrase": "canonstager",
+"ref": "S1237",
+"source": "attack",
+"title": "CANONSTAGER (malware)",
+"weight": 1
+},
+"carrotbat": {
+"category": "4.2",
+"phrase": "carrotbat",
+"ref": "S0462",
+"source": "attack",
+"title": "CARROTBAT (malware)",
+"weight": 1
+},
+"castletap": {
+"category": "4.2",
+"phrase": "castletap",
+"ref": "S1224",
+"source": "attack",
+"title": "CASTLETAP (malware)",
+"weight": 1
+},
+"caterpillar webshell": {
+"category": "4.2",
+"phrase": "caterpillar webshell",
+"ref": "S0572",
+"source": "attack",
+"title": "Caterpillar WebShell (malware)",
+"weight": 1
+},
+"ccf32": {
+"category": "4.2",
+"phrase": "ccf32",
+"ref": "S1043",
+"source": "attack",
+"title": "ccf32 (malware)",
+"weight": 1
+},
+"cd00r": {
+"category": "4.2",
+"phrase": "cd00r",
+"ref": "S1204",
+"source": "attack",
+"title": "cd00r (malware)",
+"weight": 1
+},
+"charmpower": {
+"category": "4.2",
+"phrase": "charmpower",
+"ref": "S0674",
+"source": "attack",
+"title": "CharmPower (malware)",
+"weight": 1
+},
+"chches": {
+"category": "4.2",
+"phrase": "chches",
+"ref": "S0144",
+"source": "attack",
+"title": "ChChes (malware)",
+"weight": 1
+},
+"chimneysweep": {
+"category": "4.2",
+"phrase": "chimneysweep",
+"ref": "S1149",
+"source": "attack",
+"title": "CHIMNEYSWEEP (malware)",
+"weight": 1
+},
+"chopstick": {
+"category": "4.2",
+"phrase": "chopstick",
+"ref": "S0023",
+"source": "attack",
+"title": "CHOPSTICK (malware)",
+"weight": 1
+},
+"claimloader": {
+"category": "4.2",
+"phrase": "claimloader",
+"ref": "S1236",
+"source": "attack",
+"title": "CLAIMLOADER (malware)",
+"weight": 1
+},
+"cloud service hijacking": {
+"category": "4.2",
+"phrase": "cloud service hijacking",
+"ref": "T1496.004",
+"source": "attack",
+"title": "Cloud Service Hijacking",
+"weight": 3
+},
+"cloudduke": {
+"category": "4.2",
+"phrase": "cloudduke",
+"ref": "S0054",
+"source": "attack",
+"title": "CloudDuke (malware)",
+"weight": 1
+},
+"cloudlook": {
+"category": "4.2",
+"phrase": "cloudlook",
+"ref": "S0054",
+"source": "attack",
+"title": "CloudDuke (malware)",
+"weight": 1
+},
+"coathanger": {
+"category": "4.2",
+"phrase": "coathanger",
+"ref": "S1105",
+"source": "attack",
+"title": "COATHANGER (malware)",
+"weight": 1
+},
+"cointicker": {
+"category": "4.2",
+"phrase": "cointicker",
+"ref": "S0369",
+"source": "attack",
+"title": "CoinTicker (malware)",
+"weight": 1
+},
+"compromise hardware supply chain": {
+"category": "4.3",
+"phrase": "compromise hardware supply chain",
+"ref": "T1195.003",
+"source": "attack",
+"title": "Compromise Hardware Supply Chain",
+"weight": 2
+},
+"compromise software dependencies and development tools": {
+"category": "4.3",
+"phrase": "compromise software dependencies and development tools",
+"ref": "T1195.001",
+"source": "attack",
+"title": "Compromise Software Dependencies and Development Tools",
+"weight": 2
+},
+"compromise software supply chain": {
+"category": "4.3",
+"phrase": "compromise software supply chain",
+"ref": "T1195.002",
+"source": "attack",
+"title": "Compromise Software Supply Chain",
+"weight": 2
+},
+"compute hijacking": {
+"category": "4.2",
+"phrase": "compute hijacking",
+"ref": "T1496.001",
+"source": "attack",
+"title": "Compute Hijacking",
+"weight": 3
+},
+"comrat": {
+"category": "4.2",
+"phrase": "comrat",
+"ref": "S0126",
+"source": "attack",
+"title": "ComRAT (malware)",
+"weight": 1
+},
+"cookieminer": {
+"category": "4.2",
+"phrase": "cookieminer",
+"ref": "S0492",
+"source": "attack",
+"title": "CookieMiner (malware)",
+"weight": 1
+},
+"coraldeck": {
+"category": "4.2",
+"phrase": "coraldeck",
+"ref": "S0212",
+"source": "attack",
+"title": "CORALDECK (malware)",
+"weight": 1
+},
+"coreshell": {
+"category": "4.2",
+"phrase": "coreshell",
+"ref": "S0137",
+"source": "attack",
+"title": "CORESHELL (malware)",
+"weight": 1
+},
+"corklog": {
+"category": "4.2",
+"phrase": "corklog",
+"ref": "S1235",
+"source": "attack",
+"title": "CorKLOG (malware)",
+"weight": 1
+},
+"corrupt ai model": {
+"category": "2.2",
+"phrase": "corrupt ai model",
+"ref": "AML.T0076",
+"source": "atlas",
+"title": "Corrupt AI Model",
+"weight": 2
+},
+"cosmicduke": {
+"category": "4.2",
+"phrase": "cosmicduke",
+"ref": "S0050",
+"source": "attack",
+"title": "CosmicDuke (malware)",
+"weight": 1
+},
+"costabricks": {
+"category": "4.2",
+"phrase": "costabricks",
+"ref": "S0614",
+"source": "attack",
+"title": "CostaBricks (malware)",
+"weight": 1
+},
+"cozybear": {
+"category": "4.2",
+"phrase": "cozybear",
+"ref": "S0046",
+"source": "attack",
+"title": "CozyCar (malware)",
+"weight": 1
+},
+"cozycar": {
+"category": "4.2",
+"phrase": "cozycar",
+"ref": "S0046",
+"source": "attack",
+"title": "CozyCar (malware)",
+"weight": 1
+},
+"cozyduke": {
+"category": "4.2",
+"phrase": "cozyduke",
+"ref": "S0046",
+"source": "attack",
+"title": "CozyCar (malware)",
+"weight": 1
+},
+"craft adversarial data": {
+"category": "2.2",
+"phrase": "craft adversarial data",
+"ref": "AML.T0043",
+"source": "atlas",
+"title": "Craft Adversarial Data",
+"weight": 2
+},
+"crashpad": {
+"category": "4.2",
+"phrase": "crashpad",
+"ref": "S9057",
+"source": "attack",
+"title": "CRASHPAD (malware)",
+"weight": 1
+},
+"create proxy ai model": {
+"category": "2.2",
+"phrase": "create proxy ai model",
+"ref": "AML.T0005",
+"source": "atlas",
+"title": "Create Proxy AI Model",
+"weight": 2
+},
+"credential stuffing": {
+"category": "2.1",
+"phrase": "credential stuffing",
+"ref": "T1110.004",
+"source": "attack",
+"title": "Credential Stuffing",
+"weight": 3
+},
+"credentials from ai agent configuration": {
+"category": "2.2",
+"phrase": "credentials from ai agent configuration",
+"ref": "AML.T0083",
+"source": "atlas",
+"title": "Credentials from AI Agent Configuration",
+"weight": 2
+},
+"credentials from password stores": {
+"category": "2.1",
+"phrase": "credentials from password stores",
+"ref": "T1555",
+"source": "attack",
+"title": "Credentials from Password Stores",
+"weight": 3
+},
+"credentials from web browsers": {
+"category": "2.1",
+"phrase": "credentials from web browsers",
+"ref": "T1555.003",
+"source": "attack",
+"title": "Credentials from Web Browsers",
+"weight": 3
+},
+"credentials in registry": {
+"category": "2.1",
+"phrase": "credentials in registry",
+"ref": "T1552.002",
+"source": "attack",
+"title": "Credentials in Registry",
+"weight": 3
+},
+"creepydrive": {
+"category": "4.2",
+"phrase": "creepydrive",
+"ref": "S1023",
+"source": "attack",
+"title": "CreepyDrive (malware)",
+"weight": 1
+},
+"creepysnail": {
+"category": "4.2",
+"phrase": "creepysnail",
+"ref": "S1024",
+"source": "attack",
+"title": "CreepySnail (malware)",
+"weight": 1
+},
+"crossrat": {
+"category": "4.2",
+"phrase": "crossrat",
+"ref": "S0235",
+"source": "attack",
+"title": "CrossRAT (malware)",
+"weight": 1
+},
+"danbot": {
+"category": "4.2",
+"phrase": "danbot",
+"ref": "S1014",
+"source": "attack",
+"title": "DanBot (malware)",
+"weight": 1
+},
+"darkcomet": {
+"category": "4.2",
+"phrase": "darkcomet",
+"ref": "S0334",
+"source": "attack",
+"title": "DarkComet (malware)",
+"weight": 1
+},
+"darkgate": {
+"category": "4.2",
+"phrase": "darkgate",
+"ref": "S1111",
+"source": "attack",
+"title": "DarkGate (malware)",
+"weight": 1
+},
+"darkkomet": {
+"category": "4.2",
+"phrase": "darkkomet",
+"ref": "S0334",
+"source": "attack",
+"title": "DarkComet (malware)",
+"weight": 1
+},
+"darktortilla": {
+"category": "4.2",
+"phrase": "darktortilla",
+"ref": "S1066",
+"source": "attack",
+"title": "DarkTortilla (malware)",
+"weight": 1
+},
+"darktown": {
+"category": "4.2",
+"phrase": "darktown",
+"ref": "S0627",
+"source": "attack",
+"title": "SodaMaster (malware)",
+"weight": 1
+},
+"darkwatchman": {
+"category": "4.2",
+"phrase": "darkwatchman",
+"ref": "S0673",
+"source": "attack",
+"title": "DarkWatchman (malware)",
+"weight": 1
+},
+"data destruction": {
+"category": "4.2",
+"phrase": "data destruction",
+"ref": "T1485",
+"source": "attack",
+"title": "Data Destruction",
+"weight": 3
+},
+"data destruction via ai agent tool invocation": {
+"category": "2.2",
+"phrase": "data destruction via ai agent tool invocation",
+"ref": "AML.T0101",
+"source": "atlas",
+"title": "Data Destruction via AI Agent Tool Invocation",
+"weight": 3
+},
+"data encrypted for impact": {
+"category": "4.2",
+"phrase": "data encrypted for impact",
+"ref": "T1486",
+"source": "attack",
+"title": "Data Encrypted for Impact",
+"weight": 3
+},
+"dazzlespy": {
+"category": "4.2",
+"phrase": "dazzlespy",
+"ref": "S1016",
+"source": "attack",
+"title": "MacMa (malware)",
+"weight": 1
+},
+"dcsync": {
+"category": "2.1",
+"phrase": "dcsync",
+"ref": "T1003.006",
+"source": "attack",
+"title": "DCSync",
+"weight": 3
+},
+"dcsyncer.slick": {
+"category": "4.2",
+"phrase": "dcsyncer.slick",
+"ref": "S9065",
+"source": "attack",
+"title": "DCSYNCER.SLICK (malware)",
+"weight": 1
+},
+"deadeye": {
+"category": "4.2",
+"phrase": "deadeye",
+"ref": "S1052",
+"source": "attack",
+"title": "DEADEYE (malware)",
+"weight": 1
+},
+"deadeye.append": {
+"category": "4.2",
+"phrase": "deadeye.append",
+"ref": "S1052",
+"source": "attack",
+"title": "DEADEYE (malware)",
+"weight": 1
+},
+"deadeye.embed": {
+"category": "4.2",
+"phrase": "deadeye.embed",
+"ref": "S1052",
+"source": "attack",
+"title": "DEADEYE (malware)",
+"weight": 1
+},
+"deadwood": {
+"category": "4.2",
+"phrase": "deadwood",
+"ref": "S1134",
+"source": "attack",
+"title": "DEADWOOD (malware)",
+"weight": 1
+},
+"dealerschoice": {
+"category": "4.2",
+"phrase": "dealerschoice",
+"ref": "S0243",
+"source": "attack",
+"title": "DealersChoice (malware)",
+"weight": 1
+},
+"deathransom": {
+"category": "4.2",
+"phrase": "deathransom",
+"ref": "S0616",
+"source": "attack",
+"title": "DEATHRANSOM (malware)",
+"weight": 1
+},
+"deeproot": {
+"category": "4.2",
+"phrase": "deeproot",
+"ref": "S9063",
+"source": "attack",
+"title": "DEEPROOT (malware)",
+"weight": 1
+},
+"defacement": {
+"category": "4.2",
+"phrase": "defacement",
+"ref": "T1491",
+"source": "attack",
+"title": "Defacement",
+"weight": 3
+},
+"delay execution of llm instructions": {
+"category": "2.2",
+"phrase": "delay execution of llm instructions",
+"ref": "AML.T0094",
+"source": "atlas",
+"title": "Delay Execution of LLM Instructions",
+"weight": 2
+},
+"delfscake": {
+"category": "4.2",
+"phrase": "delfscake",
+"ref": "S0627",
+"source": "attack",
+"title": "SodaMaster (malware)",
+"weight": 1
+},
+"denial of ai service": {
+"category": "2.2",
+"phrase": "denial of ai service",
+"ref": "AML.T0029",
+"source": "atlas",
+"title": "Denial of AI Service",
+"weight": 3
+},
+"destroyrat": {
+"category": "4.2",
+"phrase": "destroyrat",
+"ref": "S0013",
+"source": "attack",
+"title": "PlugX (malware)",
+"weight": 1
+},
+"develop capabilities": {
+"category": "2.2",
+"phrase": "develop capabilities",
+"ref": "AML.T0017",
+"source": "atlas",
+"title": "Develop Capabilities",
+"weight": 2
+},
+"dhcp spoofing": {
+"category": "2.1",
+"phrase": "dhcp spoofing",
+"ref": "T1557.003",
+"source": "attack",
+"title": "DHCP Spoofing",
+"weight": 3
+},
+"direct network flood": {
+"category": "4.2",
+"phrase": "direct network flood",
+"ref": "T1498.001",
+"source": "attack",
+"title": "Direct Network Flood",
+"weight": 3
+},
+"disk content wipe": {
+"category": "4.2",
+"phrase": "disk content wipe",
+"ref": "T1561.001",
+"source": "attack",
+"title": "Disk Content Wipe",
+"weight": 3
+},
+"disk structure wipe": {
+"category": "4.2",
+"phrase": "disk structure wipe",
+"ref": "T1561.002",
+"source": "attack",
+"title": "Disk Structure Wipe",
+"weight": 3
+},
+"disk wipe": {
+"category": "4.2",
+"phrase": "disk wipe",
+"ref": "T1561",
+"source": "attack",
+"title": "Disk Wipe",
+"weight": 3
+},
+"dnssystem": {
+"category": "4.2",
+"phrase": "dnssystem",
+"ref": "S1021",
+"source": "attack",
+"title": "DnsSystem (malware)",
+"weight": 1
+},
+"dogcall": {
+"category": "4.2",
+"phrase": "dogcall",
+"ref": "S0213",
+"source": "attack",
+"title": "DOGCALL (malware)",
+"weight": 1
+},
+"downiissa": {
+"category": "4.2",
+"phrase": "downiissa",
+"ref": "S9021",
+"source": "attack",
+"title": "DOWNIISSA (malware)",
+"weight": 1
+},
+"downpaper": {
+"category": "4.2",
+"phrase": "downpaper",
+"ref": "S0186",
+"source": "attack",
+"title": "DownPaper (malware)",
+"weight": 1
+},
+"driftwood": {
+"category": "4.2",
+"phrase": "driftwood",
+"ref": "S0169",
+"source": "attack",
+"title": "RawPOS (malware)",
+"weight": 1
+},
+"drive by compromise": {
+"category": "4.3",
+"phrase": "drive by compromise",
+"ref": "T1189",
+"source": "attack",
+"title": "Drive-by Compromise",
+"weight": 2
+},
+"driveslayer": {
+"category": "4.2",
+"phrase": "driveslayer",
+"ref": "S0697",
+"source": "attack",
+"title": "HermeticWiper (malware)",
+"weight": 1
+},
+"dropbook": {
+"category": "4.2",
+"phrase": "dropbook",
+"ref": "S0547",
+"source": "attack",
+"title": "DropBook (malware)",
+"weight": 1
+},
+"dropshot": {
+"category": "4.2",
+"phrase": "dropshot",
+"ref": "S0380",
+"source": "attack",
+"title": "StoneDrill (malware)",
+"weight": 1
+},
+"dryhook": {
+"category": "4.2",
+"phrase": "dryhook",
+"ref": "S9013",
+"source": "attack",
+"title": "DRYHOOK (malware)",
+"weight": 1
+},
+"duebrew": {
+"category": "4.2",
+"phrase": "duebrew",
+"ref": "S0169",
+"source": "attack",
+"title": "RawPOS (malware)",
+"weight": 1
+},
+"dustpan": {
+"category": "4.2",
+"phrase": "dustpan",
+"ref": "S1158",
+"source": "attack",
+"title": "DUSTPAN (malware)",
+"weight": 1
+},
+"dusttrap": {
+"category": "4.2",
+"phrase": "dusttrap",
+"ref": "S1159",
+"source": "attack",
+"title": "DUSTTRAP (malware)",
+"weight": 1
+},
+"dustysky": {
+"category": "4.2",
+"phrase": "dustysky",
+"ref": "S0062",
+"source": "attack",
+"title": "DustySky (malware)",
+"weight": 1
+},
+"dynowiper": {
+"category": "4.2",
+"phrase": "dynowiper",
+"ref": "S9038",
+"source": "attack",
+"title": "DynoWiper (malware)",
+"weight": 1
+},
+"eccentricbandwagon": {
+"category": "4.2",
+"phrase": "eccentricbandwagon",
+"ref": "S0593",
+"source": "attack",
+"title": "ECCENTRICBANDWAGON (malware)",
+"weight": 1
+},
+"email bombing": {
+"category": "4.2",
+"phrase": "email bombing",
+"ref": "T1667",
+"source": "attack",
+"title": "Email Bombing",
+"weight": 3
+},
+"endpoint denial of service": {
+"category": "4.2",
+"phrase": "endpoint denial of service",
+"ref": "T1499",
+"source": "attack",
+"title": "Endpoint Denial of Service",
+"weight": 3
+},
+"envyscout": {
+"category": "4.2",
+"phrase": "envyscout",
+"ref": "S0634",
+"source": "attack",
+"title": "EnvyScout (malware)",
+"weight": 1
+},
+"erode ai model integrity": {
+"category": "2.2",
+"phrase": "erode ai model integrity",
+"ref": "AML.T0031",
+"source": "atlas",
+"title": "Erode AI Model Integrity",
+"weight": 3
+},
+"erode dataset integrity": {
+"category": "2.2",
+"phrase": "erode dataset integrity",
+"ref": "AML.T0059",
+"source": "atlas",
+"title": "Erode Dataset Integrity",
+"weight": 3
+},
+"euroapt": {
+"category": "4.2",
+"phrase": "euroapt",
+"ref": "S0046",
+"source": "attack",
+"title": "CozyCar (malware)",
+"weight": 1
+},
+"evade ai model": {
+"category": "2.2",
+"phrase": "evade ai model",
+"ref": "AML.T0015",
+"source": "atlas",
+"title": "Evade AI Model",
+"weight": 3
+},
+"evil twin": {
+"category": "2.1",
+"phrase": "evil twin",
+"ref": "T1557.004",
+"source": "attack",
+"title": "Evil Twin",
+"weight": 3
+},
+"evilbunny": {
+"category": "4.2",
+"phrase": "evilbunny",
+"ref": "S0396",
+"source": "attack",
+"title": "EvilBunny (malware)",
+"weight": 1
+},
+"evilgrab": {
+"category": "4.2",
+"phrase": "evilgrab",
+"ref": "S0152",
+"source": "attack",
+"title": "EvilGrab (malware)",
+"weight": 1
+},
+"evilnum": {
+"category": "4.2",
+"phrase": "evilnum",
+"ref": "S0568",
+"source": "attack",
+"title": "EVILNUM (malware)",
+"weight": 1
+},
+"evilquest": {
+"category": "4.2",
+"phrase": "evilquest",
+"ref": "S0595",
+"source": "attack",
+"title": "ThiefQuest (malware)",
+"weight": 1
+},
+"eviltoss": {
+"category": "4.2",
+"phrase": "eviltoss",
+"ref": "S0045",
+"source": "attack",
+"title": "ADVSTORESHELL (malware)",
+"weight": 1
+},
+"exfiltration over alternative protocol": {
+"category": "2.1",
+"phrase": "exfiltration over alternative protocol",
+"ref": "T1048",
+"source": "attack",
+"title": "Exfiltration Over Alternative Protocol",
+"weight": 2
+},
+"exfiltration over asymmetric encrypted non c2 protocol": {
+"category": "2.1",
+"phrase": "exfiltration over asymmetric encrypted non c2 protocol",
+"ref": "T1048.002",
+"source": "attack",
+"title": "Exfiltration Over Asymmetric Encrypted Non-C2 Protocol",
+"weight": 2
+},
+"exfiltration over bluetooth": {
+"category": "2.1",
+"phrase": "exfiltration over bluetooth",
+"ref": "T1011.001",
+"source": "attack",
+"title": "Exfiltration Over Bluetooth",
+"weight": 2
+},
+"exfiltration over c2 channel": {
+"category": "2.1",
+"phrase": "exfiltration over c2 channel",
+"ref": "T1041",
+"source": "attack",
+"title": "Exfiltration Over C2 Channel",
+"weight": 2
+},
+"exfiltration over other network medium": {
+"category": "2.1",
+"phrase": "exfiltration over other network medium",
+"ref": "T1011",
+"source": "attack",
+"title": "Exfiltration Over Other Network Medium",
+"weight": 2
+},
+"exfiltration over physical medium": {
+"category": "2.1",
+"phrase": "exfiltration over physical medium",
+"ref": "T1052",
+"source": "attack",
+"title": "Exfiltration Over Physical Medium",
+"weight": 2
+},
+"exfiltration over symmetric encrypted non c2 protocol": {
+"category": "2.1",
+"phrase": "exfiltration over symmetric encrypted non c2 protocol",
+"ref": "T1048.001",
+"source": "attack",
+"title": "Exfiltration Over Symmetric Encrypted Non-C2 Protocol",
+"weight": 2
+},
+"exfiltration over unencrypted non c2 protocol": {
+"category": "2.1",
+"phrase": "exfiltration over unencrypted non c2 protocol",
+"ref": "T1048.003",
+"source": "attack",
+"title": "Exfiltration Over Unencrypted Non-C2 Protocol",
+"weight": 2
+},
+"exfiltration over usb": {
+"category": "2.1",
+"phrase": "exfiltration over usb",
+"ref": "T1052.001",
+"source": "attack",
+"title": "Exfiltration over USB",
+"weight": 2
+},
+"exfiltration over web service": {
+"category": "2.1",
+"phrase": "exfiltration over web service",
+"ref": "T1567",
+"source": "attack",
+"title": "Exfiltration Over Web Service",
+"weight": 2
+},
+"exfiltration over webhook": {
+"category": "2.1",
+"phrase": "exfiltration over webhook",
+"ref": "T1567.004",
+"source": "attack",
+"title": "Exfiltration Over Webhook",
+"weight": 2
+},
+"exfiltration to cloud storage": {
+"category": "2.1",
+"phrase": "exfiltration to cloud storage",
+"ref": "T1567.002",
+"source": "attack",
+"title": "Exfiltration to Cloud Storage",
+"weight": 2
+},
+"exfiltration to code repository": {
+"category": "2.1",
+"phrase": "exfiltration to code repository",
+"ref": "T1567.001",
+"source": "attack",
+"title": "Exfiltration to Code Repository",
+"weight": 2
+},
+"exfiltration to text storage sites": {
+"category": "2.1",
+"phrase": "exfiltration to text storage sites",
+"ref": "T1567.003",
+"source": "attack",
+"title": "Exfiltration to Text Storage Sites",
+"weight": 2
+},
+"exfiltration via ai agent tool invocation": {
+"category": "2.2",
+"phrase": "exfiltration via ai agent tool invocation",
+"ref": "AML.T0086",
+"source": "atlas",
+"title": "Exfiltration via AI Agent Tool Invocation",
+"weight": 3
+},
+"exfiltration via ai inference api": {
+"category": "2.2",
+"phrase": "exfiltration via ai inference api",
+"ref": "AML.T0024",
+"source": "atlas",
+"title": "Exfiltration via AI Inference API",
+"weight": 3
+},
+"exfiltration via cyber means": {
+"category": "2.2",
+"phrase": "exfiltration via cyber means",
+"ref": "AML.T0025",
+"source": "atlas",
+"title": "Exfiltration via Cyber Means",
+"weight": 3
+},
+"expetr": {
+"category": "4.2",
+"phrase": "expetr",
+"ref": "S0368",
+"source": "attack",
+"title": "NotPetya (malware)",
+"weight": 1
+},
+"exploit public facing application": {
+"category": "4.3",
+"phrase": "exploit public facing application",
+"ref": "T1190",
+"source": "attack",
+"title": "Exploit Public-Facing Application",
+"weight": 2
+},
+"exploitation for defense evasion": {
+"category": "2.2",
+"phrase": "exploitation for defense evasion",
+"ref": "AML.T0107",
+"source": "atlas",
+"title": "Exploitation for Defense Evasion",
+"weight": 2
+},
+"external defacement": {
+"category": "4.2",
+"phrase": "external defacement",
+"ref": "T1491.002",
+"source": "attack",
+"title": "External Defacement",
+"weight": 3
+},
+"external harms": {
+"category": "2.2",
+"phrase": "external harms",
+"ref": "AML.T0048",
+"source": "atlas",
+"title": "External Harms",
+"weight": 3
+},
+"extract llm system prompt": {
+"category": "2.2",
+"phrase": "extract llm system prompt",
+"ref": "AML.T0056",
+"source": "atlas",
+"title": "Extract LLM System Prompt",
+"weight": 3
+},
+"fakem": {
+"category": "4.2",
+"phrase": "fakem",
+"ref": "S0076",
+"source": "attack",
+"title": "FakeM (malware)",
+"weight": 1
+},
+"fakeupdates": {
+"category": "4.2",
+"phrase": "fakeupdates",
+"ref": "S1124",
+"source": "attack",
+"title": "SocGholish (malware)",
+"weight": 1
+},
+"fallchill": {
+"category": "4.2",
+"phrase": "fallchill",
+"ref": "S0181",
+"source": "attack",
+"title": "FALLCHILL (malware)",
+"weight": 1
+},
+"false rag entry injection": {
+"category": "2.2",
+"phrase": "false rag entry injection",
+"ref": "AML.T0071",
+"source": "atlas",
+"title": "False RAG Entry Injection",
+"weight": 2
+},
+"fatduke": {
+"category": "4.2",
+"phrase": "fatduke",
+"ref": "S0512",
+"source": "attack",
+"title": "FatDuke (malware)",
+"weight": 1
+},
+"felixroot": {
+"category": "4.2",
+"phrase": "felixroot",
+"ref": "S0267",
+"source": "attack",
+"title": "FELIXROOT (malware)",
+"weight": 1
+},
+"fiendcry": {
+"category": "4.2",
+"phrase": "fiendcry",
+"ref": "S0169",
+"source": "attack",
+"title": "RawPOS (malware)",
+"weight": 1
+},
+"final1stspy": {
+"category": "4.2",
+"phrase": "final1stspy",
+"ref": "S0355",
+"source": "attack",
+"title": "Final1stspy (malware)",
+"weight": 1
+},
+"financial theft": {
+"category": "4.2",
+"phrase": "financial theft",
+"ref": "T1657",
+"source": "attack",
+"title": "Financial Theft",
+"weight": 3
+},
+"finfisher": {
+"category": "4.2",
+"phrase": "finfisher",
+"ref": "S0182",
+"source": "attack",
+"title": "FinFisher (malware)",
+"weight": 1
+},
+"finspy": {
+"category": "4.2",
+"phrase": "finspy",
+"ref": "S0182",
+"source": "attack",
+"title": "FinFisher (malware)",
+"weight": 1
+},
+"firmware corruption": {
+"category": "4.2",
+"phrase": "firmware corruption",
+"ref": "T1495",
+"source": "attack",
+"title": "Firmware Corruption",
+"weight": 3
+},
+"fivehands": {
+"category": "4.2",
+"phrase": "fivehands",
+"ref": "S0618",
+"source": "attack",
+"title": "FIVEHANDS (malware)",
+"weight": 1
+},
+"flashflood": {
+"category": "4.2",
+"phrase": "flashflood",
+"ref": "S0036",
+"source": "attack",
+"title": "FLASHFLOOD (malware)",
+"weight": 1
+},
+"flawedammyy": {
+"category": "4.2",
+"phrase": "flawedammyy",
+"ref": "S0381",
+"source": "attack",
+"title": "FlawedAmmyy (malware)",
+"weight": 1
+},
+"flawedgrace": {
+"category": "4.2",
+"phrase": "flawedgrace",
+"ref": "S0383",
+"source": "attack",
+"title": "FlawedGrace (malware)",
+"weight": 1
+},
+"flipside": {
+"category": "4.2",
+"phrase": "flipside",
+"ref": "S0173",
+"source": "attack",
+"title": "FLIPSIDE (malware)",
+"weight": 1
+},
+"focusfjord": {
+"category": "4.2",
+"phrase": "focusfjord",
+"ref": "S0663",
+"source": "attack",
+"title": "SysUpdate (malware)",
+"weight": 1
+},
+"foggyweb": {
+"category": "4.2",
+"phrase": "foggyweb",
+"ref": "S0661",
+"source": "attack",
+"title": "FoggyWeb (malware)",
+"weight": 1
+},
+"forge web credentials": {
+"category": "2.1",
+"phrase": "forge web credentials",
+"ref": "T1606",
+"source": "attack",
+"title": "Forge Web Credentials",
+"weight": 3
+},
+"framesting": {
+"category": "4.2",
+"phrase": "framesting",
+"ref": "S1120",
+"source": "attack",
+"title": "FRAMESTING (malware)",
+"weight": 1
+},
+"frameworkpos": {
+"category": "4.2",
+"phrase": "frameworkpos",
+"ref": "S0503",
+"source": "attack",
+"title": "FrameworkPOS (malware)",
+"weight": 1
+},
+"friedex": {
+"category": "4.2",
+"phrase": "friedex",
+"ref": "S0570",
+"source": "attack",
+"title": "BitPaymer (malware)",
+"weight": 1
+},
+"fruitfly": {
+"category": "4.2",
+"phrase": "fruitfly",
+"ref": "S0277",
+"source": "attack",
+"title": "FruitFly (malware)",
+"weight": 1
+},
+"funnydream": {
+"category": "4.2",
+"phrase": "funnydream",
+"ref": "S1044",
+"source": "attack",
+"title": "FunnyDream (malware)",
+"weight": 1
+},
+"gamefish": {
+"category": "4.2",
+"phrase": "gamefish",
+"ref": "S0044",
+"source": "attack",
+"title": "JHUHUGIT (malware)",
+"weight": 1
+},
+"gameover zeus": {
+"category": "4.2",
+"phrase": "gameover zeus",
+"ref": "S0016",
+"source": "attack",
+"title": "P2P ZeuS (malware)",
+"weight": 1
+},
+"geminiduke": {
+"category": "4.2",
+"phrase": "geminiduke",
+"ref": "S0049",
+"source": "attack",
+"title": "GeminiDuke (malware)",
+"weight": 1
+},
+"generate deepfakes": {
+"category": "2.2",
+"phrase": "generate deepfakes",
+"ref": "AML.T0088",
+"source": "atlas",
+"title": "Generate Deepfakes",
+"weight": 2
+},
+"generate malicious commands": {
+"category": "2.2",
+"phrase": "generate malicious commands",
+"ref": "AML.T0102",
+"source": "atlas",
+"title": "Generate Malicious Commands",
+"weight": 2
+},
+"get2": {
+"category": "4.2",
+"phrase": "get2",
+"ref": "S0460",
+"source": "attack",
+"title": "Get2 (malware)",
+"weight": 1
+},
+"gh0st rat": {
+"category": "4.2",
+"phrase": "gh0st rat",
+"ref": "S0032",
+"source": "attack",
+"title": "gh0st RAT (malware)",
+"weight": 1
+},
+"giftedvisitor": {
+"category": "4.2",
+"phrase": "giftedvisitor",
+"ref": "S1115",
+"source": "attack",
+"title": "WIREFIRE (malware)",
+"weight": 1
+},
+"glasstoken": {
+"category": "4.2",
+"phrase": "glasstoken",
+"ref": "S1117",
+"source": "attack",
+"title": "GLASSTOKEN (malware)",
+"weight": 1
+},
+"glassworm": {
+"category": "4.2",
+"phrase": "glassworm",
+"ref": "S9010",
+"source": "attack",
+"title": "GlassWorm (malware)",
+"weight": 1
+},
+"glooxmail": {
+"category": "4.2",
+"phrase": "glooxmail",
+"ref": "S0026",
+"source": "attack",
+"title": "GLOOXMAIL (malware)",
+"weight": 1
+},
+"gobear": {
+"category": "4.2",
+"phrase": "gobear",
+"ref": "S1197",
+"source": "attack",
+"title": "GoBear (malware)",
+"weight": 1
+},
+"golden ticket": {
+"category": "2.1",
+"phrase": "golden ticket",
+"ref": "T1558.001",
+"source": "attack",
+"title": "Golden Ticket",
+"weight": 3
+},
+"goldeneye": {
+"category": "4.2",
+"phrase": "goldeneye",
+"ref": "S0368",
+"source": "attack",
+"title": "NotPetya (malware)",
+"weight": 1
+},
+"goldenspy": {
+"category": "4.2",
+"phrase": "goldenspy",
+"ref": "S0493",
+"source": "attack",
+"title": "GoldenSpy (malware)",
+"weight": 1
+},
+"goldfinder": {
+"category": "4.2",
+"phrase": "goldfinder",
+"ref": "S0597",
+"source": "attack",
+"title": "GoldFinder (malware)",
+"weight": 1
+},
+"goldmax": {
+"category": "4.2",
+"phrase": "goldmax",
+"ref": "S0588",
+"source": "attack",
+"title": "GoldMax (malware)",
+"weight": 1
+},
+"gravityrat": {
+"category": "4.2",
+"phrase": "gravityrat",
+"ref": "S0237",
+"source": "attack",
+"title": "GravityRAT (malware)",
+"weight": 1
+},
+"greetcake": {
+"category": "4.2",
+"phrase": "greetcake",
+"ref": "S0626",
+"source": "attack",
+"title": "P8RAT (malware)",
+"weight": 1
+},
+"greyenergy": {
+"category": "4.2",
+"phrase": "greyenergy",
+"ref": "S0342",
+"source": "attack",
+"title": "GreyEnergy (malware)",
+"weight": 1
+},
+"greyenergy mini": {
+"category": "4.2",
+"phrase": "greyenergy mini",
+"ref": "S0267",
+"source": "attack",
+"title": "FELIXROOT (malware)",
+"weight": 1
+},
+"griffon": {
+"category": "4.2",
+"phrase": "griffon",
+"ref": "S0417",
+"source": "attack",
+"title": "GRIFFON (malware)",
+"weight": 1
+},
+"grimagent": {
+"category": "4.2",
+"phrase": "grimagent",
+"ref": "S0632",
+"source": "attack",
+"title": "GrimAgent (malware)",
+"weight": 1
+},
+"guloader": {
+"category": "4.2",
+"phrase": "guloader",
+"ref": "S0561",
+"source": "attack",
+"title": "GuLoader (malware)",
+"weight": 1
+},
+"h1n1": {
+"category": "4.2",
+"phrase": "h1n1",
+"ref": "S0132",
+"source": "attack",
+"title": "H1N1 (malware)",
+"weight": 1
+},
+"halfbaked": {
+"category": "4.2",
+"phrase": "halfbaked",
+"ref": "S0151",
+"source": "attack",
+"title": "HALFBAKED (malware)",
+"weight": 1
+},
+"hammerduke": {
+"category": "4.2",
+"phrase": "hammerduke",
+"ref": "S0037",
+"source": "attack",
+"title": "HAMMERTOSS (malware)",
+"weight": 1
+},
+"hammertoss": {
+"category": "4.2",
+"phrase": "hammertoss",
+"ref": "S0037",
+"source": "attack",
+"title": "HAMMERTOSS (malware)",
+"weight": 1
+},
+"happywork": {
+"category": "4.2",
+"phrase": "happywork",
+"ref": "S0214",
+"source": "attack",
+"title": "HAPPYWORK (malware)",
+"weight": 1
+},
+"hardrain": {
+"category": "4.2",
+"phrase": "hardrain",
+"ref": "S0246",
+"source": "attack",
+"title": "HARDRAIN (malware)",
+"weight": 1
+},
+"hawkball": {
+"category": "4.2",
+"phrase": "hawkball",
+"ref": "S0391",
+"source": "attack",
+"title": "HAWKBALL (malware)",
+"weight": 1
+},
+"haymaker": {
+"category": "4.2",
+"phrase": "haymaker",
+"ref": "S0144",
+"source": "attack",
+"title": "ChChes (malware)",
+"weight": 1
+},
+"hcdloader": {
+"category": "4.2",
+"phrase": "hcdloader",
+"ref": "S0071",
+"source": "attack",
+"title": "hcdLoader (malware)",
+"weight": 1
+},
+"heartcrypt": {
+"category": "4.2",
+"phrase": "heartcrypt",
+"ref": "S9018",
+"source": "attack",
+"title": "HeartCrypt (malware)",
+"weight": 1
+},
+"heavypot": {
+"category": "4.2",
+"phrase": "heavypot",
+"ref": "S0626",
+"source": "attack",
+"title": "P8RAT (malware)",
+"weight": 1
+},
+"hellokitty": {
+"category": "4.2",
+"phrase": "hellokitty",
+"ref": "S0617",
+"source": "attack",
+"title": "HELLOKITTY (malware)",
+"weight": 1
+},
+"hermeticwiper": {
+"category": "4.2",
+"phrase": "hermeticwiper",
+"ref": "S0697",
+"source": "attack",
+"title": "HermeticWiper (malware)",
+"weight": 1
+},
+"hermeticwizard": {
+"category": "4.2",
+"phrase": "hermeticwizard",
+"ref": "S0698",
+"source": "attack",
+"title": "HermeticWizard (malware)",
+"weight": 1
+},
+"hexeval loader": {
+"category": "4.2",
+"phrase": "hexeval loader",
+"ref": "S1249",
+"source": "attack",
+"title": "HexEval Loader (malware)",
+"weight": 1
+},
+"hiddenface": {
+"category": "4.2",
+"phrase": "hiddenface",
+"ref": "S9023",
+"source": "attack",
+"title": "HiddenFace (malware)",
+"weight": 1
+},
+"hiddenwasp": {
+"category": "4.2",
+"phrase": "hiddenwasp",
+"ref": "S0394",
+"source": "attack",
+"title": "HiddenWasp (malware)",
+"weight": 1
+},
+"hidedrv": {
+"category": "4.2",
+"phrase": "hidedrv",
+"ref": "S0135",
+"source": "attack",
+"title": "HIDEDRV (malware)",
+"weight": 1
+},
+"homefry": {
+"category": "4.2",
+"phrase": "homefry",
+"ref": "S0232",
+"source": "attack",
+"title": "HOMEFRY (malware)",
+"weight": 1
+},
+"hoplight": {
+"category": "4.2",
+"phrase": "hoplight",
+"ref": "S0376",
+"source": "attack",
+"title": "HOPLIGHT (malware)",
+"weight": 1
+},
+"hotcroissant": {
+"category": "4.2",
+"phrase": "hotcroissant",
+"ref": "S0431",
+"source": "attack",
+"title": "HotCroissant (malware)",
+"weight": 1
+},
+"hyperbro": {
+"category": "4.2",
+"phrase": "hyperbro",
+"ref": "S0398",
+"source": "attack",
+"title": "HyperBro (malware)",
+"weight": 1
+},
+"hyperssl": {
+"category": "4.2",
+"phrase": "hyperssl",
+"ref": "S0663",
+"source": "attack",
+"title": "SysUpdate (malware)",
+"weight": 1
+},
+"hyperstack": {
+"category": "4.2",
+"phrase": "hyperstack",
+"ref": "S0537",
+"source": "attack",
+"title": "HyperStack (malware)",
+"weight": 1
+},
+"iceapple": {
+"category": "4.2",
+"phrase": "iceapple",
+"ref": "S1022",
+"source": "attack",
+"title": "IceApple (malware)",
+"weight": 1
+},
+"icedid": {
+"category": "4.2",
+"phrase": "icedid",
+"ref": "S0483",
+"source": "attack",
+"title": "IcedID (malware)",
+"weight": 1
+},
+"ikitten": {
+"category": "4.2",
+"phrase": "ikitten",
+"ref": "S0278",
+"source": "attack",
+"title": "iKitten (malware)",
+"weight": 1
+},
+"impersonation": {
+"category": "2.2",
+"phrase": "impersonation",
+"ref": "AML.T0073",
+"source": "atlas",
+"title": "Impersonation",
+"weight": 2
+},
+"industroyer2": {
+"category": "4.2",
+"phrase": "industroyer2",
+"ref": "S1072",
+"source": "attack",
+"title": "Industroyer2 (malware)",
+"weight": 1
+},
+"inhibit system recovery": {
+"category": "4.2",
+"phrase": "inhibit system recovery",
+"ref": "T1490",
+"source": "attack",
+"title": "Inhibit System Recovery",
+"weight": 3
+},
+"innaputrat": {
+"category": "4.2",
+"phrase": "innaputrat",
+"ref": "S0259",
+"source": "attack",
+"title": "InnaputRAT (malware)",
+"weight": 1
+},
+"internal defacement": {
+"category": "4.2",
+"phrase": "internal defacement",
+"ref": "T1491.001",
+"source": "attack",
+"title": "Internal Defacement",
+"weight": 3
+},
+"invisibleferret": {
+"category": "4.2",
+"phrase": "invisibleferret",
+"ref": "S1245",
+"source": "attack",
+"title": "InvisibleFerret (malware)",
+"weight": 1
+},
+"invisimole": {
+"category": "4.2",
+"phrase": "invisimole",
+"ref": "S0260",
+"source": "attack",
+"title": "InvisiMole (malware)",
+"weight": 1
+},
+"ironwind": {
+"category": "4.2",
+"phrase": "ironwind",
+"ref": "S9029",
+"source": "attack",
+"title": "IronWind (malware)",
+"weight": 1
+},
+"jackofhearts": {
+"category": "4.2",
+"phrase": "jackofhearts",
+"ref": "S0533",
+"source": "attack",
+"title": "SLOTHFULMEDIA (malware)",
+"weight": 1
+},
+"jbifrost": {
+"category": "4.2",
+"phrase": "jbifrost",
+"ref": "S0283",
+"source": "attack",
+"title": "jRAT (malware)",
+"weight": 1
+},
+"jfrutas": {
+"category": "4.2",
+"phrase": "jfrutas",
+"ref": "S0283",
+"source": "attack",
+"title": "jRAT (malware)",
+"weight": 1
+},
+"jhuhugit": {
+"category": "4.2",
+"phrase": "jhuhugit",
+"ref": "S0044",
+"source": "attack",
+"title": "JHUHUGIT (malware)",
+"weight": 1
+},
+"jkeyskw": {
+"category": "4.2",
+"phrase": "jkeyskw",
+"ref": "S0044",
+"source": "attack",
+"title": "JHUHUGIT (malware)",
+"weight": 1
+},
+"jrat": {
+"category": "4.2",
+"phrase": "jrat",
+"ref": "S0283",
+"source": "attack",
+"title": "jRAT (malware)",
+"weight": 1
+},
+"jumbledpath": {
+"category": "4.2",
+"phrase": "jumbledpath",
+"ref": "S1206",
+"source": "attack",
+"title": "JumbledPath (malware)",
+"weight": 1
+},
+"kali365": {
+"category": "4.2",
+"phrase": "kali365",
+"ref": "S9044",
+"source": "attack",
+"title": "Kali365 (malware)",
+"weight": 1
+},
+"kerberoasting": {
+"category": "2.1",
+"phrase": "kerberoasting",
+"ref": "T1558.003",
+"source": "attack",
+"title": "Kerberoasting",
+"weight": 3
+},
+"keyboy": {
+"category": "4.2",
+"phrase": "keyboy",
+"ref": "S0387",
+"source": "attack",
+"title": "KeyBoy (malware)",
+"weight": 1
+},
+"keylogging": {
+"category": "2.1",
+"phrase": "keylogging",
+"ref": "T1056.001",
+"source": "attack",
+"title": "Keylogging",
+"weight": 3
+},
+"keymarble": {
+"category": "4.2",
+"phrase": "keymarble",
+"ref": "S0271",
+"source": "attack",
+"title": "KEYMARBLE (malware)",
+"weight": 1
+},
+"keyplug": {
+"category": "4.2",
+"phrase": "keyplug",
+"ref": "S1051",
+"source": "attack",
+"title": "KEYPLUG (malware)",
+"weight": 1
+},
+"keyplug.linux": {
+"category": "4.2",
+"phrase": "keyplug.linux",
+"ref": "S1051",
+"source": "attack",
+"title": "KEYPLUG (malware)",
+"weight": 1
+},
+"kgh spy": {
+"category": "4.2",
+"phrase": "kgh spy",
+"ref": "S0526",
+"source": "attack",
+"title": "KGH_SPY (malware)",
+"weight": 1
+},
+"killdisk": {
+"category": "4.2",
+"phrase": "killdisk",
+"ref": "S0607",
+"source": "attack",
+"title": "KillDisk (malware)",
+"weight": 1
+},
+"koctopus": {
+"category": "4.2",
+"phrase": "koctopus",
+"ref": "S0669",
+"source": "attack",
+"title": "KOCTOPUS (malware)",
+"weight": 1
+},
+"komprogo": {
+"category": "4.2",
+"phrase": "komprogo",
+"ref": "S0156",
+"source": "attack",
+"title": "KOMPROGO (malware)",
+"weight": 1
+},
+"kopiluwak": {
+"category": "4.2",
+"phrase": "kopiluwak",
+"ref": "S1075",
+"source": "attack",
+"title": "KOPILUWAK (malware)",
+"weight": 1
+},
+"lamehug": {
+"category": "4.2",
+"phrase": "lamehug",
+"ref": "S9035",
+"source": "attack",
+"title": "LAMEHUG (malware)",
+"weight": 1
+},
+"lazywiper": {
+"category": "4.2",
+"phrase": "lazywiper",
+"ref": "S9039",
+"source": "attack",
+"title": "LazyWiper (malware)",
+"weight": 1
+},
+"lifecycle triggered deletion": {
+"category": "4.2",
+"phrase": "lifecycle triggered deletion",
+"ref": "T1485.001",
+"source": "attack",
+"title": "Lifecycle-Triggered Deletion",
+"weight": 3
+},
+"lightneuron": {
+"category": "4.2",
+"phrase": "lightneuron",
+"ref": "S0395",
+"source": "attack",
+"title": "LightNeuron (malware)",
+"weight": 1
+},
+"lightrail": {
+"category": "4.2",
+"phrase": "lightrail",
+"ref": "S9061",
+"source": "attack",
+"title": "LIGHTRAIL (malware)",
+"weight": 1
+},
+"lightspy": {
+"category": "4.2",
+"phrase": "lightspy",
+"ref": "S1185",
+"source": "attack",
+"title": "LightSpy (malware)",
+"weight": 1
+},
+"lightwire": {
+"category": "4.2",
+"phrase": "lightwire",
+"ref": "S1119",
+"source": "attack",
+"title": "LIGHTWIRE (malware)",
+"weight": 1
+},
+"liteduke": {
+"category": "4.2",
+"phrase": "liteduke",
+"ref": "S0513",
+"source": "attack",
+"title": "LiteDuke (malware)",
+"weight": 1
+},
+"litepower": {
+"category": "4.2",
+"phrase": "litepower",
+"ref": "S0680",
+"source": "attack",
+"title": "LitePower (malware)",
+"weight": 1
+},
+"littlelamb.wooltea": {
+"category": "4.2",
+"phrase": "littlelamb.wooltea",
+"ref": "S1121",
+"source": "attack",
+"title": "LITTLELAMB.WOOLTEA (malware)",
+"weight": 1
+},
+"llm data leakage": {
+"category": "2.2",
+"phrase": "llm data leakage",
+"ref": "AML.T0057",
+"source": "atlas",
+"title": "LLM Data Leakage",
+"weight": 3
+},
+"llm jailbreak": {
+"category": "2.2",
+"phrase": "llm jailbreak",
+"ref": "AML.T0054",
+"source": "atlas",
+"title": "LLM Jailbreak",
+"weight": 2
+},
+"llm prompt crafting": {
+"category": "2.2",
+"phrase": "llm prompt crafting",
+"ref": "AML.T0065",
+"source": "atlas",
+"title": "LLM Prompt Crafting",
+"weight": 2
+},
+"llm prompt obfuscation": {
+"category": "2.2",
+"phrase": "llm prompt obfuscation",
+"ref": "AML.T0068",
+"source": "atlas",
+"title": "LLM Prompt Obfuscation",
+"weight": 2
+},
+"llm response rendering": {
+"category": "2.2",
+"phrase": "llm response rendering",
+"ref": "AML.T0077",
+"source": "atlas",
+"title": "LLM Response Rendering",
+"weight": 3
+},
+"llm trusted output components manipulation": {
+"category": "2.2",
+"phrase": "llm trusted output components manipulation",
+"ref": "AML.T0067",
+"source": "atlas",
+"title": "LLM Trusted Output Components Manipulation",
+"weight": 2
+},
+"lockbit 2.0": {
+"category": "4.2",
+"phrase": "lockbit 2.0",
+"ref": "S1199",
+"source": "attack",
+"title": "LockBit 2.0 (malware)",
+"weight": 1
+},
+"lockbit 3.0": {
+"category": "4.2",
+"phrase": "lockbit 3.0",
+"ref": "S1202",
+"source": "attack",
+"title": "LockBit 3.0 (malware)",
+"weight": 1
+},
+"lockbit black": {
+"category": "4.2",
+"phrase": "lockbit black",
+"ref": "S1202",
+"source": "attack",
+"title": "LockBit 3.0 (malware)",
+"weight": 1
+},
+"lockergoga": {
+"category": "4.2",
+"phrase": "lockergoga",
+"ref": "S0372",
+"source": "attack",
+"title": "LockerGoga (malware)",
+"weight": 1
+},
+"lodeinfo": {
+"category": "4.2",
+"phrase": "lodeinfo",
+"ref": "S9020",
+"source": "attack",
+"title": "LODEINFO (malware)",
+"weight": 1
+},
+"lofise": {
+"category": "4.2",
+"phrase": "lofise",
+"ref": "S1101",
+"source": "attack",
+"title": "LoFiSe (malware)",
+"weight": 1
+},
+"lojax": {
+"category": "4.2",
+"phrase": "lojax",
+"ref": "S0397",
+"source": "attack",
+"title": "LoJax (malware)",
+"weight": 1
+},
+"lookback": {
+"category": "4.2",
+"phrase": "lookback",
+"ref": "S0582",
+"source": "attack",
+"title": "LookBack (malware)",
+"weight": 1
+},
+"loudminer": {
+"category": "4.2",
+"phrase": "loudminer",
+"ref": "S0451",
+"source": "attack",
+"title": "LoudMiner (malware)",
+"weight": 1
+},
+"lowball": {
+"category": "4.2",
+"phrase": "lowball",
+"ref": "S0042",
+"source": "attack",
+"title": "LOWBALL (malware)",
+"weight": 1
+},
+"lsass memory": {
+"category": "2.1",
+"phrase": "lsass memory",
+"ref": "T1003.001",
+"source": "attack",
+"title": "LSASS Memory",
+"weight": 3
+},
+"lunarloader": {
+"category": "4.2",
+"phrase": "lunarloader",
+"ref": "S1143",
+"source": "attack",
+"title": "LunarLoader (malware)",
+"weight": 1
+},
+"lunarmail": {
+"category": "4.2",
+"phrase": "lunarmail",
+"ref": "S1142",
+"source": "attack",
+"title": "LunarMail (malware)",
+"weight": 1
+},
+"lunarweb": {
+"category": "4.2",
+"phrase": "lunarweb",
+"ref": "S1141",
+"source": "attack",
+"title": "LunarWeb (malware)",
+"weight": 1
+},
+"machine compromise": {
+"category": "2.2",
+"phrase": "machine compromise",
+"ref": "AML.T0112",
+"source": "atlas",
+"title": "Machine Compromise",
+"weight": 3
+},
+"macma": {
+"category": "4.2",
+"phrase": "macma",
+"ref": "S1016",
+"source": "attack",
+"title": "MacMa (malware)",
+"weight": 1
+},
+"macos.osaminer": {
+"category": "4.2",
+"phrase": "macos.osaminer",
+"ref": "S1048",
+"source": "attack",
+"title": "macOS.OSAMiner (malware)",
+"weight": 1
+},
+"macransom.k": {
+"category": "4.2",
+"phrase": "macransom.k",
+"ref": "S0595",
+"source": "attack",
+"title": "ThiefQuest (malware)",
+"weight": 1
+},
+"macspy": {
+"category": "4.2",
+"phrase": "macspy",
+"ref": "S0282",
+"source": "attack",
+"title": "MacSpy (malware)",
+"weight": 1
+},
+"magicrat": {
+"category": "4.2",
+"phrase": "magicrat",
+"ref": "S1182",
+"source": "attack",
+"title": "MagicRAT (malware)",
+"weight": 1
+},
+"manipulate ai model": {
+"category": "2.2",
+"phrase": "manipulate ai model",
+"ref": "AML.T0018",
+"source": "atlas",
+"title": "Manipulate AI Model",
+"weight": 2
+},
+"manipulate user llm chat history": {
+"category": "2.2",
+"phrase": "manipulate user llm chat history",
+"ref": "AML.T0092",
+"source": "atlas",
+"title": "Manipulate User LLM Chat History",
+"weight": 2
+},
+"markirat": {
+"category": "4.2",
+"phrase": "markirat",
+"ref": "S0652",
+"source": "attack",
+"title": "MarkiRAT (malware)",
+"weight": 1
+},
+"masquerading": {
+"category": "2.2",
+"phrase": "masquerading",
+"ref": "AML.T0074",
+"source": "atlas",
+"title": "Masquerading",
+"weight": 2
+},
+"mechaflounder": {
+"category": "4.2",
+"phrase": "mechaflounder",
+"ref": "S0459",
+"source": "attack",
+"title": "MechaFlounder (malware)",
+"weight": 1
+},
+"megacortex": {
+"category": "4.2",
+"phrase": "megacortex",
+"ref": "S0576",
+"source": "attack",
+"title": "MegaCortex (malware)",
+"weight": 1
+},
+"messagetap": {
+"category": "4.2",
+"phrase": "messagetap",
+"ref": "S0443",
+"source": "attack",
+"title": "MESSAGETAP (malware)",
+"weight": 1
+},
+"metamain": {
+"category": "4.2",
+"phrase": "metamain",
+"ref": "S1059",
+"source": "attack",
+"title": "metaMain (malware)",
+"weight": 1
+},
+"mgbot": {
+"category": "4.2",
+"phrase": "mgbot",
+"ref": "S1146",
+"source": "attack",
+"title": "MgBot (malware)",
+"weight": 1
+},
+"minibike": {
+"category": "4.2",
+"phrase": "minibike",
+"ref": "S9059",
+"source": "attack",
+"title": "MiniBike (malware)",
+"weight": 1
+},
+"minibrowse": {
+"category": "4.2",
+"phrase": "minibrowse",
+"ref": "S9062",
+"source": "attack",
+"title": "MiniBrowse (malware)",
+"weight": 1
+},
+"minibus": {
+"category": "4.2",
+"phrase": "minibus",
+"ref": "S9060",
+"source": "attack",
+"title": "MiniBus (malware)",
+"weight": 1
+},
+"minidionis": {
+"category": "4.2",
+"phrase": "minidionis",
+"ref": "S0054",
+"source": "attack",
+"title": "CloudDuke (malware)",
+"weight": 1
+},
+"miniduke": {
+"category": "4.2",
+"phrase": "miniduke",
+"ref": "S0051",
+"source": "attack",
+"title": "MiniDuke (malware)",
+"weight": 1
+},
+"minifast": {
+"category": "4.2",
+"phrase": "minifast",
+"ref": "S9052",
+"source": "attack",
+"title": "MiniFast (malware)",
+"weight": 1
+},
+"minijunk": {
+"category": "4.2",
+"phrase": "minijunk",
+"ref": "S9053",
+"source": "attack",
+"title": "MiniJunk (malware)",
+"weight": 1
+},
+"miragefox": {
+"category": "4.2",
+"phrase": "miragefox",
+"ref": "S0280",
+"source": "attack",
+"title": "MirageFox (malware)",
+"weight": 1
+},
+"mirrorstealer": {
+"category": "4.2",
+"phrase": "mirrorstealer",
+"ref": "S9022",
+"source": "attack",
+"title": "MirrorStealer (malware)",
+"weight": 1
+},
+"mobileorder": {
+"category": "4.2",
+"phrase": "mobileorder",
+"ref": "S0079",
+"source": "attack",
+"title": "MobileOrder (malware)",
+"weight": 1
+},
+"modify ai agent configuration": {
+"category": "2.2",
+"phrase": "modify ai agent configuration",
+"ref": "AML.T0081",
+"source": "atlas",
+"title": "Modify AI Agent Configuration",
+"weight": 2
+},
+"molenet": {
+"category": "4.2",
+"phrase": "molenet",
+"ref": "S0553",
+"source": "attack",
+"title": "MoleNet (malware)",
+"weight": 1
+},
+"moonwind": {
+"category": "4.2",
+"phrase": "moonwind",
+"ref": "S0149",
+"source": "attack",
+"title": "MoonWind (malware)",
+"weight": 1
+},
+"mopsled": {
+"category": "4.2",
+"phrase": "mopsled",
+"ref": "S1221",
+"source": "attack",
+"title": "MOPSLED (malware)",
+"weight": 1
+},
+"muddyviper": {
+"category": "4.2",
+"phrase": "muddyviper",
+"ref": "S9032",
+"source": "attack",
+"title": "MuddyViper (malware)",
+"weight": 1
+},
+"multi factor authentication": {
+"category": "2.1",
+"phrase": "multi factor authentication",
+"ref": "T1556.006",
+"source": "attack",
+"title": "Multi-Factor Authentication",
+"weight": 3
+},
+"multi factor authentication interception": {
+"category": "2.1",
+"phrase": "multi factor authentication interception",
+"ref": "T1111",
+"source": "attack",
+"title": "Multi-Factor Authentication Interception",
+"weight": 3
+},
+"multi factor authentication request generation": {
+"category": "2.1",
+"phrase": "multi factor authentication request generation",
+"ref": "T1621",
+"source": "attack",
+"title": "Multi-Factor Authentication Request Generation",
+"weight": 3
+},
+"multilayer wiper": {
+"category": "4.2",
+"phrase": "multilayer wiper",
+"ref": "S1135",
+"source": "attack",
+"title": "MultiLayer Wiper (malware)",
+"weight": 1
+},
+"murkytop": {
+"category": "4.2",
+"phrase": "murkytop",
+"ref": "S0233",
+"source": "attack",
+"title": "MURKYTOP (malware)",
+"weight": 1
+},
+"name resolution poisoning and smb relay": {
+"category": "2.1",
+"phrase": "name resolution poisoning and smb relay",
+"ref": "T1557.001",
+"source": "attack",
+"title": "Name Resolution Poisoning and SMB Relay",
+"weight": 3
+},
+"nanhaishu": {
+"category": "4.2",
+"phrase": "nanhaishu",
+"ref": "S0228",
+"source": "attack",
+"title": "NanHaiShu (malware)",
+"weight": 1
+},
+"nanocore": {
+"category": "4.2",
+"phrase": "nanocore",
+"ref": "S0336",
+"source": "attack",
+"title": "NanoCore (malware)",
+"weight": 1
+},
+"nativezone": {
+"category": "4.2",
+"phrase": "nativezone",
+"ref": "S0637",
+"source": "attack",
+"title": "NativeZone (malware)",
+"weight": 1
+},
+"navrat": {
+"category": "4.2",
+"phrase": "navrat",
+"ref": "S0247",
+"source": "attack",
+"title": "NavRAT (malware)",
+"weight": 1
+},
+"ndiskmonitor": {
+"category": "4.2",
+"phrase": "ndiskmonitor",
+"ref": "S0272",
+"source": "attack",
+"title": "NDiskMonitor (malware)",
+"weight": 1
+},
+"ned worm": {
+"category": "4.2",
+"phrase": "ned worm",
+"ref": "S0062",
+"source": "attack",
+"title": "DustySky (malware)",
+"weight": 1
+},
+"nemesisgemina": {
+"category": "4.2",
+"phrase": "nemesisgemina",
+"ref": "S0050",
+"source": "attack",
+"title": "CosmicDuke (malware)",
+"weight": 1
+},
+"neo regeorg": {
+"category": "4.2",
+"phrase": "neo regeorg",
+"ref": "S1189",
+"source": "attack",
+"title": "Neo-reGeorg (malware)",
+"weight": 1
+},
+"netduke": {
+"category": "4.2",
+"phrase": "netduke",
+"ref": "S0037",
+"source": "attack",
+"title": "HAMMERTOSS (malware)",
+"weight": 1
+},
+"neteagle": {
+"category": "4.2",
+"phrase": "neteagle",
+"ref": "S0034",
+"source": "attack",
+"title": "NETEAGLE (malware)",
+"weight": 1
+},
+"nettraveler": {
+"category": "4.2",
+"phrase": "nettraveler",
+"ref": "S0033",
+"source": "attack",
+"title": "NetTraveler (malware)",
+"weight": 1
+},
+"netwire": {
+"category": "4.2",
+"phrase": "netwire",
+"ref": "S0198",
+"source": "attack",
+"title": "NETWIRE (malware)",
+"weight": 1
+},
+"network denial of service": {
+"category": "4.2",
+"phrase": "network denial of service",
+"ref": "T1498",
+"source": "attack",
+"title": "Network Denial of Service",
+"weight": 3
+},
+"network sniffing": {
+"category": "2.1",
+"phrase": "network sniffing",
+"ref": "T1040",
+"source": "attack",
+"title": "Network Sniffing",
+"weight": 3
+},
+"nicecurl": {
+"category": "4.2",
+"phrase": "nicecurl",
+"ref": "S1192",
+"source": "attack",
+"title": "NICECURL (malware)",
+"weight": 1
+},
+"nightclub": {
+"category": "4.2",
+"phrase": "nightclub",
+"ref": "S1090",
+"source": "attack",
+"title": "NightClub (malware)",
+"weight": 1
+},
+"njrat": {
+"category": "4.2",
+"phrase": "njrat",
+"ref": "S0385",
+"source": "attack",
+"title": "njRAT (malware)",
+"weight": 1
+},
+"njw0rm": {
+"category": "4.2",
+"phrase": "njw0rm",
+"ref": "S0385",
+"source": "attack",
+"title": "njRAT (malware)",
+"weight": 1
+},
+"noopdoor": {
+"category": "4.2",
+"phrase": "noopdoor",
+"ref": "S9023",
+"source": "attack",
+"title": "HiddenFace (malware)",
+"weight": 1
+},
+"noopldr": {
+"category": "4.2",
+"phrase": "noopldr",
+"ref": "S9025",
+"source": "attack",
+"title": "NOOPLDR (malware)",
+"weight": 1
+},
+"notpetya": {
+"category": "4.2",
+"phrase": "notpetya",
+"ref": "S0368",
+"source": "attack",
+"title": "NotPetya (malware)",
+"weight": 1
+},
+"obliquerat": {
+"category": "4.2",
+"phrase": "obliquerat",
+"ref": "S0644",
+"source": "attack",
+"title": "ObliqueRAT (malware)",
+"weight": 1
+},
+"obtain capabilities": {
+"category": "2.2",
+"phrase": "obtain capabilities",
+"ref": "AML.T0016",
+"source": "atlas",
+"title": "Obtain Capabilities",
+"weight": 2
+},
+"oceansalt": {
+"category": "4.2",
+"phrase": "oceansalt",
+"ref": "S0346",
+"source": "attack",
+"title": "OceanSalt (malware)",
+"weight": 1
+},
+"oilbooster": {
+"category": "4.2",
+"phrase": "oilbooster",
+"ref": "S1172",
+"source": "attack",
+"title": "OilBooster (malware)",
+"weight": 1
+},
+"oilcheck": {
+"category": "4.2",
+"phrase": "oilcheck",
+"ref": "S1171",
+"source": "attack",
+"title": "OilCheck (malware)",
+"weight": 1
+},
+"oldbait": {
+"category": "4.2",
+"phrase": "oldbait",
+"ref": "S0138",
+"source": "attack",
+"title": "OLDBAIT (malware)",
+"weight": 1
+},
+"onionduke": {
+"category": "4.2",
+"phrase": "onionduke",
+"ref": "S0052",
+"source": "attack",
+"title": "OnionDuke (malware)",
+"weight": 1
+},
+"oopsie": {
+"category": "4.2",
+"phrase": "oopsie",
+"ref": "S0264",
+"source": "attack",
+"title": "OopsIE (malware)",
+"weight": 1
+},
+"os credential dumping": {
+"category": "2.1",
+"phrase": "os credential dumping",
+"ref": "T1003",
+"source": "attack",
+"title": "OS Credential Dumping",
+"weight": 3
+},
+"os exhaustion flood": {
+"category": "4.2",
+"phrase": "os exhaustion flood",
+"ref": "T1499.001",
+"source": "attack",
+"title": "OS Exhaustion Flood",
+"weight": 3
+},
+"osx oceanlotus.d": {
+"category": "4.2",
+"phrase": "osx oceanlotus.d",
+"ref": "S0352",
+"source": "attack",
+"title": "OSX_OCEANLOTUS.D (malware)",
+"weight": 1
+},
+"osx.cdds": {
+"category": "4.2",
+"phrase": "osx.cdds",
+"ref": "S1016",
+"source": "attack",
+"title": "MacMa (malware)",
+"weight": 1
+},
+"osx/macdownloader": {
+"category": "4.2",
+"phrase": "osx/macdownloader",
+"ref": "S0278",
+"source": "attack",
+"title": "iKitten (malware)",
+"weight": 1
+},
+"outsteel": {
+"category": "4.2",
+"phrase": "outsteel",
+"ref": "S1017",
+"source": "attack",
+"title": "OutSteel (malware)",
+"weight": 1
+},
+"owaauth": {
+"category": "4.2",
+"phrase": "owaauth",
+"ref": "S0072",
+"source": "attack",
+"title": "OwaAuth (malware)",
+"weight": 1
+},
+"p2p zeus": {
+"category": "4.2",
+"phrase": "p2p zeus",
+"ref": "S0016",
+"source": "attack",
+"title": "P2P ZeuS (malware)",
+"weight": 1
+},
+"p8rat": {
+"category": "4.2",
+"phrase": "p8rat",
+"ref": "S0626",
+"source": "attack",
+"title": "P8RAT (malware)",
+"weight": 1
+},
+"pacemaker": {
+"category": "4.2",
+"phrase": "pacemaker",
+"ref": "S1109",
+"source": "attack",
+"title": "PACEMAKER (malware)",
+"weight": 1
+},
+"password cracking": {
+"category": "2.1",
+"phrase": "password cracking",
+"ref": "T1110.002",
+"source": "attack",
+"title": "Password Cracking",
+"weight": 3
+},
+"password guessing": {
+"category": "2.1",
+"phrase": "password guessing",
+"ref": "T1110.001",
+"source": "attack",
+"title": "Password Guessing",
+"weight": 3
+},
+"password spraying": {
+"category": "2.1",
+"phrase": "password spraying",
+"ref": "T1110.003",
+"source": "attack",
+"title": "Password Spraying",
+"weight": 3
+},
+"pay2key": {
+"category": "4.2",
+"phrase": "pay2key",
+"ref": "S0556",
+"source": "attack",
+"title": "Pay2Key (malware)",
+"weight": 1
+},
+"peer to peer zeus": {
+"category": "4.2",
+"phrase": "peer to peer zeus",
+"ref": "S0016",
+"source": "attack",
+"title": "P2P ZeuS (malware)",
+"weight": 1
+},
+"phasejam": {
+"category": "4.2",
+"phrase": "phasejam",
+"ref": "S9014",
+"source": "attack",
+"title": "PHASEJAM (malware)",
+"weight": 1
+},
+"phishing": {
+"category": "4.3",
+"phrase": "phishing",
+"ref": "T1566",
+"source": "attack",
+"title": "Phishing",
+"weight": 2
+},
+"phoreal": {
+"category": "4.2",
+"phrase": "phoreal",
+"ref": "S0158",
+"source": "attack",
+"title": "PHOREAL (malware)",
+"weight": 1
+},
+"pinchduke": {
+"category": "4.2",
+"phrase": "pinchduke",
+"ref": "S0048",
+"source": "attack",
+"title": "PinchDuke (malware)",
+"weight": 1
+},
+"pingpull": {
+"category": "4.2",
+"phrase": "pingpull",
+"ref": "S1031",
+"source": "attack",
+"title": "PingPull (malware)",
+"weight": 1
+},
+"pipemon": {
+"category": "4.2",
+"phrase": "pipemon",
+"ref": "S0501",
+"source": "attack",
+"title": "PipeMon (malware)",
+"weight": 1
+},
+"pitstop": {
+"category": "4.2",
+"phrase": "pitstop",
+"ref": "S1123",
+"source": "attack",
+"title": "PITSTOP (malware)",
+"weight": 1
+},
+"plaintee": {
+"category": "4.2",
+"phrase": "plaintee",
+"ref": "S0254",
+"source": "attack",
+"title": "PLAINTEE (malware)",
+"weight": 1
+},
+"plugx": {
+"category": "4.2",
+"phrase": "plugx",
+"ref": "S0013",
+"source": "attack",
+"title": "PlugX (malware)",
+"weight": 1
+},
+"poetrat": {
+"category": "4.2",
+"phrase": "poetrat",
+"ref": "S0428",
+"source": "attack",
+"title": "PoetRAT (malware)",
+"weight": 1
+},
+"poison training data": {
+"category": "2.2",
+"phrase": "poison training data",
+"ref": "AML.T0020",
+"source": "atlas",
+"title": "Poison Training Data",
+"weight": 2
+},
+"poisonivy": {
+"category": "4.2",
+"phrase": "poisonivy",
+"ref": "S0012",
+"source": "attack",
+"title": "PoisonIvy (malware)",
+"weight": 1
+},
+"poisonplug.shadow": {
+"category": "4.2",
+"phrase": "poisonplug.shadow",
+"ref": "S0596",
+"source": "attack",
+"title": "ShadowPad (malware)",
+"weight": 1
+},
+"pollblend": {
+"category": "4.2",
+"phrase": "pollblend",
+"ref": "S9066",
+"source": "attack",
+"title": "POLLBLEND (malware)",
+"weight": 1
+},
+"polyglotduke": {
+"category": "4.2",
+"phrase": "polyglotduke",
+"ref": "S0518",
+"source": "attack",
+"title": "PolyglotDuke (malware)",
+"weight": 1
+},
+"pooraim": {
+"category": "4.2",
+"phrase": "pooraim",
+"ref": "S0216",
+"source": "attack",
+"title": "POORAIM (malware)",
+"weight": 1
+},
+"poshspy": {
+"category": "4.2",
+"phrase": "poshspy",
+"ref": "S0150",
+"source": "attack",
+"title": "POSHSPY (malware)",
+"weight": 1
+},
+"powerduke": {
+"category": "4.2",
+"phrase": "powerduke",
+"ref": "S0139",
+"source": "attack",
+"title": "PowerDuke (malware)",
+"weight": 1
+},
+"powerexchange": {
+"category": "4.2",
+"phrase": "powerexchange",
+"ref": "S1173",
+"source": "attack",
+"title": "PowerExchange (malware)",
+"weight": 1
+},
+"powerless": {
+"category": "4.2",
+"phrase": "powerless",
+"ref": "S1012",
+"source": "attack",
+"title": "PowerLess (malware)",
+"weight": 1
+},
+"powerpunch": {
+"category": "4.2",
+"phrase": "powerpunch",
+"ref": "S0685",
+"source": "attack",
+"title": "PowerPunch (malware)",
+"weight": 1
+},
+"powershower": {
+"category": "4.2",
+"phrase": "powershower",
+"ref": "S0441",
+"source": "attack",
+"title": "PowerShower (malware)",
+"weight": 1
+},
+"powersource": {
+"category": "4.2",
+"phrase": "powersource",
+"ref": "S0145",
+"source": "attack",
+"title": "POWERSOURCE (malware)",
+"weight": 1
+},
+"powerstallion": {
+"category": "4.2",
+"phrase": "powerstallion",
+"ref": "S0393",
+"source": "attack",
+"title": "PowerStallion (malware)",
+"weight": 1
+},
+"powerstats": {
+"category": "4.2",
+"phrase": "powerstats",
+"ref": "S0223",
+"source": "attack",
+"title": "POWERSTATS (malware)",
+"weight": 1
+},
+"powerton": {
+"category": "4.2",
+"phrase": "powerton",
+"ref": "S0371",
+"source": "attack",
+"title": "POWERTON (malware)",
+"weight": 1
+},
+"powgoop": {
+"category": "4.2",
+"phrase": "powgoop",
+"ref": "S1046",
+"source": "attack",
+"title": "PowGoop (malware)",
+"weight": 1
+},
+"powruner": {
+"category": "4.2",
+"phrase": "powruner",
+"ref": "S0184",
+"source": "attack",
+"title": "POWRUNER (malware)",
+"weight": 1
+},
+"prolock": {
+"category": "4.2",
+"phrase": "prolock",
+"ref": "S0654",
+"source": "attack",
+"title": "ProLock (malware)",
+"weight": 1
+},
+"prompt infiltration via public facing application": {
+"category": "2.2",
+"phrase": "prompt infiltration via public facing application",
+"ref": "AML.T0093",
+"source": "atlas",
+"title": "Prompt Infiltration via Public-Facing Application",
+"weight": 2
+},
+"promptsteal": {
+"category": "4.2",
+"phrase": "promptsteal",
+"ref": "S9035",
+"source": "attack",
+"title": "LAMEHUG (malware)",
+"weight": 1
+},
+"publish hallucinated entities": {
+"category": "2.2",
+"phrase": "publish hallucinated entities",
+"ref": "AML.T0060",
+"source": "atlas",
+"title": "Publish Hallucinated Entities",
+"weight": 2
+},
+"publish poisoned ai agent tool": {
+"category": "2.2",
+"phrase": "publish poisoned ai agent tool",
+"ref": "AML.T0104",
+"source": "atlas",
+"title": "Publish Poisoned AI Agent Tool",
+"weight": 2
+},
+"publish poisoned datasets": {
+"category": "2.2",
+"phrase": "publish poisoned datasets",
+"ref": "AML.T0019",
+"source": "atlas",
+"title": "Publish Poisoned Datasets",
+"weight": 2
+},
+"publish poisoned models": {
+"category": "2.2",
+"phrase": "publish poisoned models",
+"ref": "AML.T0058",
+"source": "atlas",
+"title": "Publish Poisoned Models",
+"weight": 2
+},
+"pubload": {
+"category": "4.2",
+"phrase": "pubload",
+"ref": "S1228",
+"source": "attack",
+"title": "PUBLOAD (malware)",
+"weight": 1
+},
+"pulsecheck": {
+"category": "4.2",
+"phrase": "pulsecheck",
+"ref": "S1108",
+"source": "attack",
+"title": "PULSECHECK (malware)",
+"weight": 1
+},
+"punchbuggy": {
+"category": "4.2",
+"phrase": "punchbuggy",
+"ref": "S0196",
+"source": "attack",
+"title": "PUNCHBUGGY (malware)",
+"weight": 1
+},
+"punchtrack": {
+"category": "4.2",
+"phrase": "punchtrack",
+"ref": "S0197",
+"source": "attack",
+"title": "PUNCHTRACK (malware)",
+"weight": 1
+},
+"purecrypter": {
+"category": "4.2",
+"phrase": "purecrypter",
+"ref": "S9019",
+"source": "attack",
+"title": "PureCrypter (malware)",
+"weight": 1
+},
+"pydcrypt": {
+"category": "4.2",
+"phrase": "pydcrypt",
+"ref": "S1032",
+"source": "attack",
+"title": "PyDCrypt (malware)",
+"weight": 1
+},
+"qakbot": {
+"category": "4.2",
+"phrase": "qakbot",
+"ref": "S0650",
+"source": "attack",
+"title": "QakBot (malware)",
+"weight": 1
+},
+"quackbot": {
+"category": "4.2",
+"phrase": "quackbot",
+"ref": "S0650",
+"source": "attack",
+"title": "QakBot (malware)",
+"weight": 1
+},
+"quadagent": {
+"category": "4.2",
+"phrase": "quadagent",
+"ref": "S0269",
+"source": "attack",
+"title": "QUADAGENT (malware)",
+"weight": 1
+},
+"queenofclubs": {
+"category": "4.2",
+"phrase": "queenofclubs",
+"ref": "S0533",
+"source": "attack",
+"title": "SLOTHFULMEDIA (malware)",
+"weight": 1
+},
+"quietcanary": {
+"category": "4.2",
+"phrase": "quietcanary",
+"ref": "S1076",
+"source": "attack",
+"title": "QUIETCANARY (malware)",
+"weight": 1
+},
+"quietexit": {
+"category": "4.2",
+"phrase": "quietexit",
+"ref": "S1084",
+"source": "attack",
+"title": "QUIETEXIT (malware)",
+"weight": 1
+},
+"quietsieve": {
+"category": "4.2",
+"phrase": "quietsieve",
+"ref": "S0686",
+"source": "attack",
+"title": "QuietSieve (malware)",
+"weight": 1
+},
+"rag credential harvesting": {
+"category": "2.2",
+"phrase": "rag credential harvesting",
+"ref": "AML.T0082",
+"source": "atlas",
+"title": "RAG Credential Harvesting",
+"weight": 2
+},
+"rainyday": {
+"category": "4.2",
+"phrase": "rainyday",
+"ref": "S0629",
+"source": "attack",
+"title": "RainyDay (malware)",
+"weight": 1
+},
+"ransomhub": {
+"category": "4.2",
+"phrase": "ransomhub",
+"ref": "S1212",
+"source": "attack",
+"title": "RansomHub (malware)",
+"weight": 1
+},
+"rapidpulse": {
+"category": "4.2",
+"phrase": "rapidpulse",
+"ref": "S1113",
+"source": "attack",
+"title": "RAPIDPULSE (malware)",
+"weight": 1
+},
+"rarstone": {
+"category": "4.2",
+"phrase": "rarstone",
+"ref": "S0055",
+"source": "attack",
+"title": "RARSTONE (malware)",
+"weight": 1
+},
+"ratankba": {
+"category": "4.2",
+"phrase": "ratankba",
+"ref": "S0241",
+"source": "attack",
+"title": "RATANKBA (malware)",
+"weight": 1
+},
+"rawpos": {
+"category": "4.2",
+"phrase": "rawpos",
+"ref": "S0169",
+"source": "attack",
+"title": "RawPOS (malware)",
+"weight": 1
+},
+"rdfsniffer": {
+"category": "4.2",
+"phrase": "rdfsniffer",
+"ref": "S0416",
+"source": "attack",
+"title": "RDFSNIFFER (malware)",
+"weight": 1
+},
+"redleaves": {
+"category": "4.2",
+"phrase": "redleaves",
+"ref": "S0153",
+"source": "attack",
+"title": "RedLeaves (malware)",
+"weight": 1
+},
+"redline stealer": {
+"category": "4.2",
+"phrase": "redline stealer",
+"ref": "S1240",
+"source": "attack",
+"title": "RedLine Stealer (malware)",
+"weight": 1
+},
+"reflection amplification": {
+"category": "4.2",
+"phrase": "reflection amplification",
+"ref": "T1498.002",
+"source": "attack",
+"title": "Reflection Amplification",
+"weight": 3
+},
+"regduke": {
+"category": "4.2",
+"phrase": "regduke",
+"ref": "S0511",
+"source": "attack",
+"title": "RegDuke (malware)",
+"weight": 1
+},
+"regeorg": {
+"category": "4.2",
+"phrase": "regeorg",
+"ref": "S1187",
+"source": "attack",
+"title": "reGeorg (malware)",
+"weight": 1
+},
+"remotecmd": {
+"category": "4.2",
+"phrase": "remotecmd",
+"ref": "S0166",
+"source": "attack",
+"title": "RemoteCMD (malware)",
+"weight": 1
+},
+"reptile": {
+"category": "4.2",
+"phrase": "reptile",
+"ref": "S1219",
+"source": "attack",
+"title": "REPTILE (malware)",
+"weight": 1
+},
+"resource hijacking": {
+"category": "4.2",
+"phrase": "resource hijacking",
+"ref": "T1496",
+"source": "attack",
+"title": "Resource Hijacking",
+"weight": 3
+},
+"retrieval content crafting": {
+"category": "2.2",
+"phrase": "retrieval content crafting",
+"ref": "AML.T0066",
+"source": "atlas",
+"title": "Retrieval Content Crafting",
+"weight": 2
+},
+"riflespine": {
+"category": "4.2",
+"phrase": "riflespine",
+"ref": "S1222",
+"source": "attack",
+"title": "RIFLESPINE (malware)",
+"weight": 1
+},
+"riptide": {
+"category": "4.2",
+"phrase": "riptide",
+"ref": "S0003",
+"source": "attack",
+"title": "RIPTIDE (malware)",
+"weight": 1
+},
+"roadsweep": {
+"category": "4.2",
+"phrase": "roadsweep",
+"ref": "S1150",
+"source": "attack",
+"title": "ROADSWEEP (malware)",
+"weight": 1
+},
+"roaminghouse": {
+"category": "4.2",
+"phrase": "roaminghouse",
+"ref": "S9026",
+"source": "attack",
+"title": "ROAMINGHOUSE (malware)",
+"weight": 1
+},
+"robbinhood": {
+"category": "4.2",
+"phrase": "robbinhood",
+"ref": "S0400",
+"source": "attack",
+"title": "RobbinHood (malware)",
+"weight": 1
+},
+"rockboot": {
+"category": "4.2",
+"phrase": "rockboot",
+"ref": "S0112",
+"source": "attack",
+"title": "ROCKBOOT (malware)",
+"weight": 1
+},
+"roguerobin": {
+"category": "4.2",
+"phrase": "roguerobin",
+"ref": "S0270",
+"source": "attack",
+"title": "RogueRobin (malware)",
+"weight": 1
+},
+"rotajakiro": {
+"category": "4.2",
+"phrase": "rotajakiro",
+"ref": "S1078",
+"source": "attack",
+"title": "RotaJakiro (malware)",
+"weight": 1
+},
+"runningrat": {
+"category": "4.2",
+"phrase": "runningrat",
+"ref": "S0253",
+"source": "attack",
+"title": "RunningRAT (malware)",
+"weight": 1
+},
+"runtime data manipulation": {
+"category": "4.2",
+"phrase": "runtime data manipulation",
+"ref": "T1565.003",
+"source": "attack",
+"title": "Runtime Data Manipulation",
+"weight": 3
+},
+"rustywater": {
+"category": "4.2",
+"phrase": "rustywater",
+"ref": "S9037",
+"source": "attack",
+"title": "RustyWater (malware)",
+"weight": 1
+},
+"samecoin": {
+"category": "4.2",
+"phrase": "samecoin",
+"ref": "S9030",
+"source": "attack",
+"title": "SameCoin (malware)",
+"weight": 1
+},
+"samplecheck5000": {
+"category": "4.2",
+"phrase": "samplecheck5000",
+"ref": "S1168",
+"source": "attack",
+"title": "SampleCheck5000 (malware)",
+"weight": 1
+},
+"samsam": {
+"category": "4.2",
+"phrase": "samsam",
+"ref": "S0370",
+"source": "attack",
+"title": "SamSam (malware)",
+"weight": 1
+},
+"sandclock": {
+"category": "4.2",
+"phrase": "sandclock",
+"ref": "S9041",
+"source": "attack",
+"title": "TeamPCP Cloud Stealer (malware)",
+"weight": 1
+},
+"sc5k": {
+"category": "4.2",
+"phrase": "sc5k",
+"ref": "S1168",
+"source": "attack",
+"title": "SampleCheck5000 (malware)",
+"weight": 1
+},
+"seadaddy": {
+"category": "4.2",
+"phrase": "seadaddy",
+"ref": "S0053",
+"source": "attack",
+"title": "SeaDuke (malware)",
+"weight": 1
+},
+"seadesk": {
+"category": "4.2",
+"phrase": "seadesk",
+"ref": "S0053",
+"source": "attack",
+"title": "SeaDuke (malware)",
+"weight": 1
+},
+"seaduke": {
+"category": "4.2",
+"phrase": "seaduke",
+"ref": "S0053",
+"source": "attack",
+"title": "SeaDuke (malware)",
+"weight": 1
+},
+"seasharpee": {
+"category": "4.2",
+"phrase": "seasharpee",
+"ref": "S0185",
+"source": "attack",
+"title": "SEASHARPEE (malware)",
+"weight": 1
+},
+"servhelper": {
+"category": "4.2",
+"phrase": "servhelper",
+"ref": "S0382",
+"source": "attack",
+"title": "ServHelper (malware)",
+"weight": 1
+},
+"service exhaustion flood": {
+"category": "4.2",
+"phrase": "service exhaustion flood",
+"ref": "T1499.002",
+"source": "attack",
+"title": "Service Exhaustion Flood",
+"weight": 3
+},
+"shadowpad": {
+"category": "4.2",
+"phrase": "shadowpad",
+"ref": "S0596",
+"source": "attack",
+"title": "ShadowPad (malware)",
+"weight": 1
+},
+"sharpdisco": {
+"category": "4.2",
+"phrase": "sharpdisco",
+"ref": "S1089",
+"source": "attack",
+"title": "SharpDisco (malware)",
+"weight": 1
+},
+"sharpstage": {
+"category": "4.2",
+"phrase": "sharpstage",
+"ref": "S0546",
+"source": "attack",
+"title": "SharpStage (malware)",
+"weight": 1
+},
+"sharpstats": {
+"category": "4.2",
+"phrase": "sharpstats",
+"ref": "S0450",
+"source": "attack",
+"title": "SHARPSTATS (malware)",
+"weight": 1
+},
+"shelltea": {
+"category": "4.2",
+"phrase": "shelltea",
+"ref": "S0196",
+"source": "attack",
+"title": "PUNCHBUGGY (malware)",
+"weight": 1
+},
+"shimrat": {
+"category": "4.2",
+"phrase": "shimrat",
+"ref": "S0444",
+"source": "attack",
+"title": "ShimRat (malware)",
+"weight": 1
+},
+"shipshape": {
+"category": "4.2",
+"phrase": "shipshape",
+"ref": "S0028",
+"source": "attack",
+"title": "SHIPSHAPE (malware)",
+"weight": 1
+},
+"shotput": {
+"category": "4.2",
+"phrase": "shotput",
+"ref": "S0063",
+"source": "attack",
+"title": "SHOTPUT (malware)",
+"weight": 1
+},
+"shrinklocker": {
+"category": "4.2",
+"phrase": "shrinklocker",
+"ref": "S1178",
+"source": "attack",
+"title": "ShrinkLocker (malware)",
+"weight": 1
+},
+"shutterspeed": {
+"category": "4.2",
+"phrase": "shutterspeed",
+"ref": "S0217",
+"source": "attack",
+"title": "SHUTTERSPEED (malware)",
+"weight": 1
+},
+"sidetwist": {
+"category": "4.2",
+"phrase": "sidetwist",
+"ref": "S0610",
+"source": "attack",
+"title": "SideTwist (malware)",
+"weight": 1
+},
+"sightgrab": {
+"category": "4.2",
+"phrase": "sightgrab",
+"ref": "S9058",
+"source": "attack",
+"title": "SIGHTGRAB (malware)",
+"weight": 1
+},
+"silver ticket": {
+"category": "2.1",
+"phrase": "silver ticket",
+"ref": "T1558.002",
+"source": "attack",
+"title": "Silver Ticket",
+"weight": 3
+},
+"slightpulse": {
+"category": "4.2",
+"phrase": "slightpulse",
+"ref": "S1110",
+"source": "attack",
+"title": "SLIGHTPULSE (malware)",
+"weight": 1
+},
+"slothfulmedia": {
+"category": "4.2",
+"phrase": "slothfulmedia",
+"ref": "S0533",
+"source": "attack",
+"title": "SLOTHFULMEDIA (malware)",
+"weight": 1
+},
+"slowdrift": {
+"category": "4.2",
+"phrase": "slowdrift",
+"ref": "S0218",
+"source": "attack",
+"title": "SLOWDRIFT (malware)",
+"weight": 1
+},
+"slowpulse": {
+"category": "4.2",
+"phrase": "slowpulse",
+"ref": "S1104",
+"source": "attack",
+"title": "SLOWPULSE (malware)",
+"weight": 1
+},
+"smokedham": {
+"category": "4.2",
+"phrase": "smokedham",
+"ref": "S0649",
+"source": "attack",
+"title": "SMOKEDHAM (malware)",
+"weight": 1
+},
+"sms pumping": {
+"category": "4.2",
+"phrase": "sms pumping",
+"ref": "T1496.003",
+"source": "attack",
+"title": "SMS Pumping",
+"weight": 3
+},
+"snappytcp": {
+"category": "4.2",
+"phrase": "snappytcp",
+"ref": "S1163",
+"source": "attack",
+"title": "SnappyTCP (malware)",
+"weight": 1
+},
+"snip3": {
+"category": "4.2",
+"phrase": "snip3",
+"ref": "S1086",
+"source": "attack",
+"title": "Snip3 (malware)",
+"weight": 1
+},
+"snugride": {
+"category": "4.2",
+"phrase": "snugride",
+"ref": "S0159",
+"source": "attack",
+"title": "SNUGRIDE (malware)",
+"weight": 1
+},
+"socgholish": {
+"category": "4.2",
+"phrase": "socgholish",
+"ref": "S1124",
+"source": "attack",
+"title": "SocGholish (malware)",
+"weight": 1
+},
+"sodamaster": {
+"category": "4.2",
+"phrase": "sodamaster",
+"ref": "S0627",
+"source": "attack",
+"title": "SodaMaster (malware)",
+"weight": 1
+},
+"sofacycarberp": {
+"category": "4.2",
+"phrase": "sofacycarberp",
+"ref": "S0044",
+"source": "attack",
+"title": "JHUHUGIT (malware)",
+"weight": 1
+},
+"sombrat": {
+"category": "4.2",
+"phrase": "sombrat",
+"ref": "S0615",
+"source": "attack",
+"title": "SombRAT (malware)",
+"weight": 1
+},
+"sorefang": {
+"category": "4.2",
+"phrase": "sorefang",
+"ref": "S0516",
+"source": "attack",
+"title": "SoreFang (malware)",
+"weight": 1
+},
+"soundbite": {
+"category": "4.2",
+"phrase": "soundbite",
+"ref": "S0157",
+"source": "attack",
+"title": "SOUNDBITE (malware)",
+"weight": 1
+},
+"sourface": {
+"category": "4.2",
+"phrase": "sourface",
+"ref": "S0137",
+"source": "attack",
+"title": "CORESHELL (malware)",
+"weight": 1
+},
+"spaceship": {
+"category": "4.2",
+"phrase": "spaceship",
+"ref": "S0035",
+"source": "attack",
+"title": "SPACESHIP (malware)",
+"weight": 1
+},
+"spamming ai system with chaff data": {
+"category": "2.2",
+"phrase": "spamming ai system with chaff data",
+"ref": "AML.T0046",
+"source": "atlas",
+"title": "Spamming AI System with Chaff Data",
+"weight": 3
+},
+"spawnchimera": {
+"category": "4.2",
+"phrase": "spawnchimera",
+"ref": "S9024",
+"source": "attack",
+"title": "SPAWNCHIMERA (malware)",
+"weight": 1
+},
+"speakup": {
+"category": "4.2",
+"phrase": "speakup",
+"ref": "S0374",
+"source": "attack",
+"title": "SpeakUp (malware)",
+"weight": 1
+},
+"spearphishing attachment": {
+"category": "4.3",
+"phrase": "spearphishing attachment",
+"ref": "T1566.001",
+"source": "attack",
+"title": "Spearphishing Attachment",
+"weight": 2
+},
+"spearphishing link": {
+"category": "4.3",
+"phrase": "spearphishing link",
+"ref": "T1566.002",
+"source": "attack",
+"title": "Spearphishing Link",
+"weight": 2
+},
+"spearphishing via service": {
+"category": "4.3",
+"phrase": "spearphishing via service",
+"ref": "T1566.003",
+"source": "attack",
+"title": "Spearphishing via Service",
+"weight": 2
+},
+"spearphishing voice": {
+"category": "4.3",
+"phrase": "spearphishing voice",
+"ref": "T1566.004",
+"source": "attack",
+"title": "Spearphishing Voice",
+"weight": 2
+},
+"spicyomelette": {
+"category": "4.2",
+"phrase": "spicyomelette",
+"ref": "S0646",
+"source": "attack",
+"title": "SpicyOmelette (malware)",
+"weight": 1
+},
+"splatcloak": {
+"category": "4.2",
+"phrase": "splatcloak",
+"ref": "S1234",
+"source": "attack",
+"title": "SplatCloak (malware)",
+"weight": 1
+},
+"splatdropper": {
+"category": "4.2",
+"phrase": "splatdropper",
+"ref": "S1232",
+"source": "attack",
+"title": "SplatDropper (malware)",
+"weight": 1
+},
+"sslmm": {
+"category": "4.2",
+"phrase": "sslmm",
+"ref": "S0058",
+"source": "attack",
+"title": "SslMM (malware)",
+"weight": 1
+},
+"stage capabilities": {
+"category": "2.2",
+"phrase": "stage capabilities",
+"ref": "AML.T0079",
+"source": "atlas",
+"title": "Stage Capabilities",
+"weight": 2
+},
+"starproxy": {
+"category": "4.2",
+"phrase": "starproxy",
+"ref": "S1227",
+"source": "attack",
+"title": "StarProxy (malware)",
+"weight": 1
+},
+"starwhale": {
+"category": "4.2",
+"phrase": "starwhale",
+"ref": "S1037",
+"source": "attack",
+"title": "STARWHALE (malware)",
+"weight": 1
+},
+"staticplugin": {
+"category": "4.2",
+"phrase": "staticplugin",
+"ref": "S1238",
+"source": "attack",
+"title": "STATICPLUGIN (malware)",
+"weight": 1
+},
+"steadypulse": {
+"category": "4.2",
+"phrase": "steadypulse",
+"ref": "S1112",
+"source": "attack",
+"title": "STEADYPULSE (malware)",
+"weight": 1
+},
+"steal application access token": {
+"category": "2.1",
+"phrase": "steal application access token",
+"ref": "T1528",
+"source": "attack",
+"title": "Steal Application Access Token",
+"weight": 3
+},
+"steal application specific passwords": {
+"category": "2.1",
+"phrase": "steal application specific passwords",
+"ref": "T1697",
+"source": "attack",
+"title": "Steal Application Specific Passwords",
+"weight": 3
+},
+"steal or forge kerberos tickets": {
+"category": "2.1",
+"phrase": "steal or forge kerberos tickets",
+"ref": "T1558",
+"source": "attack",
+"title": "Steal or Forge Kerberos Tickets",
+"weight": 3
+},
+"steal web session cookie": {
+"category": "2.1",
+"phrase": "steal web session cookie",
+"ref": "T1539",
+"source": "attack",
+"title": "Steal Web Session Cookie",
+"weight": 3
+},
+"stealbit": {
+"category": "4.2",
+"phrase": "stealbit",
+"ref": "S1200",
+"source": "attack",
+"title": "StealBit (malware)",
+"weight": 1
+},
+"stonedrill": {
+"category": "4.2",
+"phrase": "stonedrill",
+"ref": "S0380",
+"source": "attack",
+"title": "StoneDrill (malware)",
+"weight": 1
+},
+"stored data manipulation": {
+"category": "4.2",
+"phrase": "stored data manipulation",
+"ref": "T1565.001",
+"source": "attack",
+"title": "Stored Data Manipulation",
+"weight": 3
+},
+"streamex": {
+"category": "4.2",
+"phrase": "streamex",
+"ref": "S0142",
+"source": "attack",
+"title": "StreamEx (malware)",
+"weight": 1
+},
+"strelastealer": {
+"category": "4.2",
+"phrase": "strelastealer",
+"ref": "S1183",
+"source": "attack",
+"title": "StrelaStealer (malware)",
+"weight": 1
+},
+"strifewater": {
+"category": "4.2",
+"phrase": "strifewater",
+"ref": "S1034",
+"source": "attack",
+"title": "StrifeWater (malware)",
+"weight": 1
+},
+"strongpity": {
+"category": "4.2",
+"phrase": "strongpity",
+"ref": "S0491",
+"source": "attack",
+"title": "StrongPity (malware)",
+"weight": 1
+},
+"sugardump": {
+"category": "4.2",
+"phrase": "sugardump",
+"ref": "S1042",
+"source": "attack",
+"title": "SUGARDUMP (malware)",
+"weight": 1
+},
+"sugarush": {
+"category": "4.2",
+"phrase": "sugarush",
+"ref": "S1049",
+"source": "attack",
+"title": "SUGARUSH (malware)",
+"weight": 1
+},
+"sunburst": {
+"category": "4.2",
+"phrase": "sunburst",
+"ref": "S0559",
+"source": "attack",
+"title": "SUNBURST (malware)",
+"weight": 1
+},
+"sunshuttle": {
+"category": "4.2",
+"phrase": "sunshuttle",
+"ref": "S0588",
+"source": "attack",
+"title": "GoldMax (malware)",
+"weight": 1
+},
+"sunspot": {
+"category": "4.2",
+"phrase": "sunspot",
+"ref": "S0562",
+"source": "attack",
+"title": "SUNSPOT (malware)",
+"weight": 1
+},
+"supernova": {
+"category": "4.2",
+"phrase": "supernova",
+"ref": "S0578",
+"source": "attack",
+"title": "SUPERNOVA (malware)",
+"weight": 1
+},
+"supply chain compromise": {
+"category": "4.3",
+"phrase": "supply chain compromise",
+"ref": "T1195",
+"source": "attack",
+"title": "Supply Chain Compromise",
+"weight": 2
+},
+"synack": {
+"category": "4.2",
+"phrase": "synack",
+"ref": "S0242",
+"source": "attack",
+"title": "SynAck (malware)",
+"weight": 1
+},
+"sys10": {
+"category": "4.2",
+"phrase": "sys10",
+"ref": "S0060",
+"source": "attack",
+"title": "Sys10 (malware)",
+"weight": 1
+},
+"systembc": {
+"category": "4.2",
+"phrase": "systembc",
+"ref": "S9001",
+"source": "attack",
+"title": "SystemBC (malware)",
+"weight": 1
+},
+"sysupdate": {
+"category": "4.2",
+"phrase": "sysupdate",
+"ref": "S0663",
+"source": "attack",
+"title": "SysUpdate (malware)",
+"weight": 1
+},
+"t9000": {
+"category": "4.2",
+"phrase": "t9000",
+"ref": "S0098",
+"source": "attack",
+"title": "T9000 (malware)",
+"weight": 1
+},
+"taintedscribe": {
+"category": "4.2",
+"phrase": "taintedscribe",
+"ref": "S0586",
+"source": "attack",
+"title": "TAINTEDSCRIBE (malware)",
+"weight": 1
+},
+"tajmahal": {
+"category": "4.2",
+"phrase": "tajmahal",
+"ref": "S0467",
+"source": "attack",
+"title": "TajMahal (malware)",
+"weight": 1
+},
+"tamecat": {
+"category": "4.2",
+"phrase": "tamecat",
+"ref": "S1193",
+"source": "attack",
+"title": "TAMECAT (malware)",
+"weight": 1
+},
+"teampcp cloud stealer": {
+"category": "4.2",
+"phrase": "teampcp cloud stealer",
+"ref": "S9041",
+"source": "attack",
+"title": "TeamPCP Cloud Stealer (malware)",
+"weight": 1
+},
+"teardrop": {
+"category": "4.2",
+"phrase": "teardrop",
+"ref": "S0560",
+"source": "attack",
+"title": "TEARDROP (malware)",
+"weight": 1
+},
+"textmate": {
+"category": "4.2",
+"phrase": "textmate",
+"ref": "S0146",
+"source": "attack",
+"title": "TEXTMATE (malware)",
+"weight": 1
+},
+"thiefquest": {
+"category": "4.2",
+"phrase": "thiefquest",
+"ref": "S0595",
+"source": "attack",
+"title": "ThiefQuest (malware)",
+"weight": 1
+},
+"thincrust": {
+"category": "4.2",
+"phrase": "thincrust",
+"ref": "S1223",
+"source": "attack",
+"title": "THINCRUST (malware)",
+"weight": 1
+},
+"threatneedle": {
+"category": "4.2",
+"phrase": "threatneedle",
+"ref": "S0665",
+"source": "attack",
+"title": "ThreatNeedle (malware)",
+"weight": 1
+},
+"tinybaron": {
+"category": "4.2",
+"phrase": "tinybaron",
+"ref": "S0050",
+"source": "attack",
+"title": "CosmicDuke (malware)",
+"weight": 1
+},
+"tinyturla": {
+"category": "4.2",
+"phrase": "tinyturla",
+"ref": "S0668",
+"source": "attack",
+"title": "TinyTurla (malware)",
+"weight": 1
+},
+"tinytyphon": {
+"category": "4.2",
+"phrase": "tinytyphon",
+"ref": "S0131",
+"source": "attack",
+"title": "TINYTYPHON (malware)",
+"weight": 1
+},
+"tinyzbot": {
+"category": "4.2",
+"phrase": "tinyzbot",
+"ref": "S0004",
+"source": "attack",
+"title": "TinyZBot (malware)",
+"weight": 1
+},
+"toneshell": {
+"category": "4.2",
+"phrase": "toneshell",
+"ref": "S1239",
+"source": "attack",
+"title": "TONESHELL (malware)",
+"weight": 1
+},
+"trailblaze": {
+"category": "4.2",
+"phrase": "trailblaze",
+"ref": "S9012",
+"source": "attack",
+"title": "TRAILBLAZE (malware)",
+"weight": 1
+},
+"trailblazer": {
+"category": "4.2",
+"phrase": "trailblazer",
+"ref": "S0682",
+"source": "attack",
+"title": "TrailBlazer (malware)",
+"weight": 1
+},
+"translatext": {
+"category": "4.2",
+"phrase": "translatext",
+"ref": "S1201",
+"source": "attack",
+"title": "TRANSLATEXT (malware)",
+"weight": 1
+},
+"transmitted data manipulation": {
+"category": "4.2",
+"phrase": "transmitted data manipulation",
+"ref": "T1565.002",
+"source": "attack",
+"title": "Transmitted Data Manipulation",
+"weight": 3
+},
+"trickbot": {
+"category": "4.2",
+"phrase": "trickbot",
+"ref": "S0266",
+"source": "attack",
+"title": "TrickBot (malware)",
+"weight": 1
+},
+"trusttrap": {
+"category": "4.2",
+"phrase": "trusttrap",
+"ref": "S9064",
+"source": "attack",
+"title": "TRUSTTRAP (malware)",
+"weight": 1
+},
+"tspy trickload": {
+"category": "4.2",
+"phrase": "tspy trickload",
+"ref": "S0266",
+"source": "attack",
+"title": "TrickBot (malware)",
+"weight": 1
+},
+"turnedup": {
+"category": "4.2",
+"phrase": "turnedup",
+"ref": "S0199",
+"source": "attack",
+"title": "TURNEDUP (malware)",
+"weight": 1
+},
+"twostroke": {
+"category": "4.2",
+"phrase": "twostroke",
+"ref": "S9067",
+"source": "attack",
+"title": "TWOSTROKE (malware)",
+"weight": 1
+},
+"typeframe": {
+"category": "4.2",
+"phrase": "typeframe",
+"ref": "S0263",
+"source": "attack",
+"title": "TYPEFRAME (malware)",
+"weight": 1
+},
+"uboatrat": {
+"category": "4.2",
+"phrase": "uboatrat",
+"ref": "S0333",
+"source": "attack",
+"title": "UBoatRAT (malware)",
+"weight": 1
+},
+"uppercut": {
+"category": "4.2",
+"phrase": "uppercut",
+"ref": "S0275",
+"source": "attack",
+"title": "UPPERCUT (malware)",
+"weight": 1
+},
+"upstyle": {
+"category": "4.2",
+"phrase": "upstyle",
+"ref": "S1164",
+"source": "attack",
+"title": "UPSTYLE (malware)",
+"weight": 1
+},
+"vaporrage": {
+"category": "4.2",
+"phrase": "vaporrage",
+"ref": "S0636",
+"source": "attack",
+"title": "VaporRage (malware)",
+"weight": 1
+},
+"versamem": {
+"category": "4.2",
+"phrase": "versamem",
+"ref": "S1154",
+"source": "attack",
+"title": "VersaMem (malware)",
+"weight": 1
+},
+"virtualization/sandbox evasion": {
+"category": "2.2",
+"phrase": "virtualization/sandbox evasion",
+"ref": "AML.T0097",
+"source": "atlas",
+"title": "Virtualization/Sandbox Evasion",
+"weight": 2
+},
+"virtualpie": {
+"category": "4.2",
+"phrase": "virtualpie",
+"ref": "S1218",
+"source": "attack",
+"title": "VIRTUALPIE (malware)",
+"weight": 1
+},
+"virtualpita": {
+"category": "4.2",
+"phrase": "virtualpita",
+"ref": "S1217",
+"source": "attack",
+"title": "VIRTUALPITA (malware)",
+"weight": 1
+},
+"wanacry": {
+"category": "4.2",
+"phrase": "wanacry",
+"ref": "S0366",
+"source": "attack",
+"title": "WannaCry (malware)",
+"weight": 1
+},
+"wanacrypt": {
+"category": "4.2",
+"phrase": "wanacrypt",
+"ref": "S0366",
+"source": "attack",
+"title": "WannaCry (malware)",
+"weight": 1
+},
+"wanacrypt0r": {
+"category": "4.2",
+"phrase": "wanacrypt0r",
+"ref": "S0366",
+"source": "attack",
+"title": "WannaCry (malware)",
+"weight": 1
+},
+"wannacry": {
+"category": "4.2",
+"phrase": "wannacry",
+"ref": "S0366",
+"source": "attack",
+"title": "WannaCry (malware)",
+"weight": 1
+},
+"warpwire": {
+"category": "4.2",
+"phrase": "warpwire",
+"ref": "S1116",
+"source": "attack",
+"title": "WARPWIRE (malware)",
+"weight": 1
+},
+"warzonerat": {
+"category": "4.2",
+"phrase": "warzonerat",
+"ref": "S0670",
+"source": "attack",
+"title": "WarzoneRAT (malware)",
+"weight": 1
+},
+"wastedlocker": {
+"category": "4.2",
+"phrase": "wastedlocker",
+"ref": "S0612",
+"source": "attack",
+"title": "WastedLocker (malware)",
+"weight": 1
+},
+"webc2": {
+"category": "4.2",
+"phrase": "webc2",
+"ref": "S0109",
+"source": "attack",
+"title": "WEBC2 (malware)",
+"weight": 1
+},
+"wellmail": {
+"category": "4.2",
+"phrase": "wellmail",
+"ref": "S0515",
+"source": "attack",
+"title": "WellMail (malware)",
+"weight": 1
+},
+"wellmess": {
+"category": "4.2",
+"phrase": "wellmess",
+"ref": "S0514",
+"source": "attack",
+"title": "WellMess (malware)",
+"weight": 1
+},
+"whispergate": {
+"category": "4.2",
+"phrase": "whispergate",
+"ref": "S0689",
+"source": "attack",
+"title": "WhisperGate (malware)",
+"weight": 1
+},
+"wi fi networks": {
+"category": "4.3",
+"phrase": "wi fi networks",
+"ref": "T1669",
+"source": "attack",
+"title": "Wi-Fi Networks",
+"weight": 2
+},
+"win32/killdisk.nbb": {
+"category": "4.2",
+"phrase": "win32/killdisk.nbb",
+"ref": "S0607",
+"source": "attack",
+"title": "KillDisk (malware)",
+"weight": 1
+},
+"win32/killdisk.nbc": {
+"category": "4.2",
+"phrase": "win32/killdisk.nbc",
+"ref": "S0607",
+"source": "attack",
+"title": "KillDisk (malware)",
+"weight": 1
+},
+"win32/killdisk.nbd": {
+"category": "4.2",
+"phrase": "win32/killdisk.nbd",
+"ref": "S0607",
+"source": "attack",
+"title": "KillDisk (malware)",
+"weight": 1
+},
+"win32/killdisk.nbh": {
+"category": "4.2",
+"phrase": "win32/killdisk.nbh",
+"ref": "S0607",
+"source": "attack",
+"title": "KillDisk (malware)",
+"weight": 1
+},
+"win32/killdisk.nbi": {
+"category": "4.2",
+"phrase": "win32/killdisk.nbi",
+"ref": "S0607",
+"source": "attack",
+"title": "KillDisk (malware)",
+"weight": 1
+},
+"windshield": {
+"category": "4.2",
+"phrase": "windshield",
+"ref": "S0155",
+"source": "attack",
+"title": "WINDSHIELD (malware)",
+"weight": 1
+},
+"windtail": {
+"category": "4.2",
+"phrase": "windtail",
+"ref": "S0466",
+"source": "attack",
+"title": "WindTail (malware)",
+"weight": 1
+},
+"winerack": {
+"category": "4.2",
+"phrase": "winerack",
+"ref": "S0219",
+"source": "attack",
+"title": "WINERACK (malware)",
+"weight": 1
+},
+"winmm": {
+"category": "4.2",
+"phrase": "winmm",
+"ref": "S0059",
+"source": "attack",
+"title": "WinMM (malware)",
+"weight": 1
+},
+"wirefire": {
+"category": "4.2",
+"phrase": "wirefire",
+"ref": "S1115",
+"source": "attack",
+"title": "WIREFIRE (malware)",
+"weight": 1
+},
+"xagentosx": {
+"category": "4.2",
+"phrase": "xagentosx",
+"ref": "S0161",
+"source": "attack",
+"title": "XAgentOSX (malware)",
+"weight": 1
+},
+"xcaon": {
+"category": "4.2",
+"phrase": "xcaon",
+"ref": "S0653",
+"source": "attack",
+"title": "xCaon (malware)",
+"weight": 1
+},
+"yahoyah": {
+"category": "4.2",
+"phrase": "yahoyah",
+"ref": "S0388",
+"source": "attack",
+"title": "YAHOYAH (malware)",
+"weight": 1
+},
+"zeroclear": {
+"category": "4.2",
+"phrase": "zeroclear",
+"ref": "S1151",
+"source": "attack",
+"title": "ZeroCleare (malware)",
+"weight": 1
+},
+"zerocleare": {
+"category": "4.2",
+"phrase": "zerocleare",
+"ref": "S1151",
+"source": "attack",
+"title": "ZeroCleare (malware)",
+"weight": 1
+},
+"zerot": {
+"category": "4.2",
+"phrase": "zerot",
+"ref": "S0230",
+"source": "attack",
+"title": "ZeroT (malware)",
+"weight": 1
+},
+"zipline": {
+"category": "4.2",
+"phrase": "zipline",
+"ref": "S1114",
+"source": "attack",
+"title": "ZIPLINE (malware)",
+"weight": 1
+},
+"zwshell": {
+"category": "4.2",
+"phrase": "zwshell",
+"ref": "S0350",
+"source": "attack",
+"title": "zwShell (malware)",
+"weight": 1
+},
+"zxshell": {
+"category": "4.2",
+"phrase": "zxshell",
+"ref": "S0412",
+"source": "attack",
+"title": "ZxShell (malware)",
+"weight": 1
+},
+"zxxz": {
+"category": "4.2",
+"phrase": "zxxz",
+"ref": "S1013",
+"source": "attack",
+"title": "ZxxZ (malware)",
+"weight": 1
+}
+},
+"programs": {
+"aadinternals": {
+"category": "2.1",
+"kind": "credentials",
+"name": "AADInternals",
+"ref": "S0677",
+"source": "attack",
+"techniques": [
+"T1003.004",
+"T1048",
+"T1059.001",
+"T1069.003",
+"T1087.004",
+"T1098.005"
+],
+"weight": 3
+},
+"adfind": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "AdFind",
+"ref": "S0552",
+"source": "attack",
+"techniques": [
+"T1016",
+"T1018",
+"T1069.002",
+"T1087.002",
+"T1482"
+],
+"weight": 0
+},
+"arp": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "Arp",
+"ref": "S0099",
+"source": "attack",
+"techniques": [
+"T1016",
+"T1018"
+],
+"weight": 0
+},
+"arp.exe": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "Arp",
+"ref": "S0099",
+"source": "attack",
+"techniques": [
+"T1016",
+"T1018"
+],
+"weight": 0
+},
+"asyncrat": {
+"category": "4.2",
+"kind": "probe",
+"name": "AsyncRAT",
+"ref": "S1087",
+"source": "attack",
+"techniques": [
+"T1016",
+"T1033",
+"T1053.005",
+"T1056.001",
+"T1057",
+"T1059.003"
+],
+"weight": 3
+},
+"at": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "at",
+"ref": "S0110",
+"source": "attack",
+"techniques": [
+"T1053.002"
+],
+"weight": 0
+},
+"at.exe": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "at",
+"ref": "S0110",
+"source": "attack",
+"techniques": [
+"T1053.002"
+],
+"weight": 0
+},
+"attrib": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "attrib",
+"ref": "S1176",
+"source": "attack",
+"techniques": [
+"T1564.001"
+],
+"weight": 0
+},
+"attrib.exe": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "attrib",
+"ref": "S1176",
+"source": "attack",
+"techniques": [
+"T1564.001"
+],
+"weight": 0
+},
+"bitsadmin": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "BITSAdmin",
+"ref": "S0190",
+"source": "attack",
+"techniques": [
+"T1048.003",
+"T1105",
+"T1197",
+"T1570"
+],
+"weight": 0
+},
+"bloodhound": {
+"category": "4.2",
+"kind": "probe",
+"name": "BloodHound",
+"ref": "S0521",
+"source": "attack",
+"techniques": [
+"T1018",
+"T1033",
+"T1059.001",
+"T1069.001",
+"T1069.002",
+"T1087.001"
+],
+"weight": 3
+},
+"brc4": {
+"category": "4.2",
+"kind": "probe",
+"name": "Brute Ratel C4",
+"ref": "S1063",
+"source": "attack",
+"techniques": [
+"T1005",
+"T1021",
+"T1021.002",
+"T1021.006",
+"T1027",
+"T1027.007"
+],
+"weight": 3
+},
+"brute ratel c4": {
+"category": "4.2",
+"kind": "probe",
+"name": "Brute Ratel C4",
+"ref": "S1063",
+"source": "attack",
+"techniques": [
+"T1005",
+"T1021",
+"T1021.002",
+"T1021.006",
+"T1027",
+"T1027.007"
+],
+"weight": 3
+},
+"brute-ratel-c4": {
+"category": "4.2",
+"kind": "probe",
+"name": "Brute Ratel C4",
+"ref": "S1063",
+"source": "attack",
+"techniques": [
+"T1005",
+"T1021",
+"T1021.002",
+"T1021.006",
+"T1027",
+"T1027.007"
+],
+"weight": 3
+},
+"bruteratelc4": {
+"category": "4.2",
+"kind": "probe",
+"name": "Brute Ratel C4",
+"ref": "S1063",
+"source": "attack",
+"techniques": [
+"T1005",
+"T1021",
+"T1021.002",
+"T1021.006",
+"T1027",
+"T1027.007"
+],
+"weight": 3
+},
+"cachedump": {
+"category": "2.1",
+"kind": "credentials",
+"name": "Cachedump",
+"ref": "S0119",
+"source": "attack",
+"techniques": [
+"T1003.005"
+],
+"weight": 3
+},
+"carrotball": {
+"category": "4.2",
+"kind": "remote-control",
+"name": "CARROTBALL",
+"ref": "S0465",
+"source": "attack",
+"techniques": [
+"T1027",
+"T1071.002",
+"T1105",
+"T1204.002"
+],
+"weight": 3
+},
+"certutil": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "certutil",
+"ref": "S0160",
+"source": "attack",
+"techniques": [
+"T1105",
+"T1140",
+"T1553.004",
+"T1560.001"
+],
+"weight": 0
+},
+"certutil.exe": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "certutil",
+"ref": "S0160",
+"source": "attack",
+"techniques": [
+"T1105",
+"T1140",
+"T1553.004",
+"T1560.001"
+],
+"weight": 0
+},
+"cipher.exe": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "cipher.exe",
+"ref": "S1205",
+"source": "attack",
+"techniques": [
+"T1561.001"
+],
+"weight": 0
+},
+"cmd": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "cmd",
+"ref": "S0106",
+"source": "attack",
+"techniques": [
+"T1059.003",
+"T1070.004",
+"T1082",
+"T1083",
+"T1105",
+"T1570"
+],
+"weight": 0
+},
+"cmd.exe": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "cmd",
+"ref": "S0106",
+"source": "attack",
+"techniques": [
+"T1059.003",
+"T1070.004",
+"T1082",
+"T1083",
+"T1105",
+"T1570"
+],
+"weight": 0
+},
+"connectwise": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "ConnectWise",
+"ref": "S0591",
+"source": "attack",
+"techniques": [
+"T1059.001",
+"T1113",
+"T1125"
+],
+"weight": 0
+},
+"covenant": {
+"category": "4.2",
+"kind": "probe",
+"name": "Covenant",
+"ref": "S1155",
+"source": "attack",
+"techniques": [
+"T1047",
+"T1059.001",
+"T1059.003",
+"T1071.001",
+"T1082",
+"T1218.004"
+],
+"weight": 3
+},
+"crackmapexec": {
+"category": "4.2",
+"kind": "probe",
+"name": "CrackMapExec",
+"ref": "S0488",
+"source": "attack",
+"techniques": [
+"T1003.002",
+"T1003.003",
+"T1003.004",
+"T1016",
+"T1018",
+"T1047"
+],
+"weight": 3
+},
+"cspy downloader": {
+"category": "4.2",
+"kind": "probe",
+"name": "CSPY Downloader",
+"ref": "S0527",
+"source": "attack",
+"techniques": [
+"T1027.002",
+"T1036.004",
+"T1053.005",
+"T1070",
+"T1070.004",
+"T1071.001"
+],
+"weight": 3
+},
+"cspy-downloader": {
+"category": "4.2",
+"kind": "probe",
+"name": "CSPY Downloader",
+"ref": "S0527",
+"source": "attack",
+"techniques": [
+"T1027.002",
+"T1036.004",
+"T1053.005",
+"T1070",
+"T1070.004",
+"T1071.001"
+],
+"weight": 3
+},
+"cspydownloader": {
+"category": "4.2",
+"kind": "probe",
+"name": "CSPY Downloader",
+"ref": "S0527",
+"source": "attack",
+"techniques": [
+"T1027.002",
+"T1036.004",
+"T1053.005",
+"T1070",
+"T1070.004",
+"T1071.001"
+],
+"weight": 3
+},
+"dcrat": {
+"category": "4.2",
+"kind": "remote-control",
+"name": "DCRAT",
+"ref": "S9017",
+"source": "attack",
+"techniques": [
+"T1027.013",
+"T1056.001",
+"T1573.002",
+"T1685"
+],
+"weight": 3
+},
+"diskpart": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "Diskpart",
+"ref": "S9002",
+"source": "attack",
+"techniques": [
+"T1059.003",
+"T1082",
+"T1083",
+"T1222.001",
+"T1561.002"
+],
+"weight": 0
+},
+"donut": {
+"category": "4.2",
+"kind": "probe",
+"name": "Donut",
+"ref": "S0695",
+"source": "attack",
+"techniques": [
+"T1027.002",
+"T1027.013",
+"T1027.015",
+"T1055",
+"T1057",
+"T1059"
+],
+"weight": 3
+},
+"dsquery": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "dsquery",
+"ref": "S0105",
+"source": "attack",
+"techniques": [
+"T1069.002",
+"T1082",
+"T1087.002",
+"T1482"
+],
+"weight": 0
+},
+"dsquery.exe": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "dsquery",
+"ref": "S0105",
+"source": "attack",
+"techniques": [
+"T1069.002",
+"T1082",
+"T1087.002",
+"T1482"
+],
+"weight": 0
+},
+"empire": {
+"category": "4.2",
+"kind": "probe",
+"name": "Empire",
+"ref": "S0363",
+"source": "attack",
+"techniques": [
+"T1003.001",
+"T1016",
+"T1020",
+"T1021.003",
+"T1021.004",
+"T1027.010"
+],
+"weight": 3
+},
+"empyre": {
+"category": "4.2",
+"kind": "probe",
+"name": "Empire",
+"ref": "S0363",
+"source": "attack",
+"techniques": [
+"T1003.001",
+"T1016",
+"T1020",
+"T1021.003",
+"T1021.004",
+"T1027.010"
+],
+"weight": 3
+},
+"esentutl": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "esentutl",
+"ref": "S0404",
+"source": "attack",
+"techniques": [
+"T1003.003",
+"T1005",
+"T1006",
+"T1105",
+"T1564.004",
+"T1570"
+],
+"weight": 0
+},
+"esentutl.exe": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "esentutl",
+"ref": "S0404",
+"source": "attack",
+"techniques": [
+"T1003.003",
+"T1005",
+"T1006",
+"T1105",
+"T1564.004",
+"T1570"
+],
+"weight": 0
+},
+"evilginx2": {
+"category": "4.2",
+"kind": "remote-control",
+"name": "evilginx2",
+"ref": "S9003",
+"source": "attack",
+"techniques": [
+"T1001",
+"T1016",
+"T1059.007",
+"T1071.001",
+"T1090.002",
+"T1111"
+],
+"weight": 3
+},
+"expand": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "Expand",
+"ref": "S0361",
+"source": "attack",
+"techniques": [
+"T1140",
+"T1564.004",
+"T1570"
+],
+"weight": 0
+},
+"fgdump": {
+"category": "2.1",
+"kind": "credentials",
+"name": "Fgdump",
+"ref": "S0120",
+"source": "attack",
+"techniques": [
+"T1003.002"
+],
+"weight": 3
+},
+"forfiles": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "Forfiles",
+"ref": "S0193",
+"source": "attack",
+"techniques": [
+"T1005",
+"T1083",
+"T1202"
+],
+"weight": 0
+},
+"frp": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "FRP",
+"ref": "S1144",
+"source": "attack",
+"techniques": [
+"T1046",
+"T1049",
+"T1059.007",
+"T1071.001",
+"T1090",
+"T1090.003"
+],
+"weight": 0
+},
+"ftp": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "ftp",
+"ref": "S0095",
+"source": "attack",
+"techniques": [
+"T1048.003",
+"T1105",
+"T1570"
+],
+"weight": 0
+},
+"ftp.exe": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "ftp",
+"ref": "S0095",
+"source": "attack",
+"techniques": [
+"T1048.003",
+"T1105",
+"T1570"
+],
+"weight": 0
+},
+"gsecdump": {
+"category": "2.1",
+"kind": "credentials",
+"name": "gsecdump",
+"ref": "S0008",
+"source": "attack",
+"techniques": [
+"T1003.002",
+"T1003.004"
+],
+"weight": 3
+},
+"havij": {
+"category": "4.2",
+"kind": "probe",
+"name": "Havij",
+"ref": "S0224",
+"source": "attack",
+"techniques": [
+"T1190"
+],
+"weight": 3
+},
+"htran": {
+"category": "4.2",
+"kind": "remote-control",
+"name": "HTRAN",
+"ref": "S0040",
+"source": "attack",
+"techniques": [
+"T1014",
+"T1055",
+"T1090"
+],
+"weight": 3
+},
+"huc packet transmit tool": {
+"category": "4.2",
+"kind": "remote-control",
+"name": "HTRAN",
+"ref": "S0040",
+"source": "attack",
+"techniques": [
+"T1014",
+"T1055",
+"T1090"
+],
+"weight": 3
+},
+"huc-packet-transmit-tool": {
+"category": "4.2",
+"kind": "remote-control",
+"name": "HTRAN",
+"ref": "S0040",
+"source": "attack",
+"techniques": [
+"T1014",
+"T1055",
+"T1090"
+],
+"weight": 3
+},
+"hucpackettransmittool": {
+"category": "4.2",
+"kind": "remote-control",
+"name": "HTRAN",
+"ref": "S0040",
+"source": "attack",
+"techniques": [
+"T1014",
+"T1055",
+"T1090"
+],
+"weight": 3
+},
+"ifconfig": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "ifconfig",
+"ref": "S0101",
+"source": "attack",
+"techniques": [
+"T1016"
+],
+"weight": 0
+},
+"imminent monitor": {
+"category": "4.2",
+"kind": "probe",
+"name": "Imminent Monitor",
+"ref": "S0434",
+"source": "attack",
+"techniques": [
+"T1021.001",
+"T1027",
+"T1041",
+"T1056.001",
+"T1057",
+"T1059"
+],
+"weight": 3
+},
+"imminent-monitor": {
+"category": "4.2",
+"kind": "probe",
+"name": "Imminent Monitor",
+"ref": "S0434",
+"source": "attack",
+"techniques": [
+"T1021.001",
+"T1027",
+"T1041",
+"T1056.001",
+"T1057",
+"T1059"
+],
+"weight": 3
+},
+"imminentmonitor": {
+"category": "4.2",
+"kind": "probe",
+"name": "Imminent Monitor",
+"ref": "S0434",
+"source": "attack",
+"techniques": [
+"T1021.001",
+"T1027",
+"T1041",
+"T1056.001",
+"T1057",
+"T1059"
+],
+"weight": 3
+},
+"impacket": {
+"category": "2.1",
+"kind": "credentials",
+"name": "Impacket",
+"ref": "S0357",
+"source": "attack",
+"techniques": [
+"T1003.001",
+"T1003.002",
+"T1003.003",
+"T1003.004",
+"T1040",
+"T1047"
+],
+"weight": 3
+},
+"invoke psimage": {
+"category": "4.2",
+"kind": "probe",
+"name": "Invoke-PSImage",
+"ref": "S0231",
+"source": "attack",
+"techniques": [
+"T1027.003",
+"T1027.009"
+],
+"weight": 3
+},
+"invoke-psimage": {
+"category": "4.2",
+"kind": "probe",
+"name": "Invoke-PSImage",
+"ref": "S0231",
+"source": "attack",
+"techniques": [
+"T1027.003",
+"T1027.009"
+],
+"weight": 3
+},
+"invokepsimage": {
+"category": "4.2",
+"kind": "probe",
+"name": "Invoke-PSImage",
+"ref": "S0231",
+"source": "attack",
+"techniques": [
+"T1027.003",
+"T1027.009"
+],
+"weight": 3
+},
+"ipconfig": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "ipconfig",
+"ref": "S0100",
+"source": "attack",
+"techniques": [
+"T1016"
+],
+"weight": 0
+},
+"ironnetinjector": {
+"category": "4.2",
+"kind": "probe",
+"name": "IronNetInjector",
+"ref": "S0581",
+"source": "attack",
+"techniques": [
+"T1027.013",
+"T1036.004",
+"T1053.005",
+"T1055",
+"T1055.001",
+"T1057"
+],
+"weight": 3
+},
+"koadic": {
+"category": "4.2",
+"kind": "probe",
+"name": "Koadic",
+"ref": "S0250",
+"source": "attack",
+"techniques": [
+"T1003.002",
+"T1003.003",
+"T1005",
+"T1016",
+"T1021.001",
+"T1033"
+],
+"weight": 3
+},
+"lazagne": {
+"category": "2.1",
+"kind": "credentials",
+"name": "LaZagne",
+"ref": "S0349",
+"source": "attack",
+"techniques": [
+"T1003.001",
+"T1003.004",
+"T1003.005",
+"T1003.007",
+"T1003.008",
+"T1552.001"
+],
+"weight": 3
+},
+"lslsass": {
+"category": "2.1",
+"kind": "credentials",
+"name": "Lslsass",
+"ref": "S0121",
+"source": "attack",
+"techniques": [
+"T1003.001"
+],
+"weight": 3
+},
+"mailsniper": {
+"category": "2.1",
+"kind": "credentials",
+"name": "MailSniper",
+"ref": "S0413",
+"source": "attack",
+"techniques": [
+"T1087.003",
+"T1110.003",
+"T1114.002"
+],
+"weight": 3
+},
+"mcmd": {
+"category": "4.2",
+"kind": "probe",
+"name": "MCMD",
+"ref": "S0500",
+"source": "attack",
+"techniques": [
+"T1005",
+"T1027",
+"T1036.005",
+"T1053.005",
+"T1059.003",
+"T1070.009"
+],
+"weight": 3
+},
+"meek": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "meek",
+"ref": "S0175",
+"source": "attack",
+"techniques": [
+"T1090.004"
+],
+"weight": 0
+},
+"mimikatz": {
+"category": "2.1",
+"kind": "credentials",
+"name": "Mimikatz",
+"ref": "S0002",
+"source": "attack",
+"techniques": [
+"T1003.001",
+"T1003.002",
+"T1003.004",
+"T1003.006",
+"T1098",
+"T1134.005"
+],
+"weight": 3
+},
+"mimipenguin": {
+"category": "2.1",
+"kind": "credentials",
+"name": "MimiPenguin",
+"ref": "S0179",
+"source": "attack",
+"techniques": [
+"T1003.007"
+],
+"weight": 3
+},
+"mythic": {
+"category": "4.2",
+"kind": "remote-control",
+"name": "Mythic",
+"ref": "S0699",
+"source": "attack",
+"techniques": [
+"T1008",
+"T1030",
+"T1071.001",
+"T1071.002",
+"T1071.004",
+"T1090.001"
+],
+"weight": 3
+},
+"nbtscan": {
+"category": "4.2",
+"kind": "probe",
+"name": "NBTscan",
+"ref": "S0590",
+"source": "attack",
+"techniques": [
+"T1016",
+"T1018",
+"T1033",
+"T1040",
+"T1046"
+],
+"weight": 3
+},
+"nbtstat": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "nbtstat",
+"ref": "S0102",
+"source": "attack",
+"techniques": [
+"T1016",
+"T1049"
+],
+"weight": 0
+},
+"net": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "Net",
+"ref": "S0039",
+"source": "attack",
+"techniques": [
+"T1007",
+"T1018",
+"T1021.002",
+"T1049",
+"T1069.001",
+"T1069.002"
+],
+"weight": 0
+},
+"net.exe": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "Net",
+"ref": "S0039",
+"source": "attack",
+"techniques": [
+"T1007",
+"T1018",
+"T1021.002",
+"T1049",
+"T1069.001",
+"T1069.002"
+],
+"weight": 0
+},
+"netsh": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "netsh",
+"ref": "S0108",
+"source": "attack",
+"techniques": [
+"T1090",
+"T1518.001",
+"T1546.007",
+"T1686"
+],
+"weight": 0
+},
+"netsh.exe": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "netsh",
+"ref": "S0108",
+"source": "attack",
+"techniques": [
+"T1090",
+"T1518.001",
+"T1546.007",
+"T1686"
+],
+"weight": 0
+},
+"netstat": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "netstat",
+"ref": "S0104",
+"source": "attack",
+"techniques": [
+"T1049"
+],
+"weight": 0
+},
+"ngrok": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "ngrok",
+"ref": "S0508",
+"source": "attack",
+"techniques": [
+"T1090",
+"T1102",
+"T1567",
+"T1568.002",
+"T1572"
+],
+"weight": 0
+},
+"nltest": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "Nltest",
+"ref": "S0359",
+"source": "attack",
+"techniques": [
+"T1016",
+"T1018",
+"T1482"
+],
+"weight": 0
+},
+"nppspy": {
+"category": "2.1",
+"kind": "credentials",
+"name": "NPPSPY",
+"ref": "S1131",
+"source": "attack",
+"techniques": [
+"T1005",
+"T1056",
+"T1112",
+"T1119",
+"T1552",
+"T1557"
+],
+"weight": 3
+},
+"out1": {
+"category": "4.2",
+"kind": "remote-control",
+"name": "Out1",
+"ref": "S0594",
+"source": "attack",
+"techniques": [
+"T1005",
+"T1027",
+"T1059.003",
+"T1071.001",
+"T1114.001"
+],
+"weight": 3
+},
+"pacu": {
+"category": "4.2",
+"kind": "probe",
+"name": "Pacu",
+"ref": "S1091",
+"source": "attack",
+"techniques": [
+"T1049",
+"T1059.009",
+"T1069.003",
+"T1078.004",
+"T1087.004",
+"T1098.001"
+],
+"weight": 3
+},
+"pass the hash toolkit": {
+"category": "4.2",
+"kind": "probe",
+"name": "Pass-The-Hash Toolkit",
+"ref": "S0122",
+"source": "attack",
+"techniques": [
+"T1550.002"
+],
+"weight": 3
+},
+"pass-the-hash-toolkit": {
+"category": "4.2",
+"kind": "probe",
+"name": "Pass-The-Hash Toolkit",
+"ref": "S0122",
+"source": "attack",
+"techniques": [
+"T1550.002"
+],
+"weight": 3
+},
+"passthehashtoolkit": {
+"category": "4.2",
+"kind": "probe",
+"name": "Pass-The-Hash Toolkit",
+"ref": "S0122",
+"source": "attack",
+"techniques": [
+"T1550.002"
+],
+"weight": 3
+},
+"pcshare": {
+"category": "4.2",
+"kind": "probe",
+"name": "PcShare",
+"ref": "S1050",
+"source": "attack",
+"techniques": [
+"T1005",
+"T1012",
+"T1016",
+"T1027.013",
+"T1027.015",
+"T1036.001"
+],
+"weight": 3
+},
+"peirates": {
+"category": "4.2",
+"kind": "probe",
+"name": "Peirates",
+"ref": "S0683",
+"source": "attack",
+"techniques": [
+"T1046",
+"T1078.004",
+"T1528",
+"T1530",
+"T1550.001",
+"T1552.005"
+],
+"weight": 3
+},
+"ping": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "Ping",
+"ref": "S0097",
+"source": "attack",
+"techniques": [
+"T1018"
+],
+"weight": 0
+},
+"poshc2": {
+"category": "4.2",
+"kind": "probe",
+"name": "PoshC2",
+"ref": "S0378",
+"source": "attack",
+"techniques": [
+"T1003.001",
+"T1007",
+"T1016",
+"T1040",
+"T1046",
+"T1047"
+],
+"weight": 3
+},
+"powershell empire": {
+"category": "4.2",
+"kind": "probe",
+"name": "Empire",
+"ref": "S0363",
+"source": "attack",
+"techniques": [
+"T1003.001",
+"T1016",
+"T1020",
+"T1021.003",
+"T1021.004",
+"T1027.010"
+],
+"weight": 3
+},
+"powershell-empire": {
+"category": "4.2",
+"kind": "probe",
+"name": "Empire",
+"ref": "S0363",
+"source": "attack",
+"techniques": [
+"T1003.001",
+"T1016",
+"T1020",
+"T1021.003",
+"T1021.004",
+"T1027.010"
+],
+"weight": 3
+},
+"powershellempire": {
+"category": "4.2",
+"kind": "probe",
+"name": "Empire",
+"ref": "S0363",
+"source": "attack",
+"techniques": [
+"T1003.001",
+"T1016",
+"T1020",
+"T1021.003",
+"T1021.004",
+"T1027.010"
+],
+"weight": 3
+},
+"powersploit": {
+"category": "4.2",
+"kind": "probe",
+"name": "PowerSploit",
+"ref": "S0194",
+"source": "attack",
+"techniques": [
+"T1003.001",
+"T1005",
+"T1012",
+"T1027.005",
+"T1027.010",
+"T1047"
+],
+"weight": 3
+},
+"psexec": {
+"category": "4.2",
+"kind": "probe",
+"name": "PsExec",
+"ref": "S0029",
+"source": "attack",
+"techniques": [
+"T1021.002",
+"T1136.002",
+"T1543.003",
+"T1569.002",
+"T1570"
+],
+"weight": 3
+},
+"pupy": {
+"category": "4.2",
+"kind": "probe",
+"name": "Pupy",
+"ref": "S0192",
+"source": "attack",
+"techniques": [
+"T1003.001",
+"T1003.004",
+"T1003.005",
+"T1016",
+"T1021.001",
+"T1033"
+],
+"weight": 3
+},
+"pwdump": {
+"category": "2.1",
+"kind": "credentials",
+"name": "pwdump",
+"ref": "S0006",
+"source": "attack",
+"techniques": [
+"T1003.002"
+],
+"weight": 3
+},
+"quasarrat": {
+"category": "4.2",
+"kind": "remote-control",
+"name": "QuasarRAT",
+"ref": "S0262",
+"source": "attack",
+"techniques": [
+"T1005",
+"T1010",
+"T1016",
+"T1021.001",
+"T1033",
+"T1053.005"
+],
+"weight": 3
+},
+"quick assist": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "Quick Assist",
+"ref": "S1209",
+"source": "attack",
+"techniques": [
+"T1071.001",
+"T1113",
+"T1125"
+],
+"weight": 0
+},
+"quick-assist": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "Quick Assist",
+"ref": "S1209",
+"source": "attack",
+"techniques": [
+"T1071.001",
+"T1113",
+"T1125"
+],
+"weight": 0
+},
+"quickassist": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "Quick Assist",
+"ref": "S1209",
+"source": "attack",
+"techniques": [
+"T1071.001",
+"T1113",
+"T1125"
+],
+"weight": 0
+},
+"rawdisk": {
+"category": "4.2",
+"kind": "probe",
+"name": "RawDisk",
+"ref": "S0364",
+"source": "attack",
+"techniques": [
+"T1485",
+"T1561.001",
+"T1561.002"
+],
+"weight": 3
+},
+"rclone": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "Rclone",
+"ref": "S1040",
+"source": "attack",
+"techniques": [
+"T1030",
+"T1048.002",
+"T1048.003",
+"T1083",
+"T1560.001",
+"T1567.002"
+],
+"weight": 0
+},
+"reg": {
+"category": "2.1",
+"kind": "dual-use",
+"name": "Reg",
+"ref": "S0075",
+"source": "attack",
+"techniques": [
+"T1012",
+"T1112",
+"T1552.002"
+],
+"weight": 0
+},
+"reg.exe": {
+"category": "2.1",
+"kind": "dual-use",
+"name": "Reg",
+"ref": "S0075",
+"source": "attack",
+"techniques": [
+"T1012",
+"T1112",
+"T1552.002"
+],
+"weight": 0
+},
+"remcos": {
+"category": "4.2",
+"kind": "probe",
+"name": "Remcos",
+"ref": "S0332",
+"source": "attack",
+"techniques": [
+"T1010",
+"T1012",
+"T1027",
+"T1027.013",
+"T1033",
+"T1055"
+],
+"weight": 3
+},
+"remoteutilities": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "RemoteUtilities",
+"ref": "S0592",
+"source": "attack",
+"techniques": [
+"T1083",
+"T1105",
+"T1113",
+"T1218.007"
+],
+"weight": 0
+},
+"responder": {
+"category": "2.1",
+"kind": "credentials",
+"name": "Responder",
+"ref": "S0174",
+"source": "attack",
+"techniques": [
+"T1040",
+"T1557.001"
+],
+"weight": 3
+},
+"roadtools": {
+"category": "4.2",
+"kind": "probe",
+"name": "ROADTools",
+"ref": "S0684",
+"source": "attack",
+"techniques": [
+"T1018",
+"T1069.003",
+"T1078.004",
+"T1087.004",
+"T1119",
+"T1526"
+],
+"weight": 3
+},
+"route": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "route",
+"ref": "S0103",
+"source": "attack",
+"techniques": [
+"T1016"
+],
+"weight": 0
+},
+"rubeus": {
+"category": "2.1",
+"kind": "credentials",
+"name": "Rubeus",
+"ref": "S1071",
+"source": "attack",
+"techniques": [
+"T1482",
+"T1558.001",
+"T1558.002",
+"T1558.003",
+"T1558.004"
+],
+"weight": 3
+},
+"ruler": {
+"category": "4.2",
+"kind": "probe",
+"name": "Ruler",
+"ref": "S0358",
+"source": "attack",
+"techniques": [
+"T1087.003",
+"T1137.003",
+"T1137.004",
+"T1137.005"
+],
+"weight": 3
+},
+"schtasks": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "schtasks",
+"ref": "S0111",
+"source": "attack",
+"techniques": [
+"T1053.005"
+],
+"weight": 0
+},
+"schtasks.exe": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "schtasks",
+"ref": "S0111",
+"source": "attack",
+"techniques": [
+"T1053.005"
+],
+"weight": 0
+},
+"screenconnect": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "ConnectWise",
+"ref": "S0591",
+"source": "attack",
+"techniques": [
+"T1059.001",
+"T1113",
+"T1125"
+],
+"weight": 0
+},
+"sdelete": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "SDelete",
+"ref": "S0195",
+"source": "attack",
+"techniques": [
+"T1070.004",
+"T1485"
+],
+"weight": 0
+},
+"shimratreporter": {
+"category": "4.2",
+"kind": "probe",
+"name": "ShimRatReporter",
+"ref": "S0445",
+"source": "attack",
+"techniques": [
+"T1016",
+"T1020",
+"T1027",
+"T1036.005",
+"T1041",
+"T1049"
+],
+"weight": 3
+},
+"silenttrinity": {
+"category": "4.2",
+"kind": "probe",
+"name": "SILENTTRINITY",
+"ref": "S0692",
+"source": "attack",
+"techniques": [
+"T1003.001",
+"T1007",
+"T1010",
+"T1012",
+"T1018",
+"T1021.003"
+],
+"weight": 3
+},
+"sliver": {
+"category": "4.2",
+"kind": "remote-control",
+"name": "Sliver",
+"ref": "S0633",
+"source": "attack",
+"techniques": [
+"T1001.002",
+"T1003.001",
+"T1016",
+"T1027",
+"T1027.004",
+"T1027.013"
+],
+"weight": 3
+},
+"spwebmember": {
+"category": "4.2",
+"kind": "probe",
+"name": "spwebmember",
+"ref": "S0227",
+"source": "attack",
+"techniques": [
+"T1213.002"
+],
+"weight": 3
+},
+"sqlmap": {
+"category": "4.2",
+"kind": "probe",
+"name": "sqlmap",
+"ref": "S0225",
+"source": "attack",
+"techniques": [
+"T1190"
+],
+"weight": 3
+},
+"systeminfo": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "Systeminfo",
+"ref": "S0096",
+"source": "attack",
+"techniques": [
+"T1082"
+],
+"weight": 0
+},
+"tasklist": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "Tasklist",
+"ref": "S0057",
+"source": "attack",
+"techniques": [
+"T1007",
+"T1057",
+"T1518.001"
+],
+"weight": 0
+},
+"tor": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "Tor",
+"ref": "S0183",
+"source": "attack",
+"techniques": [
+"T1090.003",
+"T1573.002"
+],
+"weight": 0
+},
+"trufflehog": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "TruffleHog",
+"ref": "S9009",
+"source": "attack",
+"techniques": [
+"T1005",
+"T1059.009",
+"T1078.004",
+"T1083",
+"T1213.001",
+"T1213.002"
+],
+"weight": 0
+},
+"uacme": {
+"category": "4.2",
+"kind": "probe",
+"name": "UACMe",
+"ref": "S0116",
+"source": "attack",
+"techniques": [
+"T1548.002"
+],
+"weight": 3
+},
+"wce": {
+"category": "2.1",
+"kind": "credentials",
+"name": "Windows Credential Editor",
+"ref": "S0005",
+"source": "attack",
+"techniques": [
+"T1003.001"
+],
+"weight": 3
+},
+"wevtutil": {
+"category": "4.2",
+"kind": "dual-use",
+"name": "Wevtutil",
+"ref": "S0645",
+"source": "attack",
+"techniques": [
+"T1005",
+"T1685.001",
+"T1685.005"
+],
+"weight": 0
+},
+"windows credential editor": {
+"category": "2.1",
+"kind": "credentials",
+"name": "Windows Credential Editor",
+"ref": "S0005",
+"source": "attack",
+"techniques": [
+"T1003.001"
+],
+"weight": 3
+},
+"windows-credential-editor": {
+"category": "2.1",
+"kind": "credentials",
+"name": "Windows Credential Editor",
+"ref": "S0005",
+"source": "attack",
+"techniques": [
+"T1003.001"
+],
+"weight": 3
+},
+"windowscredentialeditor": {
+"category": "2.1",
+"kind": "credentials",
+"name": "Windows Credential Editor",
+"ref": "S0005",
+"source": "attack",
+"techniques": [
+"T1003.001"
+],
+"weight": 3
+},
+"winexe": {
+"category": "4.2",
+"kind": "probe",
+"name": "Winexe",
+"ref": "S0191",
+"source": "attack",
+"techniques": [
+"T1569.002"
+],
+"weight": 3
+},
+"xcmd": {
+"category": "4.2",
+"kind": "probe",
+"name": "xCmd",
+"ref": "S0123",
+"source": "attack",
+"techniques": [
+"T1569.002"
+],
+"weight": 3
+},
+"xrat": {
+"category": "4.2",
+"kind": "remote-control",
+"name": "QuasarRAT",
+"ref": "S0262",
+"source": "attack",
+"techniques": [
+"T1005",
+"T1010",
+"T1016",
+"T1021.001",
+"T1033",
+"T1053.005"
+],
+"weight": 3
+}
+},
+"sources": {
+"atlas": {
+"data": "https://raw.githubusercontent.com/mitre-atlas/atlas-data/main/dist/ATLAS.yaml",
+"licence": "Apache-2.0",
+"name": "MITRE ATLAS",
+"notice": "Copyright 2021-2026 MITRE. Licensed under the Apache License 2.0.",
+"url": "https://atlas.mitre.org"
+},
+"attack": {
+"data": "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/master/enterprise-attack/enterprise-attack.json",
+"licence": "ATT&CK licence: royalty-free for research, development and commercial use, with MITRE's copyright line and the licence kept (ethics_library_NOTICE.md)",
+"name": "MITRE ATT&CK (Enterprise)",
+"notice": "© 2026 The MITRE Corporation. This work is reproduced and distributed with the permission of The MITRE Corporation.",
+"url": "https://attack.mitre.org"
+},
+"bento": {
+"licence": "this project's licence",
+"name": "Bento's phrases about harm to people",
+"notice": "Written for Bento and sorted by the MIT AI Risk Repository's categories.",
+"url": ""
+},
+"mit": {
+"licence": "CC BY 4.0",
+"name": "MIT AI Risk Repository (domain taxonomy)",
+"notice": "Slattery et al. (2024), The AI Risk Repository, arXiv:2408.12622. Category names only; the risk database itself is not imported.",
+"url": "https://airisk.mit.edu"
+}
+},
+"versions": {
+"atlas": "5.6.0",
+"attack": "20.1"
+}
+}

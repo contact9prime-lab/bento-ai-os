@@ -617,6 +617,15 @@ def _window_full(prompt_tokens: int, num_ctx) -> bool:
         return False
 
 
+def _plain(content) -> str:
+    """A message's words, whatever shape it came in (a string, or blocks with pictures)."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return " ".join(str(b.get("text") or "") for b in content if isinstance(b, dict))
+    return str(content or "")
+
+
 class Agent:
     def __init__(self, cfg: dict, toolbox: Toolbox, model_id: str,
                  emit: Callable[[dict], Awaitable[None]],
@@ -783,6 +792,10 @@ class Agent:
         tools = [s for s in steps if s.get("type") == "tool"]
         if tools:
             out = str(tools[-1].get("output") or "").strip()
+            if out.startswith("[denied]"):
+                # a refusal is the answer, from the gate, the ethics check or a person. Pushing
+                # "do it NOW with your tools" after one asks the model to find a way round it.
+                return False
             failed = (not tools[-1].get("ok")) or not out or out.startswith("(no output)") \
                 or out.startswith("[4") or out.startswith("[5")     # [401]/[500] fetch_url bodies
             said_so = any(w in t.lower() for w in
@@ -1083,6 +1096,18 @@ class Agent:
         return output, False, None, False
 
     async def call_tool(self, name: str, args: dict, call_id: str = "", offered: bool = False) -> tuple:
+        """The turn's purpose for the ethics check (ethicsctx.py) around the call itself: the
+        person's words, so a target nobody named is noticed, and the conversation whose ethics
+        score this step adds to. An outer turn's purpose wins (a specialist works for it)."""
+        from . import ethicsctx
+        tok = ethicsctx.enter(_plain(self._task_text), self.conversation_id or "",
+                              self.root_run or getattr(self, "run_id", "") or self._turn_key)
+        try:
+            return await self._call_tool(name, args, call_id, offered)
+        finally:
+            ethicsctx.leave(tok)
+
+    async def _call_tool(self, name: str, args: dict, call_id: str = "", offered: bool = False) -> tuple:
         """ONE tool call through the whole gate: scope injection, risk, the PDP
         decision, approval, execution, the ledger row, the log, taint, and the
         tool_start / tool_end events. Returns (output, ok, image_path, untrusted).
@@ -1242,6 +1267,10 @@ class Agent:
                 dec = Decision("ask", reason)
             else:
                 dec = Decision("allow")
+        if self.toolbox.pdp and dec.effect != "deny":
+            dec = await self._ethics_review(name, args, dec, base)
+        if dec.rule == "ethics":
+            await self._ethics_tell()
         must_person = person_rule(self.principal, name, args, dec, self.toolbox.pdp, level=level)
         note_refusal(name, self.principal, dec)
         # The sandbox is on and cannot start here: code runs only on a person's yes, each time, with
@@ -1266,15 +1295,33 @@ class Agent:
             tok = _NEEDS_PERSON.set(must_person) if must_person else None
             # what the agent said it was doing, for the card's first line
             tok_said = _SAID.set(getattr(self, "_said", "") or "")
+            # An ethics caution (ethics.py): the card asks for the phrase, and only a screen that
+            # had it typed confirms the token. Every other approver leaves it unconfirmed.
+            eth_tok = eth_ctx = None
+            if dec.rule == "ethics" and dec.ethics:
+                from . import ethics as ethics_mod
+                eth_tok, eth_ctx = ethics_mod.ask(dec.ethics)
             try:
                 approved = await self.approver(name, args, why, dec.grant_offer)
             finally:
                 _SAID.reset(tok_said)
                 if tok is not None:
                     _NEEDS_PERSON.reset(tok)
+                if eth_ctx is not None:
+                    ethics_mod.done(eth_ctx)
+            unconfirmed = False
+            if eth_tok and approved and approved is not PARK and not ethics_mod.consume(eth_tok):
+                approved, unconfirmed = False, True
+            if approved is PARK and eth_tok:
+                approved, unconfirmed = False, True     # a Brief answer types nothing
             if approved is PARK:
                 return await self._park_here(name, args, call_id, dec, why)
-            if approved:
+            if unconfirmed:
+                output = (f"[denied] Bento's ethics check needs a person to type "
+                          f"“{dec.ethics.get('confirm')}” at a screen, and nobody did. A tap, a "
+                          f"grant or the autonomy level does not answer it. Tell the user what you "
+                          f"wanted to do, why, and what it would remove.")
+            elif approved:
                 await self._checkpoint(name, args)
                 tok_jail = tools_mod._jail_waived.set(True) if jail_gap else None
                 try:
@@ -1511,6 +1558,56 @@ class Agent:
                          "content": out})
         return await self.run(msgs)
 
+    async def _ethics_review(self, name: str, args: dict, dec, base: str):
+        """The ethics reviewer (ethicseval.py): a second reading by the machine's brain with no
+        tools, for a risky step in a conversation that needs one. It can only add a typed
+        confirmation; an answer it can't give changes nothing."""
+        from . import ethicseval, ethicsctx
+        store = self.toolbox.store
+        try:
+            ctx = ethicsctx.key_of({"conversation_id": self.conversation_id,
+                                    "run_id": getattr(self, "run_id", "")})
+            if not ethicseval.wanted(self.cfg, store, ctx, name, args, dec, base):
+                return dec
+            await self.emit({"type": "status", "message": "the ethics reviewer is reading this step"})
+            res = await ethicseval.evaluate(self.cfg, self.toolbox, _plain(self._task_text),
+                                            f"{name}: {tool_detail(name, args)}",
+                                            ethicsctx.recent(store, ctx=ctx, limit=8) if ctx else [])
+        except Exception:
+            return dec
+        new = ethicseval.raise_(dec, res, store, ctx, principal=self.principal.label)
+        if new is not dec:              # the reviewer raised it (ethicseval.raise_ only ever raises)
+            st = ethicsctx.state(store, ctx)
+            new.ethics["context"] = {k: st[k] for k in ("score", "level", "account", "account_level", "by")}
+        return new
+
+    async def _ethics_tell(self) -> None:
+        """The conversation's ethics score, for the chat's chip (only once it is above nothing)."""
+        try:
+            from . import ethicsctx
+            ctx = ethicsctx.key_of({"conversation_id": self.conversation_id,
+                                    "run_id": getattr(self, "run_id", "")}) or self.conversation_id
+            if not ctx:
+                return
+            st = ethicsctx.state(self.toolbox.store, ctx)
+            if st["score"] or st["account_level"] != "ok":
+                await self.emit({"type": "ethics_score", "conversation_id": self.conversation_id or "",
+                                 **{k: st[k] for k in ("score", "level", "conversation_level", "account",
+                                                       "account_level", "by")}})
+        except Exception:
+            pass
+
+    def _ethics_note(self, text) -> list:
+        """What the ethics library recognises in this turn's words, flagged on its conversation
+        (ethicsctx.note_request). It decides nothing here; the score it builds is read by the gate."""
+        try:
+            from . import ethicsctx
+            ctx = (ethicsctx.key_of() or self.conversation_id or self.root_run
+                   or getattr(self, "run_id", "") or self._turn_key)
+            return ethicsctx.note_request(self.toolbox.store, ctx, _plain(text), principal=self.principal.label)
+        except Exception:
+            return []
+
     async def run(self, history: list[dict]) -> dict:
         """history: prior messages (user/assistant, internal format), last one the new user msg.
         Returns {'content': final_text, 'steps': [...]} — steps are the tool trace for persistence.
@@ -1521,6 +1618,8 @@ class Agent:
         self._task_text = last_user
         steps: list[dict] = []
         self.partial_steps = steps  # same list object: mutations are visible to a canceller
+        if self._ethics_note(last_user):
+            await self._ethics_tell()
         from . import integrity
         held = integrity.refusal()
         if held:       # a security file changed: no model call, no step (integrity.py)

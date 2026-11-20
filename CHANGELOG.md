@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.9.40 — 2026-11-19
+
+**Ethics: Bento decides whether a step should happen at all, whoever says yes.** The rule is that
+only the party who would be hurt can consent.
+
+- Scanning, breaking into or flooding a machine nobody here has shown is yours is refused, and so is
+  wiping the system, a disk or a home folder. No rule, remembered approval or autonomy level reaches
+  past it, and there's no switch, because your yes can't cover somebody else.
+- Before an agent deletes a lot of your own things (over 200 files or 200 MB, or anything outside
+  your workspace), Bento counts them itself and the card asks you to type the words it shows. A tap,
+  a phone or full autonomy never answers it. Force pushes, and deletes Bento can't read, ask the same way.
+- It's plain code over what Bento measures, never an AI's opinion, so nothing a model says can move it.
+- Settings → Permissions → Ethics has your one switch, what has no switch, the sites you proved are
+  yours, and Try a command. `bento ethics` does the same in a terminal, and Permissions → Flow shows
+  the new Ethics step.
+
+**And it builds up.** Bento now recognises tools, techniques and harm to people from MITRE ATT&CK,
+MITRE ATLAS and the MIT AI Risk Repository's categories, shipped with their licences and notices.
+Every refusal, caution, worrying request and secret read is a flag on its conversation, and the
+flags add up to an ethics score shown on Chat's header. Past 10, every risky step is typed; past
+20, none runs, though reading still works. Trying another way after a refusal adds more.
+
+- Sending something to a host nobody named, or sending anything out after reading a key or a
+  password file, asks you to type.
+- An ethics reviewer (your brain, with no tools) reads risky steps in a conversation that has
+  flags. It can only ask you to type, never allow anything. Settings → Permissions → Ethics has
+  its switch, This week, Clear and the library. `bento ethics flags | report | score | clear |
+  library | reviewer` in a terminal.
+
 ## 0.9.39 — 2026-11-19
 
 **When Claude Code can't sign in inside the sandbox, Bento says so.** On some machines, such as a

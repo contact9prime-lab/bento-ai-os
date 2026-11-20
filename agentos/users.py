@@ -750,7 +750,10 @@ USER_KEYS = ("channels", "telegram", "whatsapp", "mcp_servers", "credentials", "
              "device_companies",
              # whether only MY voice wakes the screen (voiceprint.py). The print is a file
              # in my own home; this is the switch for it.
-             "voiceprint")
+             "voiceprint",
+             # MY ethics check (ethics.py): whether deleting a lot of my own things is typed,
+             # and the sites I proved are mine. Harm to others has no switch anywhere.
+             "ethics")
 
 
 def machine_view(cfg: dict) -> dict:

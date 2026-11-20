@@ -118,6 +118,9 @@ function pfWhy(){
     doors=`<div class="pf-rule"><button class="endbtn" onclick="placeSettings('executors')()">Change its hands</button></div>`;
   }else if(stage==='folders'){
     doors=`<div class="pf-rule"><button class="endbtn" onclick="openApp('office');setTimeout(()=>officeCompany(true),300)">The company's folders</button></div>`;
+  }else if(stage==='ethics'){
+    doors=`<div class="pf-rule">No rule or autonomy level reaches past this step.
+      <button class="endbtn" onclick="placeSettings('permissions','Ethics')()">Ethics settings</button></div>`;
   }else if(stage==='channel'){
     doors=`<div class="pf-rule"><button class="endbtn" onclick="placeSettings('channels')()">Channel settings</button></div>`;
   }else if(stage==='rate'){

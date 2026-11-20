@@ -31,15 +31,17 @@ that decides. **Permissions → Flow** draws them, with how many of the last day
 each step made.
 
 1. **Hard blocks.** Commands that would wreck the machine are always refused.
-2. **Built-in protection.** Apps, agents and other machines may never change the OS's own rules.
-3. **Hands.** The tools, folders and sites this agent can reach at all (Settings → Executors).
-4. **Channel.** A read-only channel may look but not change anything.
-5. **Outside content.** After reading a web page or a mail, a change goes to you first.
-6. **Speed limit.** Too many calls in a short time and it waits in Quarantine.
-7. **Team matrix.** Who may ask whom, between your agents and linked teams.
-8. **Your rules.** Allow and deny rules, from you, a mission or a remembered approval.
-9. **Default.** Nothing matched, so autonomy decides or a person is asked.
-10. **Always a person.** Power, installs and code from a specialist are confirmed every time.
+2. **Ethics.** Whether the step should happen at all, whoever says yes (next section).
+3. **Built-in protection.** Apps, agents and other machines may never change the OS's own rules.
+4. **Hands.** The tools, folders and sites this agent can reach at all (Settings → Executors).
+5. **Company folders.** A company with folders of its own keeps its agents inside them.
+6. **Channel.** A read-only channel may look but not change anything.
+7. **Outside content.** After reading a web page or a mail, a change goes to you first.
+8. **Speed limit.** Too many calls in a short time and it waits in Quarantine.
+9. **Team matrix.** Who may ask whom, between your agents and linked teams.
+10. **Your rules.** Allow and deny rules, from you, a mission or a remembered approval.
+11. **Default.** Nothing matched, so autonomy decides or a person is asked.
+12. **Always a person.** Power, installs and code from a specialist are confirmed every time.
 
 That order is why a rule can't undo a step above it: "allow fetch_url" doesn't let a fetched
 page spend that permission, and allowing a folder doesn't reach past an agent's hands.
@@ -72,6 +74,67 @@ bento grants why subagent:researcher run_command "git push"
 bento grants why user write_file notes.md --after-web
 bento audit            # each row names the step that decided it
 ```
+
+## Ethics: should it happen at all
+
+Every other step asks "may this agent do it, and did somebody say yes?". The ethics step asks
+whether the thing should be done, and it rests on one rule: **only the party who would be hurt
+can consent.**
+
+- **Harm to someone else is refused.** Scanning, breaking into or flooding a machine nobody here
+  has shown is yours, and scanning a whole range of addresses. Your yes can't cover somebody
+  else's machine, so no rule, Remember or autonomy level reaches past it, and there's no switch.
+- **Wiping the machine is refused**: the system's folders, a disk, a whole home folder.
+- **A lot of your own things is typed to confirm.** Before an agent deletes over 200 files or
+  200 MB, or anything outside your workspace, Bento counts them itself and the card asks you to
+  type the words it shows ("delete 1240 files"). A tap, a phone, a remembered approval or full
+  autonomy never answers it. This is the one part you can switch off, because it's yours.
+- **Force pushes, and deletes it can't read, are typed too.** A force push rewrites history
+  other people may have. A delete whose target is hidden in `$(…)` or a variable can't be
+  measured, so it's treated as one you'd want to see.
+
+![An ethics card in Chat: 1,240 files measured, and the words to type before Go ahead](screenshots/ethics-card.png)
+
+![The ethics reviewer's concern on the card, with the conversation's score](screenshots/ethics-reviewer-card.png)
+
+![The chip past the hold line, and the flags that built the score](screenshots/ethics-score-flags.png)
+
+![Settings: this week by MIT AI Risk category, and the library's sources](screenshots/ethics-week-library.png)
+
+A machine counts as yours when it is this one, one Bento set up or logs into (Settings →
+Network), or a site that served Bento's proof file. A sentence from you or the AI never makes a
+machine yours. To prove a site: `bento ethics prove example.com`, put the line it prints at
+`https://example.com/.well-known/bento-proof.txt`, then `bento ethics proved example.com`, or do
+it from Settings → Permissions → Ethics.
+
+![Settings → Permissions → Ethics: your one switch, and what has no switch](screenshots/ethics-settings.png)
+
+It's plain code over facts Bento works out itself: the parsed command, real paths, measured
+counts, and who owns each target. No AI is asked, so nothing a model says can move it, and
+`agentos/ethics.py` is one of the security files no agent may change. **Try a command** in
+Settings, and `bento ethics check "…"`, say what it would decide without running anything.
+
+What it can't do, said plainly:
+
+- It reads what a step names. A program an agent writes itself can open its own connections,
+  because the sandbox keeps the network. It reads the attack libraries a Python step imports,
+  not every socket it opens.
+- It can't judge intent. Talking about how attacks work is the model's business; this decides
+  what Bento will actually do.
+- It doesn't see inside an agent CLI's own native tools when they're switched on for a chat
+  (missions switch them off).
+- It doesn't stop you running a command yourself in a terminal.
+
+- **It builds up.** Each refusal, caution, worrying request (matched against MITRE ATT&CK, MITRE
+  ATLAS and Bento's own phrases about harm to people) and secret read is a flag on its
+  conversation. Past a score of 10 every risky step is typed, and past 20 none runs. Trying
+  another way after a refusal adds more. Clearing the flags is typed, and the account keeps them
+  for a day.
+- **Where a target came from counts.** Sending to a host nobody named, or sending anything out
+  after reading a secret, is typed.
+- **A reviewer can only add caution.** The machine's brain, with no tools, reads risky steps in a
+  conversation that has flags and answers OK, CONCERN or HARM. A concern is typed; nothing it says
+  allows anything.
 
 ## IO gates: surface-scoped permissions
 

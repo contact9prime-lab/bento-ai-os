@@ -8996,6 +8996,17 @@ def _lint_app_html(html: str, toolbox=None) -> list[str]:
 
 # ---- Approval broker (global): any surface can ask the user and await Allow/Deny ----
 
+async def _ethics_tell_phones(conversation_id: str, reason: str):
+    """An ethics caution is answered by typing at a screen, never by a tap (ethics.py). The
+    phones that would have had the card are told where it waits instead."""
+    for channel, key in _approval_phones(conversation_id):
+        with contextlib.suppress(Exception):
+            if channel == "telegram":
+                await state["telegram"].send(f"⚖ {reason}\n\nThis one is confirmed at a screen.", int(key))
+            else:
+                await state["whatsapp"].send(f"⚖ {reason}\n\nThis one is confirmed at a screen.", key)
+
+
 async def request_approval(name: str, args: dict, reason: str, offer: dict | None = None,
                            evsend=None, ws=None, timeout: float = 300,
                            run_id: str = "", flow: str = "", unanswered=None,
@@ -9016,6 +9027,12 @@ async def request_approval(name: str, args: dict, reason: str, offer: dict | Non
     desk = _desk_approval(name, args, reason, offer=offer, evsend=evsend, ws=ws, timeout=timeout,
                           run_id=run_id, flow=flow, unanswered=missed_once if unanswered else None,
                           conversation_id=conversation_id)
+    from . import ethics as ethics_mod
+    if ethics_mod.pending() is not None:
+        # typed at a screen, never a tap (ethics.py); the phones are told where it waits
+        if evsend is None:
+            await _ethics_tell_phones(conversation_id, reason)
+        return await desk
     phones = [] if evsend is not None else _phone_asks(
         conversation_id, name, args, reason, offer, timeout, missed_once if unanswered else None)
     if not phones:
@@ -9053,6 +9070,12 @@ async def _desk_approval(name: str, args: dict, reason: str, offer: dict | None 
         # Office's chat), and floats it when that place is not on screen
         ev["conversation_id"] = conversation_id
         entry["conversation_id"] = conversation_id
+    from . import ethics as ethics_mod
+    if (eth := ethics_mod.pending()):
+        # an ethics caution (ethics.py): no Remember; the token stays here, and the page gets
+        # what was measured and the phrase to type
+        entry["ethics"], entry["offer"], ev["offer"] = eth, None, None
+        ev["ethics"] = _ethics_public(eth)
     entry["ev"] = ev
     if evsend is not None:
         await evsend(ev)
@@ -9679,16 +9702,48 @@ def _approval_must_person() -> bool:
     return bool(needs_person())
 
 
-async def resolve_approval(aid: str, approved: bool, remember=False, uid=None) -> bool:
+def _ethics_public(eth: dict) -> dict:
+    """An ethics caution as a screen shows it: never the token."""
+    return {k: v for k, v in (eth or {}).items() if k != "token"}
+
+
+def _ledger_for(entry: dict, action: str, resource: str, reason: str):
+    """A ledger row in the account that was asked."""
+    with usersmod.as_user(entry.get("uid") or ""):
+        _ledger(action, resource, reason)
+
+
+def approval_typed_problem(aid: str, approved: bool, typed) -> str:
+    """Why this answer can't settle an ethics caution ('' when it can or isn't one)."""
+    from . import ethics as ethics_mod
+    entry = (state.get("pending_approvals") or {}).get(aid) or {}
+    eth = entry.get("ethics")
+    if not eth or not approved:
+        return ""
+    if ethics_mod.typed_ok(eth.get("confirm", ""), typed or ""):
+        return ""
+    return f"Type “{eth.get('confirm')}” to confirm. It's Bento's ethics check, so a tap doesn't answer it."
+
+
+async def resolve_approval(aid: str, approved: bool, remember=False, uid=None, typed=None) -> bool:
     """Settle an approval. `remember` is the scope the person chose ('chat', 'hour',
-    'always', or True from an older page). Returns False when there is nothing to
-    settle, or it is another account's."""
+    'always', or True from an older page). `typed` is the phrase an ethics caution asks
+    for (ethics.py): an allow without it leaves the card waiting. Returns False when there
+    is nothing to settle, or it is another account's."""
     from .policy import remember_scope, write_remembered
+    from . import ethics as ethics_mod
     entry = state["pending_approvals"].get(aid)
     if not entry or entry["fut"].done():
         return False
     if not _approval_mine(entry, uid):
         return False
+    eth = entry.get("ethics")
+    if eth and approved:
+        if not ethics_mod.confirm(eth.get("token", ""), eth.get("confirm", ""), typed or ""):
+            return False
+        remember = False
+        _ledger_for(entry, "ethics.confirm", f"tool:{entry.get('name', '')}",
+                    f"typed “{eth.get('confirm')}”: {eth.get('why', '')}"[:400])
     scope = remember_scope(remember)
     if approved and scope and entry.get("offer"):
         o = entry["offer"]
@@ -10548,8 +10603,19 @@ async def api_run_tool(body: dict, request: Request):
             _plog("ask", approved=False)
             return JSONResponse({"error": f"needs approval: {dec.reason or reason}"},
                                 status_code=403)
-        approved = await request_approval(name, args, dec.reason or reason,
-                                          offer=dec.grant_offer)
+        eth_tok = eth_ctx = None
+        if dec.rule == "ethics" and dec.ethics:
+            # the card asks for the phrase; only a screen that had it typed confirms (ethics.py)
+            from . import ethics as ethics_mod
+            eth_tok, eth_ctx = ethics_mod.ask(dec.ethics)
+        try:
+            approved = await request_approval(name, args, dec.reason or reason,
+                                              offer=dec.grant_offer)
+        finally:
+            if eth_ctx is not None:
+                ethics_mod.done(eth_ctx)
+        if eth_tok and approved and not ethics_mod.consume(eth_tok):
+            approved = False
         _plog("ask", approved=bool(approved))
         if not approved:
             return JSONResponse({"error": f"not approved: {dec.reason or reason}"},
@@ -19151,6 +19217,152 @@ async def api_company_folders_set(body: dict):
     return {"ok": True, **got}
 
 
+@app.get("/api/ethics")
+async def api_ethics():
+    """The ethics rules (ethics.RULES), whether your own-data check is on, and the sites you
+    proved are yours."""
+    from . import ethics as ethics_mod
+    return ethics_mod.summary(state["cfg"])
+
+
+@app.get("/api/ethics/check")
+async def api_ethics_check(command: str = ""):
+    """What the ethics check would say about a shell command. Nothing runs."""
+    from . import ethics as ethics_mod
+    v = await asyncio.to_thread(ethics_mod.judge, "run_command", {"command": command[:4000]}, state["cfg"])
+    return v.to_dict()
+
+
+@app.put("/api/ethics")
+async def api_ethics_set(body: dict):
+    """Switch the one rule that is yours to switch: typed confirmation before deleting a lot
+    of your own things. The rest has no switch, because nobody's yes covers someone else."""
+    from . import ethics as ethics_mod
+    b = body or {}
+    if "own" not in b and "evaluator" not in b:
+        return JSONResponse({"error": "only `own` and `evaluator` can be set; the other rules have no switch"},
+                            status_code=400)
+    e = state["cfg"].setdefault("ethics", {})
+    changed = False
+    if "own" in b:
+        on = bool(b.get("own"))
+        if (e.get("own", True) is not False) != on:
+            e["own"] = on
+            changed = True
+            _ledger("ethics.write", "ethics:own",
+                    "typed confirmation before deleting a lot of your own things: " + ("on" if on else "off"))
+    if "evaluator" in b:
+        from . import ethicseval
+        m = str(b.get("evaluator") or "")
+        if m not in ethicseval.MODES:
+            return JSONResponse({"error": "the reviewer is off, flagged or risky"}, status_code=400)
+        if ethics_mod.conf(state["cfg"])["evaluator"] != m:
+            e["evaluator"] = m
+            changed = True
+            _ledger("ethics.write", "ethics:evaluator", f"the ethics reviewer reads: {m}")
+    if changed:
+        cfgmod.save_config(state["cfg"])
+    return {"ok": True, **ethics_mod.summary(state["cfg"])}
+
+
+ETHICS_CLEAR_PHRASE = "clear the flags"
+
+
+@app.get("/api/ethics/score")
+async def api_ethics_score(conversation: str = ""):
+    """A conversation's ethics score, its level, the account's, and its latest flags."""
+    from . import ethicsctx
+    return ethicsctx.state(state["store"], conversation[:80], flags=True)
+
+
+@app.get("/api/ethics/flags")
+async def api_ethics_flags(conversation: str = "", days: float = 7, limit: int = 60):
+    from . import ethicsctx
+    return {"flags": ethicsctx.recent(state["store"], ctx=conversation[:80], limit=max(1, min(int(limit), 500)),
+                                      days=max(0.1, min(float(days), 90)))}
+
+
+@app.get("/api/ethics/report")
+async def api_ethics_report(days: float = 7):
+    """The week's flags by kind and by MIT AI Risk category, and the conversations that rose."""
+    from . import ethicsctx
+    rep = ethicsctx.report(state["store"], days=max(0.1, min(float(days), 90)))
+    titles = {c["id"]: c.get("title") for c in state["store"].list_conversations(limit=2000)} \
+        if hasattr(state["store"], "list_conversations") else {}
+    for c in rep["conversations"]:
+        c["title"] = titles.get(c["ctx"]) or ""
+    return rep
+
+
+@app.post("/api/ethics/clear")
+async def api_ethics_clear(body: dict):
+    """A person reviewed a conversation's flags: they stop counting for it. Typed, and only ever
+    the conversation's score; the account's keeps them for its window."""
+    from . import ethicsctx
+    from . import ethics as ethics_mod
+    b = body or {}
+    cid = str(b.get("conversation") or "")[:80]
+    if not cid:
+        return JSONResponse({"error": "name the conversation"}, status_code=400)
+    if not ethics_mod.typed_ok(ETHICS_CLEAR_PHRASE, str(b.get("typed") or "")):
+        return JSONResponse({"error": f"type “{ETHICS_CLEAR_PHRASE}” to clear them", "phrase": ETHICS_CLEAR_PHRASE},
+                            status_code=400)
+    n = ethicsctx.clear(state["store"], cid)
+    _ledger("ethics.clear", f"conversation:{cid}", f"{n} flag{'s' if n != 1 else ''} reviewed and cleared")
+    return {"ok": True, "cleared": n, **ethicsctx.state(state["store"], cid, flags=True)}
+
+
+@app.get("/api/ethics/library")
+async def api_ethics_library():
+    """What the ethics library holds and where it came from (ethicslib.py)."""
+    from . import ethicslib
+    return ethicslib.summary()
+
+
+@app.post("/api/ethics/library/update")
+async def api_ethics_library_update():
+    """Fetch MITRE ATT&CK and ATLAS again; what is new is ADDED to this machine's overlay. Admin only."""
+    from . import ethicslib
+    try:
+        got = await ethicslib.update()
+    except Exception as e:
+        return JSONResponse({"error": f"couldn't update the library: {e}"}, status_code=502)
+    _ledger("ethics.library", "ethics:library",
+            f"added {got['added_programs']} programs and {got['added_phrases']} phrases")
+    return {"ok": True, **got, **ethicslib.summary()}
+
+
+@app.post("/api/ethics/prove")
+async def api_ethics_prove(body: dict):
+    """Start proving a site is yours (`check: false`), or check the proof file is there."""
+    from . import ethics as ethics_mod
+    b = body or {}
+    host = str(b.get("host") or "")
+    try:
+        if not b.get("check"):
+            got = ethics_mod.prove_start(state["cfg"], host)
+            cfgmod.save_config(state["cfg"])
+            return {"ok": True, **got}
+        ok, said = await ethics_mod.prove_check(state["cfg"], host)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    if not ok:
+        return JSONResponse({"error": said}, status_code=400)
+    _ledger("ethics.site", f"site:{ethics_mod._norm_host(host)}", said)
+    cfgmod.save_config(state["cfg"])
+    return {"ok": True, "said": said, **ethics_mod.summary(state["cfg"])}
+
+
+@app.delete("/api/ethics/sites/{host}")
+async def api_ethics_forget(host: str):
+    from . import ethics as ethics_mod
+    if not ethics_mod.forget_site(state["cfg"], host):
+        return JSONResponse({"error": "that site isn't on your list"}, status_code=404)
+    _ledger("ethics.site", f"site:{ethics_mod._norm_host(host)}", "no longer counted as yours")
+    cfgmod.save_config(state["cfg"])
+    return {"ok": True, **ethics_mod.summary(state["cfg"])}
+
+
 @app.put("/api/company/code")
 async def api_company_code(body: dict):
     """Let a department's people run Python, asked each time (company.set_code)."""
@@ -19863,6 +20075,7 @@ async def api_fabric_approvals():
         out.append({"id": aid, "name": entry.get("name", ""), "args": entry.get("args", {}),
                     "reason": entry.get("reason", ""), "offer": entry.get("offer"),
                     "card": entry.get("card") or approvalcard.card(entry.get("name", ""), entry.get("args", {})),
+                    "ethics": _ethics_public(entry["ethics"]) if entry.get("ethics") else None,
                     "run_id": entry.get("run_id", ""), "flow": entry.get("flow", ""),
                     "asked_at": entry.get("asked_at", 0)})
     return {"approvals": out}
@@ -19877,8 +20090,12 @@ async def api_fabric_approve(aid: str, body: dict, request: Request):
     entry = (state.get("pending_approvals") or {}).get(aid)
     if entry and entry.get("must_person") and b.get("approved") and _valid_app_token(request):
         return JSONResponse({"error": "A person has to answer this one."}, status_code=403)
+    typed_problem = approval_typed_problem(aid, bool(b.get("approved")), b.get("typed"))
+    if typed_problem and _approval_mine(entry or {}, usersmod.current() if usersmod.enabled() else ""):
+        return JSONResponse({"error": typed_problem, "ethics": True}, status_code=400)
     ok = await resolve_approval(aid, bool(b.get("approved")), b.get("remember") or False,
-                                uid=usersmod.current() if usersmod.enabled() else "")
+                                uid=usersmod.current() if usersmod.enabled() else "",
+                                typed=b.get("typed"))
     if not ok:
         return JSONResponse({"error": "nothing of yours is waiting under that id"},
                             status_code=404)
@@ -22737,9 +22954,14 @@ async def ws_endpoint(ws: WebSocket):
                     await state["broadcast_user"]({"type": "build_text", "text": "\n(cancelling…)\n"}, ws_uid)
                     asyncio.create_task(_force_cancel(build["task"], grace=15.0))
             elif t == "approval":
-                await resolve_approval(data.get("id", ""), bool(data.get("approved")),
-                                       remember=data.get("remember") or False,
-                                       uid=ws_uid if usersmod.enabled() else "")
+                ok_ap = await resolve_approval(data.get("id", ""), bool(data.get("approved")),
+                                               remember=data.get("remember") or False,
+                                               uid=ws_uid if usersmod.enabled() else "",
+                                               typed=data.get("typed"))
+                if not ok_ap and (why := approval_typed_problem(data.get("id", ""), bool(data.get("approved")),
+                                                                  data.get("typed"))):
+                    with contextlib.suppress(Exception):
+                        await ws.send_json({"type": "approval_typed", "id": data.get("id", ""), "error": why})
             elif t == "price":
                 await resolve_price(data.get("id", ""), str(data.get("action") or "cancel"),
                                     float(data.get("in") or 0), float(data.get("out") or 0), uid=ws_uid)

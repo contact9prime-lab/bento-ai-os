@@ -257,7 +257,9 @@ def test_the_night_light_never_puts_text_on_a_shell_line(tmp_path):
 
 def test_the_approval_list_and_answers_are_per_account():
     src = (ROOT / "agentos/server.py").read_text()
-    assert '"uid": uid' in src[src.index("async def request_approval("):][:3000]
+    # the entry _desk_approval writes, reached through request_approval (an ethics caution's
+    # branch sits between them, ethics.py)
+    assert '"uid": uid' in src[src.index("async def request_approval("):][:3600]
     lst = src[src.index("async def api_fabric_approvals("):]
     assert "_approval_mine(entry, me)" in lst[:1200]
     power = src[src.index("async def api_power("):][:1200]
