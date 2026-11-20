@@ -205,16 +205,13 @@ def main():
         enroll = re.search(r"AGENTOS_ENROLL=(\S+)", z["line"]).group(1)
         hubs = re.search(r"--hub=(\S+)", z["line"]).group(1)
         assert bento("pi-zero", "pool", "hub", hubs).returncode == 0
-        start("pi-zero", {"AGENTOS_ENROLL": enroll}, probe="/api/provision")
         # bob is not an admin, and a Zero would be the first thing to open the hub's link port, so
-        # the hub holds it until an admin has opened that port once (server._zero_waits_for_admin)
+        # the hub holds it until an admin has opened that port (server._zero_waits_for_admin).
+        # Opened first, as ada would before handing bob's line out: a Zero heard before then stays
+        # held until an admin sets it up by hand.
         st, lw = http("big-box", "PUT", "/api/team/listen", {"on": True}, who="ada")
         assert st == 200, lw
-        # the hub starts after the Zero, as it often would on a LAN; its sign-in cookies stay
-        # valid (the session key is on disk) and it reopens the link port it was told to keep open
-        PROCS["big-box"].terminate()
-        PROCS["big-box"].wait(timeout=30)
-        start("big-box")
+        start("pi-zero", {"AGENTOS_ENROLL": enroll}, probe="/api/provision")
         took, me = wait("the Zero is set up by bob's key", lambda: (lambda t: t if t["claimed"] else None)(
             http("pi-zero", "GET", "/api/provision")[1]["this"]), limit=60)
 
