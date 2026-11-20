@@ -77,7 +77,12 @@ def login(who, password):
 def env_of(name, extra=None):
     x = m(name)
     return {**ENV, "AGENTOS_HOME": str(home(name)), "AGENTOS_DISCOVER_TARGETS": x[5],
-            "AGENTOS_PI_MODEL": "Raspberry Pi Zero 2 W Rev 1.0" if name == "pi-zero" else "", **(extra or {})}
+            "AGENTOS_PI_MODEL": "Raspberry Pi Zero 2 W Rev 1.0" if name == "pi-zero" else "",
+            # the Zero gets a loopback address of its own, as a Pi has its own on a LAN: on one
+            # computer the hub's ear and the Zero's door share the discovery port with SO_REUSEPORT,
+            # and Linux hands each datagram to ONE of them by a hash of the sender, so a shared
+            # address made "the hub hears the Zero" a coin flip
+            **({"AGENTOS_LINK_FROM": "127.0.0.2"} if name == "pi-zero" else {}), **(extra or {})}
 
 
 def config(name, http_port, link, door, brain, _targets):
@@ -201,10 +206,12 @@ def main():
         hubs = re.search(r"--hub=(\S+)", z["line"]).group(1)
         assert bento("pi-zero", "pool", "hub", hubs).returncode == 0
         start("pi-zero", {"AGENTOS_ENROLL": enroll}, probe="/api/provision")
-        # Both servers share this host and its discovery port, and the kernel hands a
-        # unicast datagram to the socket bound LAST, which was the Zero's own. On a LAN
-        # they are two machines. The hub starting after the Zero listens last, as it
-        # would there; its sign-in cookies stay valid (the session key is on disk).
+        # bob is not an admin, and a Zero would be the first thing to open the hub's link port, so
+        # the hub holds it until an admin has opened that port once (server._zero_waits_for_admin)
+        st, lw = http("big-box", "PUT", "/api/team/listen", {"on": True}, who="ada")
+        assert st == 200, lw
+        # the hub starts after the Zero, as it often would on a LAN; its sign-in cookies stay
+        # valid (the session key is on disk) and it reopens the link port it was told to keep open
         PROCS["big-box"].terminate()
         PROCS["big-box"].wait(timeout=30)
         start("big-box")
