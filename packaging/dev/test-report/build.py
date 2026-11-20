@@ -73,6 +73,10 @@ def _first_para(doc: str | None, limit: int = 700) -> str:
         return ""
     para = doc.strip().split("\n\n", 1)[0]
     para = " ".join(line.strip() for line in para.splitlines())
+    # a lead-in to a list ("What it checks, in order:") says nothing once the list is cut off
+    if para.endswith(":"):
+        cut = max(para.rfind(". ", 0, len(para) - 1), para.rfind("; ", 0, len(para) - 1))
+        para = para[:cut + 1] if cut > 0 else para.rstrip(":") + "."
     return para[:limit]
 
 
@@ -227,7 +231,8 @@ def main(argv: list[str]) -> int:
         except Exception:
             pass
     suite = ET.parse(junit).getroot()
-    suite = suite if suite.tag == "testsuite" else (suite.find("testsuite") or suite)
+    inner = suite.find("testsuite")
+    suite = suite if suite.tag == "testsuite" else (inner if inner is not None else suite)
     ran_at = (suite.get("timestamp") or "")[:16].replace("T", " ")
     host = suite.get("hostname") or ""
     report = {

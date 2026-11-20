@@ -52,6 +52,26 @@ def _cpu_temp() -> str:
     return "" if ok else "needs a CPU temperature sensor (a thermal zone, k10temp or coretemp)"
 
 
+def _image(tag: str) -> str:
+    """network-e2e's stand-in Pi is built on the image standby-e2e's run makes."""
+    try:
+        ok = subprocess.run(["docker", "image", "inspect", tag], capture_output=True, timeout=60).returncode == 0
+    except (subprocess.TimeoutExpired, OSError):
+        ok = False
+    return "" if ok else f"needs the {tag} image, which the standby run builds"
+
+
+def _uv_download() -> str:
+    """Bento's image installs uv from astral.sh while it builds. A machine that cannot fetch it
+    cannot build the image the standby, network and free-cloud runs start."""
+    import urllib.request
+    try:
+        urllib.request.urlopen("https://astral.sh/uv/install.sh", timeout=20).close()
+        return ""
+    except Exception:
+        return "needs to build Bento's image, which downloads uv from astral.sh, and this machine cannot reach it"
+
+
 def _work(name: str) -> str:
     return tempfile.mkdtemp(prefix=f"bento-live-{name}-")
 
@@ -81,12 +101,12 @@ RUNS = {
                    lambda: "", 900),
     "warehouse": ("warehouse/run.py", lambda w: [PY, str(DEV / "warehouse/run.py"), w], lambda: "", 900),
     "active-sync": ("standby-e2e/active_sync.py", None, lambda: "", 900),
-    "network": ("network-e2e/run.py", None, lambda: _docker() or _have("ssh"), 1800),
     "standby": ("standby-e2e/run.sh", lambda w: ["sh", str(DEV / "standby-e2e/run.sh")],
-                lambda: _docker() or ("needs root" if os.geteuid() else ""), 3000),
+                lambda: _docker() or ("needs root" if os.geteuid() else "") or _uv_download(), 3000),
+    "network": ("network-e2e/run.py", None, lambda: _docker() or _have("ssh") or _image("bento-standby-base") or _uv_download(), 1800),
     "handoff": ("handoff-e2e/run.js", lambda w: ["node", str(DEV / "handoff-e2e/run.js"), w],
                 lambda: _have("node"), 900),
-    "free-cloud": ("free-cloud/run.py", None, lambda: _docker(), 1800),
+    "free-cloud": ("free-cloud/run.py", None, lambda: _docker() or _uv_download(), 1800),
     "sui-testbed": ("sui-testbed.sh", None, lambda: _have("sway", "grim"), 900),
 }
 
@@ -117,7 +137,7 @@ def run_one(name: str) -> dict:
             p = _with_fakes([PY, str(DEV / "standby-e2e/active_sync.py")],
                             [[PY, str(DEV / "standby-e2e/fakes.py")]], timeout, env)
         elif name == "network":
-            b = subprocess.run(["sh", str(DEV / "network-e2e/build.sh")], cwd=ROOT, capture_output=True,
+            b = subprocess.run(["sh", str(DEV / "network-e2e/build.sh"), w], cwd=ROOT, capture_output=True,
                                text=True, timeout=1200, env=env)
             if b.returncode:
                 rec.update(status="failed", why="the stand-in Pi's image did not build",

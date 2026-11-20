@@ -94,7 +94,7 @@ details.file>summary .counts{display:flex;gap:6px;flex-wrap:wrap;justify-content
 code{font:12.5px var(--mono);background:var(--soft);padding:1px 5px;border-radius:4px;overflow-wrap:anywhere}
 pre.cmd{margin:0;font:12.5px/1.6 var(--mono);background:var(--soft);border-radius:8px;padding:10px 12px;overflow-x:auto}
 .empty{padding:18px;color:var(--mute);text-align:center}
-@media (max-width:560px){ .trow{grid-template-columns:auto minmax(0,1fr)} .trow .t{grid-column:2} details.file>summary{grid-template-columns:minmax(0,1fr)} details.file>summary .counts{justify-content:flex-start} }
+@media (max-width:560px){ .strip .stat:last-child:nth-child(odd){grid-column:1/-1} .trow{grid-template-columns:auto minmax(0,1fr)} .trow .t{grid-column:2} details.file>summary{grid-template-columns:minmax(0,1fr)} details.file>summary .counts{justify-content:flex-start} }
 @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
 </style>
 
@@ -208,7 +208,11 @@ python3 packaging/dev/test-report/build.py out/junit.xml out/report.json</pre>
     var txt=el('div');
     var pct=(100*t.passed/Math.max(1,t.count-t.skipped)).toFixed(2);
     txt.append(el('b','',code?(code+' failure'+(code>1?'s':'')+' to fix in the code'):(failed?'No failure points at the code':'Everything passed')),
-      el('div','mut',pct+'% of the tests that ran passed. '+(failed?(failed-code)+' of the '+failed+' failures come from the machine the suite ran on, not from Bento; each one says why below.':'No test failed.')));
+      el('div','mut',pct+'% of the tests that ran passed. '+(!failed?'No test failed.':
+        (failed===code?(failed===1?'The one failure is in the code, and says why below.':'Every failure is in the code, and each one says why below.'):
+         (failed-code)+' of the '+failed+' failures come from the machine the suite ran on, not from Bento; each one says why below.'))));
+    if(R.live&&R.live.length){var lc=liveCounts();
+      txt.append(el('div','mut','Live runs: '+lc.passed+' passed, '+lc.failed+' failed, '+lc.notrun+' could not run on this machine.'))}
     v.append(dot,txt);
   }
 
@@ -312,18 +316,23 @@ python3 packaging/dev/test-report/build.py out/junit.xml out/report.json</pre>
     });
   }
 
+  function liveCounts(){var c={passed:0,failed:0,notrun:0};(R.live||[]).forEach(function(l){
+      if(l.status==='passed')c.passed++;else if(l.status==='failed')c.failed++;else c.notrun++});return c}
+
   function paintBeyond(){
     var ul=document.getElementById('live');ul.replaceChildren();
-    var ran=R.live.filter(function(l){return l.status==='passed'||l.status==='failed'}).length;
-    var lnote=document.getElementById('live-note');
-    if(lnote)lnote.textContent=ran?(ran+' of '+R.live.length+' were run for this report; the rest say why not.'):'None was run for this report.';
-    R.live.forEach(function(l){
+    var lc=liveCounts(),lnote=document.getElementById('live-note');
+    if(lnote)lnote.textContent=(lc.passed+lc.failed)?
+      (lc.passed+' passed and '+lc.failed+' failed of the '+R.live.length+' runs. '+(lc.notrun?lc.notrun+' could not run on this machine, and say why.':'')):
+      'None was run for this report.';
+    var rank={failed:0,passed:1};
+    R.live.slice().sort(function(a,b){var x=(rank[a.status]!=null?rank[a.status]:2),y=(rank[b.status]!=null?rank[b.status]:2);return x-y||(a.path<b.path?-1:1)}).forEach(function(l){
       var li=el('li'),top=el('div','controls');
       var st=l.status||'not run',cls=st==='passed'?'passed':st==='failed'?'failed':'neutral';
       top.append(chip(cls,st),el('span','p',l.path));
       if(l.seconds)top.append(el('span','mut mono',secs(l.seconds)));
       li.appendChild(top);
-      if(l.doc)li.append(el('div','mut',l.doc));
+      if(l.doc)li.append(el('div','mut',l.doc.replace(/`/g,'')));
       if(l.why)li.append(el('div','',(st==='not run'?'Not run: ':'Why: ')+l.why));
       if(l.tail){var d=el('details'),sm=el('summary','mut','Last lines of its output');d.append(sm,el('pre','',l.tail));li.appendChild(d)}
       ul.appendChild(li)});

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.9.41 — 2026-11-20
+
+**A test report for the whole tool, and the live runs it found stale.** `packaging/dev/test-report`
+turns a suite run into one page: every test with what it checks, by area, each failure with its cause,
+and the live end-to-end runs under `packaging/dev` (`live.py` runs them one by one and records any that
+cannot run here, with the reason).
+
+- The ethics library ships its sources' notices: MITRE ATT&CK's licence, ATLAS's Apache-2.0 notice and the
+  MIT AI Risk Repository's citation (`agentos/ethics_library_NOTICE.md`).
+- Tests that needed `ssh-keygen` now skip without it, a peercheck test no longer assumes the suite isn't
+  root, and the network guard's proxy road has two tests of its own.
+- Six live runs had drifted from the product and pass again; the Zero runs give each stand-in Zero its own
+  loopback address, because on one computer the hub and the Zero shared a discovery port and Linux picked
+  which of them heard each announcement.
+
 ## 0.9.40 — 2026-11-19
 
 **Ethics: Bento decides whether a step should happen at all, whoever says yes.** The rule is that
