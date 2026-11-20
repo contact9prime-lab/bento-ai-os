@@ -172,6 +172,9 @@ def main():
         bcfg_p = bob_home / "config.json"
         bcfg = json.loads(bcfg_p.read_text())
         bcfg["agent_name"] = "Bo"
+        # the first account took the machine's brain choice when it adopted the machine; bob is the
+        # second, and would pick one in his own setup, which this run skips
+        bcfg["default_model"] = "custom/fake-1"
         # an account's server runs in its jail, which hides every home (and this checkout's venv)
         syspy = next(p for p in ("/usr/bin/python3", "/usr/local/bin/python3", "/opt/homebrew/bin/python3")
                      if os.path.exists(p))
@@ -248,7 +251,8 @@ def main():
         assert {c["agent"] for c in hub_lead} == {"Bo"}, hub_lead
         assert any("from-big-box/kitchen-plan.md" in g for g in got), got
 
-        q = "select count(*) from conversations where title like '↔ pi-zero%'"
+        # a Zero's chat runs on its hub as a conversation of origin 'zero' (fabric.zero_chat)
+        q = "select count(*) from conversations where origin = 'zero'"
         conv = {"bob": rows(bob_home / "agentos.db", q)[0][0], "ada": rows(ada_home / "agentos.db", q)[0][0],
                 "machine": rows(home("big-box") / "agentos.db", q)[0][0]}
         st, rem = http("pi-zero", "POST", "/api/memories", {"content": "the user likes green tea"})

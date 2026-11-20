@@ -41,6 +41,17 @@ def _docker() -> str:
     return "" if ok else "needs a running Docker daemon"
 
 
+def _cpu_temp() -> str:
+    """device_run.py reads and permits the Zero's CPU temperature, so it needs a sensor here."""
+    sys.path.insert(0, str(ROOT))
+    try:
+        from agentos import hardware
+        ok = any(i["id"] == "cpu.temp" for i in hardware._temperatures())
+    except Exception:
+        ok = False
+    return "" if ok else "needs a CPU temperature sensor (a thermal zone, k10temp or coretemp)"
+
+
 def _work(name: str) -> str:
     return tempfile.mkdtemp(prefix=f"bento-live-{name}-")
 
@@ -56,7 +67,7 @@ RUNS = {
     "zero-accounts": ("provision-e2e/zero_accounts_run.py",
                       lambda w: [PY, str(DEV / "provision-e2e/zero_accounts_run.py"), w], lambda: "", 900),
     "device-get-set": ("provision-e2e/device_run.py",
-                       lambda w: [PY, str(DEV / "provision-e2e/device_run.py"), w], lambda: "", 900),
+                       lambda w: [PY, str(DEV / "provision-e2e/device_run.py"), w], _cpu_temp, 900),
     "dhcp-moves": ("provision-e2e/dhcp_run.py", lambda w: [PY, str(DEV / "provision-e2e/dhcp_run.py"), w],
                    lambda: "", 900),
     "edge-code": ("provision-e2e/edge_code_run.py",

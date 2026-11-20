@@ -123,8 +123,9 @@ async def chat(req: Request):
     # reads these to see whose integrations answered a Zero
     CALLS.append({"answer": (text or json.dumps(call))[:160],
                   "tools": [t.get("function", {}).get("name") for t in body.get("tools") or []],
-                  "linked_lead": "is the lead of the linked team" in (system + " ".join(
-                      _text(m.get("content")) for m in msgs if m.get("role") == "user")),
+                  "linked_lead": any(w in (system + " ".join(_text(m.get("content")) for m in msgs
+                                                           if m.get("role") == "user"))
+                                     for w in ("is the lead of the linked team", "a small machine this hub set up")),
                   "writer": "WRITER-SOUL" in system,
                   "agent": (re.search(r"You are (\w+)", system) or [None, ""])[1]})
 

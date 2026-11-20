@@ -43,10 +43,17 @@
    "next": "Refuse any program the jail hides (every /home path and _jail_hidden), with the same sentence."
   },
   {
-   "title": "Three live runs had gone stale",
+   "title": "A Zero whose account never chose a brain gets a raw connection error",
+   "state": "gap",
+   "area": "Devices, network and Zeros",
+   "detail": "The first account takes the machine's brain choice when it adopts the machine. A second account that has not been through its own setup has none, so its lead falls back to a local Ollama, and its Zero's question comes back as \"[error] ConnectError: All connection attempts failed\". Found by zero_accounts_run.py.",
+   "next": "Say that this account has no brain chosen and where to choose one, or answer with the machine's brain until it does."
+  },
+  {
+   "title": "Six live runs had gone stale",
    "state": "fixed",
    "area": "Coverage",
-   "detail": "provision-e2e/run.py still expected a keyed Pi to stay waiting, but the hub now asks the machines it hears and sets them up at once. zero_accounts_run.py's stand-in MCP server could not start inside the account jail added on 2026-11-07. stitch-e2e/walk.py named a workspace it never made, so after the 2026-10-11 change that shares only an existing folder, the approved note was refused. Each harness now does what a real install does, and all three pass."
+   "detail": "Each still described the product as it was when it was written. provision-e2e/run.py expected a keyed Pi to stay waiting, but the hub now sets up the machines it hears at once. stitch-e2e/walk.py named a workspace it never made, so after the 2026-10-11 change that shares only an existing folder, the approved note was refused. zero_accounts_run.py's stand-in MCP server could not start inside the account jail added on 2026-11-07; it did not let an admin open the link port, which a non-admin's Zero has needed since then; its second account had no brain; and it looked for the Zero's chat by the old linked-team title. zero_run.py, device_run.py and zero_accounts_run.py stood the hub and the Zero on one address, where both bind the discovery port with SO_REUSEPORT and Linux hands each datagram to one of them by a hash, so whether the hub heard the Zero was a coin flip. Each Zero now has its own loopback address (AGENTOS_LINK_FROM), as the warehouse demo's zones do. All of these pass now, except device-get-set, which needs a CPU temperature sensor this container lacks."
   },
   {
    "title": "A workspace missing when the first account is made stays refused until the next start",

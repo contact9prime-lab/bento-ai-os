@@ -45,32 +45,6 @@ elif a and a[0] == "set":
 '''
 
 
-def _no_cpu_temp() -> str:
-    """Why this computer has no CPU temperature for the run to read, or ''. A container
-    usually has no thermal zone and no k10temp/coretemp, and the run reads and permits cpu.temp."""
-    sys.path.insert(0, str(zr.REPO))
-    from agentos import hardware
-    return "" if any(i["id"] == "cpu.temp" for i in hardware._temperatures()) else \
-        "this computer has no CPU temperature sensor"
-
-
-def _hw_root_with_a_cpu_sensor(root: Path) -> Path:
-    """This machine's own /, linked entry by entry, with /sys/class/thermal replaced by one zone."""
-    def mirror(src: Path, dst: Path, keep: str):
-        dst.mkdir(parents=True, exist_ok=True)
-        for e in src.iterdir():
-            if e.name != keep and not (dst / e.name).exists():
-                (dst / e.name).symlink_to(e)
-    mirror(Path("/"), root, "sys")
-    mirror(Path("/sys"), root / "sys", "class")
-    mirror(Path("/sys/class"), root / "sys" / "class", "thermal")
-    z = root / "sys" / "class" / "thermal" / "thermal_zone0"
-    z.mkdir(parents=True, exist_ok=True)
-    (z / "type").write_text("cpu-thermal\n")
-    (z / "temp").write_text("48312\n")
-    return root
-
-
 def rows(name):
     con = sqlite3.connect(zr.home(name) / "agentos.db")
     out = {"ledger": con.execute("select action, resource, coalesce(reason,'') || coalesce(detail,'') from audit "
@@ -87,9 +61,6 @@ def main():
     (bin_ / "pinctrl").write_text(PINCTRL)
     (bin_ / "pinctrl").chmod(0o755)
     pi_env = {"PATH": f"{bin_}:{os.environ.get('PATH', '')}"}
-    if (why := _no_cpu_temp()):
-        pi_env["AGENTOS_HW_ROOT"] = str(_hw_root_with_a_cpu_sensor(zr.WORK / "hw"))
-        zr.say(f"{why}: the Zero reads this machine with one stand-in thermal zone added")
     brain = zr.subprocess.Popen([sys.executable, str(HERE / "zero_brain.py"), "9441"], env=zr.ENV,
                                 stdout=zr.subprocess.DEVNULL, stderr=zr.subprocess.DEVNULL)
     try:
