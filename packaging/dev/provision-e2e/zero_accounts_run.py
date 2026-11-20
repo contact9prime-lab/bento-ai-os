@@ -17,6 +17,7 @@ What it checks, in order:
 import json
 import os
 import re
+import shlex
 import sqlite3
 import subprocess
 import sys
@@ -166,8 +167,11 @@ def main():
         bcfg_p = bob_home / "config.json"
         bcfg = json.loads(bcfg_p.read_text())
         bcfg["agent_name"] = "Bo"
-        bcfg["mcp_servers"] = {"pantry": {"command": f"{sys.executable} {HERE / 'pantry_mcp.py'}",
-                                          "enabled": True}}
+        # an account's server runs in its jail, which hides every home (and this checkout's venv)
+        syspy = next(p for p in ("/usr/bin/python3", "/usr/local/bin/python3", "/opt/homebrew/bin/python3")
+                     if os.path.exists(p))
+        src = (HERE / "pantry_mcp.py").read_text()
+        bcfg["mcp_servers"] = {"pantry": {"command": f"{syspy} -c {shlex.quote(src)}", "enabled": True}}
         bcfg_p.write_text(json.dumps(bcfg, indent=1))
         start("big-box")
         login("ada", "ada-pass-123")

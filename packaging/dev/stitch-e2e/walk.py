@@ -21,6 +21,9 @@ for f in Path(OUT).glob("*.png"): f.unlink()
 PORT, BRAIN = int(os.environ.get("PORT", 8611)), 9411
 HOME = Path(os.environ.get("HOME_DIR", "/tmp/e2e-home"))
 shutil.rmtree(HOME, ignore_errors=True); HOME.mkdir(parents=True)
+# a real install makes its workspace (~/AgentOS) on the first start, before anybody adds an account;
+# users.share_own_workspace shares only a folder that exists, so the walk makes it first too
+(HOME / "work").mkdir()
 (HOME / "config.json").write_text(json.dumps({
     "agent_name": "Aria", "setup_complete": True, "permissions_migrated": True,
     "default_model": "custom/fake-1", "workspace": str(HOME / "work"),

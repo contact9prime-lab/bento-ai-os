@@ -36,6 +36,32 @@
    "detail": "netguard sends a request through HTTPS_PROXY when one is set and judges the address first. Nothing tested that road, and the one TLS test silently used it whenever a proxy was set. Two tests now pin it: an address the guard refuses (169.254.169.254) is refused and the proxy is never asked; a name only the proxy can resolve is handed to it."
   },
   {
+   "title": "An account's MCP server outside its own home but under /home fails with bwrap's words",
+   "state": "gap",
+   "area": "Accounts, spaces and remote access",
+   "detail": "Since 2026-11-07 an account's stdio MCP server runs in the account's jail, which blanks every home. stdio_launch refuses a program in the server's own home with a sentence, but a program anywhere else under /home (a checkout at /home/user while the server runs as root) starts and dies with \"bwrap: execvp …: No such file or directory\". Found by zero_accounts_run.py, whose stand-in server was the checkout's venv Python.",
+   "next": "Refuse any program the jail hides (every /home path and _jail_hidden), with the same sentence."
+  },
+  {
+   "title": "Three live runs had gone stale",
+   "state": "fixed",
+   "area": "Coverage",
+   "detail": "provision-e2e/run.py still expected a keyed Pi to stay waiting, but the hub now asks the machines it hears and sets them up at once. zero_accounts_run.py's stand-in MCP server could not start inside the account jail added on 2026-11-07. stitch-e2e/walk.py named a workspace it never made, so after the 2026-10-11 change that shares only an existing folder, the approved note was refused. Each harness now does what a real install does, and all three pass."
+  },
+  {
+   "title": "A workspace missing when the first account is made stays refused until the next start",
+   "state": "gap",
+   "area": "Accounts, spaces and remote access",
+   "detail": "users.share_own_workspace shares only a folder that exists, and bento migrate asks again at the next start. In between, the person's agent is refused writing its own workspace after they approved it. A real install makes ~/AgentOS at its first start, so this needs a workspace set by hand or deleted.",
+   "next": "Share the folder when it is first created (write_file or the Files app making it), or create it when the person's own account is the one choosing it."
+  },
+  {
+   "title": "The install run ate the machine from a shallow checkout",
+   "state": "fixed",
+   "area": "Devices, network and Zeros",
+   "detail": "install_over_ssh.py serves the installer a bare copy of this checkout, and the installer clones it with --filter=blob:none. From a shallow checkout that fetch never finished: 722 git pack-objects took a 16 GB box down. The run now refuses a shallow source in a sentence. Unshallowed, it passes in 55 s."
+  },
+  {
    "title": "Seven tests needed ssh-keygen and did not say so",
    "state": "fixed",
    "area": "Devices, network and Zeros",
