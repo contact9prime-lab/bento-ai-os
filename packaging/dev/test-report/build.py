@@ -1,7 +1,7 @@
 """Build the test report: every test in tests/, what it checks, how it ran, grouped by area.
 
     .venv/bin/python -m pytest -q -p no:cacheprovider tests --junitxml=OUT/junit.xml -o junit_family=xunit2
-    .venv/bin/python packaging/dev/test-report/build.py OUT/junit.xml OUT/report.json [--notes notes.json]
+    .venv/bin/python packaging/dev/test-report/build.py OUT/junit.xml OUT/report.json [--notes notes.json] [--live live.json]
 
 Reads the junit XML pytest wrote, and the test files themselves (with `ast`, nothing is imported or run),
 so the report says what each file defends in its own words: the module docstring's first paragraph and
@@ -166,6 +166,9 @@ def untested_modules(files: dict) -> list[str]:
 
 def main(argv: list[str]) -> int:
     junit, dest = Path(argv[1]), Path(argv[2])
+    live_runs: dict = {}
+    if "--live" in argv:
+        live_runs = {v["path"]: v for v in json.loads(Path(argv[argv.index("--live") + 1]).read_text()).values()}
     notes: dict = {}
     if "--notes" in argv:
         notes = json.loads(Path(argv[argv.index("--notes") + 1]).read_text())
@@ -220,7 +223,8 @@ def main(argv: list[str]) -> int:
         "files": sorted(by_file.values(), key=lambda b: (b["area"], b["file"])),
         "failures": [r for r in rows if r["status"] in ("failed", "error")],
         "slowest": sorted(rows, key=lambda r: -r["time"])[:25],
-        "live": live_harnesses(),
+        "live": [{**h, **{k: live_runs[h["path"]][k] for k in ("status", "why", "seconds", "tail", "at")
+                          if h["path"] in live_runs}} for h in live_harnesses()],
         "untested": untested_modules(files),
         "node_files": sorted(f for f, v in files.items() if v["node"]),
         "browser_files": sorted(f for f, v in files.items() if v["browser"]),

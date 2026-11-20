@@ -82,7 +82,13 @@ details.file>summary .counts{display:flex;gap:6px;flex-wrap:wrap;justify-content
 .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:12px}
 .card{border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:14px 16px;display:flex;flex-direction:column;gap:8px;min-width:0}
 .card ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}
+.card.live{grid-column:1/-1}
+.live ul{padding-left:0;list-style:none;gap:12px}
+.live li{display:flex;flex-direction:column;gap:4px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+.live li:last-child{border-bottom:0}
 .live li .p{font:12.5px var(--mono);overflow-wrap:anywhere}
+.live pre{margin:6px 0 0;font:11.5px/1.5 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;color:var(--mute);max-height:14em;overflow:auto;background:var(--soft);border-radius:6px;padding:8px}
+.live summary{cursor:pointer;font-size:13px}
 .tags{display:flex;flex-wrap:wrap;gap:6px}
 code{font:12.5px var(--mono);background:var(--soft);padding:1px 5px;border-radius:4px;overflow-wrap:anywhere}
 pre.cmd{margin:0;font:12.5px/1.6 var(--mono);background:var(--soft);border-radius:8px;padding:10px 12px;overflow-x:auto}
@@ -139,6 +145,7 @@ pre.cmd{margin:0;font:12.5px/1.6 var(--mono);background:var(--soft);border-radiu
       <div class="card live">
         <h3>Live runs, by hand</h3>
         <p class="mut">Real servers on throwaway homes, real ssh, real browsers and stand-in Pis. The suite doesn't run these; each one is started on purpose.</p>
+        <p class="mut" id="live-note"></p>
         <ul id="live"></ul>
       </div>
       <div class="card">
@@ -285,7 +292,19 @@ python3 packaging/dev/test-report/build.py out/junit.xml out/report.json</pre>
 
   function paintBeyond(){
     var ul=document.getElementById('live');ul.replaceChildren();
-    R.live.forEach(function(l){var li=el('li');li.append(el('span','p',l.path));if(l.doc)li.append(el('div','mut',l.doc));ul.appendChild(li)});
+    var ran=R.live.filter(function(l){return l.status==='passed'||l.status==='failed'}).length;
+    var lnote=document.getElementById('live-note');
+    if(lnote)lnote.textContent=ran?(ran+' of '+R.live.length+' were run for this report; the rest say why not.'):'None was run for this report.';
+    R.live.forEach(function(l){
+      var li=el('li'),top=el('div','controls');
+      var st=l.status||'not run',cls=st==='passed'?'passed':st==='failed'?'failed':'neutral';
+      top.append(chip(cls,st),el('span','p',l.path));
+      if(l.seconds)top.append(el('span','mut mono',secs(l.seconds)));
+      li.appendChild(top);
+      if(l.doc)li.append(el('div','mut',l.doc));
+      if(l.why)li.append(el('div','',(st==='not run'?'Not run: ':'Why: ')+l.why));
+      if(l.tail){var d=el('details'),sm=el('summary','mut','Last lines of its output');d.append(sm,el('pre','',l.tail));li.appendChild(d)}
+      ul.appendChild(li)});
     var u=document.getElementById('untested');u.replaceChildren();
     R.untested.forEach(function(m){u.appendChild(el('code','',m))});
     document.getElementById('untested-note').textContent=R.untested.length?
