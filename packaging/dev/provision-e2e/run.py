@@ -160,7 +160,9 @@ def main():
             assert me["waiting"] and len(me["pin"]) == 6, (n, me)
             codes[n] = me["pin"]
         me = http("pi-three", "GET", "/api/provision")[1]["this"]
-        assert me["pin"] == "" and me["key_id"], "a keyed Pi shows no code"   # it may be set up already
+        # A keyed Pi shows no code. The hub also ASKS a machine it hears (server._provision_ask), so
+        # by now pi-three may be set up already: its key is spent and `claimed` says by whom.
+        assert me["pin"] == "" and (me["key_id"] or me["claimed"]), ("a keyed Pi shows no code", me)
         took, seen = wait("the leader hears all three", lambda: (lambda s: s if len(s) >= 3 else None)(
             http("big-box", "GET", "/api/provision")[1]["seen"]), limit=40)
         heard = [r for r in ledger("big-box", "provision.seen")]
