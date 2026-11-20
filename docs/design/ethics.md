@@ -98,7 +98,7 @@ Built by a pure function from three public sources and shipped in the repository
 
 | Source | What it gives | Licence |
 |---|---|---|
-| MITRE ATT&CK (Enterprise) | Tools by what their main tactic is (probe, credentials, remote control, dual use), distinctive malware names, and the names of impact, credential access, exfiltration and initial access techniques | ATT&CK terms of use, with MITRE's notice kept |
+| MITRE ATT&CK (Enterprise) | Tools by what their main tactic is (probe, credentials, remote control, dual use), distinctive malware names, and the names of impact, credential access, exfiltration and initial access techniques | ATT&CK licence: royalty-free, commercial use included, notice and licence kept (`agentos/ethics_library_NOTICE.md`) |
 | MITRE ATLAS | Attacks on AI systems (poisoning training data, model theft, prompt injection) | Apache-2.0 |
 | MIT AI Risk Repository | The domain taxonomy every flag is sorted under (Slattery et al. 2024, arXiv:2408.12622). Category names only | CC BY 4.0 |
 | Bento's own phrases | Harm to people the catalogues don't cover: phishing, impersonation, stalking, doxxing, harassment | this project's |

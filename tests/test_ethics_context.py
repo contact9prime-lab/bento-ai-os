@@ -322,3 +322,15 @@ def test_a_rule_a_person_wrote_names_the_target_as_their_words_do(tmp_path):
         ethicsctx.leave(tok)
     assert boss.level == "ok"
     assert other.level == "caution" and other.rule == "untraced"
+
+
+def test_the_library_carries_its_sources_licences():
+    """ATT&CK's licence asks every copy to carry MITRE's copyright line AND the licence; ATLAS is
+    Apache-2.0, which asks for the licence and the copyright notice. The shipped file carries both."""
+    note = (ROOT / "agentos" / "ethics_library_NOTICE.md").read_text()
+    assert "hereby grants you a non-exclusive, royalty-free license to use ATT&CK" in note
+    assert "This work is reproduced and distributed with the permission of The MITRE Corporation" in note
+    assert "Apache License, Version 2.0" in note and "Copyright 2021-2026 MITRE" in note
+    assert "CC BY 4.0" in note and "2408.12622" in note
+    lib = json.loads((ROOT / "agentos" / "ethics_library.json").read_text())
+    assert lib["sources"] == ethicslib.SOURCES

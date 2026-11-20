@@ -43,11 +43,12 @@ ATLAS_URL = "https://raw.githubusercontent.com/mitre-atlas/atlas-data/main/dist/
 SOURCES = {
     "attack": {"name": "MITRE ATT&CK (Enterprise)", "url": "https://attack.mitre.org",
                "data": ATTACK_URL,
-               "licence": "MITRE ATT&CK terms of use: royalty-free, with MITRE's copyright notice kept",
-               "notice": "© The MITRE Corporation. This work is reproduced and distributed with the "
+               "licence": "ATT&CK licence: royalty-free for research, development and commercial use, "
+                          "with MITRE's copyright line and the licence kept (ethics_library_NOTICE.md)",
+               "notice": "© 2026 The MITRE Corporation. This work is reproduced and distributed with the "
                          "permission of The MITRE Corporation."},
     "atlas": {"name": "MITRE ATLAS", "url": "https://atlas.mitre.org", "data": ATLAS_URL,
-              "licence": "Apache-2.0", "notice": "Copyright MITRE. Licensed under the Apache License 2.0."},
+              "licence": "Apache-2.0", "notice": "Copyright 2021-2026 MITRE. Licensed under the Apache License 2.0."},
     "mit": {"name": "MIT AI Risk Repository (domain taxonomy)", "url": "https://airisk.mit.edu",
             "licence": "CC BY 4.0",
             "notice": "Slattery et al. (2024), The AI Risk Repository, arXiv:2408.12622. Category "
