@@ -34,7 +34,10 @@ def _have(*tools: str) -> str:
 def _docker() -> str:
     if not shutil.which("docker"):
         return "needs Docker"
-    ok = subprocess.run(["docker", "info"], capture_output=True, timeout=20).returncode == 0
+    try:
+        ok = subprocess.run(["docker", "info"], capture_output=True, timeout=60).returncode == 0
+    except (subprocess.TimeoutExpired, OSError):
+        ok = False
     return "" if ok else "needs a running Docker daemon"
 
 
