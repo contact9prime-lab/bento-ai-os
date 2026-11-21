@@ -192,6 +192,7 @@ class WhatsAppBridge(usersmod.Scoped):
         self.broadcast = broadcast
         self.status = "off"        # off | needs | ready | error
         self.error = ""
+        self._live: dict = {}      # conversation -> its turn's steps on the phone (phonelive.Live)
         self._busy = False
         self._pending: dict[str, asyncio.Future] = {}
         self._seen: dict[str, float] = {}   # message id -> when, for redelivery
@@ -701,6 +702,17 @@ class WhatsAppBridge(usersmod.Scoped):
             if out.startswith("[error]"):
                 await self.send(out, wa_id)
             return
+        if low.startswith("/steps"):
+            # the live steps of a turn (phonelive.py): `whatsapp.live_steps`
+            arg = low[6:].strip()
+            if arg in ("on", "off"):
+                self.cfg.setdefault("whatsapp", {})["live_steps"] = arg == "on"
+                cfgmod.save_config(self.cfg)
+            on = self._c().get("live_steps", True) is not False
+            await self.send("⚙ While I work, I'll send the steps every few seconds: hand-overs, a "
+                            "department's people, sign-offs. /steps off hides them." if on
+                            else "⚙ I'll only send the answer. /steps on shows the steps while I work.", wa_id)
+            return
         if low.startswith("/clips"):
             arg = low[6:].strip()
             if arg in ("on", "off"):
@@ -923,11 +935,23 @@ class WhatsAppBridge(usersmod.Scoped):
         # as on Telegram (playground.listen; closed in `finally`)
         from . import playground as _pg
         tap = _pg.listen(cid)
+        # what the turn is doing, while it works (phonelive.py): a WhatsApp message can't be
+        # edited, so the new steps go as a short message every few seconds, a few a turn
+        from . import phonelive
+        live = None
+        if phonelive.on(self.cfg, "whatsapp"):
+            async def _live_send(text):
+                await self.send(text, wa_id)
+            live = phonelive.Live(phonelive.listen(cid), _live_send, every=6.0, first=4.0)
+        self._live[cid] = live
         try:
             await self._turn_in(chat, wa_id, text, cid)
             await self.send_talk(list(tap), wa_id)
         finally:
             _pg.close(cid, tap)
+            self._live.pop(cid, None)
+            if live:
+                await live.end()
 
     async def _turn_in(self, chat: dict, wa_id: str, text: str, cid: str):
         from . import history as _history
@@ -994,6 +1018,9 @@ class WhatsAppBridge(usersmod.Scoped):
             self.store, self.cfg, self.toolbox, cid=cid, text=text, surface="whatsapp",
             emit=emit, approver=approver, note=note, tell=tell)
         reply = out["reply"]
+        live = self._live.get(cid)
+        if live:
+            await live.end()        # the last steps go before the answer, never after it
         self.store.add_message(cid, "assistant", reply, {"steps": out["steps"], **out["meta"]})
         self.store.touch_conversation(cid)
         await self.send(reply, wa_id)

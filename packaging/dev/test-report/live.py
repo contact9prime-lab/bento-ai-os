@@ -99,6 +99,8 @@ RUNS = {
                          lambda: _have("sshd", "ssh") or ("needs root" if os.geteuid() else ""), 1500),
     "link-files": ("link-files-e2e/run.py", lambda w: [PY, str(DEV / "link-files-e2e/run.py"), w],
                    lambda: "", 900),
+    "phone-steps": ("phone-steps-e2e/run.py", lambda w: [PY, str(DEV / "phone-steps-e2e/run.py"), w],
+                    lambda: "", 600),
     "warehouse": ("warehouse/run.py", lambda w: [PY, str(DEV / "warehouse/run.py"), w], lambda: "", 900),
     "active-sync": ("standby-e2e/active_sync.py", None, lambda: "", 900),
     "standby": ("standby-e2e/run.sh", lambda w: ["sh", str(DEV / "standby-e2e/run.sh")],
@@ -163,7 +165,7 @@ def run_one(name: str) -> dict:
         bad.append(f"exited {p.returncode}")
     if "Traceback (most recent call last)" in out:
         bad.append("printed a traceback")
-    if name == "stitch-walk":
+    if name in ("stitch-walk", "phone-steps"):
         m = re.search(r"FINDINGS:\s*(\[[^\]]*\])", out, re.S)
         if not m:
             bad.append("printed no FINDINGS")

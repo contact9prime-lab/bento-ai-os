@@ -2169,6 +2169,16 @@ read as "queuing them" beside a newer chat. Now the message is saved, then only 
 event goes to the screens with the conversation id (turn_start, steps, turn_end before telegram_out), minus the
 CLI's own `mcp__bento__*` copies, so the Office and Chat see a phone turn.
 
+**And the phone sees it too** (`agentos/phonelive.py`, `Live`, `/steps on|off` on both channels,
+`telegram.live_steps`/`whatsapp.live_steps`; `tests/test_phone_steps.py`, live run
+`packaging/dev/phone-steps-e2e/run.py`). Reported as "it sends the message to the department and sub
+department and doesn't show those interim steps in the channels": the screens got every event, the phone
+got "typing…". A tap per phone turn is fed by the server's broadcast (beside playground's), so it sees what
+the screens see: events naming the conversation, plus every run the turn started (a `flow_start` naming it,
+then any run whose `parent_run` is ours; a specialist the chat hands work to names the chat on its running
+`status`). Telegram edits one quiet message, WhatsApp sends a few batches; nothing for a turn under `first`
+seconds, and the steps finish before the answer is sent. Lines are words (who, what, a sign-off), never work.
+
 ## WhatsApp is one channel with two transports
 
 `conf(cfg)["mode"]` decides which is live, and they fail in opposite directions:

@@ -2,6 +2,12 @@
 
 ## 0.9.42 — 2026-11-21
 
+**A phone sees the work while it happens.** A message from Telegram or WhatsApp that the lead hands to a
+department used to show "typing…" until the answer. Now the chat gets the steps as they happen: the
+hand-over, the desk taking it, each person it gives a piece to and their steps, the bosses' sign-offs, the
+auditor, the finish. Telegram edits one quiet message; WhatsApp sends a few short ones. A quick answer gets
+none, and `/steps off` turns them off on either channel.
+
 **A reel of the ethics checks, filmed on a real server.** `packaging/dev/reel/ethics` starts Bento on a
 throwaway home with a scripted brain and films one take at 1080x1920: a scan of a range that isn't yours
 refused, a delete of 640 of your own files held until you type it, and the chat's ethics score. The

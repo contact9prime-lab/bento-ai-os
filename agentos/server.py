@@ -47,6 +47,7 @@ from . import accounts as accountsmod
 from . import brief as briefmod
 from . import avatars as avatarsmod
 from . import playground as playgroundmod
+from . import phonelive
 from . import drama as dramamod
 from . import arena as arenamod
 from . import world as worldmod
@@ -293,6 +294,7 @@ async def startup():
         # agents talking, collected for whoever listens off the desktop (a Telegram
         # turn's comic strip) — the one place every such event already passes
         playgroundmod.observe(event)
+        phonelive.observe(event)      # a phone turn's live steps (phonelive.py)
         # the World scene feels it, for the account whose work this is, and only while
         # that account has a world live (returns at once otherwise)
         worldmod.observe(event, usersmod.current())
@@ -314,6 +316,7 @@ async def startup():
         person's OWN sessions, not across accounts. On a single-user machine
         every uid is '' and this is exactly `broadcast`."""
         playgroundmod.observe(event)
+        phonelive.observe(event)      # a phone turn's live steps (phonelive.py)
         worldmod.observe(event, uid)
         _drama_seen(event, uid)
         dead = []

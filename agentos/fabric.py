@@ -1419,6 +1419,10 @@ class ControlPlane(usersmod.Scoped):
                                                                 origin.get("chat_id", "") or ""))
         await self._emit(run_id, "status", {"status": "running", "ref": defn["name"],
                                             "model": model, "parent_run": parent_run, "kind": kind,
+                                            # the chat that asked, so a phone following it (phonelive)
+                                            # finds a specialist handed work straight from the chat
+                                            **({"conversation_id": conversation_id}
+                                               if conversation_id and not parent_run else {}),
                                             **({"resumed": True} if resume else {})})
         if cli_note:
             await self._emit(run_id, "log", {"node_id": run_id, "level": "info", "text": cli_note})

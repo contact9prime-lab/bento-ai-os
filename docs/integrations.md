@@ -39,6 +39,7 @@ commands; every other enabled chat can only converse.
 | `/resume <number\|name>` | go back to an earlier session, with everything that was said in it |
 | `/clear` | wipe this session's messages |
 | `/updown [on\|off]` | a message when the agent goes offline or comes back |
+| `/steps [on\|off]` | while the agent works, one message that shows the steps (on by default) |
 | `/companies` | your companies, with a button to open each |
 | `/company [name]` | the open company and its departments; with a name, open that one |
 | `/people` | who may talk to the agent here, and who wrote and is waiting |
@@ -46,6 +47,15 @@ commands; every other enabled chat can only converse.
 | `/members <group>` | who wrote in a group and whether each is answered, with a button to allow or block each, and one to answer only the people you pick |
 | `/allow <@name\|chat id>` | let somebody in. Somebody who hasn't written yet is let in on their first message |
 | `/block <@name\|chat id>` | stop somebody talking to the agent |
+
+### Watching it work
+
+While a turn works, the chat gets one quiet message that fills in as it goes: a hand-over to a
+department, its desk taking it, each person it gives a piece to and their steps, the bosses signing
+it off, the auditor, the finish. It's edited in place, so it doesn't buzz, and the answer comes after
+it. A quick answer gets no steps. `/steps off` turns it off for this channel.
+
+![What Telegram shows while Finance works](screenshots/telegram-steps.png)
 
 The commands appear as Telegram's **Menu** button and `/` autocomplete — AgentOS registers them
 itself (`setMyCommands`) when the bridge starts and again when a chat becomes the owner, so there

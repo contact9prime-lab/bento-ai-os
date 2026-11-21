@@ -206,6 +206,13 @@ When an answer builds something in 3D, or is a blueprint, WhatsApp gets a video 
 after the pictures, as Telegram does (see [the Stage](stage.md)). `/clips off` goes back to
 pictures only, and `/clips on` brings them back.
 
+## Watching it work
+
+While a turn works, the steps come as short messages every few seconds: a hand-over to a
+department, each person it gives a piece to, the sign-offs and the finish. A WhatsApp message can't
+be edited, so there are a few at most a turn, and a quick answer gets none. `/steps off` turns them
+off, and `/steps on` brings them back.
+
 WhatsApp plays only mp4 and takes 16 MB. A bigger video is made smaller first, which needs
 ffmpeg on this machine. The same refusals apply as to text and pictures.
 
