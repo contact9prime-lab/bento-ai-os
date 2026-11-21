@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.42 — 2026-11-21
+
+**A reel of the ethics checks, filmed on a real server.** `packaging/dev/reel/ethics` starts Bento on a
+throwaway home with a scripted brain and films one take at 1080x1920: a scan of a range that isn't yours
+refused, a delete of 640 of your own files held until you type it, and the chat's ethics score. The
+captions and title cards are laid over the page; the refusal and the typed confirmation are the gate's own.
+
 ## 0.9.41 — 2026-11-20
 
 **Six gaps the test report found are closed.**
