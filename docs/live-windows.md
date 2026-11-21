@@ -39,6 +39,10 @@ from your phone", never the digits.
 
 ![The whole exchange on Telegram: the question, the page, the code, the answer](screenshots/live-browser-phone-chat.png)
 
+A mission that meets a sign-in page while nobody has the desktop open asks your phone the same
+way. Sites you stay signed in to, and what asks you before a post goes out, are in
+[Websites you're signed in to](sites.md).
+
 *The chat above is redrawn from the messages the bot sent in a test run against a stand-in for Telegram.*
 
 - **The code is never kept.** A reply that answers the page goes into the page and nowhere

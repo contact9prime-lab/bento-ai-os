@@ -893,6 +893,7 @@ function handle(ev){
         try{f.contentWindow.postMessage({agentos:'app_data',key:ev.key||''},'*')}catch(_){}});
       break;
     case 'grants': refreshApp('permissions'); if(ev.revoked)reloadAppFrames(); break;
+    case 'sites': if(typeof renderSites==='function')renderSites(); break;
     case 'widgets': if(Date.now()>widgetEchoUntil)loadWidgets(); break;
     case 'arena': arenaEvent(ev); break;
     case 'checkpoint': ttLayoutSave(ev.id); if(TT.w&&TT.conv===ev.conversation_id)refreshApp('timetravel'); break;

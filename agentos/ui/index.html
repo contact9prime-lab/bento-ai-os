@@ -20162,6 +20162,7 @@ function handle(ev){
         try{f.contentWindow.postMessage({agentos:'app_data',key:ev.key||''},'*')}catch(_){}});
       break;
     case 'grants': refreshApp('permissions'); if(ev.revoked)reloadAppFrames(); break;
+    case 'sites': if(typeof renderSites==='function')renderSites(); break;
     case 'widgets': if(Date.now()>widgetEchoUntil)loadWidgets(); break;
     case 'arena': arenaEvent(ev); break;
     case 'checkpoint': ttLayoutSave(ev.id); if(TT.w&&TT.conv===ev.conversation_id)refreshApp('timetravel'); break;
@@ -21871,6 +21872,8 @@ function setTab(body,all){
     P.push(`<h2>Accounts</h2><p class="lead">The mailbox and calendar your agent reads for you, and the GitHub account it pushes to. ${pInfo('Sign in with Google or Microsoft, or use an app password for anything else. Passwords are kept in the vault, and every read is logged.')}</p>`);
     P.push(`<div id="acct-list" data-f="accounts mail calendar sign in google microsoft oauth imap caldav ics gmail outlook icloud fastmail app password vault mcp"><p class="mut">checking…</p></div>`);
     setTimeout(renderAccounts,0);
+    P.push(`<div id="site-list" data-f="websites browser signed in instagram linkedin portal login"><p class="mut">checking…</p></div>`);
+    setTimeout(renderSites,0);
     P.push(pGroup('GitHub',[
       pRow('Personal access token',pSecret('s-gh-token',cfg.github&&cfg.github._has_token,(cfg.github&&cfg.github.token)||'','github_pat_… / ghp_…'),
         {desc:(cfg.github&&cfg.github._has_token)?'A token is saved. Fine-grained tokens work best.':'Lets the agent create repos and push what it builds.',
@@ -25618,7 +25621,7 @@ var SETSUBS={
   network:[['Discovery','Discovery and linkage'],['Linked teams','Linked teams'],['Community','Community'],['Messages','Messages'],['Mapping','Team to agent mapping'],['Maps','Maps']],
   permissions:[['Autonomy','On their own'],['Ethics','Ethics'],['Security','Security'],['Ledger','The ledger']],
   channels:[['Authorization','Authorization'],['Approvals','Approvals'],['Overview','Ways to reach it'],['Remote browser','Remote browser'],['Telegram','Telegram'],['WhatsApp','WhatsApp'],['Built in','Built in']],
-  accounts:[['Sign in','Sign in'],['Mail & calendar','Mail'],['App registration','App registration'],['Vault','Vault'],['GitHub','GitHub']],
+  accounts:[['Sign in','Sign in'],['Mail & calendar','Mail'],['Websites','Websites'],['App registration','App registration'],['Vault','Vault'],['GitHub','GitHub']],
   voice:[['Speech','Speech'],['Listening','Listening']],
   look:[['Look','Look'],['Characters','Characters'],['Office','Office'],['This screen','On this screen']],
   system:[['Version','Version'],['People','People'],['Setup','Footprint'],['Backup & cloud','Backup'],['Machine','Machine']],
@@ -26119,6 +26122,57 @@ async function voiceEnginePaint(){
   now.textContent=((d.titles||{})[cur])||cur;
   const bv=document.getElementById('v-voice'),row=bv&&bv.closest('.prow');
   if(row)row.style.display=cur==='browser'?'':'none';
+}
+/* ================= Websites: the sites your agent uses in your browser, signed in as you ======
+   The shared browser (cdpbrowser) keeps a sign-in as cookies in this account's own profile; this
+   card lists which sites have been signed in to (GET /api/sites), opens a new one for you to sign
+   in (POST /api/sites/signin: the Web window shows it), and signs the browser out of one (Forget).
+   A mission names its sites in permissions.sites and the consent screen says whether each is
+   signed in. Faces — GUI and SUI: this card. TUI: `bento sites`. Phone: a mission that meets a
+   sign-in with nobody at a screen asks on the owner's Telegram or WhatsApp (cdpbrowser.tool_wait).
+   `var`, not `let`: the bundle's TDZ trap. */
+var SITES={list:[],browser:null,busy:''};
+
+async function renderSites(){
+  const box=document.getElementById('site-list');if(!box)return;
+  let d={};try{d=await apiJSON('/api/sites')}catch(e){box.innerHTML=`<p class="mut">${esc(e.message||'could not read the sites')}</p>`;return}
+  SITES.list=d.sites||[];SITES.browser=d.browser||{};
+  const ok=SITES.browser.ok!==false;
+  const rows=SITES.list.map(r=>{
+    const when=new Date((+r.last||0)*1000).toLocaleDateString(undefined,{day:'numeric',month:'short'});
+    return `<div class="prow" data-f="website ${esc(r.site)}"><div class="pl"><b>${esc(r.site)}</b>
+      <small class="mut">signed in · last seen ${esc(when)}${r.warn?' '+pInfo(r.warn):''}</small></div>
+      <div class="pc"><button class="endbtn" onclick="sitesForget('${jsq(r.site)}')">Forget</button></div></div>`;
+  }).join('')||`<div class="ghint">No websites yet. Sign in to one below, or ask your agent to log in to it.</div>`;
+  box.innerHTML=`<div class="pgroup chan" data-f="websites browser signed in instagram linkedin portal login">
+    <h3>Websites</h3>
+    <div class="ghint">Sites your agent and your missions use in your browser, signed in as you. ${pInfo('The sign-in stays in your browser on this machine. Your agent never sees the password. Posting or sending on a site asks you first unless a mission was set to post on its own.')}</div>
+    ${rows}
+    <div class="prow"><div class="pl"><b>Sign in to a site</b><small>${ok?'It opens in the Web window, for you to sign in.':esc(SITES.browser.why||'The shared browser can’t run here.')}</small></div>
+      <div class="pc sites-add"><input id="sites-new" placeholder="instagram.com" spellcheck="false" autocomplete="off" ${ok?'':'disabled'}>
+      <button class="endbtn" id="sites-go" ${ok?'':'disabled'} onclick="sitesSignIn()">Sign in</button></div></div>
+  </div>`;
+  const inp=document.getElementById('sites-new');if(inp)inp.onkeydown=e=>{if(e.key==='Enter')sitesSignIn()};
+}
+
+/* the page's sign-in: the server opens the site in the shared browser and the Web window shows
+   it here. The card repaints when the sign-in is recorded (the `sites` event). */
+async function sitesSignIn(site){
+  site=String(site||((document.getElementById('sites-new')||{}).value)||'').trim();
+  if(!site){toast('Type the site, like instagram.com');return}
+  try{
+    const j=await apiJSON('/api/sites/signin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({site})});
+    if(typeof openApp==='function')openApp('browser');
+    toast(`Sign in to ${j.site} in the Web window. I’ll remember it once you’re in.`);
+    if(j.warn)setTimeout(()=>toast(j.warn,{kind:'warn'}),600);
+  }catch(e){toast(e.message||'could not open it')}
+}
+
+async function sitesForget(site){
+  const ask=`Sign your browser out of ${site}? Missions that use it will ask you to sign in again.`;
+  if(typeof osConfirm==='function'?!(await osConfirm(ask)):!confirm(ask))return;
+  try{await apiJSON('/api/sites/forget',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({site})});
+    toast(`Signed out of ${site}`);renderSites()}catch(e){toast(e.message||'could not reach the server')}
 }
 /* ================= memory app ================= */
 let memTab='user';
@@ -28609,6 +28663,9 @@ function jobForm(r){
     if(n.kind==='minutes')return `<label class="job-q"><span>${esc(n.label)}</span>
       <span class="job-mins"><input id="${id}" type="number" min="5" step="5" value="${esc(n.default||'60')}"> minutes</span>
       ${n.help?`<em>${esc(n.help)}</em>`:''}</label>`;
+    if(n.kind==='choice'&&(n.choices||[]).length)return `<label class="job-q"><span>${esc(n.label)}</span>
+      <select id="${id}">${n.choices.map(c=>`<option value="${esc(c[0])}" ${c[0]===(n.default||'')?'selected':''}>${esc(c[1])}</option>`).join('')}</select>
+      ${n.help?`<em>${esc(n.help)}</em>`:''}</label>`;
     if(n.kind==='lines')return `<label class="job-q"><span>${esc(n.label)}</span>
       <textarea id="${id}" rows="3" placeholder="${esc(n.placeholder||'')}" spellcheck="false" autocomplete="off">${esc(n.default||'')}</textarea>
       ${n.help?`<em>${esc(n.help)}</em>`:''}</label>`;
@@ -28666,9 +28723,15 @@ async function jobConsent(r){
       if(t.kind==='os_event')return `<li>runs when something changes in that folder</li>`;
       return '';
     }).join('');
-    box.innerHTML=`<b>What you are agreeing to</b><ul>${when}${reads}${reach}
+    // signed-in sites: what it may do there, the site's own warning, and whether you are
+    // signed in yet (Sign in opens it in the Web window, the same door as Settings → Websites)
+    const sites=(d.sites||[]).map(s=>`<li>${esc(s.words)}${s.signed_in?' · <span class="job-ok">signed in</span>'
+      :` · <span class="job-warn">not signed in yet</span> <button class="endbtn job-signin" data-site="${esc(s.site)}">Sign in</button>`}
+      ${s.warn?`<div class="job-warn">${esc(s.warn)}</div>`:''}</li>`).join('');
+    box.innerHTML=`<b>What you are agreeing to</b><ul>${when}${reads}${reach}${sites}
       <li>delivers by: ${esc((d.delivery||{}).label||'report')}</li>
       <li>${d.grants.length} permission${d.grants.length===1?'':'s'}, all revocable in Permissions</li></ul>`;
+    box.querySelectorAll('.job-signin').forEach(b=>b.onclick=e=>{e.preventDefault();sitesSignIn(b.dataset.site)});
   }catch(e){}
 }
 
@@ -28911,7 +28974,10 @@ function jobGrantWords(g){
   const verb={'tool.use':'use','fs.read':'read','fs.write':'write to','net.fetch':'fetch from',
     'agent.invoke':'hand work to','memory.read':'read memory','memory.write':'write memory',
     'mail.read':'read your mail','calendar.read':'read your calendar','skill.use':'use the skill',
-    'agent.message':'ask','mcp.call':'call the MCP server'}[g.action];
+    'agent.message':'ask','mcp.call':'call the MCP server','browser.read':'read pages, signed in as you, on',
+    'browser.act':'click and type, as you, on','browser.commit':'post, send or submit on its own on'}[g.action];
+  // a site's own warning rides on its read row (cdpbrowser.STRICT_SITES), said once
+  if(g.action==='browser.read'&&/doesn't allow/.test(g.note||''))return who+verb+' '+tail+'. '+String(g.note).split('. ').slice(1).join('. ');
   if(!verb)return who+g.action+(tail?' '+tail:'');
   return who+verb+(tail&&!/memory|mail|calendar/.test(verb)?' '+tail:'');
 }

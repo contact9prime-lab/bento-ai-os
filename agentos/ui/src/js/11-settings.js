@@ -316,6 +316,8 @@ function setTab(body,all){
     P.push(`<h2>Accounts</h2><p class="lead">The mailbox and calendar your agent reads for you, and the GitHub account it pushes to. ${pInfo('Sign in with Google or Microsoft, or use an app password for anything else. Passwords are kept in the vault, and every read is logged.')}</p>`);
     P.push(`<div id="acct-list" data-f="accounts mail calendar sign in google microsoft oauth imap caldav ics gmail outlook icloud fastmail app password vault mcp"><p class="mut">checking…</p></div>`);
     setTimeout(renderAccounts,0);
+    P.push(`<div id="site-list" data-f="websites browser signed in instagram linkedin portal login"><p class="mut">checking…</p></div>`);
+    setTimeout(renderSites,0);
     P.push(pGroup('GitHub',[
       pRow('Personal access token',pSecret('s-gh-token',cfg.github&&cfg.github._has_token,(cfg.github&&cfg.github.token)||'','github_pat_… / ghp_…'),
         {desc:(cfg.github&&cfg.github._has_token)?'A token is saved. Fine-grained tokens work best.':'Lets the agent create repos and push what it builds.',

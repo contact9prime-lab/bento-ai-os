@@ -20637,7 +20637,36 @@ async def _browser_attention(uid: str, payload: dict):
 
 
 from . import cdpbrowser as _cdpb  # noqa: E402
-_cdpb.bind(attention=_browser_attention, presence=_someone_here)
+def _owner_wall_phones(uid: str) -> list:
+    """This account's own phone chats, for a sign-in wall nobody is at a screen for (a mission
+    on its schedule): (key, ask, say) per bridge with an owner chat. Only the account's own
+    bridges, never another account's: a wall shows a page signed in as this person."""
+    bridges = []
+    if usersmod.enabled() and uid:
+        svc = (getattr(usersmod, "_services", {}) or {}).get(uid) or {}
+        bridges = [(k, svc.get(k)) for k in ("telegram", "whatsapp") if svc.get(k) is not None]
+    elif not usersmod.enabled():
+        for k in ("telegram", "whatsapp"):
+            with contextlib.suppress(Exception):
+                if k in state:
+                    bridges.append((k, state[k]))
+    out = []
+    for kind, b in bridges:
+        with contextlib.suppress(Exception):
+            if kind == "telegram":
+                chat = b._t().get("owner_chat_id") or 0
+                if chat and b._t().get("enabled"):
+                    out.append((f"tg:{chat}", lambda att, png, b=b, c=chat: b.ask_wall(c, att, png),
+                                lambda text, buttons, b=b, c=chat: b.say_wall(c, text, buttons)))
+            else:
+                wa = b._c().get("owner_wa_id") or ""
+                if wa and b._c().get("enabled"):
+                    out.append((f"wa:{wa}", lambda att, png, b=b, w=wa: b.ask_wall(w, att, png),
+                                lambda text, buttons, b=b, w=wa: b.say_wall(w, text, buttons)))
+    return out
+
+
+_cdpb.bind(attention=_browser_attention, presence=_someone_here, owner_phones=_owner_wall_phones)
 
 
 # ---------------------------------------------------------------------------
@@ -20718,6 +20747,49 @@ async def api_browser():
     st = _cdpb.status(state["cfg"])
     b = _cdpb.current(uid)
     return {**st, "running": bool(b), **({"state": b.snapshot_state()} if b else {})}
+
+
+@app.get("/api/sites")
+async def api_sites():
+    """The sites this person is signed in to in their shared browser, with each site's own
+    warning about automation (cdpbrowser.STRICT_SITES). Only the record: never a cookie."""
+    rows = _cdpb.signed_in(usersmod.home_for(usersmod.current() or ""))
+    return {"sites": [{**r, "warn": _cdpb.strict_words(r["site"])} for r in rows],
+            "browser": _cdpb.status(state["cfg"])}
+
+
+@app.post("/api/sites/signin")
+async def api_sites_signin(body: dict):
+    """Open a site in the shared browser so the person signs in there (the same path as the
+    agent's browser_sign_in). Answers at once; the Web window shows the page, and the sign-in
+    is recorded when the form has gone. A person's act, so nothing asks a gate."""
+    site = _cdpb.site_of("https://" + str((body or {}).get("site") or "").strip().split("://")[-1])
+    if not site or "." not in site:
+        return JSONResponse({"error": "say which site, like instagram.com"}, status_code=400)
+    st = _cdpb.status(state["cfg"])
+    if not st.get("ok"):
+        return JSONResponse({"error": st.get("why") or "the shared browser can't run here"}, status_code=409)
+    tb, store = state["toolbox"], state["store"]
+
+    async def go():
+        with contextlib.suppress(Exception):
+            said = await tb.browser_sign_in(site)
+            store.log("browser", f"sign-in to {site}: {said.splitlines()[0][:160]}")
+            await state["broadcast"]({"type": "sites"})
+    asyncio.create_task(go())
+    store.log("browser", f"sign-in to {site} opened by you")
+    return {"ok": True, "site": site, "warn": _cdpb.strict_words(site)}
+
+
+@app.post("/api/sites/forget")
+async def api_sites_forget(body: dict):
+    """Sign the shared browser out of a site: its cookies and storage, and the record."""
+    site = str((body or {}).get("site") or "")
+    uid = usersmod.current() or ""
+    said = await _cdpb.forget_site(uid, state["cfg"], usersmod.home_for(uid), site)
+    state["store"].log("browser", said)
+    await state["broadcast"]({"type": "sites"})
+    return {"ok": True, "said": said}
 
 
 @app.websocket("/ws/browser")

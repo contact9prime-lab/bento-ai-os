@@ -8,6 +8,16 @@ hand-over, the desk taking it, each person it gives a piece to and their steps, 
 auditor, the finish. Telegram edits one quiet message; WhatsApp sends a few short ones. A quick answer gets
 none, and `/steps off` turns them off on either channel.
 
+**Your agent works on websites you're signed in to.** Sign in once (Settings → Accounts → Websites,
+`bento sites`, or "sign in to my Instagram" in chat) and your agent and your missions use the site as
+you, in the shared browser. Pressing a button that posts, sends, submits or pays is its own permission
+and asks you every time; what counts is read from the button's label on the page, not from the agent's
+words. Three new missions use it: run my social account, fetch from a portal, watch a page behind a
+sign-in. A mission names its sites, and its consent screen says whether each is signed in, whether
+posts ask you first, and when a site doesn't allow automation. A sign-in code met while you're away
+goes to your phone and is typed into the page without reaching the model. The agent can also put a
+picture from your files into a page's upload field.
+
 **A reel of the ethics checks, filmed on a real server.** `packaging/dev/reel/ethics` starts Bento on a
 throwaway home with a scripted brain and films one take at 1080x1920: a scan of a range that isn't yours
 refused, a delete of 640 of your own files held until you type it, and the chat's ethics score. The

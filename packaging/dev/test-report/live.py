@@ -101,6 +101,8 @@ RUNS = {
                    lambda: "", 900),
     "phone-steps": ("phone-steps-e2e/run.py", lambda w: [PY, str(DEV / "phone-steps-e2e/run.py"), w],
                     lambda: "", 600),
+    "sites": ("sites-e2e/run.py", lambda w: [PY, str(DEV / "sites-e2e/run.py"), w],
+              lambda: "" if Path("/opt/pw-browsers/chromium").exists() or shutil.which("chromium") else "needs Chromium", 900),
     "warehouse": ("warehouse/run.py", lambda w: [PY, str(DEV / "warehouse/run.py"), w], lambda: "", 900),
     "active-sync": ("standby-e2e/active_sync.py", None, lambda: "", 900),
     "standby": ("standby-e2e/run.sh", lambda w: ["sh", str(DEV / "standby-e2e/run.sh")],
@@ -165,7 +167,7 @@ def run_one(name: str) -> dict:
         bad.append(f"exited {p.returncode}")
     if "Traceback (most recent call last)" in out:
         bad.append("printed a traceback")
-    if name in ("stitch-walk", "phone-steps"):
+    if name in ("stitch-walk", "phone-steps", "sites"):
         m = re.search(r"FINDINGS:\s*(\[[^\]]*\])", out, re.S)
         if not m:
             bad.append("printed no FINDINGS")

@@ -4485,6 +4485,32 @@ or a CAPTCHA is handed to the person in the same session the agent then carries 
   frame the whole window squeezed into the view (390x201 for a 390x735 page). The pop-up is a surface of its own.
   `tests/test_live_windows.py` types a password in a real Chromium and checks the frame size.
 
+**A signed-in site is the person's, and posting there is its own permission** (`cdpbrowser.commit_of`/
+`signed_in`/`note_signed_in`/`forget_site`/`STRICT_SITES`/`_OWNER_PHONES`, `browser_sign_in`/`browser_sites`/
+`browser_upload`, `policy.person_rule`'s commit branch, `flows.clean_sites`, `jobs` recipes `social-account`/
+`portal-fetch`/`login-watch` and the `operator` specialist, `/api/sites*`, `11n-sites.js`, `bento sites`;
+`docs/sites.md`, `tests/test_signed_in_sites.py`, live run `packaging/dev/sites-e2e/run.py`). Asked for as "login
+to my instagram and start managing my content … then it can build a mission on it"; the owner chose "your choice
+per mission" for publishing and "browser first" for Instagram (the Graph API road is planned, not built). Six rules:
+- **What a click commits is read off the PAGE** (`commit_of` over `Browser.seen`, the labels of the last `read()`),
+  injected as `_commit` by the loop after the model's args, never the model's words. A pressable label matching
+  `COMMIT_WORDS`, Enter after typing in a non-search field, or a target the page did not show is
+  `browser.commit site:<host>`; everything else is `browser.act`.
+- **A commit by anyone but the person asks, at every autonomy** (`person_rule`: a non-user principal allowed only by
+  the default). Only a mission whose definition says `publish: "auto"` holds a `browser.commit` grant, and that grant
+  counts only inside its own flow. No Remember on a commit in chat.
+- **A mission names its sites** (`permissions.sites`, `clean_sites`: at most 12, `www.` and paths dropped, publish
+  forced to `ask` without `act`); `declared_grants` writes read, act and commit rows from them, and the consent says
+  signed in or not and `strict_words` for a site that forbids automation. Never hide that warning.
+- **The record is a list of sites, never a credential** (`sites.json`, 0600, beside the profile). The cookie is the
+  browser profile's. Forget clears the site's cookies and storage over CDP.
+- **A wall with nobody at the desk goes to the owner's phones** (`_OWNER_PHONES`, bound by the server as
+  `_owner_wall_phones`, lent by `tool_wait` for that wait only and taken back in a `finally`). The code reply is
+  caught by the bridge before it is logged or saved, as for a phone turn. No phone: "[nobody here]" tells the
+  mission to file a `needs_you` Brief item.
+- **Upload only from `outputs.roots`** (`browser_upload`, `DOM.setFileInputFiles`); it is `browser.act`, so a commit
+  after it still asks. The approval card names the label (`approvalcard.body`), never a bare ref.
+
 ## Several tasks at once: a desktop per running task, and Telegram side by side
 
 `24m-taskdesks.js` (TASKDESK, `taskDeskLeaving`/`Done`/`Close`), the Task app (`initCopilot` pinned by

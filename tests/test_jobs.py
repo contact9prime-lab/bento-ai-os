@@ -396,7 +396,7 @@ def test_ensure_roster_creates_the_catalogue_s_specialists_once_and_never_overwr
     run for a year would never get `engineer` from it. And an engineer somebody
     designed must survive — a catalogue must not rewrite a person's agent."""
     made = jobs.ensure_roster({}, store)
-    assert set(made) == {"engineer", "analyst", "watcher", "assistant"}
+    assert set(made) == {"engineer", "analyst", "watcher", "assistant", "operator"}
     assert jobs.ensure_roster({}, store) == []
     store.save_subagent({"name": "engineer", "soul": "MINE", "tools": ["read_file"]})
     jobs.ensure_roster({}, store)
@@ -428,7 +428,9 @@ def _answers_for(r, store, tmp=None):
         a.setdefault(n.key, {"folder": folder, "url": "https://example.com/p",
                              "urls": "https://a.example/x\nhttps://b.example/y",
                              "names": "Acme\nBolt", "client": "Acme", "topics": "rust",
-                             "at": "08:00", "day": "friday", "minutes": "60"}.get(n.key, "x"))
+                             "at": "08:00", "day": "friday", "minutes": "60",
+                             "site": "example.com", "page": "https://example.com/orders",
+                             "publish": "ask"}.get(n.key, "x"))
     return a
 
 
