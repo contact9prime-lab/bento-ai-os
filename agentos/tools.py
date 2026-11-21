@@ -1210,6 +1210,16 @@ def _jail_hidden(hide: list[str] | None = None) -> list[str]:
     return out
 
 
+
+def jail_hides(path: str, shown: list[str], hide: list[str] | None = None) -> bool:
+    """Would this real path be missing inside bwrap_argv's jail? Every home, /tmp, /run and
+    _jail_hidden are blanked, and only `shown` (the jail's root and its shares) is bound back.
+    A program there would start as bwrap's "execvp: No such file or directory", which says
+    nothing to the person whose server it is."""
+    rp = os.path.realpath(path)
+    return _under_any(rp, ["/home", "/tmp", "/run", *_jail_hidden(hide)]) and not _under_any(
+        rp, [os.path.realpath(x) for x in shown if x])
+
 def _jail_path_ok(path: str) -> bool:
     """A folder may be bound into a jail only if no agent is refused it anyway. A share naming the
     home's pki folder would otherwise be a way round everything hidden above."""

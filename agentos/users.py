@@ -407,10 +407,16 @@ def share_own_workspace(uid: str) -> bool:
     home = os.path.realpath(str(home_for(uid)))
     if p == home or p.startswith(home + os.sep):
         return False
-    # an existing folder only: creating one is not ours to do (it may be somebody's
-    # home we cannot write), and `bento migrate` asks again once it exists
+    # The folder itself is made when its parent exists, as the machine makes its own workspace
+    # at every start (config.ensure_dirs): nothing else makes an account's, so a workspace that
+    # did not exist yet was never shared, and the person's agent was refused it after they said
+    # yes (found by the stitched walk). Never its parents: as root in CI that made a whole
+    # /home/somebody. `bento migrate` asks again at every start.
     if not os.path.isdir(p):
-        return False
+        try:
+            os.mkdir(p, 0o755)
+        except OSError:
+            return False
     from .tools import check_safe_folder, folder_shares
     ok, _why = check_safe_folder(p)
     if not ok:

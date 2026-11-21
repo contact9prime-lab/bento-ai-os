@@ -203,6 +203,10 @@ def stdio_launch(conf: dict, name: str = "") -> tuple[str, list[str], dict]:
                            "account. Ask an admin to install it for everyone.")
     ro, rw = folder_binds(usersmod.cfg_for(uid), uid)
     if sandbox_mechanism() == "bwrap":
+        from .tools import jail_hides, jail_root as _jail_root
+        if jail_hides(real_exe, [_jail_root(home), *rw, *ro], [os.path.realpath(str(cfgmod.AGENTOS_HOME))]):
+            raise RuntimeError(f"{cmd[0]} is in {os.path.dirname(real_exe)}, which your account can't see, "
+                               "so it can't run inside your account. Ask an admin to install it for everyone.")
         # the whole machine home is blanked, not only users/: where it sits outside /home
         # (a container's /data) its session key would otherwise be readable from here
         # own_env: a server's own settings often hold its API key, which --setenv would put on a
