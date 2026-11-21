@@ -176,9 +176,11 @@ def main(argv: list[str]) -> int:
         live_runs = {v["path"]: v for v in json.loads(Path(argv[argv.index("--live") + 1]).read_text()).values()}
     notes: dict = {}
     findings: list = []
+    impact: dict = {}
     if "--notes" in argv:
         notes = json.loads(Path(argv[argv.index("--notes") + 1]).read_text())
         findings = notes.pop("findings", [])
+        impact = notes.pop("impact", {})
         notes = notes.get("failures", notes)
     files = read_files()
     rows = read_junit(junit)
@@ -244,6 +246,7 @@ def main(argv: list[str]) -> int:
         "files": sorted(by_file.values(), key=lambda b: (b["area"], b["file"])),
         "failures": [r for r in rows if r["status"] in ("failed", "error")],
         "findings": findings,
+        "impact": impact,
         "slowest": sorted(rows, key=lambda r: -r["time"])[:25],
         "live": [{**h, **{k: live_runs[h["path"]][k] for k in ("status", "why", "seconds", "tail", "at")
                           if h["path"] in live_runs}} for h in live_harnesses()],

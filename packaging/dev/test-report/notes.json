@@ -90,5 +90,66 @@
    "area": "Updates, backup, standby and cloud",
    "detail": "test_packaging_shell checks install.sh against bash 3.2, the version macOS ships. They skip on Linux by design."
   }
- ]
+ ],
+ "impact": {
+  "before": {
+   "label": "First runs, 20 Nov 2026",
+   "tests": 6647,
+   "failed": 9,
+   "live_failed": 6,
+   "live_failed_names": [
+    "stitch-walk",
+    "provision",
+    "zero",
+    "zero-accounts",
+    "device-get-set",
+    "install-over-ssh"
+   ],
+   "note": "All 9 of those first failures came from this container (no OpenSSH, running as root, a proxy) and were fixed in the tests. The gap in the code, the root process limit, showed in the next run."
+  },
+  "fixes": [
+   {
+    "title": "A hub's process limit holds when it runs as root",
+    "who": "Anyone whose hub runs in Docker or on a cloud host, with Zeros that send it code.",
+    "before": "Code a Zero sent could start processes without limit: a fork loop reached 60 under a limit of 20.",
+    "after": "It runs as an unprivileged user and stops at the limit. A root hub without setpriv runs nothing and says why.",
+    "proof": "test_a_run_cannot_fork_without_limit failed as root and passes now; 3 new tests; edge-code live run passes."
+   },
+   {
+    "title": "A specialist working for you in a chat can ask you",
+    "who": "Everyone who hands work to a specialist from a chat, at the default autonomy.",
+    "before": "Its file writes were refused with nobody asked, and its requests for a missing ability reached nobody.",
+    "after": "The approval card comes to you in that chat, or on your phone. Schedules and linked teams still ask nobody.",
+    "proof": "5 new tests in test_chat_delegate_asks; the stitched walk passes."
+   },
+   {
+    "title": "An MCP server the account can't reach is refused in words",
+    "who": "Accounts that add an MCP server installed under /home or /tmp.",
+    "before": "It failed with bubblewrap's \"execvp: No such file or directory\".",
+    "after": "It's refused before it starts, with a sentence naming the folder the account can't see.",
+    "proof": "2 new tests in test_mcp_accounts; zero-accounts live run passes."
+   },
+   {
+    "title": "The first account can write to its own workspace",
+    "who": "The first account on a machine whose workspace folder didn't exist yet.",
+    "before": "Its agent was refused writing there after you said yes, even after a restart.",
+    "after": "The folder is made and shared with that account.",
+    "proof": "1 new test; the stitched walk passes without making the folder for it."
+   },
+   {
+    "title": "A Zero is told when its account has no brain",
+    "who": "Second accounts on a hub, and their Zeros or linked teams.",
+    "before": "The Zero's screen showed \"[error] ConnectError: All connection attempts failed\".",
+    "after": "It says the account has no brain chosen and where to choose one.",
+    "proof": "1 new test in test_zero_chat; zero-accounts live run passes."
+   },
+   {
+    "title": "Every module has a test that names it",
+    "who": "People changing Bento.",
+    "before": "clitui, sessiondoctor and trainforge had no test of their own.",
+    "after": "11 tests cover them: TrainForge stays on loopback, a crashed doctor probe is reported, the terminal client draws safely.",
+    "proof": "tests/test_small_modules.py."
+   }
+  ]
+ }
 }

@@ -52,6 +52,13 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .chip{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:999px;font:500 12px/1.5 var(--mono);white-space:nowrap}
 .chip.passed{background:var(--pass-bg);color:var(--pass)} .chip.failed,.chip.error{background:var(--fail-bg);color:var(--fail)}
 .chip.skipped{background:var(--skip-bg);color:var(--skip)} .chip.neutral{background:var(--soft);color:var(--mute)}
+.imp{border:1px solid var(--line);border-left:3px solid var(--pass);border-radius:8px;background:var(--panel);padding:12px 14px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.imp>*{min-width:0;overflow-wrap:anywhere}
+.imp .ba{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.imp .ba>div{border-radius:6px;padding:8px 10px;background:var(--soft);min-width:0}
+.imp .ba b{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);margin-bottom:2px}
+.imp .proof{font-size:13px}
+@media (max-width:560px){.imp .ba{grid-template-columns:1fr}}
 .fail-card{border:1px solid var(--line);border-left:3px solid var(--fail);border-radius:8px;background:var(--panel);padding:12px 14px;display:flex;flex-direction:column;gap:6px;min-width:0}
 .fail-card.old{border-left-color:var(--skip)}
 .fail-card>*{min-width:0;overflow-wrap:anywhere}
@@ -110,6 +117,13 @@ pre.cmd{margin:0;font:12.5px/1.6 var(--mono);background:var(--soft);border-radiu
     <h2 id="h-sum">Summary</h2>
     <div class="strip" id="strip"><div class="stat"><span class="n">…</span><span class="l">loading the run</span></div></div>
     <div class="verdict" id="verdict" hidden></div>
+  </section>
+
+  <section aria-labelledby="h-impact" id="impact-sec" hidden>
+    <h2 id="h-impact">What the fixes changed</h2>
+    <p class="mut" id="impact-note"></p>
+    <div class="strip" id="impact-strip"></div>
+    <div class="files" id="impact" style="margin-top:14px"></div>
   </section>
 
   <section aria-labelledby="h-find" id="findings-sec" hidden>
@@ -232,6 +246,28 @@ python3 packaging/dev/test-report/build.py out/junit.xml out/report.json</pre>
     });
   }
 
+  function paintImpact(){
+    var I=R.impact||{},b=I.before;if(!b||!(I.fixes||[]).length)return;
+    document.getElementById('impact-sec').hidden=false;
+    var t=R.totals,lc=liveCounts();
+    document.getElementById('impact-note').textContent=b.label+' compared with this run, '+(R.ran_at||'')+'.'+(b.note?' '+b.note:'');
+    var strip=document.getElementById('impact-strip');strip.replaceChildren();
+    [[b.failed,t.failed+t.error,'suite tests failing'],[b.live_failed,lc.failed,'live runs failing'],
+     [b.tests,t.count,'tests in the suite']].forEach(function(x){
+      var better=x[2]==='tests in the suite'?x[1]>=x[0]:x[1]<=x[0];
+      var d=el('div','stat '+(better?'pass':'fail'));
+      d.append(el('span','n',fmt(x[0])+' → '+fmt(x[1])),el('span','l',x[2]));strip.appendChild(d)});
+    var box=document.getElementById('impact');box.replaceChildren();
+    I.fixes.forEach(function(f){
+      var c=el('div','imp'),ba=el('div','ba'),bb=el('div'),aa=el('div');
+      bb.append(el('b','','Before'),document.createTextNode(f.before||''));
+      aa.append(el('b','','Now'),document.createTextNode(f.after||''));
+      ba.append(bb,aa);
+      c.append(el('b','',f.title),el('div','mut',f.who||''),ba);
+      if(f.proof){var p=el('div','mut proof');p.append(el('b','','Checked by: '),document.createTextNode(f.proof));c.appendChild(p)}
+      box.appendChild(c)});
+  }
+
   function paintFindings(){
     var f=R.findings||[];if(!f.length)return;
     document.getElementById('findings-sec').hidden=false;
@@ -351,7 +387,7 @@ python3 packaging/dev/test-report/build.py out/junit.xml out/report.json</pre>
   Promise.all([fetch('report.json').then(function(r){return r.json()}),fetch('tests.json').then(function(r){return r.json()})]).then(function(x){
     R=x[0];T=x[1];
     var docs={};R.files.forEach(function(f){docs[f.file]=f.doc});T.forEach(function(t){t._doc=docs[t.file]||''});
-    paintHead();paintFindings();paintAreas();paintFails();render();paintBeyond();
+    paintHead();paintImpact();paintFindings();paintAreas();paintFails();render();paintBeyond();
   }).catch(function(e){
     document.getElementById('strip').replaceChildren(el('div','stat fail',"The report's data didn't load: "+e.message));
   });
