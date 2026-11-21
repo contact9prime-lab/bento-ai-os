@@ -26,6 +26,7 @@ import os
 import shutil
 import signal
 import subprocess
+import tempfile
 import time
 import uuid
 from pathlib import Path
@@ -46,6 +47,11 @@ HUB_OUT_BYTES = 8_000_000       # what one run may print before it is stopped
 HUB_DISK_MB = 1024              # what its folder may grow to before it is stopped
 HUB_TMP_MB = 256                # its /tmp, which is memory
 HUB_NPROC = 128                 # processes inside the jail
+# The user another machine's code runs as when this server is root (a Docker or cloud hub). Linux
+# never applies RLIMIT_NPROC to the real uid 0, and bwrap's --uid changes only the uid INSIDE its
+# namespace, so as root the process limit held nothing: measured, a fork loop ran to 60 children
+# under a limit of 20. No account on any machine has this uid, so nothing else shares its count.
+EDGE_UID = 2147483646
 HUB_QUEUE = 4                   # runs one machine may have waiting for the slot
 DISK_EVERY_S = 2.0
 SEND_FILES = 64                 # files one folder may carry to the hub
@@ -330,6 +336,39 @@ async def _read_capped(proc, run: Path) -> tuple[bytes, str]:
     return bytes(head), why
 
 
+def _as_root() -> bool:
+    return os.geteuid() == 0
+
+
+def _drop() -> list[str]:
+    """As root, become EDGE_UID before bwrap starts: the real uid is what the kernel counts.
+    setpriv is util-linux, the package prlimit comes from. Nothing to drop for anyone else."""
+    if not _as_root():
+        return []
+    return [shutil.which("setpriv") or "setpriv", f"--reuid={EDGE_UID}", f"--regid={EDGE_UID}",
+            "--clear-groups", "--inh-caps=-all", "--bounding-set=-all"]
+
+
+def _new_run(label: str) -> Path:
+    """The run's folder. As root it cannot be under this machine's home (0700, so EDGE_UID could
+    not reach it to bind it), so it is a fresh private folder in /var/tmp handed to EDGE_UID."""
+    if not _as_root():
+        run = runs_dir() / _safe(label) / uuid.uuid4().hex[:12]
+        run.mkdir(parents=True, exist_ok=True)
+        return run
+    base = "/var/tmp" if os.path.isdir("/var/tmp") else tempfile.gettempdir()
+    return Path(tempfile.mkdtemp(prefix=f"bento-edge-{_safe(label)}-", dir=base))
+
+
+def _hand_over(run: Path) -> None:
+    """Give the run's folder, and everything unpacked into it, to EDGE_UID. Root only."""
+    if not _as_root():
+        return
+    for p in [run, *run.rglob("*")]:
+        if not p.is_symlink():
+            os.chown(p, EDGE_UID, EDGE_UID)
+
+
 def limited(argv: list[str]) -> list[str]:
     """Memory, CPU and file-size limits and a lower priority, set by prlimit and nice on the
     command line (a preexec_fn is not safe in a server that runs threads)."""
@@ -358,11 +397,13 @@ async def answer(store, pdp, lk: dict, req: dict) -> dict:
     if sandbox_mechanism() != "bwrap" or not _python() or not shutil.which("prlimit"):
         return {"ok": False, "error": "this hub has no sandbox to run other machines' code in "
                                       "(it needs bubblewrap, prlimit and python3), so it runs none"}
+    if _as_root() and not shutil.which("setpriv"):
+        return {"ok": False, "error": "this hub runs as root and has no setpriv to run other machines' code "
+                                      "as an ordinary user, so it runs none"}
     code = str(req.get("code") or "")
     if not code.strip():
         return {"ok": False, "error": "nothing to run"}
-    run = runs_dir() / _safe(label) / uuid.uuid4().hex[:12]
-    run.mkdir(parents=True, exist_ok=True)
+    run = _new_run(label)
     try:
         got, refused = unpack_into(run, req.get("files"))
         (run / SCRIPT).write_text(code)
@@ -374,8 +415,10 @@ async def answer(store, pdp, lk: dict, req: dict) -> dict:
         _QUEUED[label] = _QUEUED.get(label, 0) + 1
         try:
             async with slot:
+                argv = limited([*_drop(), *jail_argv(str(run), _python())])
+                _hand_over(run)              # after jail_argv, which may make the run's .tmp
                 proc = await asyncio.create_subprocess_exec(
-                    *limited(jail_argv(str(run), _python())), stdout=asyncio.subprocess.PIPE,
+                    *argv, stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.STDOUT, start_new_session=True)
                 try:
                     out, why = await asyncio.wait_for(_read_capped(proc, run), timeout=HUB_SECONDS)

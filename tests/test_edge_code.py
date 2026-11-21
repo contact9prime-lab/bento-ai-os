@@ -246,3 +246,38 @@ def test_one_machine_cannot_queue_without_limit(tmp_path, monkeypatch):
     monkeypatch.setitem(edgecode._QUEUED, "kitchen-pi", edgecode.HUB_QUEUE)
     out = asyncio.run(edgecode.answer(store, pdp, lk, {"code": "print(1)"}))
     assert not out["ok"] and "already here" in out["error"]
+
+
+@JAIL
+@pytest.mark.skipif(os.geteuid() != 0 or not shutil.which("setpriv"), reason="a root hub with setpriv")
+def test_a_root_hub_runs_the_code_as_nobodys_uid_and_leaves_nothing(tmp_path, monkeypatch):
+    """The kernel never applies RLIMIT_NPROC to the real uid 0, so a root hub runs another
+    machine's code as EDGE_UID, dropped before bwrap starts, in a folder of its own outside the
+    home (0700, which EDGE_UID could not reach to bind)."""
+    store, pdp, lk = _hub(tmp_path, monkeypatch)
+    before = set(Path("/var/tmp").glob("bento-edge-*"))
+    code = "import os\nopen('made.txt','w').write('x')\nprint('uid', os.getuid(), os.getgid())\n"
+    out = asyncio.run(edgecode.answer(store, pdp, lk, {"code": code,
+                                                       "files": [{"path": "in.txt", "data": "eA=="}]}))
+    assert out["ok"] and f"uid {edgecode.EDGE_UID} {edgecode.EDGE_UID}" in out["output"], out
+    assert [f["path"] for f in out["files"]] == ["made.txt"], "it could write its folder, and it came back"
+    assert set(Path("/var/tmp").glob("bento-edge-*")) == before, "the run's folder is gone"
+
+
+def test_a_root_hub_without_setpriv_runs_nothing(tmp_path, monkeypatch):
+    store, pdp, lk = _hub(tmp_path, monkeypatch)
+    monkeypatch.setattr(tools, "sandbox_mechanism", lambda: "bwrap")
+    monkeypatch.setattr(edgecode, "_python", lambda: "/usr/bin/python3")
+    monkeypatch.setattr(edgecode, "_as_root", lambda: True)
+    real = shutil.which
+    monkeypatch.setattr(edgecode.shutil, "which", lambda n: None if n == "setpriv" else real(n))
+    out = asyncio.run(edgecode.answer(store, pdp, lk, {"code": "print(1)"}))
+    assert not out["ok"] and "setpriv" in out["error"], out
+
+
+def test_only_a_root_hub_drops_its_uid(monkeypatch):
+    monkeypatch.setattr(edgecode, "_as_root", lambda: False)
+    assert edgecode._drop() == []
+    monkeypatch.setattr(edgecode, "_as_root", lambda: True)
+    d = edgecode._drop()
+    assert f"--reuid={edgecode.EDGE_UID}" in d and "--clear-groups" in d and "--inh-caps=-all" in d
