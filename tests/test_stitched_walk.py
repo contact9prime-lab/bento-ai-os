@@ -67,6 +67,24 @@ def test_a_workspace_that_is_not_there_is_not_created_or_shared(tmp_path):
     assert tools.folder_shares(cfgmod.load_config()) == []
 
 
+
+def test_a_workspace_whose_folder_is_missing_is_made_and_shared(tmp_path):
+    """Found by the walk itself: its machine named a workspace it never made, the first
+    account adopted it, and the person's agent was refused the note they approved. Nothing
+    made an account's workspace (ensure_dirs makes only the machine's), so it was never shared,
+    not even after a restart. The last folder is made when its parent is there."""
+    from agentos import config as cfgmod, users, tools
+    cfg = cfgmod.load_config()
+    cfg["workspace"] = str(tmp_path / "work")
+    cfgmod.save_config(cfg)
+    ada = users.create("ada", "ada-password-1", role="admin")
+    assert (tmp_path / "work").is_dir()
+    assert tools.folder_shares(cfgmod.load_config()) == [
+        {"path": os.path.realpath(tmp_path / "work"), "mode": "rw", "users": [ada["id"]]}]
+    with users.as_user(ada["id"]):
+        tb = tools.Toolbox(users.cfg_for(ada["id"]), users.store_for(ada["id"]))
+        assert asyncio.run(tb.write_file("notes/e2e-note.md", "hi")).startswith("wrote")
+
 def test_migrate_shares_an_adopted_workspace_once(tmp_path):
     """A machine that got accounts before this fix is repaired by `bento migrate`."""
     from agentos import config as cfgmod, migrate, users

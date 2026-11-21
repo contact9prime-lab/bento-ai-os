@@ -626,6 +626,10 @@ def _plain(content) -> str:
     return str(content or "")
 
 
+# The surfaces a person is in while the turn runs. A specialist the lead hands work to from one
+# of them asks that person when a step is gated; elsewhere nobody would see the card.
+PERSON_SURFACES = frozenset({"gui", "desktop", "chat", "omni", "kiosk", "telegram", "whatsapp"})
+
 class Agent:
     def __init__(self, cfg: dict, toolbox: Toolbox, model_id: str,
                  emit: Callable[[dict], Awaitable[None]],
@@ -1210,7 +1214,10 @@ class Agent:
             # a linked team's task handed on was otherwise answered by a specialist that
             # had never seen it came from outside. And the space it happens in: a Zero's
             # task on its hub is worked inside that Zero's section (zeromind.py).
-            args = {**args, "_taint": list(self.taint), "_space": self.space_id or ""}
+            args = {**args, "_taint": list(self.taint), "_space": self.space_id or "",
+                    # a person is in this turn, so the specialist's gated steps ask them, as a
+                    # department's do; a schedule, a linked team or the Arena has nobody to ask
+                    "_escalate": (self.surface or "gui") in PERSON_SURFACES}
         elif name in ("device_get", "device_set"):
             # who asked and why travel to the machine and into both ledgers: the agent's own
             # name and its own words, never the model's arguments. In a Zero's own chat the

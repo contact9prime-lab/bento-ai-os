@@ -246,3 +246,28 @@ def test_a_consent_in_progress_is_its_owners(two):
         assert not p.event.is_set()
     finally:
         mcp_oauth._pending.clear()
+
+
+def test_a_program_the_jail_would_hide_is_refused_in_a_sentence(two, monkeypatch, tmp_path):
+    """Found by the Zero-per-account live run: a program under /home (a checkout's venv at
+    /home/user while the server runs as root) is not the server's own home, so it started, and
+    died as bwrap's "execvp: No such file or directory". It is refused before it starts. The
+    jail blanks /tmp too, which is where pytest puts tmp_path."""
+    a, b = two
+    monkeypatch.setattr(toolsmod, "sandbox_mechanism", lambda: "bwrap")
+    exe = tmp_path / "venv" / "bin" / "python"
+    exe.parent.mkdir(parents=True)
+    exe.write_text("")
+    exe.chmod(0o755)
+    if not toolsmod.jail_hides(str(exe), [str(usersmod.home_for(b["id"]) / "workspace")]):
+        pytest.skip("this machine's temporary folder is not one the jail blanks")
+    with usersmod.as_user(b["id"]), pytest.raises(RuntimeError) as e:
+        mcp_client.stdio_launch({"command": str(exe), "args": "server.py"})
+    assert str(exe.parent.resolve()) in str(e.value) and "can't see" in str(e.value)
+
+
+def test_what_the_jail_shows_and_hides():
+    assert toolsmod.jail_hides("/home/someone/bin/x", ["/data/ws"])
+    assert toolsmod.jail_hides("/tmp/x/server", ["/data/ws"])
+    assert not toolsmod.jail_hides("/usr/bin/python3", ["/data/ws"])
+    assert not toolsmod.jail_hides("/home/ada/ws/tool", ["/home/ada/ws"]), "a bound folder is shown"

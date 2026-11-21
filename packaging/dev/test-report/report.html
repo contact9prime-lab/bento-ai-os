@@ -1,0 +1,395 @@
+<title>Bento Test Report</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: a lab run sheet. Summary strip, then areas as a ruled ledger, then the record of every test. */
+:root{
+  --bg:#f6f7f9; --panel:#ffffff; --ink:#151a22; --mute:#5b6473; --line:#dfe3ea; --soft:#eef1f5;
+  --accent:#4b4fd6; --pass:#1f8a5a; --fail:#c8372d; --skip:#b7791f; --pass-bg:#e4f4ec; --fail-bg:#fbe7e5; --skip-bg:#faf0dc;
+  --sans:"IBM Plex Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f1218; --panel:#161b23; --ink:#e7eaf0; --mute:#97a0af; --line:#262d39; --soft:#1c222c;
+  --accent:#8b8ff5; --pass:#4cc38a; --fail:#f2766b; --skip:#e3b04f; --pass-bg:#15302a; --fail-bg:#3a1c1b; --skip-bg:#33291a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1218; --panel:#161b23; --ink:#e7eaf0; --mute:#97a0af; --line:#262d39; --soft:#1c222c;
+  --accent:#8b8ff5; --pass:#4cc38a; --fail:#f2766b; --skip:#e3b04f; --pass-bg:#15302a; --fail-bg:#3a1c1b; --skip-bg:#33291a; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:15px/1.55 var(--sans);margin:0}
+.wrap{max-width:1180px;margin:0 auto;padding-block:28px 64px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:36px}
+h1,h2,h3{margin:0;text-wrap:balance;letter-spacing:-.01em}
+h1{font-size:clamp(26px,4vw,36px);font-weight:700}
+h2{font-size:21px;font-weight:600}
+h3{font-size:15px;font-weight:600}
+p{margin:0;max-width:72ch}
+.mut{color:var(--mute)}
+.mono{font-family:var(--mono);font-size:13px}
+.eyebrow{font:500 12px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+header{display:flex;flex-direction:column;gap:10px}
+.meta{display:flex;flex-wrap:wrap;gap:6px 18px;font:13px var(--mono);color:var(--mute)}
+.meta b{color:var(--ink);font-weight:500}
+section{display:flex;flex-direction:column;gap:14px;min-width:0}
+.strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.stat{background:var(--panel);padding:14px 16px;display:flex;flex-direction:column;gap:2px}
+.stat .n{font:600 26px/1.1 var(--mono);font-variant-numeric:tabular-nums}
+.stat .l{font-size:13px;color:var(--mute)}
+.stat.pass .n{color:var(--pass)} .stat.fail .n{color:var(--fail)} .stat.skip .n{color:var(--skip)}
+.verdict{display:flex;gap:12px;align-items:flex-start;padding:14px 16px;border-radius:10px;border:1px solid var(--line);background:var(--panel)}
+.verdict .dot{width:10px;height:10px;border-radius:50%;margin-top:7px;flex:0 0 auto}
+.tbl{max-width:100%;min-width:0;overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{font:500 12px var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--mute);background:var(--soft);white-space:nowrap}
+tr:last-child td{border-bottom:0}
+td.num,th.num{text-align:right;font-family:var(--mono);font-size:13px;white-space:nowrap}
+tr.click{cursor:pointer} tr.click:hover td{background:var(--soft)}
+tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.bar{display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--soft);min-width:90px}
+.bar i{display:block;height:100%}
+.bar .p{background:var(--pass)} .bar .f{background:var(--fail)} .bar .s{background:var(--skip)}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:999px;font:500 12px/1.5 var(--mono);white-space:nowrap}
+.chip.passed{background:var(--pass-bg);color:var(--pass)} .chip.failed,.chip.error{background:var(--fail-bg);color:var(--fail)}
+.chip.skipped{background:var(--skip-bg);color:var(--skip)} .chip.neutral{background:var(--soft);color:var(--mute)}
+.imp{border:1px solid var(--line);border-left:3px solid var(--pass);border-radius:8px;background:var(--panel);padding:12px 14px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.imp>*{min-width:0;overflow-wrap:anywhere}
+.imp .ba{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.imp .ba>div{border-radius:6px;padding:8px 10px;background:var(--soft);min-width:0}
+.imp .ba b{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);margin-bottom:2px}
+.imp .proof{font-size:13px}
+@media (max-width:560px){.imp .ba{grid-template-columns:1fr}}
+.fail-card{border:1px solid var(--line);border-left:3px solid var(--fail);border-radius:8px;background:var(--panel);padding:12px 14px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.fail-card.old{border-left-color:var(--skip)}
+.fail-card>*{min-width:0;overflow-wrap:anywhere}
+.fail-card pre{margin:0;font:12px/1.5 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;color:var(--mute);max-height:9em;overflow:auto}
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+input[type=search],select{font:14px var(--sans);color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-height:38px}
+input[type=search]{flex:1 1 260px;min-width:0}
+input:focus-visible,select:focus-visible,button:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button{font:500 13px var(--sans);color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:7px 12px;cursor:pointer;min-height:36px}
+button:hover{background:var(--soft)}
+.files{display:flex;flex-direction:column;gap:6px}
+details.file{border:1px solid var(--line);border-radius:8px;background:var(--panel);min-width:0}
+details.file>summary{list-style:none;cursor:pointer;padding:10px 12px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;align-items:start}
+details.file>summary::-webkit-details-marker{display:none}
+details.file>summary .fn{font:500 13px var(--mono);overflow-wrap:anywhere}
+details.file>summary .fn::before{content:"▸ ";color:var(--mute)}
+details.file[open]>summary .fn::before{content:"▾ "}
+details.file>summary .doc{grid-column:1/-1;font-size:13.5px;color:var(--mute)}
+details.file>summary .counts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.tests{border-top:1px solid var(--line);padding:6px 0}
+.trow{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;padding:5px 12px;align-items:baseline}
+.trow .w{font-size:13.5px;overflow-wrap:anywhere}
+.trow .w .nm{display:block;font:12px var(--mono);color:var(--mute);overflow-wrap:anywhere}
+.trow .t{font:12px var(--mono);color:var(--mute);white-space:nowrap}
+.trow .m{grid-column:2/-1;font:12px/1.5 var(--mono);color:var(--fail);white-space:pre-wrap;overflow-wrap:anywhere}
+.sdot{width:8px;height:8px;border-radius:50%;display:inline-block;transform:translateY(-1px)}
+.sdot.passed{background:var(--pass)} .sdot.failed,.sdot.error{background:var(--fail)} .sdot.skipped{background:var(--skip)}
+.more{padding:6px 12px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:12px}
+.card{border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:14px 16px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.card ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}
+.card.live{grid-column:1/-1}
+.live ul{padding-left:0;list-style:none;gap:12px}
+.live li{display:flex;flex-direction:column;gap:4px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+.live li:last-child{border-bottom:0}
+.live li .p{font:12.5px var(--mono);overflow-wrap:anywhere}
+.live pre{margin:6px 0 0;font:11.5px/1.5 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;color:var(--mute);max-height:14em;overflow:auto;background:var(--soft);border-radius:6px;padding:8px}
+.live summary{cursor:pointer;font-size:13px}
+.tags{display:flex;flex-wrap:wrap;gap:6px}
+code{font:12.5px var(--mono);background:var(--soft);padding:1px 5px;border-radius:4px;overflow-wrap:anywhere}
+pre.cmd{margin:0;font:12.5px/1.6 var(--mono);background:var(--soft);border-radius:8px;padding:10px 12px;overflow-x:auto}
+.empty{padding:18px;color:var(--mute);text-align:center}
+@media (max-width:560px){ .strip .stat:last-child:nth-child(odd){grid-column:1/-1} .trow{grid-template-columns:auto minmax(0,1fr)} .trow .t{grid-column:2} details.file>summary{grid-template-columns:minmax(0,1fr)} details.file>summary .counts{justify-content:flex-start} }
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow">Test run</span>
+    <h1>Bento Test Report</h1>
+    <p class="mut" id="lede">Every test in Bento's suite, what it checks, how it ran, and why anything failed.</p>
+    <div class="meta" id="meta"></div>
+  </header>
+
+  <section aria-labelledby="h-sum">
+    <h2 id="h-sum">Summary</h2>
+    <div class="strip" id="strip"><div class="stat"><span class="n">…</span><span class="l">loading the run</span></div></div>
+    <div class="verdict" id="verdict" hidden></div>
+  </section>
+
+  <section aria-labelledby="h-impact" id="impact-sec" hidden>
+    <h2 id="h-impact">What the fixes changed</h2>
+    <p class="mut" id="impact-note"></p>
+    <div class="strip" id="impact-strip"></div>
+    <div class="files" id="impact" style="margin-top:14px"></div>
+  </section>
+
+  <section aria-labelledby="h-find" id="findings-sec" hidden>
+    <h2 id="h-find">Findings</h2>
+    <p class="mut">What building this report turned up, and where each one stands.</p>
+    <div class="files" id="findings"></div>
+  </section>
+
+  <section aria-labelledby="h-areas">
+    <h2 id="h-areas">By area</h2>
+    <p class="mut">Each file is placed in the product area it defends. Pick a row to list its tests below.</p>
+    <div class="tbl"><table id="areas">
+      <thead><tr><th>Area</th><th class="num">Files</th><th class="num">Tests</th><th class="num">Passed</th><th class="num">Failed</th><th class="num">Skipped</th><th>Result</th><th class="num">Time</th></tr></thead>
+      <tbody></tbody></table></div>
+  </section>
+
+  <section aria-labelledby="h-fail">
+    <h2 id="h-fail">What failed</h2>
+    <p class="mut" id="failnote"></p>
+    <div class="files" id="fails"></div>
+  </section>
+
+  <section aria-labelledby="h-all">
+    <h2 id="h-all">Every test</h2>
+    <p class="mut">Each file says in its own words what it defends; open it for every test, its result and its time.</p>
+    <div class="controls">
+      <label class="mut" for="q" hidden>Search</label>
+      <input type="search" id="q" placeholder="Search tests, files or what they check" autocomplete="off">
+      <select id="area" aria-label="Area"><option value="">All areas</option></select>
+      <select id="status" aria-label="Result"><option value="">Any result</option><option value="failed">Failed</option><option value="skipped">Skipped</option><option value="passed">Passed</option></select>
+      <button id="expand" type="button">Open all</button>
+    </div>
+    <p class="mut mono" id="count"></p>
+    <div class="files" id="list"></div>
+  </section>
+
+  <section aria-labelledby="h-beyond">
+    <h2 id="h-beyond">Beyond the suite</h2>
+    <div class="grid2">
+      <div class="card live">
+        <h3>Live runs, by hand</h3>
+        <p class="mut">Real servers on throwaway homes, real ssh, real browsers and stand-in Pis. The suite doesn't run these; each one is started on purpose.</p>
+        <p class="mut" id="live-note"></p>
+        <ul id="live"></ul>
+      </div>
+      <div class="card">
+        <h3>What no test here can see</h3>
+        <ul>
+          <li>A real Raspberry Pi, its camera, pins and screen. Stand-ins and ESP32 simulators take their place.</li>
+          <li>Real Claude Code, Gemini CLI and Codex. The suite uses stand-in CLIs; live runs measured the real ones.</li>
+          <li>Real Telegram, WhatsApp, Google and Microsoft. Fakes stand in for each API.</li>
+          <li>A real Wayland session. SUI is checked with <code>sway-testbed</code>, by hand.</li>
+          <li>Paid model providers. A scripted model answers every turn.</li>
+        </ul>
+        <h3>Modules no test names</h3>
+        <p class="mut" id="untested-note"></p>
+        <div class="tags" id="untested"></div>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-slow">
+    <h2 id="h-slow">Slowest tests</h2>
+    <div class="tbl"><table id="slow"><thead><tr><th>Test</th><th>Area</th><th class="num">Seconds</th></tr></thead><tbody></tbody></table></div>
+  </section>
+
+  <section aria-labelledby="h-run">
+    <h2 id="h-run">Run it again</h2>
+    <p class="mut">The report is built from the suite's own record, so anyone can rebuild it on their machine.</p>
+    <pre class="cmd">uv sync
+.venv/bin/python -m pytest -q -p no:cacheprovider tests --junitxml=out/junit.xml -o junit_family=xunit2
+python3 packaging/dev/test-report/build.py out/junit.xml out/report.json</pre>
+  </section>
+</div>
+
+<script>
+(function(){
+  var R=null, T=[], openAll=false, LIMIT=60;
+  function el(tag,cls,text){var e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e}
+  function fmt(n){return Number(n).toLocaleString('en-US')}
+  function secs(s){s=Number(s);return s>=90?(Math.round(s/6)/10)+' min':(s>=10?Math.round(s):s.toFixed(1))+' s'}
+  function chip(status,text){return el('span','chip '+status,text)}
+  function bar(p,f,s){var t=p+f+s||1,b=el('div','bar');[['p',p],['f',f],['s',s]].forEach(function(x){if(!x[1])return;var i=el('i',x[0]);i.style.width=(100*x[1]/t)+'%';b.appendChild(i)});b.setAttribute('role','img');b.setAttribute('aria-label',p+' passed, '+f+' failed, '+s+' skipped');return b}
+
+  function paintHead(){
+    var m=document.getElementById('meta');m.replaceChildren();
+    [['Version',R.version],['Commit',R.commit],['Branch',R.branch],['Python',R.python],['Ran',R.ran_at],['Built',R.made_at]].forEach(function(x){
+      if(!x[1])return;var s=el('span');s.append(x[0]+' ',el('b','',x[1]));m.appendChild(s)});
+    var t=R.totals,failed=t.failed+t.error,code=R.failures.filter(function(f){return f.kind==='code'||f.kind==='unknown'}).length;
+    var strip=document.getElementById('strip');strip.replaceChildren();
+    [['',fmt(t.count),'tests in '+t.files+' files'],['pass',fmt(t.passed),'passed'],[failed?'fail':'',fmt(failed),'failed'],
+     ['skip',fmt(t.skipped),'skipped'],['',secs(t.time),'of test time']].forEach(function(x){
+      var d=el('div','stat '+x[0]);d.append(el('span','n',x[1]),el('span','l',x[2]));strip.appendChild(d)});
+    var v=document.getElementById('verdict');v.hidden=false;v.replaceChildren();
+    var dot=el('span','dot');dot.style.background=code?'var(--fail)':(failed?'var(--skip)':'var(--pass)');
+    var txt=el('div');
+    var pct=(100*t.passed/Math.max(1,t.count-t.skipped)).toFixed(2).replace(/\.00$/,'');
+    txt.append(el('b','',code?(code+' failure'+(code>1?'s':'')+' to fix in the code'):(failed?'No failure points at the code':'Everything passed')),
+      el('div','mut',pct+'% of the tests that ran passed. '+(!failed?'No test failed.':
+        (failed===code?(failed===1?'The one failure is in the code, and says why below.':'Every failure is in the code, and each one says why below.'):
+         (failed-code)+' of the '+failed+' failures come from the machine the suite ran on, not from Bento; each one says why below.'))));
+    if(R.live&&R.live.length){var lc=liveCounts();
+      txt.append(el('div','mut','Live runs: '+lc.passed+' passed, '+lc.failed+' failed, '+lc.notrun+' could not run on this machine.'))}
+    v.append(dot,txt);
+  }
+
+  function paintAreas(){
+    var tb=document.querySelector('#areas tbody');tb.replaceChildren();
+    var sel=document.getElementById('area');
+    R.areas.forEach(function(a){
+      var tr=el('tr','click');tr.tabIndex=0;
+      tr.append(el('td','',a.area),el('td','num',fmt(a.files)),el('td','num',fmt(a.count)),el('td','num',fmt(a.passed)),
+        el('td','num',fmt(a.failed+a.error)),el('td','num',fmt(a.skipped)));
+      var c=el('td');c.appendChild(bar(a.passed,a.failed+a.error,a.skipped));tr.appendChild(c);
+      tr.appendChild(el('td','num',secs(a.time)));
+      var go=function(){sel.value=a.area;render();document.getElementById('h-all').scrollIntoView({block:'start'})};
+      tr.onclick=go;tr.onkeydown=function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();go()}};
+      tb.appendChild(tr);
+      var o=el('option','',a.area);o.value=a.area;sel.appendChild(o);
+    });
+  }
+
+  function paintImpact(){
+    var I=R.impact||{},b=I.before;if(!b||!(I.fixes||[]).length)return;
+    document.getElementById('impact-sec').hidden=false;
+    var t=R.totals,lc=liveCounts();
+    document.getElementById('impact-note').textContent=b.label+' compared with this run, '+(R.ran_at||'')+'.'+(b.note?' '+b.note:'');
+    var strip=document.getElementById('impact-strip');strip.replaceChildren();
+    [[b.failed,t.failed+t.error,'suite tests failing'],[b.live_failed,lc.failed,'live runs failing'],
+     [b.tests,t.count,'tests in the suite']].forEach(function(x){
+      var better=x[2]==='tests in the suite'?x[1]>=x[0]:x[1]<=x[0];
+      var d=el('div','stat '+(better?'pass':'fail'));
+      d.append(el('span','n',fmt(x[0])+' → '+fmt(x[1])),el('span','l',x[2]));strip.appendChild(d)});
+    var box=document.getElementById('impact');box.replaceChildren();
+    I.fixes.forEach(function(f){
+      var c=el('div','imp'),ba=el('div','ba'),bb=el('div'),aa=el('div');
+      bb.append(el('b','','Before'),document.createTextNode(f.before||''));
+      aa.append(el('b','','Now'),document.createTextNode(f.after||''));
+      ba.append(bb,aa);
+      c.append(el('b','',f.title),el('div','mut',f.who||''),ba);
+      if(f.proof){var p=el('div','mut proof');p.append(el('b','','Checked by: '),document.createTextNode(f.proof));c.appendChild(p)}
+      box.appendChild(c)});
+  }
+
+  function paintFindings(){
+    var f=R.findings||[];if(!f.length)return;
+    document.getElementById('findings-sec').hidden=false;
+    var box=document.getElementById('findings');box.replaceChildren();
+    var STATE={open:['failed','open'],fixed:['passed','fixed here'],gap:['skipped','gap'],note:['neutral','note']};
+    f.forEach(function(x){
+      var k=STATE[x.state]||STATE.note,c=el('div','fail-card'+(x.state==='open'?'':' old'));
+      if(x.state==='fixed')c.style.borderLeftColor='var(--pass)';
+      var top=el('div','controls');top.append(chip(k[0],k[1]),el('span','mut',x.area||''));
+      c.append(top,el('b','',x.title),el('div','',x.detail||''));
+      if(x.next){var n=el('div','mut');n.append(el('b','','Next: '),document.createTextNode(x.next));c.appendChild(n)}
+      box.appendChild(c);
+    });
+  }
+
+  function paintFails(){
+    var box=document.getElementById('fails');box.replaceChildren();
+    var note=document.getElementById('failnote');
+    if(!R.failures.length){note.textContent='Nothing failed.';return}
+    var env=R.failures.filter(function(f){return f.kind==='environment'||f.kind==='flaky'}).length;
+    note.textContent=R.failures.length+' failed. '+env+' come from where the suite ran (a missing network, a container limit, a race between tests); the rest point at the code.';
+    var KIND={environment:['skipped','this machine'],flaky:['skipped','order-dependent'],code:['failed','in the code'],unknown:['failed','not yet explained']};
+    R.failures.forEach(function(f){
+      var k=KIND[f.kind]||KIND.unknown;
+      var c=el('div','fail-card'+(k[0]==='skipped'?' old':''));
+      var top=el('div','controls');
+      top.append(chip(f.status,f.status),chip(k[0],k[1]),el('span','mut',f.area));
+      c.append(top,el('div','mono',f.id),el('div','',f.what));
+      if(f.cause){var why=el('div');why.append(el('b','','Why: '),document.createTextNode(f.cause));c.appendChild(why)}
+      c.appendChild(el('pre','',f.msg||'(no message)'));
+      box.appendChild(c);
+    });
+  }
+
+  function matches(t,q,a,s){
+    if(a&&t.area!==a)return false;
+    if(s&&!(s==='failed'?(t.status==='failed'||t.status==='error'):t.status===s))return false;
+    if(!q)return true;
+    return (t.name+' '+t.file+' '+t.what+' '+(t._doc||'')).toLowerCase().indexOf(q)>=0;
+  }
+
+  function render(){
+    var q=document.getElementById('q').value.trim().toLowerCase(),a=document.getElementById('area').value,s=document.getElementById('status').value;
+    var list=document.getElementById('list');list.replaceChildren();
+    var groups={},order=[],n=0;
+    T.forEach(function(t){if(!matches(t,q,a,s))return;n++;if(!groups[t.file]){groups[t.file]=[];order.push(t.file)}groups[t.file].push(t)});
+    document.getElementById('count').textContent=fmt(n)+' test'+(n===1?'':'s')+' in '+order.length+' file'+(order.length===1?'':'s');
+    if(!n){list.appendChild(el('div','empty','No test matches. Clear the search or pick another area.'));return}
+    var info={};R.files.forEach(function(f){info[f.file]=f});
+    order.forEach(function(file){
+      var rows=groups[file],f=info[file]||{},d=el('details','file');
+      var sm=el('summary');
+      var cnt=el('span','counts');
+      var p=rows.filter(function(r){return r.status==='passed'}).length,fl=rows.filter(function(r){return r.status==='failed'||r.status==='error'}).length,sk=rows.length-p-fl;
+      cnt.appendChild(chip('neutral',rows.length+' test'+(rows.length>1?'s':'')));
+      if(fl)cnt.appendChild(chip('failed',fl+' failed'));if(sk)cnt.appendChild(chip('skipped',sk+' skipped'));
+      if(f.node)cnt.appendChild(chip('neutral','runs Node'));if(f.browser)cnt.appendChild(chip('neutral','real browser'));
+      sm.append(el('span','fn','tests/'+file+'.py'),cnt);
+      if(f.doc)sm.appendChild(el('span','doc',f.doc));
+      d.appendChild(sm);
+      var filled=false;
+      function fill(){
+        if(filled)return;filled=true;
+        var box=el('div','tests'),shown=0;
+        function add(upto){
+          for(;shown<Math.min(upto,rows.length);shown++){
+            var r=rows[shown],row=el('div','trow'),w=el('div','w');
+            var dot=el('span','sdot '+r.status);dot.title=r.status;
+            w.append(document.createTextNode(r.what),el('span','nm',r.name));
+            row.append(dot,w,el('span','t',r.status==='skipped'?'skipped':secs(r.time)));
+            if(r.msg&&r.status!=='passed')row.appendChild(el('div','m',r.msg));
+            box.appendChild(row);
+          }
+          var old=box.querySelector('.more');if(old)old.remove();
+          if(shown<rows.length){var mb=el('div','more'),b=el('button','','Show '+Math.min(LIMIT*5,rows.length-shown)+' more of '+(rows.length-shown));b.type='button';b.onclick=function(){add(shown+LIMIT*5)};mb.appendChild(b);box.appendChild(mb)}
+        }
+        add(LIMIT);d.appendChild(box);
+      }
+      d.addEventListener('toggle',function(){if(d.open)fill()});
+      if(openAll||(fl&&s==='failed')){d.open=true;fill()}
+      list.appendChild(d);
+    });
+  }
+
+  function liveCounts(){var c={passed:0,failed:0,notrun:0};(R.live||[]).forEach(function(l){
+      if(l.status==='passed')c.passed++;else if(l.status==='failed')c.failed++;else c.notrun++});return c}
+
+  function paintBeyond(){
+    var ul=document.getElementById('live');ul.replaceChildren();
+    var lc=liveCounts(),lnote=document.getElementById('live-note');
+    if(lnote)lnote.textContent=(lc.passed+lc.failed)?
+      (lc.passed+' passed and '+lc.failed+' failed of the '+R.live.length+' runs. '+(lc.notrun?lc.notrun+' could not run on this machine, and say why.':'')):
+      'None was run for this report.';
+    var rank={failed:0,passed:1};
+    R.live.slice().sort(function(a,b){var x=(rank[a.status]!=null?rank[a.status]:2),y=(rank[b.status]!=null?rank[b.status]:2);return x-y||(a.path<b.path?-1:1)}).forEach(function(l){
+      var li=el('li'),top=el('div','controls');
+      var st=l.status||'not run',cls=st==='passed'?'passed':st==='failed'?'failed':'neutral';
+      top.append(chip(cls,st),el('span','p',l.path));
+      if(l.seconds)top.append(el('span','mut mono',secs(l.seconds)));
+      li.appendChild(top);
+      if(l.doc)li.append(el('div','mut',l.doc.replace(/`/g,'')));
+      if(l.why)li.append(el('div','',(st==='not run'?'Not run: ':'Why: ')+l.why));
+      if(l.tail){var d=el('details'),sm=el('summary','mut','Last lines of its output');d.append(sm,el('pre','',l.tail));li.appendChild(d)}
+      ul.appendChild(li)});
+    var u=document.getElementById('untested');u.replaceChildren();
+    R.untested.forEach(function(m){u.appendChild(el('code','',m))});
+    document.getElementById('untested-note').textContent=R.untested.length?
+      ('No test file names these '+R.untested.length+' modules. Some are reached through others; none is checked by name.'):'Every module is named by at least one test.';
+    var tb=document.querySelector('#slow tbody');tb.replaceChildren();
+    R.slowest.forEach(function(r){var tr=el('tr'),c=el('td');c.append(el('div','',r.what),el('div','mono mut',r.id));tr.append(c,el('td','',r.area),el('td','num',Number(r.time).toFixed(1)));tb.appendChild(tr)});
+  }
+
+  var timer;
+  ['q','area','status'].forEach(function(id){document.getElementById(id).addEventListener(id==='q'?'input':'change',function(){clearTimeout(timer);timer=setTimeout(render,id==='q'?160:0)})});
+  document.getElementById('expand').onclick=function(){openAll=!openAll;this.textContent=openAll?'Close all':'Open all';render()};
+
+  Promise.all([fetch('report.json').then(function(r){return r.json()}),fetch('tests.json').then(function(r){return r.json()})]).then(function(x){
+    R=x[0];T=x[1];
+    var docs={};R.files.forEach(function(f){docs[f.file]=f.doc});T.forEach(function(t){t._doc=docs[t.file]||''});
+    paintHead();paintImpact();paintFindings();paintAreas();paintFails();render();paintBeyond();
+  }).catch(function(e){
+    document.getElementById('strip').replaceChildren(el('div','stat fail',"The report's data didn't load: "+e.message));
+  });
+})();
+</script>

@@ -139,6 +139,9 @@ def test_tls_is_still_checked_against_the_name(monkeypatch):
         async def aclose(self):
             pass
     monkeypatch.setattr(netguard, "_resolve", lambda h, p: ["93.184.216.34"])
+    # No proxy here: with HTTPS_PROXY set (a cloud session, a company network) the request takes the
+    # proxy's road, which the two tests below pin, and this one would reach the real network.
+    monkeypatch.setattr(netguard, "_proxy_for", lambda scheme: "")
 
     async def go():
         t = netguard.GuardTransport()
@@ -274,3 +277,54 @@ def test_an_account_that_is_not_an_admin_gets_the_guard_on_an_mcp_address(tmp_pa
     finally:
         usersmod.reset_caches()
         usersmod.set_current("")
+
+
+class _Proxied:
+    """Stands in for the transport that talks to a proxy, and records what it was handed."""
+    def __init__(self):
+        self.seen = []
+
+    async def handle_async_request(self, request):
+        self.seen.append(request.url.host)
+        return httpx.Response(200, content=b"via proxy")
+
+    async def aclose(self):
+        pass
+
+
+def _through_proxy(monkeypatch, resolve):
+    monkeypatch.setattr(netguard, "_proxy_for", lambda scheme: "http://proxy.invalid:3128")
+    monkeypatch.setattr(netguard.urllib.request, "proxy_bypass", lambda host: False)
+    monkeypatch.setattr(netguard, "_resolve", resolve)
+    t = netguard.GuardTransport()
+    seen = _Proxied()
+    t._proxied = {"http": seen, "https": seen}
+    return t, seen
+
+
+def test_a_proxy_never_carries_an_address_the_guard_refuses(monkeypatch):
+    """With a proxy set, the guard still judges what it can resolve. A refusal (a Refused, not a
+    ConnectError) must not be swallowed on the way to the proxy, or every proxied machine would
+    let a page reach 169.254.169.254 and the server's own routes."""
+    t, seen = _through_proxy(monkeypatch, lambda h, p: ["169.254.169.254"])
+
+    async def go():
+        async with httpx.AsyncClient(transport=t) as c:
+            return await c.get("http://metadata.example/latest")
+    with pytest.raises(netguard.Refused):
+        run(go())
+    assert seen.seen == [], "the proxy was never asked"
+
+
+def test_a_name_only_the_proxy_can_resolve_goes_to_the_proxy(monkeypatch):
+    """A proxy resolves for itself, so a name this machine cannot resolve is handed to it."""
+    def nowhere(h, p):
+        raise OSError("no resolver here")
+    t, seen = _through_proxy(monkeypatch, nowhere)
+
+    async def go():
+        async with httpx.AsyncClient(transport=t) as c:
+            return await c.get("https://example.org/page")
+    assert run(go()).text == "via proxy"
+    assert seen.seen == ["example.org"]
+

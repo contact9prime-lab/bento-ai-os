@@ -1,0 +1,155 @@
+{
+ "failures": {
+  "tests/test_net_guard.py::test_tls_is_still_checked_against_the_name": {
+   "kind": "environment",
+   "cause": "With HTTPS_PROXY set the guard takes the proxy's road, so this test reached the real network and the session's proxy refused it. Fixed in this change: the test sets no proxy, and two new tests pin the proxy road."
+  },
+  "tests/test_peercheck.py::test_a_child_that_hides_its_fds_is_still_ours": {
+   "kind": "environment",
+   "cause": "The suite ran as root, and root can read a process's fd table even after PR_SET_DUMPABLE 0, so the test's setup check failed. Fixed in this change: the setup check applies to other users only; the verdict is asserted for everyone. 13/13 as root and as nobody."
+  },
+  "test_device_install": {
+   "kind": "environment",
+   "cause": "No OpenSSH in the container, and these tests called ssh-keygen without the guard their neighbours have. Fixed: they skip with the same reason, and pass with OpenSSH installed."
+  },
+  "test_network_install": {
+   "kind": "environment",
+   "cause": "No OpenSSH in the container, and these tests called ssh-keygen without a guard. Fixed: they skip with the same reason, and pass with OpenSSH installed."
+  }
+ },
+ "findings": [
+  {
+   "title": "A hub running as root has no process limit for another machine's code",
+   "state": "fixed",
+   "area": "Devices, network and Zeros",
+   "detail": "Code a Zero sends to its hub (edge_run) runs in bubblewrap with prlimit --nproc. Linux never applies RLIMIT_NPROC to the real uid 0, and bwrap's --uid changes only the uid inside its namespace, so on a hub running as root (Bento's Docker image) a fork loop ran to 60 children under a limit of 20. A root hub now drops to an unprivileged uid with setpriv before bwrap starts, in a private folder under /var/tmp handed to that uid, and refuses with no setpriv. test_edge_code: 16 passed as root, 15 passed and 1 skipped as nobody."
+  },
+  {
+   "title": "The network guard's proxy road had no test",
+   "state": "fixed",
+   "area": "Security and the gate",
+   "detail": "netguard sends a request through HTTPS_PROXY when one is set and judges the address first. Nothing tested that road, and the one TLS test silently used it whenever a proxy was set. Two tests now pin it: an address the guard refuses (169.254.169.254) is refused and the proxy is never asked; a name only the proxy can resolve is handed to it."
+  },
+  {
+   "title": "An account's MCP server outside its own home but under /home fails with bwrap's words",
+   "state": "fixed",
+   "area": "Accounts, spaces and remote access",
+   "detail": "Since 2026-11-07 an account's stdio MCP server runs in the account's jail, which blanks every home, /tmp and /run. A program anywhere the jail hides (a checkout under /home while the server runs as root) started and died as \"bwrap: execvp …: No such file or directory\". It is now refused before it starts, naming the folder the account can't see (tools.jail_hides)."
+  },
+  {
+   "title": "A Zero whose account never chose a brain gets a raw connection error",
+   "state": "fixed",
+   "area": "Devices, network and Zeros",
+   "detail": "A second account that skipped its own setup has no brain, so its lead fell through to a local model nobody runs, and the Zero read \"[error] ConnectError: All connection attempts failed\". The hub now answers in a sentence saying where to choose one, for a Zero's chat and for a linked team's question alike."
+  },
+  {
+   "title": "Six live runs had gone stale",
+   "state": "fixed",
+   "area": "Coverage",
+   "detail": "Each still described the product as it was when it was written. provision-e2e/run.py expected a keyed Pi to stay waiting, but the hub now sets up the machines it hears at once. stitch-e2e/walk.py named a workspace it never made, so after the 2026-10-11 change that shares only an existing folder, the approved note was refused. zero_accounts_run.py's stand-in MCP server could not start inside the account jail added on 2026-11-07; it did not let an admin open the link port, which a non-admin's Zero has needed since then; its second account had no brain; and it looked for the Zero's chat by the old linked-team title. zero_run.py, device_run.py and zero_accounts_run.py stood the hub and the Zero on one address, where both bind the discovery port with SO_REUSEPORT and Linux hands each datagram to one of them by a hash, so whether the hub heard the Zero was a coin flip. Each Zero now has its own loopback address (AGENTOS_LINK_FROM), as the warehouse demo's zones do. All of these pass now, except device-get-set, which needs a CPU temperature sensor this container lacks."
+  },
+  {
+   "title": "A workspace missing when the first account is made stays refused until the next start",
+   "state": "fixed",
+   "area": "Accounts, spaces and remote access",
+   "detail": "Worse than first read: nothing made an account's workspace (config.ensure_dirs makes only the machine's), so a workspace that did not exist was never shared, not even after a restart, and the person's agent was refused the write they approved. users.share_own_workspace now makes the last folder when its parent exists (never its parents), and shares it."
+  },
+  {
+   "title": "The install run ate the machine from a shallow checkout",
+   "state": "fixed",
+   "area": "Devices, network and Zeros",
+   "detail": "install_over_ssh.py serves the installer a bare copy of this checkout, and the installer clones it with --filter=blob:none. From a shallow checkout that fetch never finished: 722 git pack-objects took a 16 GB box down. The run now refuses a shallow source in a sentence. Unshallowed, it passes in 55 s."
+  },
+  {
+   "title": "Seven tests needed ssh-keygen and did not say so",
+   "state": "fixed",
+   "area": "Devices, network and Zeros",
+   "detail": "test_device_install and test_network_install crashed with FileNotFoundError on a machine without OpenSSH while six tests beside them skipped with a reason. They skip with the same reason now. With OpenSSH installed all 67 pass."
+  },
+  {
+   "title": "A peercheck test assumed the suite was not root",
+   "state": "fixed",
+   "area": "Security and the gate",
+   "detail": "Its setup check (a hidden fd table cannot be read) is false for root. The verdict it protects is still asserted for every user."
+  },
+  {
+   "title": "A specialist the lead hands work to in chat cannot ask you anything",
+   "state": "fixed",
+   "area": "Agents and teams",
+   "detail": "Measured: from a chat, delegate ran the specialist with the headless approver, which says yes only at full autonomy and never to what must be a person's. At the default autonomy its write was refused with nobody asked, and request_capability could never reach anybody. From a surface a person is in, its gated steps now go to that chat's person through the approvals broker, as a department's do. A schedule, a linked team or the Arena still asks nobody, and the model cannot claim otherwise."
+  },
+  {
+   "title": "Three modules no test imports by name",
+   "state": "fixed",
+   "area": "Coverage",
+   "detail": "clitui, sessiondoctor and trainforge now have tests of their own (tests/test_small_modules.py): TrainForge is found where it lives and is reached and started on loopback only, a doctor probe that crashes or hangs reports it, and the plain terminal client draws for whatever it is attached to."
+  },
+  {
+   "title": "17 installer checks run only on a Mac",
+   "state": "note",
+   "area": "Updates, backup, standby and cloud",
+   "detail": "test_packaging_shell checks install.sh against bash 3.2, the version macOS ships. They skip on Linux by design."
+  }
+ ],
+ "impact": {
+  "before": {
+   "label": "First runs, 20 Nov 2026",
+   "tests": 6647,
+   "failed": 9,
+   "live_failed": 6,
+   "live_failed_names": [
+    "stitch-walk",
+    "provision",
+    "zero",
+    "zero-accounts",
+    "device-get-set",
+    "install-over-ssh"
+   ],
+   "note": "All 9 of those first failures came from this container (no OpenSSH, running as root, a proxy) and were fixed in the tests. The gap in the code, the root process limit, showed in the next run."
+  },
+  "fixes": [
+   {
+    "title": "A hub's process limit holds when it runs as root",
+    "who": "Anyone whose hub runs in Docker or on a cloud host, with Zeros that send it code.",
+    "before": "Code a Zero sent could start processes without limit: a fork loop reached 60 under a limit of 20.",
+    "after": "It runs as an unprivileged user and stops at the limit. A root hub without setpriv runs nothing and says why.",
+    "proof": "test_a_run_cannot_fork_without_limit failed as root and passes now; 3 new tests; edge-code live run passes."
+   },
+   {
+    "title": "A specialist working for you in a chat can ask you",
+    "who": "Everyone who hands work to a specialist from a chat, at the default autonomy.",
+    "before": "Its file writes were refused with nobody asked, and its requests for a missing ability reached nobody.",
+    "after": "The approval card comes to you in that chat, or on your phone. Schedules and linked teams still ask nobody.",
+    "proof": "5 new tests in test_chat_delegate_asks; the stitched walk passes."
+   },
+   {
+    "title": "An MCP server the account can't reach is refused in words",
+    "who": "Accounts that add an MCP server installed under /home or /tmp.",
+    "before": "It failed with bubblewrap's \"execvp: No such file or directory\".",
+    "after": "It's refused before it starts, with a sentence naming the folder the account can't see.",
+    "proof": "2 new tests in test_mcp_accounts; zero-accounts live run passes."
+   },
+   {
+    "title": "The first account can write to its own workspace",
+    "who": "The first account on a machine whose workspace folder didn't exist yet.",
+    "before": "Its agent was refused writing there after you said yes, even after a restart.",
+    "after": "The folder is made and shared with that account.",
+    "proof": "1 new test; the stitched walk passes without making the folder for it."
+   },
+   {
+    "title": "A Zero is told when its account has no brain",
+    "who": "Second accounts on a hub, and their Zeros or linked teams.",
+    "before": "The Zero's screen showed \"[error] ConnectError: All connection attempts failed\".",
+    "after": "It says the account has no brain chosen and where to choose one.",
+    "proof": "1 new test in test_zero_chat; zero-accounts live run passes."
+   },
+   {
+    "title": "Every module has a test that names it",
+    "who": "People changing Bento.",
+    "before": "clitui, sessiondoctor and trainforge had no test of their own.",
+    "after": "11 tests cover them: TrainForge stays on loopback, a crashed doctor probe is reported, the terminal client draws safely.",
+    "proof": "tests/test_small_modules.py."
+   }
+  ]
+ }
+}

@@ -256,6 +256,7 @@ def test_only_a_machine_on_this_network_and_a_real_user_name(fake_ssh, monkeypat
     assert not (fake_ssh / "calls.jsonl").exists()
 
 
+@pytest.mark.skipif(not shutil.which("ssh-keygen"), reason="needs ssh-keygen")
 def test_install_runs_the_plan_lets_the_key_in_and_then_needs_no_password(fake_ssh):
     pub = remoteinstall.ensure_key("leader")
     assert pub.startswith("ssh-ed25519 ")
@@ -482,6 +483,7 @@ def _pin(host, port=22):
                   f"{(d.parent / 'hostkey.pub').read_text().split(' ')[1]}\n")
 
 
+@pytest.mark.skipif(not shutil.which("ssh-keygen"), reason="needs ssh-keygen")
 def test_a_reformatted_machine_says_its_key_changed_and_both_fingerprints(fake_ssh):
     """Reported with a screenshot after a Pi was reformatted: the refusal named a file the
     person cannot reach. It is KeyChanged now, with the old and new fingerprints."""
@@ -494,6 +496,7 @@ def test_a_reformatted_machine_says_its_key_changed_and_both_fingerprints(fake_s
     assert f["host"] == "127.0.0.2" and f["port"] == 22 and f["old"].startswith("SHA256:")
 
 
+@pytest.mark.skipif(not shutil.which("ssh-keygen"), reason="needs ssh-keygen")
 def test_forgetting_the_old_key_lets_the_next_login_keep_the_new_one(fake_ssh, monkeypatch):
     _pin("127.0.0.2")
     old = remoteinstall.fingerprint("127.0.0.2")

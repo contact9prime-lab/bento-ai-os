@@ -1591,6 +1591,11 @@ an `mcp__bento__*` tool event, because the gate already emits one. `delegate`/`h
 `toolscope.CORE`, so a narrowed set never names people the lead cannot reach. A scheduled
 turn gets no door: nobody is there to approve a hand-over.
 
+**A chat's own specialist asks the chat's person** (`_escalate`, set by the loop from `agent.PERSON_SURFACES`;
+`tests/test_chat_delegate_asks.py`). It ran with the headless approver, so at the default autonomy its write was
+refused with nobody asked, and `request_capability` could never reach anybody. A schedule, a linked team or the
+Arena still asks nobody.
+
 ## Finding what a job needs: here first, then the open, and the person says yes
 
 `find_tools` (tools.py) is ONE answer to "what can do this here": tools ready now, skills,
@@ -2595,6 +2600,13 @@ most likely to quietly break. Full audit and rationale in `docs/design/tenant-is
 What AgentOS **depends on**, it is effectively distributing, and that set must be
 permissively licensed (MIT/Apache/BSD/ISC). `packaging/audit-licenses.sh` gates
 it and must stay green.
+
+**Bundled data counts too, and the audit doesn't see it**, so it is listed by hand in
+`THIRD_PARTY_NOTICES.md` → Bundled data, with its licence text beside the data. MITRE ATT&CK
+(the ethics library's source) is accepted as permissive: its terms allow commercial use,
+copying and changes with MITRE's notice kept, and there is no copyleft (the owner's call,
+2026-11). Its "Enterprise" is the name of a matrix, not a paid edition. A new bundled data
+set with any other terms is asked about first.
 
 Anything copyleft that is genuinely useful is **asked for, not shipped**:
 
@@ -4076,7 +4088,11 @@ Six rules:
   `--unshare-all`, `/usr` and the run's folder as `/work`, NOT `tools.bwrap_argv` (that binds the whole
   filesystem read-only, fine for our agents, wrong for another machine's code), with prlimit + nice (never a
   preexec_fn in a threaded server), one run at a time, the folder deleted. No bubblewrap: refused, never
-  unconfined. Paths both ways pass `_inside` (no absolute, `..`, hidden part or link out).
+  unconfined. Paths both ways pass `_inside` (no absolute, `..`, hidden part or link out). A hub running as
+  root (the Docker image) drops to `EDGE_UID` with setpriv before bwrap, in a folder under /var/tmp handed to
+  it: the kernel never applies RLIMIT_NPROC to the real uid 0, and bwrap's `--uid` changes only the uid inside
+  its namespace, so as root the process limit held nothing (measured: 60 forks under a limit of 20). No
+  setpriv as root: refused.
 - **A Bento machine's switches are READ there, switched, and read again** (`agentos/devicectl.py`, the Devices
   app `24o-devices.js`, `/api/network/controls|switch|update|remove`, `bento network controls|switch|update|remove`;
   `tests/test_device_controls.py`). Asked for as "an option of removing it, test on and off on a few things, in the

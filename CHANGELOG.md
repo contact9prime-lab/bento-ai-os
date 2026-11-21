@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.9.41 — 2026-11-20
+
+**Six gaps the test report found are closed.**
+
+- A hub running as root (the Docker image) runs another machine's code as an unprivileged user, so its
+  process limit holds. As root it held nothing: Linux never limits processes for uid 0.
+- A specialist your agent hands work to in a chat asks you when a step needs a yes, as a department's
+  specialists do. It used to be refused with nobody asked, unless autonomy was full.
+- An account's MCP server in a folder the account can't see is refused in a sentence that names the folder,
+  instead of failing with bubblewrap's "No such file or directory".
+- The first account's workspace folder is made and shared when it doesn't exist yet, so its agent can write
+  there after you say yes.
+- A Zero whose account on the hub has no brain chosen is told where to choose one, not "ConnectError".
+- clitui, sessiondoctor and trainforge have tests of their own.
+
+**A test report for the whole tool, and the live runs it found stale.** `packaging/dev/test-report`
+turns a suite run into one page: every test with what it checks, by area, each failure with its cause,
+and the live end-to-end runs under `packaging/dev` (`live.py` runs them one by one and records any that
+cannot run here, with the reason).
+
+- Tests that needed `ssh-keygen` now skip without it, a peercheck test no longer assumes the suite isn't
+  root, and the network guard's proxy road has two tests of its own.
+- Six live runs had drifted from the product and pass again; the Zero runs give each stand-in Zero its own
+  loopback address, because on one computer the hub and the Zero shared a discovery port and Linux picked
+  which of them heard each announcement.
+
 ## 0.9.40 — 2026-11-19
 
 **Ethics: Bento decides whether a step should happen at all, whoever says yes.** The rule is that

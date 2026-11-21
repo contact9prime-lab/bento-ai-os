@@ -1007,6 +1007,14 @@ class _RunToolbox:
 
 # What a Zero's chat may reach here: the team, and its own section's memory (the space
 # decides which rows). A CLI brain keeps only its read-only web tools of its own.
+#: What a Zero hears when its account on the hub has no brain to answer with.
+NO_BRAIN_FOR_ZERO = ("The hub has no brain chosen for this Zero's account, so nothing there can answer yet. "
+                     "On the hub, choose one in Settings → AI providers, or pick what this Zero runs on "
+                     "in Network.")
+NO_BRAIN_FOR_LINK = ("The account this link belongs to here has no brain chosen, so nobody here can take "
+                     "the task on yet. Its owner chooses one in Settings → AI providers, or what this link "
+                     "runs on in Network.")
+
 ZERO_CHAT_TOOLS = ("delegate", "huddle", "department_task", "linked_teams",
                    "remember", "recall", "kg_query", "kg_add", "fetch_url",
                    # its own screen: "put a timer on" said at the Pi (only its own, _screen_tool)
@@ -2285,6 +2293,8 @@ class ControlPlane(usersmod.Scoped):
                     team={"toolbox": self.toolbox, "store": self.store, "approver": here,
                           "conversation_id": cid, "surface": "team", "taint": taint,
                           "only": execmod.LINKED_LEAD_TOOLS, "space_id": space})
+            elif not (bmodel or self.cfg.get("default_model")):
+                text = NO_BRAIN_FOR_LINK      # never a raw ConnectError to the other machine
             else:
                 agent = Agent(bcfg, self.toolbox, bmodel or self.cfg.get("default_model") or "", emit, here,
                               conversation_id=cid, surface="team", space_id=space,
@@ -2424,6 +2434,11 @@ class ControlPlane(usersmod.Scoped):
                           "conversation_id": cid, "surface": "team", "taint": taint,
                           "only": ZERO_CHAT_TOOLS, "space_id": space})
                 exec_sid = getattr(run, "session_id", "") or ""
+            elif not (bmodel or self.cfg.get("default_model")):
+                # An account that never chose a brain (a second account skips the choice the
+                # first one adopted) fell through to a local model nobody runs, and the Zero's
+                # screen read "[error] ConnectError: All connection attempts failed".
+                text_out = NO_BRAIN_FOR_ZERO
             else:
                 agent = Agent(bcfg, self.toolbox, bmodel or self.cfg.get("default_model") or "", emit, here,
                               conversation_id=cid, surface="team", space_id=space,

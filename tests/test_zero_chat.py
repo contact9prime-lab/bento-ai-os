@@ -113,3 +113,21 @@ def test_an_older_hub_lets_the_zero_answer_itself(hz, monkeypatch):
         pass
     r = _on(Z, loop, lambda: zero.hub_turn(Z["cfg"], "c", "hello", emit))
     assert r.get("fallback") and "older Bento" in r["fallback"]
+
+
+def test_an_account_with_no_brain_answers_in_a_sentence(hz, monkeypatch):
+    """Found by the Zero-per-account live run: a second account never chose a brain (the
+    first one adopted the machine's), its lead fell through to a local model nobody runs,
+    and the Zero's screen read "[error] ConnectError: All connection attempts failed"."""
+    from agentos import fabric
+    seen = []
+    _brain(monkeypatch, seen)
+    H, Z, loop = _zero_on(hz, monkeypatch)
+    assert _on(Z, loop, lambda: _async(zero.chat_on_hub, Z["cfg"]))
+    monkeypatch.delitem(H["cfg"], "default_model", raising=False)
+    monkeypatch.setitem(H["cfg"], "engine", "aria")
+
+    async def emit(ev):
+        pass
+    r = _on(Z, loop, lambda: zero.hub_turn(Z["cfg"], "c-screen", "hello", emit))
+    assert r["content"] == fabric.NO_BRAIN_FOR_ZERO and seen == [], "no model was asked"

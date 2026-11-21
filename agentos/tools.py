@@ -1210,6 +1210,16 @@ def _jail_hidden(hide: list[str] | None = None) -> list[str]:
     return out
 
 
+
+def jail_hides(path: str, shown: list[str], hide: list[str] | None = None) -> bool:
+    """Would this real path be missing inside bwrap_argv's jail? Every home, /tmp, /run and
+    _jail_hidden are blanked, and only `shown` (the jail's root and its shares) is bound back.
+    A program there would start as bwrap's "execvp: No such file or directory", which says
+    nothing to the person whose server it is."""
+    rp = os.path.realpath(path)
+    return _under_any(rp, ["/home", "/tmp", "/run", *_jail_hidden(hide)]) and not _under_any(
+        rp, [os.path.realpath(x) for x in shown if x])
+
 def _jail_path_ok(path: str) -> bool:
     """A folder may be bound into a jail only if no agent is refused it anyway. A share naming the
     home's pki folder would otherwise be a way round everything hidden above."""
@@ -2279,7 +2289,7 @@ class Toolbox(usersmod.Scoped):
 
     async def delegate(self, subagent: str, task: str, conversation_id: str = "",
                        files=None, _taint=None, _space: str = "", _files=None,
-                       _files_note: str = "", _root: str = "") -> str:
+                       _files_note: str = "", _root: str = "", _escalate: bool = False) -> str:
         """Hand a task to a specialist subagent; its steps run in a separate data plane
         with its own model, tool allow-list, and budget (see the Workflows app).
 
@@ -2307,8 +2317,14 @@ class Toolbox(usersmod.Scoped):
         if files:
             # one of our own specialists reads them where they are
             task = f"{task}\n\nFiles for this: " + ", ".join(str(f) for f in list(files)[:16])
+        # Asked from a chat a person is in (`_escalate`, the loop's), a gated step of the
+        # specialist goes to that person, as a department's does. It went to the headless
+        # approver, which says yes only at full autonomy and never to what must be a person's,
+        # so a specialist's request_capability (always asked) could never reach anybody.
+        ask = {"escalate": True, "origin": {"surface": "chat", "ref": conversation_id}} \
+            if _escalate and conversation_id else {}
         res = await self.fabric.run_subagent(defn, task, conversation_id=conversation_id,
-                                             taint=list(_taint or []) or None, space_id=_space or "")
+                                             taint=list(_taint or []) or None, space_id=_space or "", **ask)
         head = f"[subagent {defn['name']} · {res['status']} · model {res['model']}]"
         body = res["content"] or res["fault"] or "(no output)"
         # what the specialist read comes back with its answer, or the lead acts on a page's
@@ -5988,7 +6004,7 @@ class Toolbox(usersmod.Scoped):
                     f"payload (e.g. a whole app's html), emit it as a ```html code block in "
                     f"plain text instead of a tool call, or produce a smaller version.")
         try:
-            keep = ({"_flow", "_run_id"} if name == "brief_item" else {"_conv"} if name in ("create_app", "department_task", "show_scene", "stage_file", "create_subagent") else {"_from"} if name == "request_capability" else {"_surface", "_conv"} if name in ("open_company", "new_company") else {"_who", "_why"} if name in ("device_get", "device_set") else {"_taint", "_space", "_files", "_files_note", "_root"} if name == "delegate" else {"_taint"} if name == "run_automation" else
+            keep = ({"_flow", "_run_id"} if name == "brief_item" else {"_conv"} if name in ("create_app", "department_task", "show_scene", "stage_file", "create_subagent") else {"_from"} if name == "request_capability" else {"_surface", "_conv"} if name in ("open_company", "new_company") else {"_who", "_why"} if name in ("device_get", "device_set") else {"_taint", "_space", "_files", "_files_note", "_root", "_escalate"} if name == "delegate" else {"_taint"} if name == "run_automation" else
                     {"_app"} if name in APP_BOUND_TOOLS else
                     {"_from", "_chain", "_root", "_run_id", "_conv", "_space", "_taint"}
                     if name == "ask_agent" else set())

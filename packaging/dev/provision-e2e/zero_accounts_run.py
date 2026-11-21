@@ -17,6 +17,7 @@ What it checks, in order:
 import json
 import os
 import re
+import shlex
 import sqlite3
 import subprocess
 import sys
@@ -76,7 +77,12 @@ def login(who, password):
 def env_of(name, extra=None):
     x = m(name)
     return {**ENV, "AGENTOS_HOME": str(home(name)), "AGENTOS_DISCOVER_TARGETS": x[5],
-            "AGENTOS_PI_MODEL": "Raspberry Pi Zero 2 W Rev 1.0" if name == "pi-zero" else "", **(extra or {})}
+            "AGENTOS_PI_MODEL": "Raspberry Pi Zero 2 W Rev 1.0" if name == "pi-zero" else "",
+            # the Zero gets a loopback address of its own, as a Pi has its own on a LAN: on one
+            # computer the hub's ear and the Zero's door share the discovery port with SO_REUSEPORT,
+            # and Linux hands each datagram to ONE of them by a hash of the sender, so a shared
+            # address made "the hub hears the Zero" a coin flip
+            **({"AGENTOS_LINK_FROM": "127.0.0.2"} if name == "pi-zero" else {}), **(extra or {})}
 
 
 def config(name, http_port, link, door, brain, _targets):
@@ -166,8 +172,14 @@ def main():
         bcfg_p = bob_home / "config.json"
         bcfg = json.loads(bcfg_p.read_text())
         bcfg["agent_name"] = "Bo"
-        bcfg["mcp_servers"] = {"pantry": {"command": f"{sys.executable} {HERE / 'pantry_mcp.py'}",
-                                          "enabled": True}}
+        # the first account took the machine's brain choice when it adopted the machine; bob is the
+        # second, and would pick one in his own setup, which this run skips
+        bcfg["default_model"] = "custom/fake-1"
+        # an account's server runs in its jail, which hides every home (and this checkout's venv)
+        syspy = next(p for p in ("/usr/bin/python3", "/usr/local/bin/python3", "/opt/homebrew/bin/python3")
+                     if os.path.exists(p))
+        src = (HERE / "pantry_mcp.py").read_text()
+        bcfg["mcp_servers"] = {"pantry": {"command": f"{syspy} -c {shlex.quote(src)}", "enabled": True}}
         bcfg_p.write_text(json.dumps(bcfg, indent=1))
         start("big-box")
         login("ada", "ada-pass-123")
@@ -196,14 +208,13 @@ def main():
         enroll = re.search(r"AGENTOS_ENROLL=(\S+)", z["line"]).group(1)
         hubs = re.search(r"--hub=(\S+)", z["line"]).group(1)
         assert bento("pi-zero", "pool", "hub", hubs).returncode == 0
+        # bob is not an admin, and a Zero would be the first thing to open the hub's link port, so
+        # the hub holds it until an admin has opened that port (server._zero_waits_for_admin).
+        # Opened first, as ada would before handing bob's line out: a Zero heard before then stays
+        # held until an admin sets it up by hand.
+        st, lw = http("big-box", "PUT", "/api/team/listen", {"on": True}, who="ada")
+        assert st == 200, lw
         start("pi-zero", {"AGENTOS_ENROLL": enroll}, probe="/api/provision")
-        # Both servers share this host and its discovery port, and the kernel hands a
-        # unicast datagram to the socket bound LAST, which was the Zero's own. On a LAN
-        # they are two machines. The hub starting after the Zero listens last, as it
-        # would there; its sign-in cookies stay valid (the session key is on disk).
-        PROCS["big-box"].terminate()
-        PROCS["big-box"].wait(timeout=30)
-        start("big-box")
         took, me = wait("the Zero is set up by bob's key", lambda: (lambda t: t if t["claimed"] else None)(
             http("pi-zero", "GET", "/api/provision")[1]["this"]), limit=60)
 
@@ -240,7 +251,8 @@ def main():
         assert {c["agent"] for c in hub_lead} == {"Bo"}, hub_lead
         assert any("from-big-box/kitchen-plan.md" in g for g in got), got
 
-        q = "select count(*) from conversations where title like '↔ pi-zero%'"
+        # a Zero's chat runs on its hub as a conversation of origin 'zero' (fabric.zero_chat)
+        q = "select count(*) from conversations where origin = 'zero'"
         conv = {"bob": rows(bob_home / "agentos.db", q)[0][0], "ada": rows(ada_home / "agentos.db", q)[0][0],
                 "machine": rows(home("big-box") / "agentos.db", q)[0][0]}
         st, rem = http("pi-zero", "POST", "/api/memories", {"content": "the user likes green tea"})

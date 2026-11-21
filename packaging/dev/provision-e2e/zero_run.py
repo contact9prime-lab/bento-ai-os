@@ -79,7 +79,12 @@ def http(name, method, path, body=None, timeout=120):
 def env_of(name, extra=None):
     x = m(name)
     return {**ENV, "AGENTOS_HOME": str(home(name)), "AGENTOS_DISCOVER_TARGETS": x[5],
-            "AGENTOS_PI_MODEL": "Raspberry Pi Zero 2 W Rev 1.0" if name == "pi-zero" else "", **(extra or {})}
+            "AGENTOS_PI_MODEL": "Raspberry Pi Zero 2 W Rev 1.0" if name == "pi-zero" else "",
+            # the Zero gets a loopback address of its own, as a Pi has its own on a LAN: on one
+            # computer the hub's ear and the Zero's door share the discovery port with SO_REUSEPORT,
+            # and Linux hands each datagram to ONE of them by a hash of the sender, so a shared
+            # address made "the hub hears the Zero" a coin flip
+            **({"AGENTOS_LINK_FROM": "127.0.0.2"} if name == "pi-zero" else {}), **(extra or {})}
 
 
 def config(name, http_port, link, door, brain, _targets):
@@ -197,7 +202,7 @@ def main():
         took, seen = wait("the hub hears the Zero", lambda: (lambda s: s or None)(
             http("big-box", "GET", "/api/provision")[1]["seen"]), limit=40)
         froms = [r for r in ledger("big-box", "provision.seen")]
-        assert all(" at 127.0.0.1 " in d for _, d in froms), froms
+        assert all(" at 127.0.0.2 " in d for _, d in froms), froms
         step("2. the Zero announced to the hub's address (its broadcast reaches nobody)",
              heard_from=[d.split(" is waiting")[0] for _, d in froms],
              heard_after_s=round(time.time() - t_on, 1), hub_cli=set_hub.stdout.strip(),

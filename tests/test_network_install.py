@@ -14,6 +14,7 @@ Two things came out of it:
 import asyncio
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -115,6 +116,7 @@ def _cli(pi, home, *argv, stdin=""):
                           input=stdin, capture_output=True, text=True, timeout=120)
 
 
+@pytest.mark.skipif(not shutil.which("ssh-keygen"), reason="needs ssh-keygen")
 def test_bento_network_installs_on_a_listed_machine_with_its_ssh_port(pi, tmp_path):
     home = tmp_path / "home"
     d = provision.load()
@@ -137,6 +139,7 @@ def test_bento_network_installs_on_a_listed_machine_with_its_ssh_port(pi, tmp_pa
     assert "device.install" in acts and "device.installed" in acts
 
 
+@pytest.mark.skipif(not shutil.which("ssh-keygen"), reason="needs ssh-keygen")
 def test_bento_network_install_says_why_a_login_failed(pi, tmp_path):
     (pi / "keys-only").touch()
     _trust(tmp_path / "home", "127.0.0.2")
@@ -161,6 +164,7 @@ def _ours(pi):
     (pi / "has-our-key").touch()
 
 
+@pytest.mark.skipif(not shutil.which("ssh-keygen"), reason="needs ssh-keygen")
 def test_a_password_refused_after_secure_it_logs_in_with_this_machines_key(pi):
     """Reported as "after I secured it I could not log in": the install with the password the
     person always used was refused, while Bento's own key would have got in."""
@@ -199,6 +203,7 @@ def test_your_key_goes_in_first_and_is_shown_before_it_runs():
     assert "Your own password login stops too" in next(s["why"] for s in harden.STEPS if s["id"] == "passwords")
 
 
+@pytest.mark.skipif(not shutil.which("ssh-keygen"), reason="needs ssh-keygen")
 def test_secure_it_lets_your_key_in_before_anything_else(pi, monkeypatch):
     from agentos import harden
     k = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPersonsOwnKeyForTheLiveRun00000000000 you@laptop"

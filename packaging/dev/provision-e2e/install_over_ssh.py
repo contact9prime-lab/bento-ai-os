@@ -86,6 +86,15 @@ def wait(what, fn, limit=120, every=1.0):
 
 
 def stand_in_pi():
+    # The installer's partial clone (--filter=blob:none) from a bare copy of a SHALLOW checkout
+    # fetched missing blobs without end: 722 git pack-objects at ~21 MB each took a 16 GB box down
+    # (found building the test report in a cloud session, whose checkout is shallow). A real Pi
+    # clones from GitHub, which has the whole history, so say so here rather than start.
+    shallow = subprocess.run(["git", "-C", str(REPO), "rev-parse", "--is-shallow-repository"],
+                             capture_output=True, text=True).stdout.strip()
+    if shallow == "true":
+        raise SystemExit("this checkout is shallow, and the installer's partial clone cannot be served "
+                         "from it; run `git fetch --unshallow` first")
     sh("id pi >/dev/null 2>&1 || useradd -m -s /bin/bash pi")
     sh(f"echo 'pi:{PI_PASSWORD}' | chpasswd")
     sh("rm -rf /home/pi/.local /home/pi/.agentos /home/pi/AgentOS /home/pi/.ssh /home/pi/.cache/uv")
