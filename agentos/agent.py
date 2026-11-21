@@ -1629,12 +1629,13 @@ class Agent:
     def _usage_caller(self):
         """Who this run's model calls are for, so the door records each one there (usage.meter)."""
         from . import usage as usagemod
-        p = self.principal
+        p = getattr(self, "principal", None)
         kind = {"app": "app", "subagent": "subagent", "flow": "mission", "workflow": "mission"}.get(
             getattr(p, "kind", ""), "chat")
         return usagemod.caller(kind=kind, principal=getattr(p, "label", "user") or "user",
-                               surface=self.surface or "", conversation_id=self.conversation_id or "",
-                               space_id=self.space_id or "")
+                               surface=getattr(self, "surface", "") or "",
+                               conversation_id=getattr(self, "conversation_id", "") or "",
+                               space_id=getattr(self, "space_id", "") or "")
 
     async def run(self, history: list[dict]) -> dict:
         with self._usage_caller():

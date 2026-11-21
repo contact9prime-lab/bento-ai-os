@@ -97,6 +97,8 @@ $ bento usage quota                    # what is set
 
 ![Token Analytics as the machine's admin](screenshots/usage-quotas.png)
 
+![On a phone, an account whose OpenAI quota for today is used up](screenshots/usage-phone.png)
+
 ---
 
 ## The Model Manager
