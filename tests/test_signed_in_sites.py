@@ -236,3 +236,17 @@ def test_a_commit_card_names_what_is_pressed_not_a_ref():
     assert "Share" in c["body"] and "postly.example" in c["body"] and "ref" not in c["body"]
     c = approvalcard.card("browser_click", {"ref": 3})
     assert "ref: 3" in c["body"]
+
+
+def test_a_terminal_can_add_a_site_mission(tmp_path):
+    """`bento job add` names the site and the publish mode, and says the site's state."""
+    import json, os, subprocess, sys
+    (tmp_path / "config.json").write_text(json.dumps({"setup_complete": True, "permissions_migrated": True}))
+    env = {**os.environ, "AGENTOS_HOME": str(tmp_path), "AGENTOS_VAULT_KEYRING": "0"}
+    run = lambda *a: subprocess.run([sys.executable, "-m", "agentos", "job", "add", *a],    # noqa: E731
+                                    env=env, capture_output=True, text=True, timeout=120)
+    out = run("social-account", "--site", "linkedin.com", "--about", "Bento", "--publish", "ask")
+    assert out.returncode == 0, out.stdout + out.stderr
+    assert "linkedin.com" in out.stdout and "asks you first" in out.stdout
+    assert "bento sites signin linkedin.com" in out.stdout and "LinkedIn" in out.stdout
+    assert run("portal-fetch").returncode == 1

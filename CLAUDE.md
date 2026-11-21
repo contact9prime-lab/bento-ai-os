@@ -4487,7 +4487,7 @@ or a CAPTCHA is handed to the person in the same session the agent then carries 
 
 **A signed-in site is the person's, and posting there is its own permission** (`cdpbrowser.commit_of`/
 `signed_in`/`note_signed_in`/`forget_site`/`STRICT_SITES`/`_OWNER_PHONES`, `browser_sign_in`/`browser_sites`/
-`browser_upload`, `policy.person_rule`'s commit branch, `flows.clean_sites`, `jobs` recipes `social-account`/
+`browser_upload`, `policy.person_rule`'s commit branch, `bento job add --site/--about/--publish/--what/--page`, `flows.clean_sites`, `jobs` recipes `social-account`/
 `portal-fetch`/`login-watch` and the `operator` specialist, `/api/sites*`, `11n-sites.js`, `bento sites`;
 `docs/sites.md`, `tests/test_signed_in_sites.py`, live run `packaging/dev/sites-e2e/run.py`). Asked for as "login
 to my instagram and start managing my content … then it can build a mission on it"; the owner chose "your choice

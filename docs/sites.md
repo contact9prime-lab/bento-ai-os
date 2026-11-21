@@ -15,6 +15,26 @@ Three things hold, whoever is asking:
 - **A mission names its sites.** A mission can only use the sites its definition lists, and the
   consent screen says what it may do on each.
 
+## Getting started
+
+1. Have a phone channel set up (Settings → Channels → Telegram), so a mission can ask you when
+   you're away. Not required, but a mission without one can't reach you for a code.
+2. Sign in to the site once: Settings → Accounts → Websites, type `instagram.com`, press
+   **Sign in**, and sign in in the Web window.
+3. Add the mission: Missions → Run → **Run my social account**. Name the site, say what the
+   account is about, keep **Show me each one first**, and press **Set it up**.
+4. Press **Run it now** to watch the first one. The post waits for your yes.
+
+From a terminal, the same thing:
+
+```
+$ bento sites signin instagram.com
+$ bento job add social-account --site instagram.com \
+      --about "Bento, an AI desktop you own. Short, friendly, one picture a day." \
+      --at 10:00 --publish ask --deliver telegram
+$ bento job run social-account
+```
+
 ## Sign in once
 
 Settings → Accounts → **Websites** lists the sites your browser is signed in to. Type a site and
@@ -96,7 +116,7 @@ planned as a second way in for the social recipe; it isn't built yet.
 ## The three faces
 
 - **GUI**: Settings → Accounts → Websites, the Web window, Missions.
-- **TUI**: `bento sites`, `bento job install social-account`. Signing in needs a screen or a phone:
+- **TUI**: `bento sites`, `bento job add social-account --site … --about … --publish ask`. Signing in needs a screen or a phone:
   on a headless box the wall goes to your phone.
 - **SUI**: the same as the GUI. The Web window is a page; the browser behind it runs headless.
 
