@@ -10,6 +10,7 @@ import asyncio
 import json
 import time
 
+import contextlib
 import httpx
 from textual import work
 from textual.app import App, ComposeResult
@@ -360,6 +361,9 @@ class AgentTUI(App):
                                      json={"name": name, "password": pw})
                 tok = r.cookies.get(cfgmod_cookie()) if r.status_code == 200 else ""
                 err = "" if tok else (r.json().get("error") if r.content else f"HTTP {r.status_code}")
+                # this terminal's half of the account's sealed key (seal.py), and what to say
+                self.seal_k = r.cookies.get("bento_k") or "" if tok else ""
+                self.seal_said = r.json() if tok and r.content else {}
             except Exception as e:
                 tok, err = "", f"could not reach the server: {e}"
             if not tok:
@@ -367,6 +371,17 @@ class AgentTUI(App):
                 return
             self.token, self.who = tok, name
         await self.load_identity()
+        said = getattr(self, "seal_said", {}) or {}
+        if said.get("recovery_code"):
+            # shown once, here as on the sign-in page: the only way back if the password is forgotten
+            self.query_one("#chatlog", RichLog).write(
+                "[b yellow]Save your recovery code:[/]  [b]" + _esc(said["recovery_code"]) + "[/]\n"
+                "Your saved passwords and website sign-ins are now locked with your password. "
+                "Nobody else can open them, not even an admin. Bento won't show this code again.")
+        elif said.get("needs_recovery"):
+            self.query_one("#chatlog", RichLog).write(
+                "[b yellow]Your password was reset by an admin.[/] Sign in once in a browser to enter "
+                "your recovery code; until then your saved passwords and website sign-ins stay closed.")
         self.query_one("#chatlog", RichLog).write(
             f"[b cyan]{self.agent_name}[/]  ready{' — signed in as ' + _esc(self.who) if self.who else ''}. "
             f"Type below. Number keys switch tabs, o is the Office"
@@ -439,7 +454,14 @@ class AgentTUI(App):
             pass
 
     def _cookies(self) -> dict:
-        return {cfgmod_cookie(): self.token} if self.token else {}
+        jar = {cfgmod_cookie(): self.token} if self.token else {}
+        if self.token and getattr(self, "seal_k", ""):
+            jar["bento_k"] = self.seal_k
+        return jar
+
+    def _cookie_header(self) -> dict | None:
+        jar = self._cookies()
+        return {"Cookie": "; ".join(f"{k}={v}" for k, v in jar.items())} if jar else None
 
     async def api_get(self, path):
         try:
@@ -870,7 +892,7 @@ class AgentTUI(App):
         log = self.query_one("#chatlog", RichLog)
         ws_url = f"ws://127.0.0.1:{self.port}/ws"
         try:
-            hdrs = {"Cookie": f"{cfgmod_cookie()}={self.token}"} if self.token else None
+            hdrs = self._cookie_header()
             async with websockets.connect(ws_url, max_size=None, additional_headers=hdrs) as ws:
                 await ws.send(json.dumps({"type": "chat", "text": text, "surface": "tui",
                                           "conversation_id": self.cid, "model": self.model}))
@@ -886,6 +908,11 @@ class AgentTUI(App):
                         continue
                     if t == "conversation":
                         self.cid = ev["id"]
+                    elif t == "seal_need":
+                        # a step of this turn reads the vault: lend this terminal's half (seal.py)
+                        with contextlib.suppress(Exception):
+                            async with httpx.AsyncClient(timeout=6, cookies=self._cookies()) as c:
+                                await c.post(_base(self.port) + "/api/seal/lend", json={"ticket": ev.get("ticket")})
                     elif t == "text_delta":
                         buf += ev["text"]
                         while "\n" in buf:  # stream complete lines as they arrive

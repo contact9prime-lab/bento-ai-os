@@ -18,6 +18,15 @@ posts ask you first, and when a site doesn't allow automation. A sign-in code me
 goes to your phone and is typed into the page without reaching the model. The agent can also put a
 picture from your files into a page's upload field.
 
+**Each person's secrets are sealed with their own password.** On a machine with accounts, your
+saved passwords and the websites you're signed in to can only be opened by you, signed in. Not
+another account, not an admin, and not root while you're signed out. Your first sign-in after the
+update seals them and shows a recovery code once; keep it somewhere safe. While you're signed in,
+half of the key is in your browser and half on the server, so neither alone opens anything. A
+mission running on its own borrows the key from a page you have open, locked included. After a
+restart you enter your password once. An admin who resets your password gets nothing of yours:
+your recovery code opens them, or you start fresh.
+
 **A reel of the ethics checks, filmed on a real server.** `packaging/dev/reel/ethics` starts Bento on a
 throwaway home with a scripted brain and films one take at 1080x1920: a scan of a range that isn't yours
 refused, a delete of 640 of your own files held until you type it, and the chat's ethics score. The

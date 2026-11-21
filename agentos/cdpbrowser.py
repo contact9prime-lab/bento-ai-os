@@ -17,7 +17,11 @@ How it is wired, and why:
   a pipe belongs to the process that started it. The WhatsApp bridge's rule again.
 - **One profile per person, kept.** `<home>/browser/profile` in the person's own home, so
   sign-ins survive a restart (the "persistent" in persistent browser) and an account never
-  sees another's cookies. The process itself stops after `IDLE_S` with nobody watching
+  sees another's cookies. On a machine with accounts the profile is SEALED at rest
+  (`profile.sealed`, seal.py): it opens into a 0700 folder in RAM (`/dev/shm`) only when the
+  person's signed-in browser lends the key, is put away again with the account's public key
+  every few minutes and when the browser stops, and the folder in RAM is removed. Chromium's
+  own cookie "encryption" uses a public key on Linux, so this is what actually protects it. The process itself stops after `IDLE_S` with nobody watching
   and no agent step; the profile stays. The disk cache is capped.
 - **Web pages only.** Navigation, from the agent or from the window's address bar, is
   `http`, `https` or `about:blank`. Chromium runs as the OS user, so `file://` would let a
@@ -456,6 +460,8 @@ class Browser:
         self.seen: dict[str, dict] = {}
         self.typed_ref = ""
         self._watch = None
+        self.run_dir: Path | None = None       # a sealed profile, opened in RAM while running
+        self.sealed_at = 0.0
 
     # -- life --
     @property
@@ -468,10 +474,7 @@ class Browser:
         st = status(self.cfg)
         if not st["ok"]:
             raise CDPError(st["why"])
-        prof = self.home / "browser" / "profile"
-        prof.mkdir(parents=True, exist_ok=True)
-        with contextlib.suppress(OSError):
-            os.chmod(self.home / "browser", 0o700)
+        prof = await self._open_profile()
         quiet_prefs(prof)
         args = [st["binary"], "--headless=new", "--remote-debugging-pipe",
                 f"--user-data-dir={prof}", "--no-first-run", "--no-default-browser-check",
@@ -524,17 +527,87 @@ class Browser:
         if self._watch and self._watch is not asyncio.current_task():
             self._watch.cancel()
         self.tabs, self.active, self.casting = {}, "", ""
+        await asyncio.to_thread(self._close_profile)
         await self._state()
 
     async def _idle(self):
         while self.running:
             await asyncio.sleep(30)
+            if self.run_dir and time.time() - self.sealed_at > RESEAL_S:
+                # a crash must not lose more than a few minutes of sign-ins
+                with contextlib.suppress(Exception):
+                    await asyncio.to_thread(self._seal_profile)
             if not self.viewers and time.time() - self.last_use > IDLE_S and not self.attention:
                 await self.stop()
                 return
 
     def touch(self):
         self.last_use = time.time()
+
+    # -- the profile, sealed at rest on a machine with accounts --
+    def _sealed(self) -> bool:
+        from . import seal
+        return bool(self.uid) and seal.exists(self.uid)
+
+    async def _open_profile(self) -> Path:
+        base = self.home / "browser"
+        base.mkdir(parents=True, exist_ok=True)
+        with contextlib.suppress(OSError):
+            os.chmod(base, 0o700)
+        plain = base / "profile"
+        if not self._sealed():
+            plain.mkdir(parents=True, exist_ok=True)
+            return plain
+        from . import seal
+        # the server's pid in the name: a sweep removes only folders whose server is gone
+        run = Path(_tempfile().mkdtemp(prefix=f"bento-browser-{os.getpid()}-{self.uid}-", dir=_ram_dir()))
+        os.chmod(run, 0o700)
+        box = base / SEALED_PROFILE
+        try:
+            if box.exists():
+                try:
+                    priv = await seal.borrow(self.uid, "open your signed-in browser")
+                except seal.Sealed as e:
+                    raise CDPError(str(e)) from None
+                try:
+                    data = seal.open_bytes(self.uid, priv, json.loads(box.read_text()), "browser")
+                finally:
+                    priv = None
+                await asyncio.to_thread(_untar, data, run)
+            elif plain.exists():
+                # the first start after the update: the old clear profile moves in and is sealed
+                await asyncio.to_thread(shutil.copytree, plain, run, dirs_exist_ok=True)
+        except BaseException:
+            shutil.rmtree(run, ignore_errors=True)
+            raise
+        self.run_dir = run
+        if plain.exists():
+            await asyncio.to_thread(self._seal_profile)
+            shutil.rmtree(plain, ignore_errors=True)
+        return run
+
+    def _seal_profile(self) -> None:
+        """Put the profile in RAM away under the account's PUBLIC key: needs nothing secret."""
+        if not self.run_dir or not self.run_dir.exists():
+            return
+        from . import seal
+        box = seal.seal_bytes(self.uid, _tar(self.run_dir), "browser")
+        dest = self.home / "browser" / SEALED_PROFILE
+        tmp = dest.with_suffix(".tmp")
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            json.dump(box, f)
+        os.replace(tmp, dest)
+        self.sealed_at = time.time()
+
+    def _close_profile(self) -> None:
+        if not self.run_dir:
+            return
+        try:
+            self._seal_profile()
+        finally:
+            shutil.rmtree(self.run_dir, ignore_errors=True)
+            self.run_dir = None
 
     # -- tabs --
     async def _attach(self, target: str, url: str):
@@ -1142,6 +1215,76 @@ async def get(uid: str, cfg: dict, home: Path) -> Browser:
         if not b.running:
             await b.start()
     return b
+
+
+SEALED_PROFILE = "profile.sealed"
+RESEAL_S = 5 * 60
+# Chromium rebuilds these, and they are most of a profile's size: never sealed.
+_NO_SEAL = {"Cache", "Code Cache", "GPUCache", "GrShaderCache", "ShaderCache", "GraphiteDawnCache",
+            "DawnGraphiteCache", "DawnWebGPUCache", "component_crx_cache", "Crashpad", "Crash Reports",
+            "BrowserMetrics", "optimization_guide_model_store", "Safe Browsing", "CacheStorage",
+            "ScriptCache", "SingletonLock", "SingletonSocket", "SingletonCookie"}
+
+
+def _tempfile():
+    import tempfile
+    return tempfile
+
+
+def _ram_dir() -> str:
+    """Where an opened profile lives while it runs: RAM when this machine has a tmpfs for it."""
+    d = "/dev/shm"
+    return d if os.path.isdir(d) and os.access(d, os.W_OK) else _tempfile().gettempdir()
+
+
+def _tar(root: Path) -> bytes:
+    import io
+    import tarfile
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz", compresslevel=6) as t:
+        def keep(ti):
+            parts = Path(ti.name).parts
+            if any(p in _NO_SEAL for p in parts) or ti.issym() or ti.islnk():
+                return None
+            return ti
+        t.add(str(root), arcname=".", filter=keep)
+    return buf.getvalue()
+
+
+def _untar(data: bytes, dest: Path) -> None:
+    import io
+    import tarfile
+    with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as t:
+        for m in t.getmembers():
+            p = Path(m.name)
+            if p.is_absolute() or ".." in p.parts or not (m.isfile() or m.isdir()):
+                continue
+            t.extract(m, dest, filter="data") if sys.version_info >= (3, 12) else t.extract(m, dest)
+
+
+def _alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def sweep_runs() -> int:
+    """At start: an opened profile left in RAM by a server that died is removed (it was sealed
+    at most RESEAL_S before). Only folders this user owns whose server is no longer running:
+    another server on this machine (a demo, a test) may have one open right now."""
+    n = 0
+    base = Path(_ram_dir())
+    for d in base.glob("bento-browser-*"):
+        with contextlib.suppress(OSError, ValueError):
+            pid = int(d.name.split("-")[2])
+            if d.is_dir() and d.stat().st_uid == os.getuid() and pid != os.getpid() and not _alive(pid):
+                shutil.rmtree(d, ignore_errors=True)
+                n += 1
+    return n
 
 
 async def stop_all():

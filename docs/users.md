@@ -321,6 +321,20 @@ deployment decision (a real per-user OS uid, or containers), laid out in
 this OS exposes; hardening the box underneath them against a resourceful insider
 is a deployment choice on top.
 
+## Your secrets are yours, even from an admin
+
+Each account's saved passwords and website sign-ins are sealed with a key made
+from that person's password (`agentos/seal.py`; the whole story is in
+[the vault](vault.md#on-a-machine-with-accounts-sealed-with-your-password)). The
+first sign-in after the update seals them and shows a recovery code once.
+
+![Settings → Accounts → Your secrets, closed after a restart](screenshots/settings-your-secrets.png)
+
+What it means for an admin: resetting somebody's password lets them sign in
+again, and gives the admin nothing of theirs. That person's recovery code opens
+their secrets; without it they start fresh. Locking the screen keeps a person's
+missions able to use their secrets. Signing out, or a restart, closes them.
+
 ## Locking the screen, which is not signing out
 
 The lock this OS started with is the **host's**: `loginctl lock-session`, or sleeping

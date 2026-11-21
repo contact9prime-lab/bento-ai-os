@@ -27,7 +27,7 @@ var SETSUBS={
   network:[['Discovery','Discovery and linkage'],['Linked teams','Linked teams'],['Community','Community'],['Messages','Messages'],['Mapping','Team to agent mapping'],['Maps','Maps']],
   permissions:[['Autonomy','On their own'],['Ethics','Ethics'],['Security','Security'],['Ledger','The ledger']],
   channels:[['Authorization','Authorization'],['Approvals','Approvals'],['Overview','Ways to reach it'],['Remote browser','Remote browser'],['Telegram','Telegram'],['WhatsApp','WhatsApp'],['Built in','Built in']],
-  accounts:[['Sign in','Sign in'],['Mail & calendar','Mail'],['Websites','Websites'],['App registration','App registration'],['Vault','Vault'],['GitHub','GitHub']],
+  accounts:[['Sign in','Sign in'],['Mail & calendar','Mail'],['Websites','Websites'],['Your secrets','Your secrets'],['App registration','App registration'],['Vault','Vault'],['GitHub','GitHub']],
   voice:[['Speech','Speech'],['Listening','Listening']],
   look:[['Look','Look'],['Characters','Characters'],['Office','Office'],['This screen','On this screen']],
   system:[['Version','Version'],['People','People'],['Setup','Footprint'],['Backup & cloud','Backup'],['Machine','Machine']],

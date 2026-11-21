@@ -318,6 +318,8 @@ function setTab(body,all){
     setTimeout(renderAccounts,0);
     P.push(`<div id="site-list" data-f="websites browser signed in instagram linkedin portal login"><p class="mut">checking…</p></div>`);
     setTimeout(renderSites,0);
+    P.push(`<div id="seal-card" data-f="secrets sealed vault password recovery code encrypted"></div>`);
+    setTimeout(renderSeal,0);
     P.push(pGroup('GitHub',[
       pRow('Personal access token',pSecret('s-gh-token',cfg.github&&cfg.github._has_token,(cfg.github&&cfg.github.token)||'','github_pat_… / ghp_…'),
         {desc:(cfg.github&&cfg.github._has_token)?'A token is saved. Fine-grained tokens work best.':'Lets the agent create repos and push what it builds.',

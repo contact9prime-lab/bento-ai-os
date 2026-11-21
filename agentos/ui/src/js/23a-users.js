@@ -400,6 +400,8 @@ async function usersCreate(pb,w){
     if(!r.ok){msg.textContent=d.error||'could not create the account';msg.className='usr-msg warn';return}
     toast(d.signed_in?'✓ accounts are on — you are signed in as '+body.name
                      :'✓ '+body.name+' can sign in now');
+    if(d.recovery_code&&typeof sealShowCode==='function')await sealShowCode(d.recovery_code,
+      'Your saved passwords and website sign-ins are now locked with your password. Nobody else can open them, not even an admin. If you forget your password, this code is the only way back in.');
     usersBoot();   // the power menu now has a name to show and a way out
     renderUsers(w?w.el.querySelector('.wbody'):pb,w);
   }catch(e){msg.textContent=String(e);msg.className='usr-msg warn';}
