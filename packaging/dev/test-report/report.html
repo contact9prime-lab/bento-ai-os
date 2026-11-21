@@ -200,13 +200,13 @@ python3 packaging/dev/test-report/build.py out/junit.xml out/report.json</pre>
       if(!x[1])return;var s=el('span');s.append(x[0]+' ',el('b','',x[1]));m.appendChild(s)});
     var t=R.totals,failed=t.failed+t.error,code=R.failures.filter(function(f){return f.kind==='code'||f.kind==='unknown'}).length;
     var strip=document.getElementById('strip');strip.replaceChildren();
-    [['',fmt(t.count),'tests in '+t.files+' files'],['pass',fmt(t.passed),'passed'],['fail',fmt(failed),'failed'],
+    [['',fmt(t.count),'tests in '+t.files+' files'],['pass',fmt(t.passed),'passed'],[failed?'fail':'',fmt(failed),'failed'],
      ['skip',fmt(t.skipped),'skipped'],['',secs(t.time),'of test time']].forEach(function(x){
       var d=el('div','stat '+x[0]);d.append(el('span','n',x[1]),el('span','l',x[2]));strip.appendChild(d)});
     var v=document.getElementById('verdict');v.hidden=false;v.replaceChildren();
     var dot=el('span','dot');dot.style.background=code?'var(--fail)':(failed?'var(--skip)':'var(--pass)');
     var txt=el('div');
-    var pct=(100*t.passed/Math.max(1,t.count-t.skipped)).toFixed(2);
+    var pct=(100*t.passed/Math.max(1,t.count-t.skipped)).toFixed(2).replace(/\.00$/,'');
     txt.append(el('b','',code?(code+' failure'+(code>1?'s':'')+' to fix in the code'):(failed?'No failure points at the code':'Everything passed')),
       el('div','mut',pct+'% of the tests that ran passed. '+(!failed?'No test failed.':
         (failed===code?(failed===1?'The one failure is in the code, and says why below.':'Every failure is in the code, and each one says why below.'):
