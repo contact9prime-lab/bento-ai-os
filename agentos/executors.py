@@ -1991,7 +1991,7 @@ LINKED_LEAD_TOOLS = ("delegate", "huddle", "department_task", "linked_teams")
 # with. Each call is the gate's, so a click asks and a wall hands the window to the person.
 WORKSPACE_DOOR_TOOLS = ("browser_open", "browser_read", "browser_click", "browser_type", "browser_key",
                         "browser_scroll", "browser_tabs", "browser_screenshot", "browser_wait_for_person",
-                        "terminal_sessions", "terminal_read", "terminal_send",
+                        "browser_sign_in", "browser_sites", "browser_upload", "terminal_sessions", "terminal_read", "terminal_send",
                         "app_windows", "app_window_open", "app_window_look", "app_window_act")
 # Finding and connecting a capability through this OS, so a forwarded lead does not reach
 # for its own MCP settings or a pip install, which this machine's permissions never see.
@@ -2100,7 +2100,9 @@ def workspace_note(prefix: str = "mcp__bento__") -> str:
     return (f"\n\nTHE PERSON'S WINDOWS. {prefix}browser_open/read/click/type use the person's own "
             f"signed-in browser (a window on their desktop), not an anonymous fetch: use it for sites "
             f"they are signed in to. When a page wants a sign-in, a code or a CAPTCHA, call "
-            f"{prefix}browser_wait_for_person and carry on in the same tab once it returns. "
+            f"{prefix}browser_wait_for_person and carry on in the same tab once it returns. When they say "
+            f"'log in to my <site>', call {prefix}browser_sign_in; {prefix}browser_sites says which sites "
+            f"they are signed in to, which a mission can then use (permissions.sites). "
             f"{prefix}terminal_read/send use the terminal sessions they have open; "
             f"{prefix}app_window_open/look/act open and use an installed app in a window.")
 

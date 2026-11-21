@@ -51,6 +51,7 @@ COMMANDS = [
     ("/resume", "<number|name>", "go back to an earlier session"),
     ("/clear", "", "wipe this session's messages"),
     ("/updown", "[on|off]", "a message when I go offline or come back"),
+    ("/steps", "[on|off]", "show what I'm doing while I work: hand-overs, a department's steps"),
     ("/clips", "[on|off]", "a video with sound when a story builds something in 3D"),
     ("/companies", "", "your companies, with a button to open each"),
     ("/company", "[name]", "the open company and its departments; with a name, open that one"),
@@ -192,6 +193,18 @@ class Console:
         on = t.get("status_messages", True) is not False
         return ("▲ I'll message you when I go offline and when I'm back." if on
                 else "▲ I won't message you when I go offline or come back. /updown on turns it back on.")
+
+    async def _cmd_steps(self, chat_id: int, arg: str) -> str:
+        """The owner's switch for the live steps of a turn (phonelive.py)."""
+        from . import config as cfgmod
+        t = self.tg._t()
+        if arg.lower() in ("on", "off"):
+            t["live_steps"] = arg.lower() == "on"
+            cfgmod.save_config(self.tg.cfg)
+        on = t.get("live_steps", True) is not False
+        return ("⚙ While I work, one message here shows the steps: hand-overs, a department's people, "
+                "sign-offs. /steps off hides it." if on
+                else "⚙ I'll only send the answer. /steps on shows the steps while I work.")
 
     async def _cmd_clips(self, chat_id: int, arg: str) -> str:
         """The owner's switch for the videos of 3D scenes (TelegramBridge.send_clips)."""

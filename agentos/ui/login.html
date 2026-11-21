@@ -46,6 +46,18 @@ button:disabled{opacity:.55;cursor:default}
 button.link{width:auto;margin:-4px auto 0;padding:6px 10px;background:none;color:var(--dim);
   font-weight:400;font-size:13px;text-decoration:underline;text-underline-offset:3px}
 button.link:hover{color:var(--txt)}
+/* the recovery code: shown once, after the first sign-in that seals an account (seal.py) */
+#seal{width:min(420px,100%);display:flex;flex-direction:column;gap:14px;text-align:center}
+/* `display:flex` outranks the hidden attribute: without these the form stayed beside the panel */
+#seal[hidden],form[hidden]{display:none}
+.code{font:600 clamp(15px,4.6vw,20px)/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.05em;padding:16px;
+  border:1px dashed var(--acc);border-radius:12px;background:rgba(94,234,212,.06);user-select:all}
+.code span{display:inline-block;white-space:nowrap}
+.row{display:flex;gap:10px}.row button{flex:1}
+button.ghost{background:rgba(255,255,255,.06);color:var(--txt);border:1px solid var(--line);font-weight:600}
+label.tick{display:flex;gap:10px;align-items:flex-start;text-align:left;font-size:14px;color:var(--txt);cursor:pointer}
+label.tick input{width:20px;height:20px;margin-top:2px;flex:none}
+.lent{min-height:16px;font-size:12px;color:var(--dim)}
 </style>
 </head>
 <body>
@@ -64,8 +76,10 @@ button.link:hover{color:var(--txt)}
   <div class="err" id="err"></div>
   <!-- Only on a locked screen: the way out of somebody else's lock. -->
   <button id="other" class="link" type="button" hidden>Sign in as someone else</button>
+  <div class="lent" id="lent"></div>
   <p class="tip">On iPhone: <b>Share → Add to Home Screen</b> for a full-screen app.</p>
 </form>
+<div id="seal" hidden></div>
 <script>
 const f=document.getElementById('f'),pw=document.getElementById('pw'),
       who=document.getElementById('who'),sub=document.getElementById('sub'),
@@ -108,6 +122,7 @@ fetch('/api/users/who').then(r=>r.json()).then(d=>{
       location.replace('/login');
     };
     pw.focus();
+    lendWhileLocked();
     return;
   }
   if(!d.any)return;
@@ -130,6 +145,7 @@ f.addEventListener('submit',async e=>{
         : await post('/api/remote/login',{passphrase:pw.value});
     const d=await r.json().catch(()=>({}));
     // a sign-in link (handoff.py) is served this page at its own address: go back to it
+    if(r.ok&&(d.recovery_code||d.needs_recovery))return sealStep(d,pw.value);
     if(r.ok)return location.replace(LINK?location.pathname:'/');
     // The lock expired, or the account behind it is gone: the server says so by
     // pointing at /login, and reloading turns this back into a sign-in page.
@@ -138,6 +154,78 @@ f.addEventListener('submit',async e=>{
   }catch(e){err.textContent='could not reach Bento Box AI'}
   go.disabled=false;go.textContent=label;pw.select();
 });
+
+// ---- sealed secrets (seal.py) -------------------------------------------------------------
+// Every line below is built from text nodes: a recovery code is shown exactly as it is.
+const seal=document.getElementById('seal');
+function el(tag,attrs,...kids){const e=document.createElement(tag);
+  for(const k in attrs||{}){if(k==='on')for(const ev in attrs.on)e.addEventListener(ev,attrs.on[ev]);
+    else if(k in e)e[k]=attrs[k];else e.setAttribute(k,attrs[k])}
+  for(const k of kids)if(k!=null)e.append(k);return e}
+function onward(){location.replace(LINK?location.pathname:'/')}
+function sealShow(...kids){f.hidden=true;seal.replaceChildren(...kids);seal.hidden=false}
+
+// The code is shown once, never stored: copy it, download it, and say it was kept.
+function showCode(code,why){
+  const ok=el('button',{type:'button',disabled:true,textContent:'Continue',on:{click:onward}});
+  const tick=el('input',{type:'checkbox',on:{change:()=>{ok.disabled=!tick.checked}}});
+  const copy=el('button',{type:'button',className:'ghost',textContent:'Copy',on:{click:async()=>{
+    try{await navigator.clipboard.writeText(code);copy.textContent='Copied'}catch(e){copy.textContent='Select it and copy'}}}});
+  const save=el('button',{type:'button',className:'ghost',textContent:'Download',on:{click:()=>{
+    const a=el('a',{download:'bento-recovery-code.txt',
+      href:URL.createObjectURL(new Blob(['Bento recovery code\n\n'+code+'\n\nKeep this somewhere safe, away from this computer.\n'],{type:'text/plain'}))});
+    document.body.append(a);a.click();a.remove()}}});
+  sealShow(
+    el('h1',{textContent:'Save your recovery code'}),
+    el('p',{className:'sub',textContent:why}),
+    el('div',{className:'code'},...code.split('-').map((g,i,a)=>el('span',{textContent:g+(i<a.length-1?'-':'')}))),
+    el('div',{className:'row'},copy,save),
+    el('label',{className:'tick'},tick,el('span',{textContent:"I've saved it somewhere safe. Bento won't show it again."})),
+    ok);
+}
+
+function sealStep(d,password){
+  if(d.recovery_code)return showCode(d.recovery_code,
+    'Your saved passwords and website sign-ins are now locked with your password. Nobody else '+
+    'can open them, not even an admin. If you ever forget your password, this code is the only way back in.');
+  // an admin reset the password: the recovery code opens the old seal, or the person starts fresh
+  const code=el('input',{type:'text',placeholder:'Recovery code',autocomplete:'off',spellcheck:false});
+  const msg=el('div',{className:'err'});
+  const open=el('button',{type:'button',textContent:'Open my secrets'});
+  const fresh=el('button',{type:'button',className:'link',textContent:"I don't have it: start fresh"});
+  const send=async body=>{msg.textContent='';open.disabled=fresh.disabled=true;
+    try{const r=await fetch('/api/seal/recover',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({...body,password})});const x=await r.json().catch(()=>({}));
+      if(r.ok&&x.recovery_code)return showCode(x.recovery_code,(x.gone&&x.gone.length?
+          'Started fresh. Removed: '+x.gone.join(', ')+'. ':'')+'Here is your new recovery code. The old one no longer works.');
+      if(r.ok)return onward();
+      msg.textContent=x.error||'that did not work'}catch(e){msg.textContent='could not reach Bento'}
+    open.disabled=fresh.disabled=false};
+  open.onclick=()=>send({code:code.value});
+  fresh.onclick=()=>{if(confirm('Start fresh? Your saved passwords and website sign-ins on this account '+
+      "can't be opened without the code, so they'll be removed. You'll set them up again."))send({fresh:true})};
+  sealShow(
+    el('h1',{textContent:'Enter your recovery code'}),
+    el('p',{className:'sub',textContent:'Your password was reset by an admin. Your saved passwords and website '+
+      'sign-ins are still locked with the old one, and your recovery code opens them.'}),
+    code,open,msg,fresh);
+  code.focus();
+}
+
+// A locked screen keeps lending its half of the key to a mission (the owner's choice), so it
+// asks every few seconds what is waiting on it: it has no socket while locked.
+function lendWhileLocked(){
+  const lent=document.getElementById('lent');
+  const tick=async()=>{
+    try{const r=await fetch('/api/seal/wants');if(!r.ok)return;const d=await r.json();
+      for(const w of d.wants||[]){
+        const x=await fetch('/api/seal/lend',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({ticket:w.ticket})});
+        if(x.ok)lent.textContent='Opened for your mission while locked: '+(w.why||'a step');
+      }}catch(e){}
+  };
+  tick();setInterval(tick,5000);
+}
 </script>
 </body>
 </html>

@@ -17,7 +17,11 @@ How it is wired, and why:
   a pipe belongs to the process that started it. The WhatsApp bridge's rule again.
 - **One profile per person, kept.** `<home>/browser/profile` in the person's own home, so
   sign-ins survive a restart (the "persistent" in persistent browser) and an account never
-  sees another's cookies. The process itself stops after `IDLE_S` with nobody watching
+  sees another's cookies. On a machine with accounts the profile is SEALED at rest
+  (`profile.sealed`, seal.py): it opens into a 0700 folder in RAM (`/dev/shm`) only when the
+  person's signed-in browser lends the key, is put away again with the account's public key
+  every few minutes and when the browser stops, and the folder in RAM is removed. Chromium's
+  own cookie "encryption" uses a public key on Linux, so this is what actually protects it. The process itself stops after `IDLE_S` with nobody watching
   and no agent step; the profile stays. The disk cache is capped.
 - **Web pages only.** Navigation, from the agent or from the window's address bar, is
   `http`, `https` or `about:blank`. Chromium runs as the OS user, so `file://` would let a
@@ -72,13 +76,19 @@ START_WAIT = 60
 # is at a screen to be told. Unwired, nobody is (a test, a terminal).
 _ATTENTION = [None]          # async (uid, payload) -> None
 _PRESENCE = [lambda uid: False]
+# The account's own phone chats (its Telegram and WhatsApp owner), as (key, ask, say): where a
+# wall goes when nobody is at a screen and no phone turn is running. That is a mission on its
+# schedule meeting a lapsed sign-in, reported as needing "the link to login in Telegram".
+_OWNER_PHONES = [lambda uid: []]
 
 
-def bind(attention=None, presence=None):
+def bind(attention=None, presence=None, owner_phones=None):
     if attention is not None:
         _ATTENTION[0] = attention
     if presence is not None:
         _PRESENCE[0] = presence
+    if owner_phones is not None:
+        _OWNER_PHONES[0] = owner_phones
 
 
 # A phone the person is talking from right now (a Telegram or WhatsApp turn), per account.
@@ -445,7 +455,13 @@ class Browser:
         self.started = 0.0
         self.ua = ""
         self._lock = asyncio.Lock()
+        # what the model was last shown (ref -> its label, tag, type, role) and the field it
+        # last typed into: the gate reads a click's target from THESE, never from the model
+        self.seen: dict[str, dict] = {}
+        self.typed_ref = ""
         self._watch = None
+        self.run_dir: Path | None = None       # a sealed profile, opened in RAM while running
+        self.sealed_at = 0.0
 
     # -- life --
     @property
@@ -458,10 +474,7 @@ class Browser:
         st = status(self.cfg)
         if not st["ok"]:
             raise CDPError(st["why"])
-        prof = self.home / "browser" / "profile"
-        prof.mkdir(parents=True, exist_ok=True)
-        with contextlib.suppress(OSError):
-            os.chmod(self.home / "browser", 0o700)
+        prof = await self._open_profile()
         quiet_prefs(prof)
         args = [st["binary"], "--headless=new", "--remote-debugging-pipe",
                 f"--user-data-dir={prof}", "--no-first-run", "--no-default-browser-check",
@@ -514,17 +527,87 @@ class Browser:
         if self._watch and self._watch is not asyncio.current_task():
             self._watch.cancel()
         self.tabs, self.active, self.casting = {}, "", ""
+        await asyncio.to_thread(self._close_profile)
         await self._state()
 
     async def _idle(self):
         while self.running:
             await asyncio.sleep(30)
+            if self.run_dir and time.time() - self.sealed_at > RESEAL_S:
+                # a crash must not lose more than a few minutes of sign-ins
+                with contextlib.suppress(Exception):
+                    await asyncio.to_thread(self._seal_profile)
             if not self.viewers and time.time() - self.last_use > IDLE_S and not self.attention:
                 await self.stop()
                 return
 
     def touch(self):
         self.last_use = time.time()
+
+    # -- the profile, sealed at rest on a machine with accounts --
+    def _sealed(self) -> bool:
+        from . import seal
+        return bool(self.uid) and seal.exists(self.uid)
+
+    async def _open_profile(self) -> Path:
+        base = self.home / "browser"
+        base.mkdir(parents=True, exist_ok=True)
+        with contextlib.suppress(OSError):
+            os.chmod(base, 0o700)
+        plain = base / "profile"
+        if not self._sealed():
+            plain.mkdir(parents=True, exist_ok=True)
+            return plain
+        from . import seal
+        # the server's pid in the name: a sweep removes only folders whose server is gone
+        run = Path(_tempfile().mkdtemp(prefix=f"bento-browser-{os.getpid()}-{self.uid}-", dir=_ram_dir()))
+        os.chmod(run, 0o700)
+        box = base / SEALED_PROFILE
+        try:
+            if box.exists():
+                try:
+                    priv = await seal.borrow(self.uid, "open your signed-in browser")
+                except seal.Sealed as e:
+                    raise CDPError(str(e)) from None
+                try:
+                    data = seal.open_bytes(self.uid, priv, json.loads(box.read_text()), "browser")
+                finally:
+                    priv = None
+                await asyncio.to_thread(_untar, data, run)
+            elif plain.exists():
+                # the first start after the update: the old clear profile moves in and is sealed
+                await asyncio.to_thread(shutil.copytree, plain, run, dirs_exist_ok=True)
+        except BaseException:
+            shutil.rmtree(run, ignore_errors=True)
+            raise
+        self.run_dir = run
+        if plain.exists():
+            await asyncio.to_thread(self._seal_profile)
+            shutil.rmtree(plain, ignore_errors=True)
+        return run
+
+    def _seal_profile(self) -> None:
+        """Put the profile in RAM away under the account's PUBLIC key: needs nothing secret."""
+        if not self.run_dir or not self.run_dir.exists():
+            return
+        from . import seal
+        box = seal.seal_bytes(self.uid, _tar(self.run_dir), "browser")
+        dest = self.home / "browser" / SEALED_PROFILE
+        tmp = dest.with_suffix(".tmp")
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            json.dump(box, f)
+        os.replace(tmp, dest)
+        self.sealed_at = time.time()
+
+    def _close_profile(self) -> None:
+        if not self.run_dir:
+            return
+        try:
+            self._seal_profile()
+        finally:
+            shutil.rmtree(self.run_dir, ignore_errors=True)
+            self.run_dir = None
 
     # -- tabs --
     async def _attach(self, target: str, url: str):
@@ -806,7 +889,10 @@ class Browser:
         bad = self.page_ok()
         if bad:
             raise CDPError(bad)
-        return await self._eval(SNAPSHOT_JS % {"max": ELEMENTS_MAX}) or {}
+        snap = await self._eval(SNAPSHOT_JS % {"max": ELEMENTS_MAX}) or {}
+        self.seen = {str(e.get("ref")): {k: e.get(k) or "" for k in ("name", "tag", "type", "role")}
+                     for e in (snap.get("elements") or []) if isinstance(e, dict)}
+        return snap
 
     async def point(self, ref=None, text: str = "") -> dict | None:
         if ref not in (None, ""):
@@ -832,6 +918,7 @@ class Browser:
         s = self.tab().get("session")
         box = None
         if ref not in (None, ""):
+            self.typed_ref = str(ref)
             box = await self.agent_click(ref=ref, who=who)
             # replace what was there, as a person selecting the field's text would
             await self._eval(f"(r => {{ const e = document.querySelector('[data-bento-ref=\"' + r + '\"]');"
@@ -868,6 +955,23 @@ class Browser:
         await self._key(s, "Enter")
         self.touch()
         return True
+
+    async def agent_upload(self, path: str, ref=None, who: str = "agent") -> str:
+        """Give a file to the page's file field: the one under `ref`, or the page's first.
+        Returns the field's label. The path was checked by the caller (tools.browser_upload)."""
+        s = self.tab().get("session")
+        pick = ("(r => { let e = r ? document.querySelector('[data-bento-ref=\"' + r + '\"]') : null;"
+                " if (e && !(e.tagName === 'INPUT' && e.type === 'file'))"
+                "   e = e.querySelector('input[type=file]') || (e.closest('form') || document).querySelector('input[type=file]');"
+                " return e || document.querySelector('input[type=file]'); })"
+                f"({json.dumps(str(ref)) if ref not in (None, '') else 'null'})")
+        r = await self.cdp.send("Runtime.evaluate", {"expression": pick, "returnByValue": False}, s)
+        oid = ((r or {}).get("result") or {}).get("objectId")
+        if not oid:
+            raise CDPError("this page has no file field to give a file to")
+        await self._tell({"type": "agent", "kind": "type", "text": "a file: " + os.path.basename(path), "who": who})
+        await self.cdp.send("DOM.setFileInputFiles", {"files": [str(path)], "objectId": oid}, s)
+        return os.path.basename(path)
 
     async def agent_key(self, key: str, who: str = "agent"):
         await self._tell({"type": "agent", "kind": "key", "text": key, "who": who})
@@ -927,6 +1031,170 @@ class Browser:
                 await _ATTENTION[0](self.uid, dict(self.attention))
 
 
+# ---- what can't be taken back ------------------------------------------------------------
+# Asked for as "login to my Instagram and manage my content, and it can build a mission on it",
+# then "think of the use cases around it": posting, replying, sending, submitting a form,
+# paying, deleting, on any site the person is signed in to. Those are a different consent from
+# clicking around, so the gate decides them as `browser.commit site:<host>`, and a mission says
+# whether its roster may do them on its own or asks each time (flows `permissions.sites`).
+#
+# What counts is read from the PAGE: the label of the element the model was shown under that
+# ref, or the field it typed into before pressing Enter. The model's own description of what it
+# is clicking counts for nothing. English labels only, said in the docs; a label nobody listed
+# is an ordinary click, so this is a floor under the person's consent, not a fence round it.
+COMMIT_WORDS = (
+    "post", "publish", "share", "send", "submit", "tweet", "repost", "retweet", "reply",
+    "comment", "pay", "buy", "purchase", "order", "checkout", "check out", "confirm", "book",
+    "reserve", "delete", "remove", "unfollow", "follow", "connect", "invite", "apply", "sign",
+    "transfer", "withdraw", "accept", "decline", "upload", "schedule", "approve", "donate",
+    "subscribe", "unsubscribe", "place order", "go live", "message")
+_COMMIT_RE = re.compile(r"(?<![\w-])(" + "|".join(re.escape(w) for w in COMMIT_WORDS) + r")(?![\w-])", re.I)
+_PRESSABLE = ("button", "a", "summary")
+_SEARCHY = re.compile(r"search|find|filter|query|look ?up", re.I)
+
+
+def _commit_label(e: dict) -> str:
+    """A pressable element whose own label is a commit word: its label, else ''."""
+    name = " ".join(str(e.get("name") or "").split())
+    if not name or len(name) > 40:
+        return ""
+    tag, typ, role = (str(e.get(k) or "").lower() for k in ("tag", "type", "role"))
+    pressable = (tag in _PRESSABLE or role in ("button", "menuitem", "link")
+                 or (tag == "input" and typ in ("submit", "button", "image")))
+    return name if pressable and _COMMIT_RE.search(name) else ""
+
+
+def _searchy(e: dict | None) -> bool:
+    if not e:
+        return False
+    return (str(e.get("type") or "").lower() == "search" or str(e.get("role") or "").lower()
+            in ("searchbox", "combobox") or bool(_SEARCHY.search(str(e.get("name") or ""))))
+
+
+def commit_of(uid: str, tool: str, args: dict) -> str:
+    """'' for an ordinary step, else what makes it one that can't be taken back, in words
+    (the label as the page shows it). Read from what this person's browser last showed."""
+    b = _BROWSERS.get(uid or "")
+    seen = dict(b.seen) if b else {}
+    if tool == "browser_click":
+        ref = args.get("ref")
+        if ref not in (None, ""):
+            got = _commit_label(seen.get(str(ref)) or {})
+            return f"“{got}”" if got else ""
+        text = " ".join(str(args.get("text") or "").split())[:60]
+        if not text:
+            return ""
+        # a click by words lands on the first element whose label matches them (FIND_JS):
+        # judge every element that could be it, and the words themselves
+        for e in seen.values():
+            if text.lower() in str(e.get("name") or "").lower() and _commit_label(e):
+                return f"“{_commit_label(e)}”"
+        return f"“{text}”" if _COMMIT_RE.search(text) and len(text) <= 40 else ""
+    if tool == "browser_type" and args.get("submit"):
+        ref = args.get("ref")
+        target = seen.get(str(ref)) if ref not in (None, "") else seen.get(b.typed_ref if b else "")
+        return "" if _searchy(target) else "pressing Enter to send what was typed"
+    if tool == "browser_key" and "enter" in str(args.get("key") or "").lower():
+        return "" if _searchy(seen.get(b.typed_ref) if b else None) else "pressing Enter, which may send or submit"
+    return ""
+
+
+# ---- sites this person is signed in to ---------------------------------------------------
+# The sign-in itself is the person's, in the shared browser (the Web window, or the phone
+# through the sign-in link). The cookies are what keep it, in this account's own profile.
+# This list only says which sites have been signed in to and when, so a mission can say
+# "ready" or "sign in first" before it runs, and the person can make the browser forget one.
+SITES_FILE = "sites.json"
+
+# Sites whose own terms forbid automating their website. Said wherever a mission declares
+# one, in one sentence: the person decides knowing it, and the official API is the safer
+# road where there is one (Graph API for Instagram, on the list to build).
+STRICT_SITES = {
+    "instagram.com": "Instagram doesn't allow automating its website, and an account driven by a bot can be "
+                     "flagged or locked. Meta's Graph API is the official road for business accounts.",
+    "facebook.com": "Facebook doesn't allow automating its website, and an account can be flagged or locked.",
+    "linkedin.com": "LinkedIn doesn't allow automating its website, and an account can be restricted.",
+    "x.com": "X doesn't allow automating its website outside its API, and an account can be locked.",
+    "twitter.com": "X doesn't allow automating its website outside its API, and an account can be locked.",
+    "tiktok.com": "TikTok doesn't allow automating its website, and an account can be banned.",
+    "threads.net": "Threads doesn't allow automating its website, and an account can be flagged.",
+    "amazon.com": "Amazon doesn't allow automating its website, and an account can be closed.",
+}
+
+
+def strict_words(site: str) -> str:
+    site = site_of("https://" + str(site or "").split("://")[-1])
+    for host, words in STRICT_SITES.items():
+        if site == host or site.endswith("." + host):
+            return words
+    return ""
+
+
+def _sites_path(home: Path) -> Path:
+    return Path(home) / "browser" / SITES_FILE
+
+
+def signed_in(home: Path) -> list[dict]:
+    """The sites signed in to here, newest first: {site, since, last, how}."""
+    try:
+        d = json.loads(_sites_path(home).read_text())
+    except (OSError, ValueError):
+        return []
+    rows = [{"site": k, **v} for k, v in (d if isinstance(d, dict) else {}).items()
+            if isinstance(v, dict) and site_of("https://" + k) == k]
+    return sorted(rows, key=lambda r: -float(r.get("last") or 0))
+
+
+def note_signed_in(home: Path, site: str, how: str) -> None:
+    site = site_of("https://" + str(site or "").split("://")[-1])
+    if not site or "." not in site:
+        return
+    p = _sites_path(home)
+    try:
+        d = json.loads(p.read_text())
+        d = d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        d = {}
+    now = time.time()
+    row = d.get(site) if isinstance(d.get(site), dict) else {}
+    d[site] = {"since": row.get("since") or now, "last": now, "how": str(how or "")[:120]}
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_suffix(".tmp")
+    tmp.write_text(json.dumps(d, indent=1))
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, p)
+
+
+def is_signed_in(home: Path, site: str) -> bool:
+    site = site_of("https://" + str(site or "").split("://")[-1])
+    return any(r["site"] == site or site.endswith("." + r["site"]) for r in signed_in(home))
+
+
+async def forget_site(uid: str, cfg: dict, home: Path, site: str) -> str:
+    """Sign this browser out of a site: its cookies and storage go, and so does the record."""
+    site = site_of("https://" + str(site or "").split("://")[-1])
+    if not site or "." not in site:
+        return "say which site, like instagram.com"
+    b = await get(uid, cfg, home)
+    origins = [f"https://{site}", f"https://www.{site}", f"http://{site}"]
+    with contextlib.suppress(Exception):
+        got = await b.cdp.send("Storage.getCookies", {})
+        for c in (got or {}).get("cookies") or []:
+            dom = str(c.get("domain") or "").lstrip(".")
+            if dom == site or dom.endswith("." + site):
+                await b.cdp.send("Network.deleteCookies", {"name": c["name"], "domain": c["domain"],
+                                                           "path": c.get("path") or "/"}, b.tab().get("session"))
+    for o in origins:
+        with contextlib.suppress(Exception):
+            await b.cdp.send("Storage.clearDataForOrigin", {"origin": o, "storageTypes": "all"})
+    p = _sites_path(home)
+    with contextlib.suppress(OSError, ValueError):
+        d = json.loads(p.read_text())
+        if isinstance(d, dict) and d.pop(site, None) is not None:
+            p.write_text(json.dumps(d, indent=1))
+    return f"signed out of {site} in the shared browser"
+
+
 # ---- the registry ----------------------------------------------------------------------
 
 _BROWSERS: dict[str, Browser] = {}
@@ -947,6 +1215,76 @@ async def get(uid: str, cfg: dict, home: Path) -> Browser:
         if not b.running:
             await b.start()
     return b
+
+
+SEALED_PROFILE = "profile.sealed"
+RESEAL_S = 5 * 60
+# Chromium rebuilds these, and they are most of a profile's size: never sealed.
+_NO_SEAL = {"Cache", "Code Cache", "GPUCache", "GrShaderCache", "ShaderCache", "GraphiteDawnCache",
+            "DawnGraphiteCache", "DawnWebGPUCache", "component_crx_cache", "Crashpad", "Crash Reports",
+            "BrowserMetrics", "optimization_guide_model_store", "Safe Browsing", "CacheStorage",
+            "ScriptCache", "SingletonLock", "SingletonSocket", "SingletonCookie"}
+
+
+def _tempfile():
+    import tempfile
+    return tempfile
+
+
+def _ram_dir() -> str:
+    """Where an opened profile lives while it runs: RAM when this machine has a tmpfs for it."""
+    d = "/dev/shm"
+    return d if os.path.isdir(d) and os.access(d, os.W_OK) else _tempfile().gettempdir()
+
+
+def _tar(root: Path) -> bytes:
+    import io
+    import tarfile
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz", compresslevel=6) as t:
+        def keep(ti):
+            parts = Path(ti.name).parts
+            if any(p in _NO_SEAL for p in parts) or ti.issym() or ti.islnk():
+                return None
+            return ti
+        t.add(str(root), arcname=".", filter=keep)
+    return buf.getvalue()
+
+
+def _untar(data: bytes, dest: Path) -> None:
+    import io
+    import tarfile
+    with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as t:
+        for m in t.getmembers():
+            p = Path(m.name)
+            if p.is_absolute() or ".." in p.parts or not (m.isfile() or m.isdir()):
+                continue
+            t.extract(m, dest, filter="data") if sys.version_info >= (3, 12) else t.extract(m, dest)
+
+
+def _alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def sweep_runs() -> int:
+    """At start: an opened profile left in RAM by a server that died is removed (it was sealed
+    at most RESEAL_S before). Only folders this user owns whose server is no longer running:
+    another server on this machine (a demo, a test) may have one open right now."""
+    n = 0
+    base = Path(_ram_dir())
+    for d in base.glob("bento-browser-*"):
+        with contextlib.suppress(OSError, ValueError):
+            pid = int(d.name.split("-")[2])
+            if d.is_dir() and d.stat().st_uid == os.getuid() and pid != os.getpid() and not _alive(pid):
+                shutil.rmtree(d, ignore_errors=True)
+                n += 1
+    return n
 
 
 async def stop_all():
@@ -1046,9 +1384,27 @@ async def tool_scroll(b: Browser, direction: str = "down") -> str:
 async def tool_wait(b: Browser, reason: str, timeout: int = WAIT_S) -> str:
     """Hand the window to the person and wait for "Done", or for the wall to go away."""
     phones = dict(_REACH.get(b.uid or "") or {})
+    lent = []
     if not _PRESENCE[0](b.uid) and not phones:
-        return ("[nobody here] Nobody has this desktop open, so nobody can do that part now. "
-                "Stop here and tell the person, in your answer, what the browser needs them to do.")
+        # nobody at a screen and no phone turn: the account's own phone chats, for this wait
+        with contextlib.suppress(Exception):
+            for key, ask, say in (_OWNER_PHONES[0](b.uid) or []):
+                if key not in (_REACH.get(b.uid or "") or {}):
+                    reach(b.uid, key, ask, say)
+                    lent.append(key)
+        phones = dict(_REACH.get(b.uid or "") or {})
+    if not _PRESENCE[0](b.uid) and not phones:
+        return ("[nobody here] Nobody has this desktop open and no phone chat is set up, so nobody can "
+                "do that part now. Stop here and tell the person, in your answer, what the browser needs "
+                "them to do (in a mission, file it in the Brief as needs_you).")
+    try:
+        return await _wait_for_person(b, reason, timeout, phones)
+    finally:
+        for key in lent:
+            unreach(b.uid, key)
+
+
+async def _wait_for_person(b: Browser, reason: str, timeout: int, phones: dict) -> str:
     snap = {}
     with contextlib.suppress(Exception):
         snap = await b.read()
@@ -1086,7 +1442,46 @@ async def tool_wait(b: Browser, reason: str, timeout: int = WAIT_S) -> str:
     b.touch()
     await b.settle(4)
     snap = await b.read()
+    if had_wall and not snap.get("wall"):
+        # a person got past a sign-in here: the browser keeps it, and the list says so
+        with contextlib.suppress(Exception):
+            note_signed_in(b.home, site_of(snap.get("url", "")), "signed in by you")
     return "[carry on] The person is done. You are in the same session.\n" + _page_words(snap, wall_note=True)
+
+
+_SIGN_IN_LINK = re.compile(r"^\s*(log ?in|sign ?in|login|signin)\b", re.I)
+
+
+async def tool_sign_in(b: Browser, site: str, home: Path) -> str:
+    """The person signs in to `site`; the page is already open. Finds the sign-in form (one
+    click on the page's own "Log in" link when the front page has none), hands it to the
+    person, and records the site once the form has gone."""
+    b.touch()
+    warn = strict_words(site)
+    tail = f"\nNote: {warn}" if warn else ""
+    snap = await b.read()
+    if not snap.get("wall"):
+        link = next((e for e in (snap.get("elements") or [])
+                     if _SIGN_IN_LINK.match(str(e.get("name") or ""))), None)
+        if link:
+            with contextlib.suppress(Exception):
+                await b.agent_click(ref=link.get("ref"), who="sign-in")
+                await b.settle(6)
+                snap = await b.read()
+    if not snap.get("wall"):
+        if any(_SIGN_IN_LINK.match(str(e.get("name") or "")) for e in (snap.get("elements") or [])):
+            return (f"{site} shows a sign-in link but no form I can hand over. Ask the person to sign in "
+                    f"in the Web window, then call browser_sites." + tail)
+        note_signed_in(home, site, "already signed in")
+        return f"{site} shows no sign-in form, so the browser is already signed in there. It's ready." + tail
+    said = await tool_wait(b, f"Sign in to {site}, so I can use it for you", WAIT_S)
+    if said.startswith("[carry on]"):
+        now = await b.read()
+        if now.get("wall"):
+            return f"{site} still shows a sign-in. Nothing was recorded.\n" + _page_words(now) + tail
+        note_signed_in(home, site, "signed in by you")
+        return f"Signed in to {site}. The browser keeps it, and missions can use it now." + tail
+    return said + tail
 
 
 async def tool_tabs(b: Browser) -> str:

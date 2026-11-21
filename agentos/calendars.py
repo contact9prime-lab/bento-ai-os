@@ -25,6 +25,7 @@ of asyncio in the parsing half so `bento calendar` works with the server down.
 
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import re
 import time
@@ -500,7 +501,9 @@ async def _caldav_events(c: dict, ws: dt.datetime, we: dt.datetime) -> dict:
 
 async def events(cfg: dict, days: int = 1, start: str = "", end: str = "") -> dict:
     """The events in the window, from whichever door is configured."""
-    c = conf(cfg)
+    # in a thread: a sealed vault borrows its key from the person's open page (seal.py),
+    # and that wait must not hold the event loop the page's answer arrives on
+    c = await asyncio.to_thread(conf, cfg)
     p = problem(cfg)
     if p:
         return {"error": p, "events": [], "notes": []}
@@ -539,7 +542,8 @@ def _iso_min(s: str) -> str:
 async def _google_events(cfg: dict, ws: dt.datetime, we: dt.datetime) -> dict:
     from . import signin
     base = signin.PROVIDERS["google"]["api_calendar"]
-    headers = {**signin.auth_header(cfg, "google", actor="calendar"), "Accept": "application/json"}
+    headers = {**(await asyncio.to_thread(lambda: signin.auth_header(cfg, "google", actor="calendar"))),
+               "Accept": "application/json"}
     evs, names, notes = [], [], []
     async with httpx.AsyncClient(timeout=30.0, headers=headers) as cl:
         r = await cl.get(f"{base}/users/me/calendarList", params={"minAccessRole": "reader"})
@@ -570,7 +574,8 @@ async def _google_events(cfg: dict, ws: dt.datetime, we: dt.datetime) -> dict:
 async def _graph_events(cfg: dict, ws: dt.datetime, we: dt.datetime) -> dict:
     from . import signin
     base = signin.PROVIDERS["microsoft"]["api_graph"]
-    headers = {**signin.auth_header(cfg, "microsoft", actor="calendar"), "Accept": "application/json",
+    headers = {**(await asyncio.to_thread(lambda: signin.auth_header(cfg, "microsoft", actor="calendar"))),
+               "Accept": "application/json",
                "Prefer": f'outlook.timezone="{_tz_name()}"'}
     evs = []
     async with httpx.AsyncClient(timeout=30.0, headers=headers) as cl:

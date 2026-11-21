@@ -717,12 +717,25 @@ class TelegramBridge(usersmod.Scoped):
             await self._api("sendChatAction", chat_id=chat_id, action="typing")
         except Exception:
             pass
+        live = None                  # the turn's steps on the phone (phonelive), ended in `finally`
         try:
             cid = self._conversation(chat)
             # agents talking inside this turn are collected here and sent back as a
             # comic strip after the reply (playground.listen; closed in `finally`)
             from . import playground as _pg
             tap = _pg.listen(cid)
+            # what the turn is doing, on the phone while it works: hand-overs to a department,
+            # who its desk gave each piece to, a boss's sign-off (phonelive.py), one message
+            # edited in place
+            from . import phonelive
+            if phonelive.on(self.cfg, "telegram"):
+                async def _live_send(text):
+                    r = await self._api("sendMessage", chat_id=chat_id, text=text, disable_notification=True)
+                    return r["message_id"]
+
+                async def _live_edit(mid, text):
+                    await self._api("editMessageText", chat_id=chat_id, message_id=mid, text=text)
+                live = phonelive.Live(phonelive.listen(cid), _live_send, _live_edit)
             # The same rebuild as the desktop: a thread answered from the phone
             # must see what the thread saw at the desk, tool traces included. A
             # bespoke last-30 window here is how one conversation ends up with
@@ -793,6 +806,8 @@ class TelegramBridge(usersmod.Scoped):
                 emit=emit, approver=approver, note=note, images=tuple(images),
                 on_run=lambda run: self._runs.__setitem__(chat_id, run), steerable=True, tell=tell)
             reply = out["reply"]
+            if live:
+                await live.end()         # the steps are finished before the answer arrives
             self.store.add_message(cid, "assistant", reply, {"steps": out["steps"], **out["meta"]})
             self.store.touch_conversation(cid)
             # The story first, then the words: the Stage is what the answer looks like, and
@@ -824,6 +839,8 @@ class TelegramBridge(usersmod.Scoped):
                 asyncio.create_task(self._handle(nxt))
             if "tap" in locals():
                 _pg.close(cid, tap)          # idempotent: a failed turn must not leak a tap
+            if live:
+                await live.end()
 
     PHOTO_MAX = 5_000_000      # under the chat's own cap for one picture, as base64
 

@@ -3365,7 +3365,8 @@ def _job_cli(args):
                    (("topics", args.topics), ("folder", args.folder), ("url", args.url),
                     ("urls", args.urls), ("names", args.names), ("client", args.client),
                     ("day", args.day), ("at", args.at), ("minutes", args.minutes),
-                    ("deliver", args.deliver))
+                    ("deliver", args.deliver), ("site", args.site), ("about", args.about),
+                    ("publish", args.publish), ("what", args.what), ("page", args.page))
                    if v}
         try:
             res = jobsmod.install(cfg, store, args.name, answers)
@@ -3378,6 +3379,12 @@ def _job_cli(args):
         print(f"  delivers: {res['delivery']['label'].lower()}")
         if res.get("substituted"):
             print(f"  note: {res['substituted']}")
+        # a site it works on: signed in yet, and what the site says about automation (jobs.sites_view)
+        for sv in jobsmod.sites_view(((res["flow"].get("permissions") or {}).get("sites")) or []):
+            print(f"  site: {sv['words']}" + ("" if sv["signed_in"] else
+                  f"  ·  not signed in yet: bento sites signin {sv['site']}"))
+            if sv.get("warn"):
+                print(f"  ⚠ {sv['warn']}")
         # The clock lives in the running server's scheduler; a job added while it is
         # down is still a real row, it just starts ticking at the next start.
         print(f"\n  bento job run {res['flow']['name']}     try it now")
@@ -3672,6 +3679,50 @@ def _ethics_cli2(act, rest, cfg, port, live, ledger):
                "flagged": "✓ The reviewer reads risky steps in conversations that have flags.",
                "risky": "✓ The reviewer reads every risky step."}[m])
         return
+
+
+def _sites_cli(args):
+    """`bento sites` — the websites this machine's shared browser is signed in to (cdpbrowser),
+    from a terminal: list them, open one to sign in (it shows in the Web window, or on a phone
+    through a sign-in link when nobody is at a screen), and sign the browser out of one. A
+    terminal can't draw a sign-in page, so `signin` needs the server and a screen or phone."""
+    from . import cdpbrowser
+    from . import config as cfgmod
+    from . import users as usersmod
+    cfg = cfgmod.load_config()
+    port = int(os.environ.get("AGENTOS_PORT") or cfg.get("port") or 8321)
+    act, site = args.action, (args.site or "").strip()
+    if act == "list":
+        if usersmod.enabled():
+            print("This machine has accounts: each person's websites are in Settings → Accounts → "
+                  "Websites, signed in as them. The list below is the machine's own.")
+        rows = cdpbrowser.signed_in(usersmod.home_for(""))
+        if not rows:
+            print("No websites signed in yet. `bento sites signin instagram.com` opens one.")
+        for r in rows:
+            when = time.strftime("%d %b %Y", time.localtime(float(r.get("last") or 0)))
+            print(f"  {r['site']:<28} signed in, last seen {when}")
+            if cdpbrowser.strict_words(r["site"]):
+                print(f"  {'':<28} note: {cdpbrowser.strict_words(r['site'])}")
+        return
+    if not site:
+        print(f"✗ say which site: bento sites {act} instagram.com")
+        sys.exit(2)
+    try:
+        got = _api_call(port, "/api/sites/" + ("signin" if act == "signin" else "forget"), "POST", {"site": site})
+    except OSError:
+        print("✗ Bento isn't running here. Start it (`bento serve`), then try again.")
+        sys.exit(1)
+    if got.get("error"):
+        print(f"✗ {got['error']}")
+        sys.exit(1)
+    if act == "signin":
+        print(f"✓ {got.get('site')} is open in the Web window. Sign in there (or from your phone when "
+              f"a mission asks), and it is remembered.")
+        if got.get("warn"):
+            print(f"  note: {got['warn']}")
+    else:
+        print(f"✓ {got.get('said') or 'signed out'}")
 
 
 def _handoff_cli(args):
@@ -10841,6 +10892,11 @@ def main():
     p_job.add_argument("--at", default="", help="time of day, HH:MM")
     p_job.add_argument("--minutes", default="", help="how often, in minutes")
     p_job.add_argument("--deliver", default="", help="report | notify | telegram | whatsapp")
+    p_job.add_argument("--site", default="", help="social-account / portal-fetch / login-watch: the site, e.g. instagram.com")
+    p_job.add_argument("--about", default="", help="social-account: what the account is about, and how it sounds")
+    p_job.add_argument("--publish", default="", help="social-account: ask (show me each post first) | auto")
+    p_job.add_argument("--what", default="", help="portal-fetch: what to bring back")
+    p_job.add_argument("--page", default="", help="login-watch: the page on the site to watch")
 
     p_user = verb("user", help="accounts — several people on one machine, "
                                          "each with their own home")
@@ -11126,6 +11182,9 @@ def main():
     p_ethics.add_argument("action", nargs="?", default="",
                           choices=["", "show", "check", "own", "prove", "proved", "forget", "flags", "report", "score", "clear", "library", "reviewer"])
     p_ethics.add_argument("rest", nargs=argparse.REMAINDER)
+    p_sites = verb("sites", help="websites your browser is signed in to for your agent: list, sign in, forget")
+    p_sites.add_argument("action", nargs="?", default="list", choices=["list", "signin", "forget"])
+    p_sites.add_argument("site", nargs="?", default="")
     p_handoff = verb("handoff", help="sign-in links for your phone: are they offered, what is open, close it")
     p_handoff.add_argument("action", nargs="?", default="status", choices=["status", "on", "off", "close"])
     p_voice = verb("voice", help="which engine reads your agents aloud: this browser, this computer, "
@@ -11477,6 +11536,8 @@ def main():
         _ethics_cli(args)
     elif args.cmd == "handoff":
         _handoff_cli(args)
+    elif args.cmd == "sites":
+        _sites_cli(args)
     elif args.cmd == "voice":
         sys.exit(_voice_cli(args) or 0)
     elif args.cmd == "vault":

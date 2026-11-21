@@ -1143,6 +1143,37 @@ was for. Full story in `docs/vault.md`. Four things that have to stay true:
 resolves; only the module that opens the box resolves. Keep it that way: resolving in a
 state function is how a value ends up on a screen.
 
+**On a machine with accounts, each account's secrets are sealed with its password, and
+nothing in memory unlocks them alone** (`agentos/seal.py`, vault `key: "sealed"`,
+`vault.reseal`, cdpbrowser's `profile.sealed`, `/api/seal*`, login.html's recovery screens,
+`11o-seal.js`; `docs/vault.md`, `tests/test_seal.py`, live run `packaging/dev/seal-e2e/run.py`).
+Asked for as "per account, not cross-pollinated even from root; signed in to read it, period"
+and "do not keep in memory something that might unlock something". The owner chose a recovery
+code shown once (old accounts get theirs at their next sign-in) and that a lock keeps missions
+working. Seven rules:
+- **A key pair per account.** Sealing uses only the public half (`seal_bytes`), so a vault write
+  or a profile put away needs nothing secret. The private half is wrapped by scrypt(password)
+  and by scrypt(recovery code), each with its own salt, and stored nowhere in clear.
+- **Signed in, the private half is SPLIT** (`lend_cookie`): a pad here per session, the XOR in the
+  browser's HttpOnly `bento_k` cookie. Neither opens anything alone. The middleware puts this
+  request's half in a holder that is EMPTIED when the request ends (`_Held`), because a task
+  started from a request copies its context. Never cache the combined key.
+- **Work nobody is watching borrows** (`borrow`, `borrow_blocking` from a worker thread): it asks
+  an open page of that person (`seal_need` → `/api/seal/lend`), or a locked page that polls
+  `/api/seal/wants`; none open is a refusal in words. Read the vault off the event loop
+  (calendars' `to_thread`), or the wait can't be answered.
+- **Sign-out, everywhere, delete and an admin reset drop the pads**; a lock MOVES the pad to the
+  new cookie; a restart forgets them all and the person types their password once
+  (`/api/seal/open`). An admin reset marks the wrap stale (`mark_password_reset`): the person's
+  recovery code opens it (`/api/seal/recover`), or `start_fresh` removes what can't be opened.
+- **The browser profile is sealed at rest** and opened into a 0700 folder in `/dev/shm` only with
+  the key, resealed every `RESEAL_S` and at stop, the folder removed; `sweep_runs` clears what a
+  crash left. Chromium's own cookie "encryption" on Linux uses a public key: do not count it.
+- **Said, not overclaimed**: while a secret is in use it is in memory, and root can read memory.
+  The machine's own vault (no accounts, device passwords) has nobody to sign in and keeps its key.
+- `seal.py` is a SECURITY_MODULE and `seal.json` a SECRET_FILE. No route, verb or tool returns a
+  key or a recovery code after it was shown once.
+
 ## Backup: the whole machine in one file, and restore checks everything first
 
 `agentos/backup.py` + `bento backup` / `bento restore` + Settings → System → Backup
@@ -2168,6 +2199,16 @@ call) ran before the message was saved, on every engine: measured 2 min 45 s on 
 read as "queuing them" beside a newer chat. Now the message is saved, then only the built-in loop rebuilds. Every
 event goes to the screens with the conversation id (turn_start, steps, turn_end before telegram_out), minus the
 CLI's own `mcp__bento__*` copies, so the Office and Chat see a phone turn.
+
+**And the phone sees it too** (`agentos/phonelive.py`, `Live`, `/steps on|off` on both channels,
+`telegram.live_steps`/`whatsapp.live_steps`; `tests/test_phone_steps.py`, live run
+`packaging/dev/phone-steps-e2e/run.py`). Reported as "it sends the message to the department and sub
+department and doesn't show those interim steps in the channels": the screens got every event, the phone
+got "typing…". A tap per phone turn is fed by the server's broadcast (beside playground's), so it sees what
+the screens see: events naming the conversation, plus every run the turn started (a `flow_start` naming it,
+then any run whose `parent_run` is ours; a specialist the chat hands work to names the chat on its running
+`status`). Telegram edits one quiet message, WhatsApp sends a few batches; nothing for a turn under `first`
+seconds, and the steps finish before the answer is sent. Lines are words (who, what, a sign-off), never work.
 
 ## WhatsApp is one channel with two transports
 
@@ -4474,6 +4515,32 @@ or a CAPTCHA is handed to the person in the same session the agent then carries 
   hand-off's live run: in a view narrower than the 1280-wide browser window, typing into a password field made every
   frame the whole window squeezed into the view (390x201 for a 390x735 page). The pop-up is a surface of its own.
   `tests/test_live_windows.py` types a password in a real Chromium and checks the frame size.
+
+**A signed-in site is the person's, and posting there is its own permission** (`cdpbrowser.commit_of`/
+`signed_in`/`note_signed_in`/`forget_site`/`STRICT_SITES`/`_OWNER_PHONES`, `browser_sign_in`/`browser_sites`/
+`browser_upload`, `policy.person_rule`'s commit branch, `bento job add --site/--about/--publish/--what/--page`, `flows.clean_sites`, `jobs` recipes `social-account`/
+`portal-fetch`/`login-watch` and the `operator` specialist, `/api/sites*`, `11n-sites.js`, `bento sites`;
+`docs/sites.md`, `tests/test_signed_in_sites.py`, live run `packaging/dev/sites-e2e/run.py`). Asked for as "login
+to my instagram and start managing my content … then it can build a mission on it"; the owner chose "your choice
+per mission" for publishing and "browser first" for Instagram (the Graph API road is planned, not built). Six rules:
+- **What a click commits is read off the PAGE** (`commit_of` over `Browser.seen`, the labels of the last `read()`),
+  injected as `_commit` by the loop after the model's args, never the model's words. A pressable label matching
+  `COMMIT_WORDS`, Enter after typing in a non-search field, or a target the page did not show is
+  `browser.commit site:<host>`; everything else is `browser.act`.
+- **A commit by anyone but the person asks, at every autonomy** (`person_rule`: a non-user principal allowed only by
+  the default). Only a mission whose definition says `publish: "auto"` holds a `browser.commit` grant, and that grant
+  counts only inside its own flow. No Remember on a commit in chat.
+- **A mission names its sites** (`permissions.sites`, `clean_sites`: at most 12, `www.` and paths dropped, publish
+  forced to `ask` without `act`); `declared_grants` writes read, act and commit rows from them, and the consent says
+  signed in or not and `strict_words` for a site that forbids automation. Never hide that warning.
+- **The record is a list of sites, never a credential** (`sites.json`, 0600, beside the profile). The cookie is the
+  browser profile's. Forget clears the site's cookies and storage over CDP.
+- **A wall with nobody at the desk goes to the owner's phones** (`_OWNER_PHONES`, bound by the server as
+  `_owner_wall_phones`, lent by `tool_wait` for that wait only and taken back in a `finally`). The code reply is
+  caught by the bridge before it is logged or saved, as for a phone turn. No phone: "[nobody here]" tells the
+  mission to file a `needs_you` Brief item.
+- **Upload only from `outputs.roots`** (`browser_upload`, `DOM.setFileInputFiles`); it is `browser.act`, so a commit
+  after it still asks. The approval card names the label (`approvalcard.body`), never a bare ref.
 
 ## Several tasks at once: a desktop per running task, and Telegram side by side
 

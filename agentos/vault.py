@@ -30,7 +30,14 @@ is not. Three properties, and what each one is for:
   so, rather than minting a fresh key and quietly failing to decrypt everything.
 
 Per user, like the config it serves: `~/.agentos/users/<id>/vault.json`, the
-machine's when there are no accounts. Kept free of HTTP and asyncio, so `bento
+machine's when there are no accounts.
+
+**An account's vault is SEALED** (`key: "sealed"`, seal.py): an item is locked to that
+account's public key, so writing needs nothing secret, and reading needs the account's
+private key, which only that person's signed-in browser can lend. Not an admin, not another
+account, not root while they're signed out. An account's vault moves to the seal at its first
+sign-in after the update (`reseal`); until then it keeps the key it had. The machine's own
+vault (no accounts, the device passwords) has nobody to sign in and keeps its key. Kept free of HTTP and asyncio, so `bento
 vault` works with the server down.
 """
 
@@ -201,9 +208,29 @@ def _aead(key: bytes):
     return AESGCM(key)
 
 
+def _uid() -> str:
+    from . import users as usersmod
+    return usersmod.current() or ""
+
+
+def sealed() -> bool:
+    """Is the vault in front of us an account's sealed one?"""
+    return _read_file().get("key") == "sealed"
+
+
 def put(name: str, secret: str) -> str:
     """Store a secret under a name and return the reference config keeps."""
     name = _clean(name)
+    data = _read_file()
+    uid = _uid()
+    if data.get("key") == "sealed" or (uid and not data.get("key") and _seal().exists(uid)):
+        # locked to the account's public key: nothing secret is needed to put one away
+        data["key"] = "sealed"
+        data.setdefault("v", 1)
+        data.setdefault("items", {})[name] = {
+            "s": _seal().seal_bytes(uid, str(secret).encode(), "vault/" + name), "at": time.time()}
+        _write_file(data)
+        return REF + name
     key, mech, problem = _load_key(create=True)
     if problem:
         raise RuntimeError(problem)
@@ -225,6 +252,20 @@ def get(ref_or_name: str, actor: str = "") -> str:
     item = (data.get("items") or {}).get(name)
     if not item:
         return ""
+    if data.get("key") == "sealed":
+        # Only this person's signed-in browser can lend the key (seal.Sealed says so otherwise).
+        uid = _uid()
+        priv = _seal().borrow_blocking(uid, f"open {name} from your vault")
+        try:
+            out = _seal().open_bytes(uid, priv, item["s"], "vault/" + name).decode()
+        except Exception:
+            return ""
+        finally:
+            priv = None
+        if _on_read is not None:
+            with _quiet():
+                _on_read(name, actor)
+        return out
     key, mech, problem = _load_key(create=False)
     if problem or not key:
         return ""
@@ -275,6 +316,10 @@ def status() -> dict:
     data = _read_file()
     mech = data.get("key") or ""
     items = data.get("items") or {}
+    if mech == "sealed":
+        st = _seal().status(_uid())
+        return {"mechanism": "sealed", "locked": not st.get("open"), "count": len(items),
+                "names": sorted(items), "detail": st["detail"], "path": str(path())}
     if not mech:
         would = "the keyring" if _keyring_tool() else "a key file beside it"
         return {"mechanism": "", "locked": False, "count": 0, "names": [],
@@ -288,6 +333,66 @@ def status() -> dict:
                   "on this machine, which is all a headless box can offer.")
     return {"mechanism": mech, "locked": bool(problem), "count": len(items), "names": sorted(items),
             "detail": problem or detail, "path": str(path())}
+
+
+def _seal():
+    from . import seal
+    return seal
+
+
+class _quiet:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return True
+
+
+def reseal(uid: str) -> int:
+    """At an account's first sign-in after the update: every item moves from the vault's old key
+    to the account's seal, and the old key is deleted. Run inside `users.as_user(uid)`. Returns
+    how many moved. A vault whose old key can't be read is left as it is, and says so."""
+    data = _read_file()
+    if not uid or data.get("key") in ("sealed",):
+        return 0
+    items = data.get("items") or {}
+    if not data.get("key"):
+        data.update(key="sealed", v=1, items={})
+        _write_file(data)
+        return 0
+    key, mech, problem = _load_key(create=False)
+    if problem or not key:
+        return 0
+    moved = {}
+    for name, it in items.items():
+        try:
+            plain = _aead(key).decrypt(base64.b64decode(it["n"]), base64.b64decode(it["c"]), name.encode())
+        except Exception:
+            continue
+        moved[name] = {"s": _seal().seal_bytes(uid, plain, "vault/" + name), "at": it.get("at") or time.time()}
+    data.update(key="sealed", items=moved)
+    _write_file(data)
+    if mech == "file":
+        with _quiet():
+            _key_path().unlink()
+    elif mech == "keyring" and _keyring_tool() == "secret-tool":
+        with _quiet():
+            subprocess.run(["secret-tool", "clear", "service", SERVICE, "key", _scope()],
+                           capture_output=True, timeout=10)
+    return len(moved)
+
+
+def drop_sealed(uid: str) -> int:
+    """Start fresh with no recovery code: the sealed items can never be opened again."""
+    from . import users as usersmod
+    with usersmod.as_user(uid):
+        data = _read_file()
+        if data.get("key") != "sealed":
+            return 0
+        n = len(data.get("items") or {})
+        data["items"] = {}
+        _write_file(data)
+        return n
 
 
 def adopt(cfg: dict) -> bool:
