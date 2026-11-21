@@ -485,11 +485,88 @@ def usage_cmd(args):
     from .memory import Store
 
     cfg = cfgmod.load_config()
+    if getattr(args, "action", "") in ("llms", "share", "quota"):
+        return _usage_llms_cli(args, cfg)
     rep = usagemod.report(Store(cfgmod.DB_PATH), cfg, days=args.days, group=args.by)
     if not rep["rows"]:
         print(f"no turns recorded in the last {args.days:g} day(s).")
         return
     print(usagemod.format_report(rep))
+
+
+def _usage_llms_cli(args, cfg):
+    """`bento usage llms|share|quota`: spend per LLM and per account, and the machine's shared LLMs
+    and daily quotas. The terminal is the machine's admin at the box, as for `bento user`; an
+    Isolated Tenant's admin sets the tenant's own in Token Analytics."""
+    from . import config as cfgmod
+    from . import usage as usagemod
+    from . import users as usersmod
+    rest = list(args.rest or [])
+    if args.action == "llms":
+        if args.everyone or not usersmod.enabled():
+            admin = next((u["id"] for u in usersmod.list_users() if usersmod.is_admin(u["id"])), "") \
+                if usersmod.enabled() else ""
+            for a in usagemod.everyone(cfg, args.days, viewer=admin):
+                if usersmod.enabled():
+                    print(f"## {a['name']}")
+                print(usagemod.words(a["llms"], args.days))
+                print()
+            return
+        uid = ""
+        if args.user:
+            u = usersmod.by_name(args.user) or usersmod.get(args.user)
+            if not u:
+                raise SystemExit(f"✗ no account called {args.user} (bento user list)")
+            uid = u["id"]
+        print(usagemod.words(usagemod.by_llm(usersmod.store_for(uid), usersmod.cfg_for(uid) if uid else cfg,
+                                             args.days, uid), args.days))
+        return
+    sh = usagemod.sharing(cfg)
+    uids = {u["id"] for u in usersmod.list_users() if not u.get("tenant")} if usersmod.enabled() else set()
+    if args.action == "share":
+        if len(rest) != 2 or rest[1] not in ("on", "off"):
+            raise SystemExit("usage: bento usage share PROVIDER on|off")
+        off = [p for p in (sh.get("off") or []) if p != rest[0]] + ([rest[0]] if rest[1] == "off" else [])
+        raw = {**sh, "off": off}
+    else:
+        if not rest:
+            q = sh.get("quota") or {}
+            if not q:
+                print("No daily quotas: every account may use every shared LLM as much as it likes.")
+            names = {u["id"]: u.get("name") for u in usersmod.list_users()} if usersmod.enabled() else {}
+            for who, per in q.items():
+                for llm, lim in per.items():
+                    bits = [f"{int(lim['tokens']):,} tokens" if lim.get("tokens") else "",
+                            f"${lim['usd']:.2f}" if lim.get("usd") else ""]
+                    print(f"  {('everyone' if who == '*' else names.get(who, who)):<16} {llm:<28} "
+                          + " and ".join(b for b in bits if b) + " a day")
+            if sh.get("off"):
+                print("Not shared with the accounts: " + ", ".join(usagemod.llm_name(p) for p in sh["off"]))
+            return
+        if len(rest) != 2:
+            raise SystemExit("usage: bento usage quota everyone|NAME LLM [--tokens N] [--usd X]  (0 and 0 clears it)")
+        who = "*" if rest[0] in ("everyone", "*") else (usersmod.by_name(rest[0]) or {}).get("id")
+        if not who:
+            raise SystemExit(f"✗ no account called {rest[0]} (bento user list)")
+        quota = {w: dict(p) for w, p in (sh.get("quota") or {}).items()}
+        lim = {k: v for k, v in (("tokens", args.tokens or 0), ("usd", args.usd or 0)) if v}
+        if lim:
+            quota.setdefault(who, {})[rest[1]] = lim
+        else:
+            quota.get(who, {}).pop(rest[1], None)
+        raw = {**sh, "quota": quota}
+    clean, dropped = usagemod.clean_sharing(raw, cfg.get("providers") or {}, uids)
+    cfg["llm_sharing"] = clean
+    cfgmod.save_config(cfg)
+    try:
+        usersmod.store_for("").audit_add(
+            uid="", principal_kind="user", principal_id="", surface="cli", action="usage.sharing",
+            resource="llm:*", effect="allow", rule="person",
+            reason=f"{len(clean['off'])} not shared, {sum(len(v) for v in clean['quota'].values())} quota(s)",
+            outcome="ok")
+    except Exception:
+        pass
+    print("✓ saved" + (f"; left out: {', '.join(dropped)}" if dropped else ""))
 
 
 def eval_cmd(args):
@@ -6901,7 +6978,7 @@ def _video_cli(args):
                                       title=prompt[:80], prompt=prompt,
                                       source=f"bento video (google/{c['model']}, {secs}s {c['resolution']})"))
     usagemod.record(store, cfg, f"google/{c['model']}", {}, kind="video", surface="cli",
-                    cost_usd=videogen.cost(secs, c["resolution"]))
+                    cost_usd=videogen.cost(secs, c["resolution"]), estimated=True)
     print(f"  ✓ asset {row['id']}  ·  bento assets path {row['id']}")
 
 
@@ -10569,6 +10646,13 @@ def main():
     p_ask.add_argument("--full", action="store_true", help="full autonomy (no approval prompts)")
 
     p_usage = verb("usage", help="what the agent has spent — tokens, and money where the model is priced")
+    p_usage.add_argument("action", nargs="?", default="report", choices=["report", "llms", "share", "quota"],
+                         help="llms: by LLM, tokens and money; share PROVIDER on|off; quota WHO LLM")
+    p_usage.add_argument("rest", nargs="*", help=argparse.SUPPRESS)
+    p_usage.add_argument("--user", default="", help="llms: one account's")
+    p_usage.add_argument("--everyone", action="store_true", help="llms: every account's")
+    p_usage.add_argument("--tokens", type=int, default=0, help="quota: tokens a day (0: no limit)")
+    p_usage.add_argument("--usd", type=float, default=0.0, help="quota: dollars a day (0: no limit)")
     p_usage.add_argument("--days", type=float, default=1.0, help="how far back (default: 1)")
     p_usage.add_argument("--by", default="model",
                          choices=["model", "day", "surface", "kind", "conversation", "space"])

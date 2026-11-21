@@ -1626,7 +1626,21 @@ class Agent:
         except Exception:
             return []
 
+    def _usage_caller(self):
+        """Who this run's model calls are for, so the door records each one there (usage.meter)."""
+        from . import usage as usagemod
+        p = self.principal
+        kind = {"app": "app", "subagent": "subagent", "flow": "mission", "workflow": "mission"}.get(
+            getattr(p, "kind", ""), "chat")
+        return usagemod.caller(kind=kind, principal=getattr(p, "label", "user") or "user",
+                               surface=self.surface or "", conversation_id=self.conversation_id or "",
+                               space_id=self.space_id or "")
+
     async def run(self, history: list[dict]) -> dict:
+        with self._usage_caller():
+            return await self._run(history)
+
+    async def _run(self, history: list[dict]) -> dict:
         """history: prior messages (user/assistant, internal format), last one the new user msg.
         Returns {'content': final_text, 'steps': [...]} — steps are the tool trace for persistence.
         When the turn parked (see `_park_here`) it also returns `parked` and `messages`,

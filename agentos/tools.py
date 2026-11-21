@@ -612,6 +612,8 @@ SAFE_TOOLS = {
     "list_assets", "get_asset", "list_automations", "read_app_data", "update_app_data",
     "mail_search",
     "mail_read", "calendar_events", "find_tools", "openclaw_report",
+    # what this account spent on each LLM, and its quotas (usage.py): numbers, never a key
+    "usage_report",
     # skills from the open: looking and reading. read_skill is untrusted (agent.py)
     "discover_skills", "read_skill",
     "port_openclaw_plugin", "verify_openclaw_port",
@@ -2823,7 +2825,7 @@ class Toolbox(usersmod.Scoped):
         try:
             usagemod.record(self.store, self.cfg, f"google/{c['model']}", {}, kind="video",
                             conversation_id=conversation_id, space_id=space_id,
-                            cost_usd=videogen.cost(secs, c["resolution"]))
+                            cost_usd=videogen.cost(secs, c["resolution"]), estimated=True)
         except Exception:
             pass
         if self.broadcast:
@@ -3045,6 +3047,26 @@ class Toolbox(usersmod.Scoped):
         risk = folder_risk(p, mode)
         return (f"Shared {p} ({mode}) with {', '.join(who) if who else 'everyone'}."
                 + (f"\n⚠ {risk}" if risk else ""))
+
+    async def usage_report(self, days: float = 1, everyone: bool = False) -> str:
+        """What this account spent on each LLM: calls, tokens in, out and in all, dollars (the
+        provider's own figure apart from our estimate), and the daily quota left. `everyone`
+        is for an admin: the machine's admin sees every account, a tenant's admin their own
+        tenant's. Asked for as "such should be available to the agents to answer"."""
+        from . import usage as usagemod
+        try:
+            days = max(1.0, min(366.0, float(days or 1)))
+        except (TypeError, ValueError):
+            days = 1.0
+        uid = usersmod.current() or ""
+        if everyone:
+            if usersmod.enabled() and not usersmod.is_tenant_admin(uid):
+                return "[refused] only an admin can see other accounts' usage"
+            out = []
+            for a in usagemod.everyone(self.cfg, days, viewer=uid):
+                out.append(f"## {a['name']}\n" + usagemod.words(a["llms"], days))
+            return "\n\n".join(out) or "No accounts here."
+        return usagemod.words(usagemod.by_llm(self.store, self.cfg, days, uid), days)
 
     async def list_folders(self) -> str:
         """Which folders the agent may work in besides its workspace, and who for."""
@@ -6555,6 +6577,15 @@ TOOL_SCHEMAS = [
         "name": "list_folders",
         "description": "Which folders the agent may work in besides its workspace, and who for.",
         "parameters": {"type": "object", "properties": {}},
+    }, {
+        "name": "usage_report",
+        "description": ("What has been spent on each LLM (OpenAI, Anthropic, Gemini…): calls, tokens in, "
+                        "out and in all, and dollars, saying which part is the provider's own figure "
+                        "and which is estimated from the price list, plus the daily quota left. Use it "
+                        "to answer questions about usage, cost, tokens or quotas."),
+        "parameters": {"type": "object", "properties": {
+            "days": {"type": "number", "description": "1 = today (the default), 7, 30…"},
+            "everyone": {"type": "boolean", "description": "an admin only: every account's usage"}}},
     }, {
         "name": "set_engine",
         "description": ("Choose the brain for this machine: which executor answers and which "

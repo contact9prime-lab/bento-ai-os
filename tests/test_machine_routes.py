@@ -45,7 +45,7 @@ ACCOUNT_ROUTES = (
 )
 # A handler that checks for itself. Named checks only, so a comment can't count.
 SELF_CHECK = re.compile(r"_require_admin\(\)|usersmod\.is_admin\(|_backup_admin\(\)|_ocp_gate\(|_standby_do\(|"
-                        r"_restore_refusal\(|_tie_mine\(")
+                        r"_restore_refusal\(|_tie_mine\(|usersmod\.can_manage\(|_usage_admin\(")
 
 
 def _routes():

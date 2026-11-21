@@ -36,7 +36,11 @@ def _decide(body):
     if "memory subsystem" in said or said.startswith("<request>"):
         return "[]", None
     if last.get("role") == "tool":
+        if "spen" in asked.lower():
+            return f"Here is what you spent. {said[:600]}", None
         return f"Your mailbox answered: {said[:140]}", None
+    if "spen" in asked.lower():
+        return "", ("usage_report", {"days": 7})
     if "mail" in asked.lower():
         return "", ("mail_search", {"query": "invoice", "since_days": 7})
     return "Hello from the stand-in brain. I'm answering with the key this machine keeps in its vault.", None
@@ -50,7 +54,7 @@ def _chunk(delta, finish=None):
 
 @brain.get("/v1/models")
 async def models(req: Request):
-    return {"data": [{"id": "fake-1", "object": "model"}]}
+    return {"data": [{"id": "fake-1", "object": "model"}, {"id": "or-fake", "object": "model"}]}
 
 
 @brain.post("/v1/chat/completions")
@@ -72,8 +76,12 @@ async def chat(req: Request):
             yield _chunk({}, "tool_calls")
         else:
             yield _chunk({}, "stop")
+        # an OpenRouter-style model states its own bill; the others leave it to the price list
+        u = {"prompt_tokens": 1200, "completion_tokens": 300, "total_tokens": 1500}
+        if str(body.get("model", "")).startswith("or-"):
+            u["cost"] = 0.0042
         yield "data: " + json.dumps({"id": "x", "object": "chat.completion.chunk", "choices": [],
-                                     "usage": {"prompt_tokens": 5, "completion_tokens": 5, "total_tokens": 10}}) + "\n\n"
+                                     "usage": u}) + "\n\n"
         yield "data: [DONE]\n\n"
     if body.get("stream"):
         return StreamingResponse(gen(), media_type="text/event-stream")

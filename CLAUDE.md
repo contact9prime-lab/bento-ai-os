@@ -4677,6 +4677,32 @@ log showed that window on ~1,000-token requests, and one embedding call took 2 m
 - **A window that grows is kept per model** (`ollama_windows`, a USER_KEY like `default_model`): by the agent
   loop's "filled the window" retry and by `ollama_window`. It only grows, under `OLLAMA_WINDOW_CEILING`.
 
+## Usage: every call counted at the door, and quotas on what is shared
+
+`usage.meter` (called in `providers.chat` on every `usage` event, the pool branch included),
+`usage.CALLER`/`caller` (set by `Agent.run`, `ask_fenced`, the pool leader), `usage.turn`,
+`by_llm`/`everyone`/`words`, `quota_refusal`/`clean_sharing`, `llm_sharing` (in `users.TENANT_KEYS`),
+`/api/usage/llms`, `PUT /api/usage/sharing`, Token Analytics (`19-tokens…js`, `44c-usage.css`), the
+`usage_report` tool, `bento usage llms|share|quota`; `docs/models.md`, `tests/test_usage_quota.py`. Asked
+for as "usage for all the LLMs and all the accounts … the agents should answer … per account quotas per
+LLM shared, by tokens or cost or both, unlimited by default". Five rules:
+- **One door counts, once.** Every provider call is a row in the CALLING account's database, at the door.
+  A turn's bookkeeping after it ends goes through `usage.turn`, which records only what never passed the
+  door (an agent CLI's turn, with the bill it stated). Never call `record` for a provider model after a
+  turn: that counts it twice. `record` itself always records (a video's price, a test).
+- **Money says where it came from** (`cost_src`): `reported` is the provider's or the CLI's own figure,
+  `estimated` is the price list (cached input at `CACHE_READ`/`CACHE_WRITE`). Every face shows which.
+- **A quota is checked before the call, in the account's own words** (`quota_refusal` at the top of
+  `providers.chat`): `off` providers and per-LLM daily `tokens`/`usd`, "*" for everyone without their own,
+  never an admin (`is_tenant_admin`), never a local model. Absent is unlimited. A non-admin's call is
+  priced at the machine's prices (`_priced_by_admin`): `/api/pricing` writes into the asker's view, and
+  setting your own price to $0 was a way under a dollar quota.
+- **The machine's admin sets the machine's; a tenant's admin the tenant's** (`llm_sharing` is a
+  TENANT_KEY, so `machine_changed` never writes it into an isolated view). Every change is a
+  `usage.sharing` ledger row. No agent tool sets a quota: `usage_report` only reads.
+- **An admin's everyone view reads each account's own database** (`everyone`), filtered to their tenant
+  unless they are the machine's admin; a non-admin's `everyone` is refused.
+
 ## The footprint is a feature: this may be a Raspberry Pi
 
 Measured, on a warm install with no browser attached: ~70 MB idle RSS, ~0.6% of

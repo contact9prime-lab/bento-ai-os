@@ -15271,7 +15271,7 @@ async def _arena_seat(aid: str, c: dict, task: str, uid: str):
             got = usagemod.cost(cfg, c["model"], c["tokens_in"], c["tokens_out"])
             c["priced"] = got is not None or usagemod.is_local(c["model"])
             c["cost"] = got or 0.0
-            usagemod.record(store, cfg, c["model"], {"input": c["tokens_in"], "output": c["tokens_out"]},
+            usagemod.turn(store, cfg, c["model"], {"input": c["tokens_in"], "output": c["tokens_out"]},
                             surface="arena", conversation_id=cid, kind="chat")
             answer = res.get("content") or "".join(said)
         else:
@@ -20714,7 +20714,7 @@ async def api_chat(body: dict, request: Request):
             knowledge.turn_ended()
     store.add_message(cid, "assistant", result["content"], {"steps": result["steps"]})
     store.touch_conversation(cid)
-    usagemod.record(store, cfg, model, result.get("tokens") or {},
+    usagemod.turn(store, cfg, model, result.get("tokens") or {},
                     surface=("gui" if principal.kind == "app" else "api"),
                     principal=principal.label, conversation_id=cid)
     knowledge.schedule_extraction(cfg, store, cid, text, result["content"], state.get("broadcast"))
@@ -22220,7 +22220,7 @@ async def _run_chat(cid: str, data: dict):
             # tokens has still spent them.
             from . import spaces as _spacemod
             _surface = data.get("surface") if data.get("surface") in CLIENT_SURFACES else "gui"
-            usagemod.record(store, cfg, model, tk, surface=_surface, conversation_id=cid,
+            usagemod.turn(store, cfg, model, tk, surface=_surface, conversation_id=cid,
                             space_id=_spacemod.active_for(cfg, _surface, store, cid),
                             cost_usd=result.get("cost_usd"))
             knowledge.schedule_extraction(cfg, store, cid, text, result["content"],
@@ -22444,6 +22444,66 @@ async def api_pricing_set(body: dict | None = None):
 async def api_usage(days: float = 1.0, group: str = "model", space: str = ""):
     """What has been spent. `group`: model | day | surface | kind | conversation | space."""
     return usagemod.report(state["store"], state["cfg"], days=days, group=group, space=space)
+
+
+def _usage_admin() -> bool:
+    """Who may see everybody's usage and set the quotas: the machine's admin, or an Isolated
+    Tenant's admin for their own tenant. A machine with no accounts has nobody to refuse."""
+    if not usersmod.enabled():
+        return True
+    me = usersmod.current()
+    return usersmod.is_admin(me) or bool(usersmod.tenant_of(me) and usersmod.is_tenant_admin(me))
+
+
+def _usage_accounts() -> list[dict]:
+    """The accounts an admin may set quotas for: the machine's admin sees the Shared Tenant,
+    a tenant's admin its own people."""
+    if not usersmod.enabled():
+        return []
+    t = usersmod.tenant_of(usersmod.current())
+    return [{"id": u["id"], "name": u.get("name") or u["id"], "role": u.get("role") or ""}
+            for u in usersmod.list_users() if str(u.get("tenant") or "") == t]
+
+
+@app.get("/api/usage/llms")
+async def api_usage_llms(days: float = 1.0, everyone: bool = False):
+    """Spend per LLM, tokens in, out and in all, and money as the provider stated it or as
+    estimated from the price list, with this account's daily quota left. An admin also gets every
+    account's (their tenant's) and the sharing settings."""
+    days = max(1.0, min(float(days or 1), 365.0))
+    me = usersmod.current() if usersmod.enabled() else ""
+    out = {"days": days, "llms": usagemod.by_llm(state["store"], state["cfg"], days, me),
+           "admin": _usage_admin()}
+    out["words"] = usagemod.words(out["llms"], days)
+    out["daily"] = [{"day": r["bucket"], "in": r["tin"] or 0, "out": r["tout"] or 0, "usd": round(r["cost"] or 0, 4)}
+                    for r in sorted(usagemod.report(state["store"], state["cfg"], days=14, group="day")["rows"],
+                                    key=lambda r: r["bucket"])]
+    if out["admin"]:
+        out["sharing"] = usagemod.sharing(state["cfg"])
+        out["accounts"] = _usage_accounts()
+        out["providers"] = [{"id": p, "name": usagemod.llm_name(p),
+                             "on": bool((c or {}).get("enabled"))}
+                            for p, c in (state["cfg"].get("providers") or {}).items()
+                            if p not in usagemod.LOCAL]
+        if everyone:
+            out["everyone"] = await asyncio.to_thread(usagemod.everyone, state["cfg"], days, me)
+    return out
+
+
+@app.put("/api/usage/sharing")
+async def api_usage_sharing(body: dict):
+    """Which LLMs are shared with the accounts, and each account's daily quota. The machine's
+    admin sets the machine's; an Isolated Tenant's admin sets the tenant's own."""
+    if not _usage_admin():
+        return JSONResponse({"error": "only an admin can share LLMs and set quotas"}, status_code=403)
+    uids = {a["id"] for a in _usage_accounts()}
+    clean, dropped = usagemod.clean_sharing(body or {}, state["cfg"].get("providers") or {}, uids)
+    state["cfg"]["llm_sharing"] = clean
+    cfgmod.save_config(state["cfg"])
+    n = sum(len(v) for v in clean["quota"].values())
+    _ledger("usage.sharing", "llm:*",
+            f"{len(clean['off'])} not shared, {n} quota(s)" + (f"; dropped {', '.join(dropped)}" if dropped else ""))
+    return {"ok": True, "sharing": clean, "dropped": dropped}
 
 
 @app.get("/api/evals")

@@ -884,14 +884,19 @@ async def ask_fenced(cfg: dict, toolbox, messages: list[dict], principal=None, s
         return "", "", why
     if engine == "aria":
         from . import providers
+        from . import usage as usagemod
         parts: list[str] = []
+        label = getattr(principal, "label", "") or "user"
+        kind = "app" if getattr(principal, "kind", "") == "app" else "background"
         try:
             async def go():
-                async for ev in providers.chat(cfg, model, messages, []):
-                    if ev.get("type") == "text" and ev.get("text"):
-                        parts.append(ev["text"])
-                        if sink:
-                            await sink(ev["text"])
+                # counted at the door, as the principal's (an app's spend is the app's)
+                with usagemod.caller(kind=kind, principal=label, surface=surface):
+                    async for ev in providers.chat(cfg, model, messages, []):
+                        if ev.get("type") == "text" and ev.get("text"):
+                            parts.append(ev["text"])
+                            if sink:
+                                await sink(ev["text"])
             await asyncio.wait_for(go(), timeout)
         except asyncio.TimeoutError:
             return "".join(parts), model, f"{model} took longer than {int(timeout)}s"
@@ -2020,7 +2025,7 @@ STAGE_FILE_TOOLS = ("stage_file",)
 # Claude Code it answered without what the person had told it and wrote what it learned
 # into the CLI's own memory files, which nothing here reads (the owner's record has a reply
 # saying it "recorded these rules in memory": none of them is in this OS's memory).
-MIND_DOOR_TOOLS = ("remember", "recall", "forget", "kg_add", "kg_query")
+MIND_DOOR_TOOLS = ("remember", "recall", "forget", "kg_add", "kg_query", "usage_report")
 DOOR_TOOLS = (TEAM_TOOLS + WORKSPACE_DOOR_TOOLS + CAPABILITY_DOOR_TOOLS + STAGE_DOOR_TOOLS + STAGE_FILE_TOOLS
               + MIND_DOOR_TOOLS)
 MIND_CHARS = 6000

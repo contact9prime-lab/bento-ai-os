@@ -2,10 +2,6 @@
 
 ## 0.99.0 — 2026-11-21
 
-No release notes were written for this one; the commits since 0.9.42 are what changed (`bento update` lists them).
-
-## 0.9.42 — 2026-11-21
-
 **A phone sees the work while it happens.** A message from Telegram or WhatsApp that the lead hands to a
 department used to show "typing…" until the answer. Now the chat gets the steps as they happen: the
 hand-over, the desk taking it, each person it gives a piece to and their steps, the bosses' sign-offs, the
@@ -53,6 +49,15 @@ stops after a restart. That protects copies of the file, not the machine's root.
 keys and keeps their own data. The machine's admin can give somebody an Isolated Tenant instead: it has
 its own LLM keys, its own admin, and its own people, who see nobody outside it. Data and MCP servers are
 never shared between accounts either way. Users app, or `bento user scope`.
+
+**What you spent, for every LLM and every account, and daily quotas.** Every call to a model is counted
+where it is made, in the account that made it, including a specialist's, a mission's, a summary's and an
+app's, which reached no usage row before. Token Analytics shows tokens in, out and in all and the money for
+each LLM, today or over 7 or 30 days. The money is the provider's own figure where it sends one (OpenRouter,
+an agent CLI) and an estimate from the price list otherwise, with cached input at its cheaper rate, and it
+says which. Your agent can answer from the same numbers. An admin sees every account and sets which LLMs are
+shared with the accounts and a daily quota per LLM, by tokens, dollars or both; nothing is limited until a
+limit is set. `bento usage llms|share|quota`.
 
 **The model catalogue was checked again.** DeepSeek's fast model is offered as `deepseek-v4-flash`, the
 name DeepSeek's own notes give it; `deepseek-flash` was not a model anyone could call. A saved choice is

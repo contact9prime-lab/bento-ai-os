@@ -236,6 +236,12 @@ async def _chat_openai(base_url: str, api_key: str, model: str, messages: list, 
                     u = chunk["usage"]
                     usage["input"] = u.get("prompt_tokens", 0)
                     usage["output"] = u.get("completion_tokens", 0)
+                    # the bill as the provider states it (OpenRouter sends `cost`): exact, not estimated
+                    if isinstance(u.get("cost"), (int, float)):
+                        usage["cost"] = float(u["cost"])
+                    cached = ((u.get("prompt_tokens_details") or {}).get("cached_tokens") or 0)
+                    if cached:
+                        usage["cache_read"] = int(cached)      # part of input, billed cheaper
                 choices = chunk.get("choices") or []
                 if not choices:
                     continue
@@ -331,7 +337,15 @@ async def _chat_anthropic(base_url: str, api_key: str, model: str, messages: lis
                 ev = json.loads(line[5:].strip())
                 t = ev.get("type")
                 if t == "message_start":
-                    usage["input"] = ((ev.get("message") or {}).get("usage") or {}).get("input_tokens", 0)
+                    mu = ((ev.get("message") or {}).get("usage") or {})
+                    # Anthropic counts cache writes and reads apart from input_tokens: all of it was
+                    # read, so it is all input, and each is priced at its own rate (usage.cost)
+                    cw, cr = int(mu.get("cache_creation_input_tokens") or 0), int(mu.get("cache_read_input_tokens") or 0)
+                    usage["input"] = int(mu.get("input_tokens", 0) or 0) + cw + cr
+                    if cw:
+                        usage["cache_write"] = cw
+                    if cr:
+                        usage["cache_read"] = cr
                 elif t == "message_delta":
                     usage["output"] = (ev.get("usage") or {}).get("output_tokens", usage["output"])
                     if (ev.get("delta") or {}).get("stop_reason"):
@@ -380,6 +394,10 @@ def parse_model_id(model_id: str) -> tuple[str, str]:
 async def chat(cfg: dict, model_id: str, messages: list, tools: list,
                options: dict | None = None) -> AsyncIterator[dict]:
     provider, model = parse_model_id(model_id)
+    from . import usage as usagemod
+    why = usagemod.quota_refusal(cfg, model_id)
+    if why:
+        raise ProviderError(why)
     if provider == "pool" and (cfg or {}).get("_tenant"):
         raise ProviderError("Your community's leader answers with this machine's keys, so an "
                             "Isolated Tenant can't use it. Pick one of your tenant's providers.")
@@ -388,6 +406,8 @@ async def chat(cfg: dict, model_id: str, messages: list, tools: list,
         # its events come back. This machine's keys, if it has any, never leave it.
         from . import pool as poolmod
         async for ev in poolmod.chat(cfg, model, messages, tools, options):
+            if ev.get("type") == "usage":
+                usagemod.meter(cfg, model_id, ev)    # what this account asked of the leader
             yield ev
         return
     p = cfg["providers"].get(provider)
@@ -429,6 +449,9 @@ async def chat(cfg: dict, model_id: str, messages: list, tools: list,
     else:
         raise ProviderError(f"Unknown provider: {provider}")
     async for ev in gen:
+        if ev.get("type") == "usage":
+            # every call is counted here, once, in the account that made it (usage.meter)
+            usagemod.meter(cfg, model_id, ev)
         yield ev
 
 

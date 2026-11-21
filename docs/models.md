@@ -66,6 +66,39 @@ These environment variables are picked up automatically if set: `ANTHROPIC_API_K
 
 ---
 
+## What you spent, and daily quotas
+
+Every call to a model is counted where it is made, in the account that made it: a chat's rounds,
+a specialist's, a mission's, a summary, an app's AI. **Token Analytics** shows tokens in, out and in
+all, and money, for each LLM, today or over 7 or 30 days.
+
+- **Money is the provider's own figure where it sends one.** OpenRouter states the bill for each
+  call, and so does an agent CLI like Claude Code. Everything else is estimated from the price list,
+  with cached input at its cheaper rate. The app and `bento usage llms` say which part is which.
+- **Your agent can answer.** Ask "what did I spend on Anthropic this week?" and it uses
+  `usage_report`, which reads the same numbers.
+- **An admin sees every account**, and sets which LLMs are shared with the accounts and a daily
+  quota per LLM, by tokens, by dollars or both. Nothing is limited until you set a limit. A limit for
+  Everyone applies to each account without its own, and never to an admin. A day ends at midnight
+  on this machine. An Isolated Tenant's admin sets the tenant's own. An account's calls are priced at
+  the prices the admin set; a price somebody sets for themselves counts only for a model that has none.
+- When a quota is used up, the next call says so in a sentence and starts again at midnight.
+- An agent CLI (Claude Code, Gemini CLI, Codex) is counted too, with the bill it states. Quotas are
+  for the provider keys this machine shares; a CLI is signed in as its owner and is switched on or off
+  for accounts under AI providers.
+
+```
+$ bento usage llms --everyone
+$ bento usage share anthropic off
+$ bento usage quota everyone openai --tokens 200000
+$ bento usage quota bob openai --usd 2
+$ bento usage quota                    # what is set
+```
+
+![Token Analytics as the machine's admin](screenshots/usage-quotas.png)
+
+---
+
 ## The Model Manager
 
 The **Model Manager** app manages your local Ollama models and shows your hardware:

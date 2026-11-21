@@ -654,7 +654,8 @@ CREATE TABLE IF NOT EXISTS usage (
     tokens_in INTEGER DEFAULT 0,
     tokens_out INTEGER DEFAULT 0,
     cost_usd REAL,                    -- NULL = this model has no price configured
-    kind TEXT DEFAULT 'chat'          -- chat | build | subagent | extract | eval
+    kind TEXT DEFAULT 'chat',         -- chat | build | subagent | extract | eval
+    cost_src TEXT DEFAULT ''          -- reported (the provider's or CLI's bill) | estimated | ''
 );
 CREATE INDEX IF NOT EXISTS idx_usage_ts ON usage(ts);
 CREATE INDEX IF NOT EXISTS idx_usage_model ON usage(model, ts);
@@ -944,6 +945,11 @@ class Store:
 
     def _migrate(self):
         """Add columns introduced after the first release to existing databases."""
+        ucols = {r["name"] for r in self.db.execute("PRAGMA table_info(usage)").fetchall()}
+        if ucols and "cost_src" not in ucols:
+            # where a cost came from: an older row's was estimated unless a CLI stated it, and that
+            # can't be told apart now, so it says neither
+            self.db.execute("ALTER TABLE usage ADD COLUMN cost_src TEXT DEFAULT ''")
         if "section" not in {r["name"] for r in self.db.execute("PRAGMA table_info(spaces)").fetchall()}:
             self.db.execute("ALTER TABLE spaces ADD COLUMN section INTEGER DEFAULT 0")
         cols = {r["name"] for r in self.db.execute("PRAGMA table_info(memories)").fetchall()}
@@ -1512,17 +1518,20 @@ class Store:
 
     def usage_add(self, model: str, tokens_in: int, tokens_out: int,
                   cost_usd: float | None = None, surface: str = "", principal: str = "user",
-                  conversation_id: str = "", space_id: str = "", kind: str = "chat") -> str:
+                  conversation_id: str = "", space_id: str = "", kind: str = "chat",
+                  cost_src: str | None = None) -> str:
         """Record what one turn spent. Never raises — a bookkeeping failure must
         not cost the user the answer they were waiting for."""
         uid = uuid.uuid4().hex[:12]
         try:
             self.db.execute(
                 "INSERT INTO usage (id, ts, model, surface, principal, conversation_id, "
-                "space_id, tokens_in, tokens_out, cost_usd, kind) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                "space_id, tokens_in, tokens_out, cost_usd, kind, cost_src) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                 (uid, time.time(), model or "", surface or "", principal or "user",
                  conversation_id or "", space_id or "", int(tokens_in or 0),
-                 int(tokens_out or 0), cost_usd, kind or "chat"))
+                 int(tokens_out or 0), cost_usd, kind or "chat",
+                 # a direct caller with a cost (an agent CLI's bill) states it; without one it's unpriced
+                 cost_src if cost_src is not None else ("reported" if cost_usd is not None else "")))
             self.db.commit()
         except Exception:  # pragma: no cover - defensive
             return ""

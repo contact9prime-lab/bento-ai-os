@@ -272,7 +272,7 @@ def admin_count() -> int:
 # agent CLIs or community brains, which are signed in as the machine's owner. Only the machine's
 # admin makes a tenant or moves an account between tenants (`set_scope`).
 
-TENANT_KEYS = ("providers", "speech")
+TENANT_KEYS = ("providers", "speech", "llm_sharing")
 SCOPES = ("shared", "isolated")
 
 
@@ -356,7 +356,8 @@ def _new_tenant(name: str) -> str:
 def tenant_cfg(tid: str) -> dict:
     """An Isolated Tenant's own keys: the machine's provider list with nothing of the machine's
     keys in it, then the tenant's file over it. A provider the tenant hasn't set up has no key."""
-    base = {"providers": copy.deepcopy(cfgmod.DEFAULTS["providers"]), "speech": {"engine": "browser"}}
+    base = {"providers": copy.deepcopy(cfgmod.DEFAULTS["providers"]), "speech": {"engine": "browser"},
+            "llm_sharing": {}}
     for p in base["providers"].values():
         if isinstance(p, dict):
             p["api_key"] = ""

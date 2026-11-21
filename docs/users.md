@@ -189,6 +189,13 @@ account's Terminal, and doesn't start at all where there's no jail. A server wit
 be on the public internet, because the connection comes from this machine. A sign-in to one
 (OAuth) belongs to one account and one address.
 
+### Who may use which LLM, and how much
+
+A Shared Tenant spends the machine's keys, so the machine's admin decides which LLMs are shared with
+the accounts and how much each account may spend a day, in Token Analytics or with `bento usage
+share|quota`. It is unlimited until a limit is set. An Isolated Tenant's admin does the same for
+the tenant's own keys. [More →](models.md#what-you-spent-and-daily-quotas)
+
 ## Adding the first account
 
 This is the consequential moment, and the UI says so before the button:
