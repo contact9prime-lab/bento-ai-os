@@ -225,6 +225,27 @@ detect them", and it was five gaps, so check all five when you touch sharing:
   files after they approved the write. Only an admin's workspace is shared: a non-admin
   choosing a workspace must never be a way to reach a folder.
 
+**A tenant decides whose LLM keys an account spends, and nothing else** (`users.TENANT_KEYS`,
+`tenant_of`/`is_tenant_admin`/`can_manage`/`set_scope`/`tenant_cfg`/`save_tenant_cfg`, `vault.in_tenant`,
+the Users app's scope, `bento user scope|tenants`; `docs/users.md`, `tests/test_tenants.py`). Asked for as
+"Shared-Tenant by default, everyone shares the keys and the data is separate; Isolated Tenant is done
+ground up, its own admin, account management and keys", and "don't share MCP and data between the
+accounts in any case". Five rules:
+- **`is_admin` is the MACHINE's admin** (role admin and no tenant), and all ~100 machine-wide doors ask
+  it. An Isolated Tenant's admin is `is_tenant_admin` + `can_manage` for its own people, and must never
+  answer True to `is_admin`. `admin_count` counts machine admins; `_last_admin` is per tenant.
+- **An isolated view has none of the machine's keys**: `cfg_for` lays `tenant_cfg` (defaults with every
+  key blanked, then the tenant's file) over the machine's, `machine_changed` skips TENANT_KEYS for it,
+  and its references are `vault:tenant.<id>.…`, opened in `tenants/<id>/vault.json` on the service key.
+- **The machine's agent CLIs and community brain are signed in as its owner**, so an isolated view
+  reads them switched off (`executors.switched_off`) and `providers.chat` refuses `pool/`.
+- **Nothing crosses tenants**: the roster lists only your tenant (the machine's admin sees all),
+  `users.shared`/`take` and account links (`teamlink._same_tenant_or_refuse`) stay inside one. Data and
+  MCP servers were already each account's own.
+- **Only the machine's admin moves an account** (`PUT /api/users/{id}` `scope`). A new tenant's first
+  person is its admin; a move into the Shared Tenant is never as its admin; emptying a tenant removes it
+  and its keys after a 409 `confirm`. Every move is an `account.scope` ledger row.
+
 **A passphrase is not a user, and the two locks are alternatives.** `remote.lock_kind`
 is the whole rule: accounts win, and a shared passphrase in front of them is one more
 secret held in common by people this OS otherwise keeps in separate directories. Every
@@ -1135,9 +1156,13 @@ was for. Full story in `docs/vault.md`. Four things that have to stay true:
   permissions and nothing more, and `status()["detail"]` says exactly that. A card that
   said "encrypted" and stopped would be worse than the clear-text file it replaced.
 - **`adopt()` moves clear-text secrets on load and stops when the vault cannot store** — a
-  migration that blanks the value it was moving is a lost account. `SECRET_KEYS` is the
-  list of what moves: account secrets only. Provider keys and the Telegram token are the
-  machine's and stay (USER_KEYS says why).
+  migration that blanks the value it was moving is a lost account. `_secret_places` is the
+  list of what moves into the account's vault; `_machine_places` (provider and voice keys) moves
+  only on a MACHINE save, into the machine's vault, which is locked with the service key
+  (`key: "service"`, `vault.to_service` moves an old one across once). Every reader opens them
+  with `vault.machine_value` (`providers._key`, `speech._key`, hearing, the image and video
+  tools): a reference read as a key is a 401 on every turn. `users.adopt` carries the first
+  account's references into its own vault (`_carry_secrets`), or its mailbox and bot broke.
 
 `accounts.state()` reads the RAW section (a reference counts as a password) and never
 resolves; only the module that opens the box resolves. Keep it that way: resolving in a
@@ -1173,6 +1198,43 @@ working. Seven rules:
   The machine's own vault (no accounts, device passwords) has nobody to sign in and keeps its key.
 - `seal.py` is a SECURITY_MODULE and `seal.json` a SECRET_FILE. No route, verb or tool returns a
   key or a recovery code after it was shown once.
+
+**Missions run with nobody signed in, for as long as the person said** (`agentos/away.py`,
+`vault.set_away`/`away_list`/`_open_sealed`/`held`, cdpbrowser's `profile.away`, `PUT /api/seal/away`,
+`bento vault away`, the Your secrets card; `tests/test_away.py`). The owner's correction: "Bento starts
+as a service for everyone; once stored for future missions it works unless revoked or given a time
+limit; allowed once, it works the next time and resets, signed in or not". Six rules:
+- **Each secret has a choice**: off (signed in only), always (until revoked, the DEFAULT for a new
+  secret and for everything `reseal` migrates, because it worked unattended before), until a date,
+  once (`ONCE_S` after its first use, then off with `ended`).
+- **The away copy is the secret locked with the service key** (`away.json`/`away.key` in the machine
+  home, keyring when one answers, never re-minted: the vault's rule). It is made ONLY while the
+  plaintext is in hand: `put`, or `set_away` with the person's key from their request (or the
+  terminal's typed password). Nothing makes one from the sealed copy alone.
+- **A read prefers your key in this request, then the away copy, then a page that lends**; a "once"
+  is not spent while a page of yours could lend. Spent copies are deleted on the next read or seal.
+- **Said, not hidden**: root can open an away copy (`COST_WORDS`, on the card's ⓘ and in the docs);
+  no other account or admin can through Bento. `vault.held` caches a bot token for an hour, and only
+  when it may be used unattended anyway, so signing out still closes a signed-in-only one.
+- **Tokens a running service uses live in the vault too** (`vault._secret_places`: SECRET_KEYS, each
+  channel `Field(secret=True)`, and MCP env/headers whose NAME matches `trace.SECRET`), adopted on
+  load and before every save (`config.save_config`, `users.save_user_cfg`), resolved where used:
+  `TelegramBridge._token`, `whatsapp.secret`, `mcp_client._opened`; MCP sign-ins are vault items with
+  a marker file (`mcp_oauth._write`). Two accounts hold the same reference NAME for different bots,
+  so the one-poller-per-token check compares what they open to.
+- **Faces**: the card's select per secret (`sealAwaySelect`), `bento vault [list|away]`. Every change
+  is a `seal.away` ledger row. No agent tool reaches any of it. Backup carries the service key like a
+  vault key; factory reset forgets it; `start_fresh` removes the browser's copy.
+
+**After a restart, your phone types the password, never your chat** (`agentos/unlock.py`, `/unlock`,
+`ui/unlock.html`, login.html's `UNLOCK`; `tests/test_unlock.py`). Asked for as "a link to type my password,
+like the GitHub sign-in hand-off … never typed into the chat … only through remote access, no second door,
+the chat paired to my account". A step refused a signed-in-only secret calls `unlock.closed`: that
+account's OWN paired chats (`_owner_wall_phones`) get `<remote address>/unlock`, once per `EVERY_S`; with
+remote access off they get `handoff.REMOTE_OFF` and no link. `/unlock` is an ordinary page behind the
+remote gate (not in REMOTE_OPEN_PATHS, no ticket): signing in there IS typing the password (it opens the
+seal), and the page opens the closed secrets with `PUT /api/seal/away`. The step waits `WAIT_S` in its
+worker thread (`vault._wait_for_phone`, never on the loop) and carries on.
 
 ## Backup: the whole machine in one file, and restore checks everything first
 
@@ -2240,7 +2302,11 @@ because a linked device is a credential.
   outlives a crashed AgentOS keeps a live session nobody is reading.
 - **The session directory is the phone.** `~/.agentos/whatsapp/session`, 0700,
   deleted on unlink and on factory reset. "Disconnected"
-  with the keys still on disk is still a linked device.
+  with the keys still on disk is still a linked device. On a machine with accounts it is
+  `users/<id>/whatsapp/session`, one Node process per account: `BaileysTransport.uid` is pinned
+  when it is made, and every session path and forget uses it, never the context it is called
+  from. Its environment is `executors.ENV_KEEP`, never `os.environ` (which holds provider keys).
+  `tests/test_whatsapp_per_account.py`.
 - **A logout is never retried.** Exit code 2 means the credentials are void; retrying
   reads as "it keeps failing" rather than "you need to scan again".
 - **Both sides need a deadline.** A socket that never opens produces no event at all,

@@ -116,6 +116,38 @@ is a preference; which providers exist and what their keys are is not.
 grants, flows, jobs, tasks, apps, the gallery, the soul, channels, MCP servers,
 credentials, the audit ledger.
 
+### Shared Tenant or Isolated Tenant
+
+Each account has a scope, and the scope decides one thing: whose LLM keys it spends.
+
+- **Shared Tenant**, the default. The account uses this machine's provider keys,
+  which the machine's admin sets up. Its data is its own, as above.
+- **Isolated Tenant.** The account is in a tenant of its own, set up from the ground
+  up: its own LLM keys (and voice keys), kept in the tenant's own vault, its own
+  admin, and its own people. Its admin adds and removes people inside it and sets
+  up its keys in Settings → AI providers. They can't see or change anything of the
+  machine's, or anybody outside the tenant.
+
+What never crosses, whatever the scope: data and MCP servers. Each account's are
+its own. Tenants don't see each other's people, shared copies or account links. An
+Isolated Tenant can't use the agent CLIs installed on this machine (Claude Code and
+the others are signed in as the machine's owner) or your community's leader, so it
+answers with its own provider keys.
+
+The machine's admin sets the scope when adding somebody, and can change it later in
+the Users app or with `bento user scope`. Moving somebody into a new Isolated Tenant
+makes them its admin, with no keys yet. Moving the last person out of a tenant
+removes it and its keys, after asking.
+
+![The Users app as the machine's admin: each account with its tenant, and a scope to change](screenshots/users-scopes.png)
+
+```
+$ bento user add eve isolated          # a new Isolated Tenant, eve its admin
+$ bento user add finn isolated --tenant 3f9c2a1b0d4e
+$ bento user scope eve shared --yes
+$ bento user tenants
+```
+
 **Crossing over:** two things cross, and they cross in opposite ways on purpose.
 
 The first is `shared/` — only agents and apps, and only as a **copy**. A shared app
@@ -332,8 +364,13 @@ first sign-in after the update seals them and shows a recovery code once.
 
 What it means for an admin: resetting somebody's password lets them sign in
 again, and gives the admin nothing of theirs. That person's recovery code opens
-their secrets; without it they start fresh. Locking the screen keeps a person's
-missions able to use their secrets. Signing out, or a restart, closes them.
+their secrets; without it they start fresh.
+
+Missions, schedules and phone bots run with nobody signed in. Each person picks,
+per secret, how long it may be used while they're away: until revoked (the
+default), for some days, once, or only while signed in. A secret that works
+while they're away is also kept locked with the machine's service key, so root
+on the machine could open that one. Settings says so beside the choice.
 
 ## Locking the screen, which is not signing out
 

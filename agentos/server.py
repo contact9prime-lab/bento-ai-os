@@ -200,15 +200,21 @@ def _start_account_bridges() -> list[str]:
     except KeyError:
         machine = None
     m = (machine or {}).get("telegram") or {}
-    machine_tok = m.get("bot_token", "") if m.get("enabled") else ""
+    # tokens are vault references (vault.adopt): two accounts may hold the same reference
+    # name for different bots, so compare what they open to, each in its own account
+    with usersmod.as_user(""):
+        machine_tok = vaultmod.held(m.get("bot_token", ""), "telegram") if m.get("enabled") else ""
     for u in usersmod.list_users():
         uid = u["id"]
         try:
             t = (usersmod.cfg_for(uid, machine=machine).get("telegram") or {})
         except Exception:
             continue
-        tok = t.get("bot_token", "")
-        if not (t.get("enabled") and tok):
+        if not (t.get("enabled") and t.get("bot_token")):
+            continue
+        with usersmod.as_user(uid):
+            tok = vaultmod.held(t.get("bot_token", ""), "telegram")
+        if not tok:
             continue
         if tok == machine_tok or tok in seen:
             other = seen.get(tok, "the machine")
@@ -253,6 +259,10 @@ async def startup():
     cfgmod.ensure_dirs(cfg)
     state["loop"] = asyncio.get_running_loop()
     sealmod.bind(state["loop"], _seal_ask)        # a sealed account's key is lent by its open page
+    # a signed-in-only secret a mission needs while nobody is: a link on the person's own phone
+    from . import unlock as _unlockmod
+    _unlockmod.bind(phones=_owner_wall_phones, cfg=lambda: state.machine_cfg(), loop=state["loop"],
+                    ledger=lambda uid, action, res, why: _ledger_as(uid, action, res, why))
     with contextlib.suppress(Exception):
         _cdpb.sweep_runs()       # an opened profile a crashed server left in RAM goes (cdpbrowser.py)
     secevents.on_alert(_security_alert)
@@ -441,8 +451,13 @@ async def startup():
     vaultmod.set_reader_log(lambda name, actor: state["store"].log(
         "vault", f"read {name} for {actor or 'the system'}", {"name": name, "actor": actor}))
     try:
-        if vaultmod.adopt(cfg):
-            cfgmod.save_config(cfg)
+        with usersmod.as_user(""):
+            # one key for what the service opens by itself (away.py): the machine's vault moves
+            # onto it once, then provider keys and the machine's tokens are adopted into it
+            if (n := vaultmod.to_service()):
+                store.log("vault", f"the machine's vault moved to the service key ({n} items)")
+            if vaultmod.adopt(cfg):
+                cfgmod.save_config(cfg)
     except Exception as e:                                          # noqa: BLE001
         store.log("vault", f"could not adopt the config's secrets: {e}")
     # A device that was linked before a restart is still linked: WhatsApp keeps the
@@ -5061,10 +5076,12 @@ async def api_get_config():
     cfg = json.loads(json.dumps(state["cfg"]))
     for p in cfg["providers"].values():
         if p.get("api_key"):
-            p["api_key"] = "•••" + p["api_key"][-4:]
+            # a vault reference says only that a key is set; an old clear one shows its last four
+            p["api_key"] = "•••" if vaultmod.is_ref(p["api_key"]) else "•••" + p["api_key"][-4:]
             p["_has_key"] = True
     if cfg.get("telegram", {}).get("bot_token"):
-        cfg["telegram"]["bot_token"] = "•••" + cfg["telegram"]["bot_token"][-4:]
+        t_ = cfg["telegram"]["bot_token"]
+        cfg["telegram"]["bot_token"] = "•••" if vaultmod.is_ref(t_) else "•••" + t_[-4:]
         cfg["telegram"]["_has_token"] = True
     for acct in ("mail", "calendar"):
         # an app password is a credential to somebody's whole mailbox: never echoed
@@ -5292,7 +5309,10 @@ async def api_put_config(patch: dict):
     # version somebody reports as a bug six months later.
     mine = usersmod.current()
     if usersmod.enabled() and not usersmod.is_admin(mine):
-        theirs = [k for k in (patch or {}) if k not in usersmod.USER_KEYS]
+        # an Isolated Tenant's admin may change the tenant's own keys (users.TENANT_KEYS), and only those
+        own = set(usersmod.USER_KEYS) | (set(usersmod.TENANT_KEYS) if usersmod.tenant_of(mine)
+                                         and usersmod.is_tenant_admin(mine) else set())
+        theirs = [k for k in (patch or {}) if k not in own]
         if theirs:
             return JSONResponse(
                 {"error": "only an admin can change machine settings on this machine "
@@ -7198,7 +7218,7 @@ async def api_whatsapp_webhook(request: Request):
     if not c.get("enabled"):
         return JSONResponse({"error": "whatsapp is off"}, status_code=404)
     raw = await request.body()
-    if not wamod.verify_signature(c.get("app_secret") or "", raw,
+    if not wamod.verify_signature(wamod.secret(state["cfg"], "app_secret"), raw,
                                   request.headers.get("x-hub-signature-256", "")):
         state["store"].log("whatsapp",
                            f"refused an unsigned webhook delivery from {_client_addr(request)}")
@@ -9714,6 +9734,11 @@ def _ethics_public(eth: dict) -> dict:
     return {k: v for k, v in (eth or {}).items() if k != "token"}
 
 
+def _ledger_as(uid: str, action: str, resource: str, reason: str):
+    with usersmod.as_user(uid or ""):
+        _ledger(action, resource, reason, surface="phone")
+
+
 def _ledger_for(entry: dict, action: str, resource: str, reason: str):
     """A ledger row in the account that was asked."""
     with usersmod.as_user(entry.get("uid") or ""):
@@ -12213,6 +12238,20 @@ async def login_page():
     return FileResponse(UI_DIR / "login.html", headers=NO_STORE)
 
 
+@app.get("/unlock")
+async def unlock_page():
+    """The page a phone chat's link opens (unlock.py): behind the remote gate like every page, so a
+    phone with no session gets the sign-in page here first and comes back. It opens the person's
+    closed secrets for their missions; it never takes a password anywhere but this machine."""
+    return FileResponse(UI_DIR / "unlock.html", headers={**NO_STORE, **_UNLOCK_HEAD})
+
+
+_UNLOCK_HEAD = {"Referrer-Policy": "no-referrer", "X-Frame-Options": "DENY", "X-Content-Type-Options": "nosniff",
+                "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; "
+                                           "script-src 'unsafe-inline'; connect-src 'self'; img-src data:; "
+                                           "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"}
+
+
 @app.post("/api/remote/login")
 async def api_remote_login(body: dict, request: Request):
     """Sign in from elsewhere.
@@ -12436,7 +12475,41 @@ async def _seal_password_ok(request: Request, uid: str, pw: str):
 
 @app.get("/api/seal")
 async def api_seal_status():
-    return sealmod.status(usersmod.current())
+    out = sealmod.status(usersmod.current())
+    if out.get("sealed"):
+        # each secret with its choice for while you're away (away.py), in words
+        out["secrets"] = await asyncio.to_thread(vaultmod.away_list)
+        from . import away as awaymod
+        out["away_cost"] = awaymod.COST_WORDS
+    return out
+
+
+@app.put("/api/seal/away")
+async def api_seal_away(body: dict):
+    """The person's choice for one secret: only while signed in, until revoked, for some days,
+    or once. Switching one on needs their key, which this request carries (their cookie half and
+    their session's pad here); revoking needs nothing. No agent tool reaches this."""
+    uid = usersmod.current()
+    if not uid or not sealmod.exists(uid):
+        return JSONResponse({"error": "there is no seal for this account yet"}, status_code=400)
+    name = str((body or {}).get("name") or "")
+    mode = str((body or {}).get("mode") or "")
+    days = (body or {}).get("days")
+    priv = sealmod.key_here(uid)
+    try:
+        meta = await asyncio.to_thread(vaultmod.set_away, name, mode, days, priv)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    except KeyError:
+        return JSONResponse({"error": f"there is no secret called {name!r}"}, status_code=404)
+    except sealmod.Sealed as e:
+        return JSONResponse({"error": str(e)}, status_code=409)
+    finally:
+        priv = None
+    vaultmod.forget_held()
+    from . import away as awaymod
+    _ledger("seal.away", f"vault:{name}", f"{name}: {awaymod.words(meta)}")
+    return {"ok": True, "secrets": await asyncio.to_thread(vaultmod.away_list)}
 
 
 @app.get("/api/seal/wants")
@@ -13486,10 +13559,14 @@ def _me() -> dict:
     """Who this request is, in the shape the UI draws."""
     uid = usersmod.current()
     u = usersmod.get(uid) if uid else None
+    tid = usersmod.tenant_of(uid) if uid else ""
     return {"id": uid, "name": (u or {}).get("name", ""),
             "display": (u or {}).get("display", ""),
             "role": (u or {}).get("role", "admin" if not usersmod.enabled() else ""),
             "admin": usersmod.is_admin(uid),
+            # an Isolated Tenant's admin manages its people and its keys, never the machine's
+            "tenant_admin": bool(uid) and usersmod.is_tenant_admin(uid),
+            "scope": "isolated" if tid else "shared", "tenant": tid,
             "multiuser": usersmod.enabled()}
 
 
@@ -13643,23 +13720,54 @@ def _end_account_tokens(uid: str, keep_sid: str = "", new_sid: str = "") -> None
 
 @app.get("/api/users")
 async def api_users():
-    """The roster. Readable by everyone — you cannot share an app with somebody
-    whose name you are not allowed to see."""
-    return {"users": usersmod.list_users(), "me": _me(), "roles": list(usersmod.ROLES)}
+    """The roster: the people in your own tenant (you cannot share an app with somebody whose name
+    you are not allowed to see). The machine's admin sees everyone, with their tenant, and the
+    tenants. An Isolated Tenant's people never see the machine's, nor the machine's theirs."""
+    me = usersmod.current()
+    everyone = usersmod.list_users()
+    if usersmod.enabled() and not usersmod.is_admin(me):
+        t = usersmod.tenant_of(me)
+        everyone = [u for u in everyone if str(u.get("tenant") or "") == t]
+    for u in everyone:
+        u["scope"] = "isolated" if u.get("tenant") else "shared"
+    out = {"users": everyone, "me": _me(), "roles": list(usersmod.ROLES),
+           "scopes": list(usersmod.SCOPES)}
+    if usersmod.is_admin(me):
+        out["tenants"] = usersmod.tenants()
+    return out
+
+
+def _may_add(me: str, scope: str, tenant: str) -> str:
+    """Why `me` may not add an account here, or ''. The machine's admin adds anyone anywhere; an
+    Isolated Tenant's admin adds people to their own tenant only."""
+    if usersmod.is_admin(me):
+        return ""
+    t = usersmod.tenant_of(me)
+    if t and usersmod.is_tenant_admin(me) and scope == "isolated" and tenant == t:
+        return ""
+    return "only an admin can add an account here"
 
 
 @app.post("/api/users")
 async def api_users_create(body: dict, request: Request):
-    if (r := _require_admin()):
-        return r
     b = body or {}
+    me = usersmod.current()
     first = not usersmod.enabled()
+    scope = str(b.get("scope") or "shared")
+    tenant = str(b.get("tenant") or "")
+    if not first and usersmod.tenant_of(me) and not usersmod.is_admin(me):
+        scope, tenant = "isolated", usersmod.tenant_of(me)   # a tenant admin adds to their own
+    if not first and (why := _may_add(me, scope, tenant)):
+        return JSONResponse({"error": why}, status_code=403)
     try:
         u = usersmod.create(str(b.get("name") or ""), str(b.get("password") or ""),
                             role=str(b.get("role") or "executor"),
-                            display=str(b.get("display") or ""))
+                            display=str(b.get("display") or ""), scope=scope, tenant=tenant)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
+    if not first:
+        _ledger("account.create", f"user:{u['id']}",
+                f"{u['name']} added, {'an Isolated Tenant' if u.get('tenant') else 'the Shared Tenant'}")
     resp = JSONResponse({"ok": True, "user": u, "signed_in": first})
     if first:
         # Creating the first account is what turns this into a machine that needs
@@ -13685,13 +13793,34 @@ async def api_users_create(body: dict, request: Request):
 async def api_users_update(uid: str, body: dict, request: Request):
     b = body or {}
     me = usersmod.current()
-    admin = usersmod.is_admin(me)
+    # the machine's admin, or an Isolated Tenant's admin for somebody in their own tenant
+    admin = usersmod.can_manage(me, uid) if usersmod.enabled() else True
     ended = False
     seal_priv = None
-    # Your own password is yours. Everything else about an account is the machine's.
+    # Your own password is yours. Everything else about an account is its admin's.
     if not admin and uid != me:
         return JSONResponse({"error": "only an admin can change another account"},
                             status_code=403)
+    if b.get("scope"):
+        # which tenant an account is in decides whose keys it spends: the machine's admin only
+        if not usersmod.is_admin(me):
+            return JSONResponse({"error": "only the machine's admin can change an account's scope"},
+                                status_code=403)
+        scope, tenant = str(b["scope"]), str(b.get("tenant") or "")
+        drop = usersmod.would_drop(uid, scope, tenant)
+        if drop and not b.get("confirm"):
+            name = next((t["name"] for t in usersmod.tenants() if t["id"] == drop), drop)
+            return JSONResponse({"error": f"this leaves {name} with nobody in it, so its own LLM "
+                                          "keys are removed. Send confirm to go ahead.",
+                                 "confirm": True, "drops": name}, status_code=409)
+        try:
+            moved = usersmod.set_scope(uid, scope, tenant)
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        _ledger("account.scope", f"user:{uid}",
+                f"now {'an Isolated Tenant' if moved['tenant'] else 'the Shared Tenant'}"
+                + (f"; {moved['dropped']} and its keys removed" if moved["dropped"] else ""))
+        ended = True
     try:
         if b.get("password"):
             # changing your own asks for the one you have now: an unattended open
@@ -13750,8 +13879,8 @@ async def api_users_update(uid: str, body: dict, request: Request):
 
 @app.delete("/api/users/{uid}")
 async def api_users_delete(uid: str, wipe: bool = False):
-    if (r := _require_admin()):
-        return r
+    if usersmod.enabled() and not usersmod.can_manage(usersmod.current(), uid):
+        return JSONResponse({"error": "only an admin can do that"}, status_code=403)
     if uid == usersmod.current():
         return JSONResponse({"error": "you cannot delete the account you are using"},
                             status_code=400)
@@ -19061,7 +19190,9 @@ async def api_speech_save(body: dict):
     """A cloud voice spends money, so it is the machine's setting: admin only where
     there are accounts, like a provider key."""
     from . import speech
-    if usersmod.enabled() and not usersmod.is_admin(usersmod.current()):
+    me = usersmod.current()
+    tenant = usersmod.tenant_of(me) if usersmod.enabled() else ""
+    if usersmod.enabled() and not usersmod.is_admin(me) and not (tenant and usersmod.is_tenant_admin(me)):
         return JSONResponse({"error": "only an admin can change this machine's voice engine"},
                             status_code=403)
     try:
@@ -19069,7 +19200,9 @@ async def api_speech_save(body: dict):
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     cfgmod.save_config(state["cfg"])
-    if state["cfg"] is not state.machine_cfg():
+    if tenant:
+        pass          # an Isolated Tenant's voice is its own (users.TENANT_KEYS), never the machine's
+    elif state["cfg"] is not state.machine_cfg():
         # hearing.py reads the machine's copy: the key that speaks is the key that hears
         m = state.machine_cfg().setdefault("speech", {})
         for k, v in state["cfg"]["speech"].items():

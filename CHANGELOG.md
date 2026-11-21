@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.99.0 — 2026-11-21
+
+No release notes were written for this one; the commits since 0.9.42 are what changed (`bento update` lists them).
+
 ## 0.9.42 — 2026-11-21
 
 **A phone sees the work while it happens.** A message from Telegram or WhatsApp that the lead hands to a
@@ -22,10 +26,40 @@ picture from your files into a page's upload field.
 saved passwords and the websites you're signed in to can only be opened by you, signed in. Not
 another account, not an admin, and not root while you're signed out. Your first sign-in after the
 update seals them and shows a recovery code once; keep it somewhere safe. While you're signed in,
-half of the key is in your browser and half on the server, so neither alone opens anything. A
-mission running on its own borrows the key from a page you have open, locked included. After a
-restart you enter your password once. An admin who resets your password gets nothing of yours:
-your recovery code opens them, or you start fresh.
+half of the key is in your browser and half on the server, so neither alone opens anything. An
+admin who resets your password gets nothing of yours: your recovery code opens them, or you start
+fresh. Your MCP servers' keys and sign-ins and your Telegram and WhatsApp bot tokens are in your
+vault now too.
+
+**Missions run with nobody signed in, and you say for how long.** Each secret has a choice under
+Settings → Accounts → Your secrets (or `bento vault away`): until you revoke it (the default when
+you save one), for 7 or 30 days, once for the next run, or only while you're signed in. A secret
+that works while you're away is also kept locked with this machine's own key, so missions,
+schedules and phone bots open it after a restart too; root on the machine could open that copy,
+and the card says so. One set to signed in only borrows your key from a page you have open.
+
+**After a restart your phone opens them, and the password never goes in the chat.** When a mission needs
+a secret that works only while you're signed in, and nobody is, your own paired Telegram or WhatsApp chat
+gets a link to your Bento's remote sign-in page. Sign in there and open the closed secrets for the next
+run, for today, or until you revoke them; the mission waits a few minutes for you. It works only through
+remote access, and only the chat paired to your account gets it.
+
+**Provider keys are in the vault.** Your Anthropic, OpenAI, Gemini and other API keys, the voice keys and
+the machine's bot tokens are kept in the machine's vault, locked with its service key, so `config.json`
+and anything that prints config hold only a reference. The service opens them on its own, so nothing
+stops after a restart. That protects copies of the file, not the machine's root.
+
+**Accounts can be a Shared Tenant or an Isolated Tenant.** By default everyone on a machine shares its LLM
+keys and keeps their own data. The machine's admin can give somebody an Isolated Tenant instead: it has
+its own LLM keys, its own admin, and its own people, who see nobody outside it. Data and MCP servers are
+never shared between accounts either way. Users app, or `bento user scope`.
+
+**The model catalogue was checked again.** DeepSeek's fast model is offered as `deepseek-v4-flash`, the
+name DeepSeek's own notes give it; `deepseek-flash` was not a model anyone could call. A saved choice is
+never rewritten: pick the new one in AI providers if you had the old one.
+
+**A linked WhatsApp device is one process per account**, each with only its own session folder and none
+of the server's keys in its environment.
 
 **A reel of the ethics checks, filmed on a real server.** `packaging/dev/reel/ethics` starts Bento on a
 throwaway home with a scripted brain and films one take at 1080x1920: a scan of a range that isn't yours

@@ -195,20 +195,43 @@ def _read(name: str, url: str, uid: str | None = None) -> dict:
         with contextlib.suppress(OSError):
             os.replace(old, p)
     try:
-        return json.loads(p.read_text())
+        raw = json.loads(p.read_text())
+    except Exception:
+        return {}
+    ref = raw.get("vault") if isinstance(raw, dict) else None
+    if not ref:
+        if raw.get("tokens") or raw.get("client"):
+            # a file from before the vault held these: moved in now, the file keeps a marker
+            with contextlib.suppress(Exception):
+                _write(name, url, raw, who)
+        return raw
+    from . import vault
+    try:
+        with usersmod.as_user(who):
+            return json.loads(vault.get(ref, f"MCP server {name}") or "{}")
     except Exception:
         return {}
 
 
+def _vault_name(p: Path) -> str:
+    return "mcp.oauth." + p.stem
+
+
 def _write(name: str, url: str, data: dict, uid: str | None = None):
-    p = _token_path(name, url, uid)
+    """The sign-in (tokens and the registered client) goes into the account's vault; the file
+    keeps only a reference and whether there are tokens, so a listing never opens the vault."""
+    who = _me() if uid is None else uid
+    p = _token_path(name, url, who)
     p.parent.mkdir(parents=True, exist_ok=True)
+    from . import vault
+    with usersmod.as_user(who):
+        ref = vault.put(_vault_name(p), json.dumps(data))
+    marker = {"vault": ref, "has_tokens": bool(data.get("tokens")),
+              "updated_at": data.get("updated_at") or time.time()}
     tmp = p.with_suffix(".tmp")
-    # 0600 before any content is written: a refresh token is a standing credential,
-    # and the window between create and chmod is the one an attacker gets.
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as f:
-        json.dump(data, f)
+        json.dump(marker, f)
     os.replace(tmp, p)
     try:
         p.parent.chmod(0o700)
@@ -217,6 +240,12 @@ def _write(name: str, url: str, data: dict, uid: str | None = None):
 
 
 def has_tokens(name: str, url: str) -> bool:
+    try:
+        raw = json.loads(_token_path(name, url).read_text())
+    except Exception:
+        raw = None
+    if isinstance(raw, dict) and raw.get("vault"):
+        return bool(raw.get("has_tokens"))
     return bool(_read(name, url).get("tokens"))
 
 
@@ -232,7 +261,11 @@ def forget(name: str) -> bool:
     # this name's old file is the owner's to forget, and nobody else's
     if _heir(who) and _legacy_path(name).exists():
         gone.append(_legacy_path(name))
+    from . import vault
     for p in gone:
+        with contextlib.suppress(Exception):
+            with usersmod.as_user(who):
+                vault.forget(_vault_name(p))
         with contextlib.suppress(OSError):
             p.unlink()
     return bool(gone)

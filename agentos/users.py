@@ -57,6 +57,7 @@ from __future__ import annotations
 
 import contextvars
 import hashlib
+import contextlib
 import copy
 import json
 import os
@@ -235,19 +236,225 @@ def end_sessions(uid: str) -> int:
 
 
 def is_admin(uid: str) -> bool:
-    """A machine with no users has no one to refuse: the single user IS the admin.
+    """The MACHINE's admin. A machine with no users has no one to refuse: the single user IS the
+    admin. Getting this backwards would lock somebody out of their own laptop the moment the
+    module shipped.
 
-    Getting this backwards would lock somebody out of their own laptop the moment
-    the module shipped.
+    An admin of an Isolated Tenant is not this: they manage their own tenant's people and keys
+    (`is_tenant_admin`, `can_manage`) and nothing of the machine's. Every machine-wide door asks
+    this function, so a tenant admin must never answer True here.
     """
+    if not enabled():
+        return True
+    u = get(uid)
+    return bool(u and u.get("role") == "admin" and not u.get("tenant"))
+
+
+def admin_count() -> int:
+    """How many MACHINE admins there are (an isolated tenant's admins don't count)."""
+    return sum(1 for u in _read()["users"] if u.get("role") == "admin" and not u.get("tenant"))
+
+
+# ---------------------------------------------------------------------------
+# Tenants: who shares the LLM keys
+# ---------------------------------------------------------------------------
+#
+# Asked for as "the scope of the account: by default Shared Tenant, so everyone shares the keys but
+# the data is kept separate. Isolated Tenant means everything is done ground up, and a new admin
+# when they log in has their own account management and keys to set up". And: "don't share MCP and
+# data between the accounts in any case, only the keys".
+#
+# So a tenant decides ONE thing, whose keys an account spends: `TENANT_KEYS`. Data, MCP servers,
+# channels and every other USER_KEY are each account's own whatever its tenant, as before. The
+# machine's own tenant is '' (Shared Tenant). An Isolated Tenant has an id, its own `providers` and
+# `speech` (their keys in its own vault, `tenants/<id>/vault.json`, locked with the service key),
+# its own admins (role admin inside it), who add and remove its people, and none of the machine's
+# agent CLIs or community brains, which are signed in as the machine's owner. Only the machine's
+# admin makes a tenant or moves an account between tenants (`set_scope`).
+
+TENANT_KEYS = ("providers", "speech")
+SCOPES = ("shared", "isolated")
+
+
+def tenants_root() -> Path:
+    return cfgmod.AGENTOS_HOME / "tenants"
+
+
+def tenant_home(tid: str) -> Path:
+    return tenants_root() / _tid_clean(tid)
+
+
+def _tid_clean(tid: str) -> str:
+    return "".join(c for c in str(tid or "") if c.isalnum())[:32]
+
+
+def tenant_of(uid: str) -> str:
+    """The tenant an account belongs to: '' for the machine's own (Shared Tenant)."""
+    u = get(uid) if uid else None
+    return str((u or {}).get("tenant") or "")
+
+
+def tenants() -> list[dict]:
+    d = _read()
+    out = []
+    for tid, t in (d.get("tenants") or {}).items():
+        members = [u for u in d["users"] if u.get("tenant") == tid]
+        out.append({"id": tid, "name": t.get("name") or tid, "created_at": t.get("created_at"),
+                    "members": len(members),
+                    "admins": [u["name"] for u in members if u.get("role") == "admin"]})
+    return sorted(out, key=lambda t: t["name"])
+
+
+def scope_of(uid: str) -> str:
+    return "isolated" if tenant_of(uid) else "shared"
+
+
+def is_tenant_admin(uid: str) -> bool:
+    """An admin of their own tenant: the machine's admin for the Shared Tenant, or an Isolated
+    Tenant's own admin for theirs."""
     if not enabled():
         return True
     u = get(uid)
     return bool(u and u.get("role") == "admin")
 
 
-def admin_count() -> int:
-    return sum(1 for u in _read()["users"] if u.get("role") == "admin")
+def can_manage(actor: str, target: str) -> bool:
+    """May `actor` change `target`'s account (add, remove, reset, role)? The machine's admin may
+    change anyone; an Isolated Tenant's admin, the people in their own tenant and nobody else."""
+    if is_admin(actor):
+        return True
+    t = tenant_of(actor)
+    return bool(t) and is_tenant_admin(actor) and tenant_of(target) == t
+
+
+def same_tenant(a: str, b: str) -> bool:
+    return tenant_of(a) == tenant_of(b)
+
+
+def _last_admin(u: dict) -> bool:
+    """Is this the last admin of its own tenant (the machine's, or an Isolated Tenant's)?"""
+    tid = str(u.get("tenant") or "")
+    return (tenant_admin_count(tid) if tid else admin_count()) <= 1
+
+
+def tenant_admin_count(tid: str) -> int:
+    return sum(1 for u in _read()["users"] if u.get("tenant") == tid and u.get("role") == "admin")
+
+
+def _new_tenant(name: str) -> str:
+    d = _read()
+    tid = secrets.token_hex(6)
+    d.setdefault("tenants", {})[tid] = {"name": (name or tid)[:60], "created_at": time.time()}
+    _write(d)
+    h = tenant_home(tid)
+    h.mkdir(parents=True, exist_ok=True)
+    with contextlib.suppress(OSError):
+        os.chmod(h, 0o700)
+    return tid
+
+
+def tenant_cfg(tid: str) -> dict:
+    """An Isolated Tenant's own keys: the machine's provider list with nothing of the machine's
+    keys in it, then the tenant's file over it. A provider the tenant hasn't set up has no key."""
+    base = {"providers": copy.deepcopy(cfgmod.DEFAULTS["providers"]), "speech": {"engine": "browser"}}
+    for p in base["providers"].values():
+        if isinstance(p, dict):
+            p["api_key"] = ""
+    try:
+        own = json.loads((tenant_home(tid) / "config.json").read_text())
+    except Exception:
+        own = {}
+    for k in TENANT_KEYS:
+        if isinstance(own.get(k), dict):
+            if k == "providers":
+                for pid, pc in own[k].items():
+                    if isinstance(pc, dict):
+                        base[k].setdefault(pid, {}).update(pc)
+            else:
+                base[k] = own[k]
+    return base
+
+
+def save_tenant_cfg(tid: str, cfg: dict) -> None:
+    """A tenant admin's save of the tenant's keys: into the tenant's vault, then its file; every
+    member's live view gets it, as `machine_changed` does for the Shared Tenant."""
+    from . import vault
+    out = {k: copy.deepcopy(cfg.get(k)) for k in TENANT_KEYS if isinstance(cfg.get(k), dict)}
+    with vault.in_tenant(tid):
+        vault.adopt_tenant(tid, out)
+    for k in TENANT_KEYS:
+        if k in out:
+            cfg[k] = copy.deepcopy(out[k])        # the saver's view holds references now too
+    h = tenant_home(tid)
+    h.mkdir(parents=True, exist_ok=True)
+    cfgmod.write_private(h / "config.json", json.dumps(out, indent=2))
+    for u in _read()["users"]:
+        c = _cfgs.get(u["id"])
+        if u.get("tenant") == tid and c is not None and c is not cfg:
+            for k in TENANT_KEYS:
+                if k in out:
+                    c[k] = copy.deepcopy(out[k])
+
+
+def set_scope(uid: str, scope: str, tenant: str = "", name: str = "") -> dict:
+    """The machine admin moves an account between tenants (the route checks who asks).
+
+    - to `isolated` with no `tenant`: a new tenant, this account its first admin, no keys yet;
+    - to `isolated` with a `tenant`: joins that one, as one of its people;
+    - to `shared`: the machine's own tenant, as one of its people (never its admin by this move:
+      the machine's admin promotes somebody to that on purpose).
+    A tenant left with nobody in it is removed with its keys; the route asks first (`would_drop`).
+    """
+    if scope not in SCOPES:
+        raise ValueError("a scope is shared or isolated")
+    u = get(uid)
+    if not u:
+        raise ValueError("no such user")
+    old = str(u.get("tenant") or "")
+    if not old and u.get("role") == "admin" and admin_count() <= 1:
+        raise ValueError("this is the machine's last admin — promote somebody else first")
+    if old and u.get("role") == "admin" and tenant_admin_count(old) <= 1 and \
+            sum(1 for x in _read()["users"] if x.get("tenant") == old) > 1:
+        raise ValueError("this is the last admin of its tenant, and others are in it — make one of "
+                         "them its admin first")
+    if scope == "isolated" and tenant and tenant not in (_read().get("tenants") or {}):
+        raise ValueError("there is no such tenant")
+    new = (tenant or _new_tenant(name or f"{u.get('display') or u['name']}'s tenant")) if scope == "isolated" else ""
+    role = u.get("role")
+    if scope == "isolated" and not tenant:
+        role = "admin"                 # a new tenant's first person runs it
+    elif new != old:
+        role = "executor"
+    d = _read()
+    for x in d["users"]:
+        if x["id"] == uid:
+            x["tenant"], x["role"] = new, role
+            x["sgen"] = int(x.get("sgen") or 0) + 1      # what they may do changed: sign in again
+    _write(d)
+    dropped = ""
+    if old and old != new and not any(x.get("tenant") == old for x in _read()["users"]):
+        dropped = _drop_tenant(old)
+    _forget(uid)
+    _account_flag(u, f"scope of {u.get('name')} is now {scope}")
+    return {"ok": True, "scope": scope, "tenant": new, "role": role, "dropped": dropped}
+
+
+def would_drop(uid: str, scope: str, tenant: str = "") -> str:
+    """The tenant this move would leave empty, and so remove with its keys, or ''."""
+    old = tenant_of(uid)
+    new = tenant if scope == "isolated" else ""
+    if not old or old == new:
+        return ""
+    others = [x for x in _read()["users"] if x.get("tenant") == old and x["id"] != uid]
+    return "" if others else old
+
+
+def _drop_tenant(tid: str) -> str:
+    d = _read()
+    t = (d.get("tenants") or {}).pop(tid, None)
+    _write(d)
+    shutil.rmtree(tenant_home(tid), ignore_errors=True)
+    return (t or {}).get("name") or tid
 
 
 # ---------------------------------------------------------------------------
@@ -305,7 +512,7 @@ def name_problem(name: str) -> str:
 
 
 def create(name: str, password: str, role: str = "executor",
-           display: str = "") -> dict:
+           display: str = "", scope: str = "shared", tenant: str = "") -> dict:
     """Add a person, and build them a home.
 
     The directory is made here rather than lazily on first login, because a user
@@ -326,10 +533,21 @@ def create(name: str, password: str, role: str = "executor",
     # administer, and there is no second account to fix it from.
     if first:
         role = "admin"
+        scope, tenant = "shared", ""         # the machine's owner is the machine's admin
+    if scope not in SCOPES:
+        raise ValueError("a scope is shared or isolated")
+    if scope == "isolated":
+        if tenant and tenant not in (_read().get("tenants") or {}):
+            raise ValueError("there is no such tenant")
+        if not tenant:
+            tenant = _new_tenant(f"{(display or n).strip()[:40]}'s tenant")
+            role = "admin"                   # a new tenant's first person runs it
+    else:
+        tenant = ""
     d = _read()
     d["users"].append({"id": uid, "name": n, "display": (display or n).strip()[:60],
                        "role": role, "pass_hash": pw, "salt": salt,
-                       "created_at": time.time()})
+                       "created_at": time.time(), "tenant": tenant})
     _write(d)
     if first:
         adopt(uid)
@@ -369,6 +587,7 @@ def adopt(uid: str) -> None:
     machine = cfgmod.load_config()
     own = {k: machine[k] for k in USER_KEYS if k in machine}
     own.setdefault("setup_complete", bool(machine.get("setup_complete")))
+    _carry_secrets(uid, own)
     cfgmod.write_private(cfg_path_for(uid), json.dumps(own, indent=2))
     from . import integrity
     integrity.noted(cfg_path_for(uid))
@@ -378,6 +597,38 @@ def adopt(uid: str) -> None:
     if _machine[0] is not None:
         for k in OWN_CHANNELS:
             _machine[0].pop(k, None)
+
+
+def _carry_secrets(uid: str, own: dict) -> int:
+    """The secrets the account's half of the config points at move from the machine's vault into
+    the account's: its mail password, its bot's token. Left behind, the account's references
+    named items in a vault it never opens, and its mailbox and bot stopped working."""
+    from . import vault
+    refs: set = set()
+
+    def walk(v):
+        if isinstance(v, dict):
+            for x in v.values():
+                walk(x)
+        elif isinstance(v, list):
+            for x in v:
+                walk(x)
+        elif vault.is_ref(v):
+            refs.add(v)
+    walk(own)
+    moved = 0
+    for ref in sorted(refs):
+        name = ref[len(vault.REF):]
+        with as_user(""):
+            val = vault.get(ref, "moved to the first account")
+        if not val:
+            continue
+        with as_user(uid):
+            vault.put(name, val)
+        with as_user(""):
+            vault.forget(name)
+        moved += 1
+    return moved
 
 
 def share_own_workspace(uid: str) -> bool:
@@ -455,7 +706,7 @@ def set_role(uid: str, role: str) -> dict:
         raise ValueError("no such user")
     # A machine with no admin cannot be administered, and nothing in the UI can
     # rescue it — the only way back would be editing JSON by hand.
-    if u.get("role") == "admin" and role != "admin" and admin_count() <= 1:
+    if u.get("role") == "admin" and role != "admin" and _last_admin(u):
         raise ValueError("this is the last admin — promote somebody else first")
     d = _read()
     changed = u.get("role") != role
@@ -506,11 +757,15 @@ def delete(uid: str, wipe: bool = False) -> dict:
     u = get(uid)
     if not u:
         raise ValueError("no such user")
-    if u.get("role") == "admin" and admin_count() <= 1:
+    tid = str(u.get("tenant") or "")
+    others = [x for x in _read()["users"] if x.get("tenant", "") == tid and x["id"] != uid] if tid else []
+    if u.get("role") == "admin" and _last_admin(u) and (not tid or others):
         raise ValueError("this is the last admin — promote somebody else first")
     d = _read()
     d["users"] = [x for x in d["users"] if x["id"] != uid]
     _write(d)
+    if tid and not others:
+        _drop_tenant(tid)          # the last person of an Isolated Tenant takes its keys with them
     if wipe:
         shutil.rmtree(home_for(uid), ignore_errors=True)
     _forget(uid)
@@ -637,6 +892,11 @@ def cfg_for(uid: str | None = None, machine: dict | None = None) -> dict:
             base[k] = {}
         for k, v in own.items():
             base[k] = v
+        tid = tenant_of(uid)
+        if tid:
+            # an Isolated Tenant spends its own keys: the machine's are not even in the view
+            base.update(tenant_cfg(tid))
+        base["_tenant"] = tid
         base["_uid"] = uid
         base["workspace"] = workspace_of(base)
         _cfgs[uid] = c = base
@@ -769,7 +1029,7 @@ def machine_view(cfg: dict) -> dict:
     machine file, every user created afterwards would start life with the first
     admin's Telegram token layered under their config as a default.
     """
-    return {k: v for k, v in cfg.items() if k not in USER_KEYS and k != "_uid"}
+    return {k: v for k, v in cfg.items() if k not in USER_KEYS and k not in ("_uid", "_tenant")}
 
 
 def save_user_cfg(uid: str, cfg: dict) -> None:
@@ -780,6 +1040,13 @@ def save_user_cfg(uid: str, cfg: dict) -> None:
     # have refused neither stays in the live view nor reaches the file.
     if "workspace" in cfg and workspace_problem(uid, cfg["workspace"]):
         cfg["workspace"] = str(home_for(uid) / "workspace")
+    # a token typed into Settings goes into THEIR vault before the file is written (vault.adopt)
+    from . import vault
+    try:
+        with as_user(uid):
+            vault.adopt(cfg)
+    except Exception:
+        pass
     own = {k: cfg[k] for k in USER_KEYS if k in cfg}
     # it holds their channel tokens and credentials
     cfgmod.write_private(cfg_path_for(uid), json.dumps(own, indent=2))
@@ -818,13 +1085,16 @@ def machine_changed(machine: dict) -> None:
     # that saved may still hold it and write to it next.
     if live is not None and live is not machine:
         for k, v in machine.items():
-            if k not in USER_KEYS and k != "_uid" and live.get(k) is not v:
+            if k not in USER_KEYS and k not in ("_uid", "_tenant") and live.get(k) is not v:
                 live[k] = copy.deepcopy(v)
     for _uid, c in _cfgs.items():
         if c is machine:
             continue
+        isolated = bool(c.get("_tenant"))
         for k, v in machine.items():
-            if k not in USER_KEYS and k != "_uid" and c.get(k) is not v:
+            if k in USER_KEYS or k in ("_uid", "_tenant") or (isolated and k in TENANT_KEYS):
+                continue
+            if c.get(k) is not v:
                 c[k] = copy.deepcopy(v)
 
 
@@ -983,6 +1253,17 @@ def publish(kind: str, name: str, payload: dict, by: str) -> dict:
     return {k: v for k, v in rec.items() if k != "payload"}
 
 
+def _tenant_of_name(name: str) -> str:
+    u = by_name(name or "")
+    return str((u or {}).get("tenant") or "")
+
+
+def _seen_here(rec: dict) -> bool:
+    """Is a shared copy in the viewer's own tenant? Nothing crosses between tenants: an Isolated
+    Tenant is separate from the ground up, and so is the machine's from it."""
+    return _tenant_of_name(rec.get("by") or "") == tenant_of(current())
+
+
 def shared(kind: str = "") -> list[dict]:
     out = []
     for k in ([kind] if kind else list(SHAREABLE)):
@@ -990,6 +1271,8 @@ def shared(kind: str = "") -> list[dict]:
             try:
                 rec = json.loads(f.read_text())
             except Exception:
+                continue
+            if enabled() and not _seen_here(rec):
                 continue
             out.append({x: rec[x] for x in ("kind", "name", "slug", "by",
                                             "published_at") if x in rec})
@@ -1001,7 +1284,10 @@ def take(kind: str, slug: str) -> dict:
     f = _share_dir(kind) / f"{slug}.json"
     if not f.exists():
         raise ValueError(f"nothing shared called '{slug}'")
-    return json.loads(f.read_text()).get("payload") or {}
+    rec = json.loads(f.read_text())
+    if enabled() and not _seen_here(rec):
+        raise ValueError(f"nothing shared called '{slug}'")
+    return rec.get("payload") or {}
 
 
 def unpublish(kind: str, slug: str, by: str, admin: bool = False) -> dict:

@@ -200,14 +200,20 @@ def main():
             await b.wait_for_timeout(400)
             await b.screenshot(path=str(shots / "wide-settings-secrets-open.png"))
             bob_cookies = await bobc.cookies()
+            # bob keeps the strict rule for both (away.py): only while he's signed in, so nothing of
+            # his is kept for while he's away, and a restart closes everything
+            for name in ("mail.password", "browser"):
+                r = await b.request.put(BASE + "/api/seal/away", data={"name": name, "mode": "off"})
+                check(r.ok, f"{name}: only while he's signed in")
 
             # the server stops: everything is put away, and the home is searched
             stop(srv)
             hits = scan(home, [MAIL_PW, SITE_TOKEN, code.replace("-", ""), code])
             check(not hits, "after it stops, neither secret nor the code is anywhere on disk" + (f": {hits}" if hits else ""))
             bh = home / "users" / uid
-            check((bh / "browser" / "profile.sealed").exists() and not (bh / "browser" / "profile").exists(),
-                  "his website sign-ins are kept only sealed")
+            check((bh / "browser" / "profile.sealed").exists() and not (bh / "browser" / "profile").exists()
+                  and not (bh / "browser" / "profile.away").exists(),
+                  "his website sign-ins are kept only sealed, with no copy for while he's away")
             check(not list(Path("/dev/shm").glob(f"bento-browser-*-{uid}-*")), "the opened profile in RAM is gone")
             check(not (bh / "vault.key").exists(), "there is no vault key file to steal")
             sj = json.loads((bh / "seal.json").read_text())
@@ -222,7 +228,8 @@ def main():
             st = await (await b.request.get(BASE + "/api/seal")).json()
             check(st.get("sealed") and not st.get("open"), "after a restart his secrets are closed")
             got = await open_web_window(b, f"http://127.0.0.1:{SITE}/")
-            check(got.startswith("error") and "password" in got, f"his browser won't open: {got[:110]}")
+            check(got.startswith("error") and "only while you're signed in" in got and "password" in got,
+                  f"his browser won't open: {got[:110]}")
             await b.wait_for_timeout(3500)
             await b.screenshot(path=str(shots / "wide-restart-toast.png"))
             await b.evaluate("()=>placeSettings('accounts','Your secrets')()")

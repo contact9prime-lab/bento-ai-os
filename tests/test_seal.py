@@ -194,7 +194,8 @@ def test_a_sealed_vault_takes_a_secret_with_nothing_secret_in_memory(home):
         vault.reseal(u)
         vault.put("oauth.google", "refreshed-token")
         assert vault.has("oauth.google")
-        with pytest.raises(seal.Sealed, match="signed out"):
+        vault.set_away("oauth.google", "off")          # the strict rule: only while signed in
+        with pytest.raises(seal.Sealed, match="only while you're signed in"):
             vault.get("oauth.google")
 
 
@@ -204,15 +205,17 @@ def test_a_signed_out_read_says_what_to_do(home):
     with usersmod.as_user(u):
         vault.reseal(u)
         vault.put("mail.password", "x")
+        vault.set_away("mail.password", "off")
         with pytest.raises(seal.Sealed) as e:
             vault.get("mail.password")
-    assert "sign in" in str(e.value).lower()
+    assert "signed in" in str(e.value).lower() and "Your secrets" in str(e.value)
 
 
-def test_the_machine_vault_is_unchanged(home):
+def test_the_machine_vault_is_not_sealed(home):
+    """Nobody signs in as the machine: its vault is locked with the service key (away.py)."""
     vault.put("integrity.totp", "machine-secret")
     assert vault.get("integrity.totp") == "machine-secret"
-    assert vault.status()["mechanism"] == "file"
+    assert vault.status()["mechanism"] == "service"
 
 
 # ---- borrowing, for a step nobody is watching ------------------------------------------------
@@ -391,6 +394,7 @@ def test_an_admin_cannot_open_somebody_elses_seal(api):
     b = usersmod.by_name("bob")["id"]
     with usersmod.as_user(b):
         vault.put("mail.password", "bobs-secret")
+        vault.set_away("mail.password", "off")
     api.cookies.clear()
     api.post("/api/users/login", json={"name": "ada", "password": PW})
     ada = dict(api.cookies)

@@ -474,7 +474,13 @@ def switched_off(cfg: dict, engine: str) -> bool:
     `executors.claude_code.enabled` switch was read by nothing, so it is not this.
     """
     off = ((cfg or {}).get("executors") or {}).get("off") or []
+    if (cfg or {}).get("_tenant") and str(engine or "") != "aria":
+        return True       # an Isolated Tenant: the agents here are signed in as the machine's owner
     return str(engine or "") in off
+
+
+TENANT_WORDS = ("is signed in as this machine's owner, so an Isolated Tenant can't use it. "
+                "Your tenant answers with its own provider keys.")
 
 
 def set_use(cfg: dict, engine: str, on: bool) -> tuple[bool, str]:
@@ -1790,6 +1796,8 @@ def brains(cfg: dict, models: list[dict], engine: str = "") -> dict:
     for pid, mods in sorted(by_prov.items()):
         if not pid:
             continue
+        if pid == "pool" and (cfg or {}).get("_tenant"):
+            continue          # the community's leader spends the machine's keys, not the tenant's
         out.append({"id": pid, "name": "Your community's leader" if pid == "pool" else pid,
                     "what": "The brain of the machine that leads your community" if pid == "pool" else "",
                     "kind": "provider",
@@ -1817,7 +1825,8 @@ def brains(cfg: dict, models: list[dict], engine: str = "") -> dict:
             "available": (bool(r.get("installed")) and spec["id"] in DRIVEN
                           and not switched_off(cfg, spec["id"])),
             "on": not switched_off(cfg, spec["id"]),
-            "reason": (f"{spec['title']} is switched off in AI providers."
+            "reason": (f"{spec['title']} {TENANT_WORDS}" if (cfg or {}).get("_tenant") else
+                       f"{spec['title']} is switched off in AI providers."
                        if r.get("installed") and switched_off(cfg, spec["id"]) else "") or r.get("why_not", "") or (
                 "" if spec["id"] in DRIVEN else
                 f"{spec['title']} is installed, but AgentOS cannot run a turn on it yet."),

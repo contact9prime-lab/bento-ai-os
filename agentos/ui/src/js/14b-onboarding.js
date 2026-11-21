@@ -452,7 +452,7 @@ var OB_CLOUD=[
   {id:'google',label:'Google (Gemini)',model:'gemini-3.8-flash',
    where:'aistudio.google.com'},
   {id:'openai',label:'OpenAI',model:'gpt-6.1-sol',where:'platform.openai.com'},
-  {id:'deepseek',label:'DeepSeek',model:'deepseek-flash',where:'platform.deepseek.com'},
+  {id:'deepseek',label:'DeepSeek',model:'deepseek-v4-flash',where:'platform.deepseek.com'},
   {id:'moonshot',label:'Moonshot (Kimi)',model:'kimi-k3.1-pro',
    where:'platform.moonshot.ai'},
   {id:'openrouter',label:'OpenRouter — many models, one key',

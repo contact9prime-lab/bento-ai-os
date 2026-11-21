@@ -568,6 +568,7 @@ def redeem_account(code: str, redeemer: str, names: dict | None = None) -> dict:
         raise ValueError("that code is wrong, used or expired — ask for a new one")
     if (inv["owner"] or "") == (redeemer or ""):
         raise ValueError("that is your own code — the other account redeems it")
+    _same_tenant_or_refuse(inv["owner"] or "", redeemer or "")
     names = names or {}
     pair = secrets.token_hex(6)
     lent = _lent(inv)
@@ -717,6 +718,14 @@ def requests(owner: str | None, who: dict | None = None) -> dict:
     return out
 
 
+def _same_tenant_or_refuse(a: str, b: str) -> None:
+    """Accounts in different tenants are separate from the ground up (users.py): no link between
+    them, so nothing of one reaches the other. A machine link to another Bento is unaffected."""
+    from . import users as usersmod
+    if usersmod.enabled() and a and b and not usersmod.same_tenant(a, b):
+        raise ValueError("that account is in another tenant, and tenants don't link with each other")
+
+
 def request_account(frm: str, to: str, names: dict | None = None) -> dict:
     """Ask another account on this machine to link. No code: the server already knows
     who both of you are (the signed cookie), so the only question left is whether THEY
@@ -726,6 +735,7 @@ def request_account(frm: str, to: str, names: dict | None = None) -> dict:
         raise ValueError("there is no account by that name here")
     if (frm or "") == to:
         raise ValueError("that is you — pick another account")
+    _same_tenant_or_refuse(frm or "", to)
     d = _load()
     if any(lk.get("kind") == "account" and (lk.get("owner") or "") == (frm or "") and lk.get("peer") == to
            for lk in d["links"]):

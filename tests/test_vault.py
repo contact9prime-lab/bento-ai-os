@@ -36,7 +36,8 @@ def test_a_secret_round_trips_and_the_file_never_holds_it(home):
     raw = (home / "vault.json").read_bytes()
     assert b"hunter2" not in raw                                   # encrypted, not encoded
     assert stat.S_IMODE((home / "vault.json").stat().st_mode) == 0o600
-    assert stat.S_IMODE((home / "vault.key").stat().st_mode) == 0o600
+    # the machine's vault is locked with the service key (away.py), a 0600 file with no keyring
+    assert stat.S_IMODE((home / "away.key").stat().st_mode) == 0o600 and not (home / "vault.key").exists()
     assert vault.get(ref) == "hunter2-app-pass"
     assert vault.get("mail.password") == "hunter2-app-pass"       # by name too
     assert vault.resolve("literal") == "literal"                   # an un-adopted value passes through
@@ -62,7 +63,8 @@ def test_status_says_what_protects_it_and_nothing_more(home):
     assert st["mechanism"] == "" and "Empty" in st["detail"]
     vault.put("a", "sekrit-value")
     st = vault.status()
-    assert st["mechanism"] == "file" and st["count"] == 1 and "file permissions" in st["detail"]
+    assert st["mechanism"] == "service" and st["count"] == 1 and "service key" in st["detail"]
+    assert "Root" in st["detail"]                       # what it does not protect against, said
     assert "a" in st["names"] and "sekrit" not in json.dumps(st)
 
 
@@ -81,16 +83,18 @@ def test_a_keyring_keyed_vault_is_locked_when_the_keyring_is_gone_never_rekeyed(
     monkeypatch.setenv("PATH", f"{fake}:{os.environ['PATH']}")
     monkeypatch.setenv("AGENTOS_VAULT_KEYRING", "1")
     ref = vault.put("mail.password", "pw")
-    assert vault.status()["mechanism"] == "keyring" and "keyring" in vault.status()["detail"]
-    assert not (home / "vault.key").exists()                       # the key is NOT beside the lock
+    # the machine's vault takes the service key, which lives in the keyring when there is one
+    assert vault.status()["mechanism"] == "service"
+    assert json.loads((home / "away.json").read_text())["key"] == "keyring"
+    assert not (home / "vault.key").exists() and not (home / "away.key").exists()
     assert vault.get(ref) == "pw"
     store.unlink()                                                 # the keyring is gone
     assert vault.get(ref) == ""
     st = vault.status()
-    assert st["locked"] and "not reachable" in st["detail"]
+    assert st["locked"] and "can't be found" in st["detail"]
     with pytest.raises(RuntimeError):
         vault.put("mail.password", "new")                          # never mints a fresh key
-    assert not (home / "vault.key").exists()
+    assert not (home / "away.key").exists()
 
 
 def test_saving_an_account_puts_the_password_in_the_vault_and_the_mailbox_still_gets_it(home):
@@ -104,7 +108,7 @@ def test_saving_an_account_puts_the_password_in_the_vault_and_the_mailbox_still_
     # the card: set, "in the vault", and what protects it — never the value
     a = next(x for x in accounts.state(cfg) if x["id"] == "mail")
     assert a["set"]["password"] and a["masked"]["password"] == "in the vault"
-    assert a["values"]["password"] == "" and a["vault"]["mechanism"] == "file"
+    assert a["values"]["password"] == "" and a["vault"]["mechanism"] == "service"
     assert "app-pass" not in json.dumps(accounts.state(cfg))
     # a blank password keeps the reference (the card's normal state)
     ok, _ = accounts.save(cfg, "mail", {"user": "me@gmail.com", "password": ""})
@@ -132,3 +136,37 @@ def test_the_config_route_says_nothing_but_that_there_is_one(home):
         assert "s3cret" not in cl.get("/api/config").text
         assert "s3cret" not in cl.get("/api/accounts").text
         cfg["mail"]["password"] = ""
+
+
+def test_an_old_key_file_vault_moves_onto_the_service_key_once(home):
+    """A machine vault from before the service key: decided once as `file`, then moved across at
+    the next start (vault.to_service), every item with it, and the old key file deleted."""
+    import base64
+    key = os.urandom(32)
+    (home / "vault.key").write_text(base64.b64encode(key).decode())
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    n = os.urandom(12)
+    c = AESGCM(key).encrypt(n, b"old-totp", b"integrity.totp")
+    (home / "vault.json").write_text(json.dumps({"key": "file", "v": 1, "items": {
+        "integrity.totp": {"n": base64.b64encode(n).decode(), "c": base64.b64encode(c).decode()}}}))
+    assert vault.get("integrity.totp") == "old-totp"
+    assert vault.to_service() == 1
+    assert vault.status()["mechanism"] == "service" and not (home / "vault.key").exists()
+    assert vault.get("integrity.totp") == "old-totp"
+    assert vault.to_service() == 0
+
+
+def test_provider_keys_go_into_the_machines_vault_and_open_for_a_turn(home, monkeypatch):
+    """The provider API keys: out of config.json in clear, opened by the service when it calls."""
+    monkeypatch.setattr(cfgmod, "CONFIG_PATH", home / "config.json")
+    cfg = cfgmod.load_config()
+    cfg["providers"]["anthropic"]["api_key"] = "sk-ant-PROVIDER"
+    cfg.setdefault("speech", {})["elevenlabs"] = {"api_key": "el-VOICE"}
+    cfgmod.save_config(cfg)
+    text = (home / "config.json").read_text()
+    assert "sk-ant-PROVIDER" not in text and "el-VOICE" not in text
+    from agentos import providers, speech
+    fresh = cfgmod.load_config()
+    assert providers._key(fresh["providers"]["anthropic"]) == "sk-ant-PROVIDER"
+    assert speech._key(fresh, "elevenlabs") == "el-VOICE"
+    vault.forget_held()

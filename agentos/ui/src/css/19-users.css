@@ -47,6 +47,9 @@
    {width:100%}`, which is one class MORE specific than a bare `.usr-role` and
    quietly won — the select took the whole line and pushed every button below it,
    turning one account into three rows. */
+/* the scope (users.TENANT_KEYS): as compact as the role beside it, never a whole row */
+.usr-row .usr-scope{flex:none;width:190px;font-size:var(--fs-sm);padding:5px 8px}
+@media (max-width:560px){.usr-row .usr-scope{width:100%}}
 .usr-row .usr-role{flex:none;width:132px;font-size:var(--fs-sm);padding:5px 8px;
   border-radius:var(--r-sm);background:var(--bg3);border:1px solid var(--hairline);
   color:var(--txt)}

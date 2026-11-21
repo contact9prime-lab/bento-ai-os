@@ -66,6 +66,12 @@ class _Word:
         self.open_brace = False     # an unquoted {, which a comma or .. makes an expansion
 
 
+
+def _provider_key(p: dict) -> str:
+    """A provider's API key, opened from the machine's vault (providers._key)."""
+    from .providers import _key
+    return _key(p)
+
 def shell_parse(cmd: str) -> list | None:
     """The command line as segments of words, split where the shell would split it, or
     None when this reader cannot be sure what the shell would do. str.split left quotes
@@ -2477,7 +2483,7 @@ class Toolbox(usersmod.Scoped):
                         continue
                     model = icfg.get("model") or "gemini-2.5-flash-image"
                     base = (google.get("base_url") or "https://generativelanguage.googleapis.com").rstrip("/")
-                    headers = {"x-goog-api-key": google["api_key"]}
+                    headers = {"x-goog-api-key": _provider_key(google)}
                     # Imagen models speak :predict; Gemini image models speak
                     # :generateContent and must be told to answer with an image.
                     if model.startswith("imagen"):
@@ -2536,7 +2542,7 @@ class Toolbox(usersmod.Scoped):
                     base = (openai.get("base_url") or "https://api.openai.com/v1").rstrip("/")
                     async with httpx.AsyncClient(timeout=240.0) as c:
                         r = await c.post(f"{base}/images/generations",
-                                         headers={"Authorization": f"Bearer {openai['api_key']}"},
+                                         headers={"Authorization": f"Bearer {_provider_key(openai)}"},
                                          json=body)
                     if r.status_code == 200:
                         item = (r.json().get("data") or [{}])[0]
@@ -2793,7 +2799,7 @@ class Toolbox(usersmod.Scoped):
         try:
             async with httpx.AsyncClient(timeout=600.0) as cl:
                 r = await cl.post(base + videogen.ENDPOINT, json=body,
-                                  headers={"x-goog-api-key": google["api_key"]})
+                                  headers={"x-goog-api-key": _provider_key(google)})
         except Exception as e:
             return f"[error] could not reach Google: {type(e).__name__}"
         try:

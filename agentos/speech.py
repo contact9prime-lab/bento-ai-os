@@ -84,7 +84,8 @@ def _key(cfg: dict, engine: str) -> str:
     if not k and engine == "openai":
         # the OpenAI provider's key is the same account: no second key to paste
         k = str(((cfg.get("providers") or {}).get("openai") or {}).get("api_key") or "")
-    return k
+    from . import vault
+    return vault.machine_value(k, "voice")
 
 
 def public(cfg: dict) -> dict:

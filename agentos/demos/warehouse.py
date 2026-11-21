@@ -309,6 +309,12 @@ def brain_of(cfg: dict) -> tuple[dict, str]:
         return {}, ""
     keys = {k: copy.deepcopy(cfg[k]) for k in BRAIN_KEYS if k in cfg}
     keys["engine"] = eng
+    # a provider key is a reference into THIS machine's vault (vault.adopt), which the demo's homes
+    # can't open: copy what it opens to, and the demo hub keeps it in its own vault from there
+    from .. import vault
+    for v in (keys.get("providers") or {}).values():
+        if isinstance(v, dict) and vault.is_ref(v.get("api_key")):
+            v["api_key"] = vault.machine_value(v["api_key"], "demo")
     # an agent CLI's folder is the person's; in the demo it works in the hub's own workspace
     for v in (keys.get("executors") or {}).values():
         if isinstance(v, dict) and "workspace" in v:

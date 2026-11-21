@@ -101,8 +101,11 @@ const f=document.getElementById('f'),pw=document.getElementById('pw'),
 // the gate so the locked page can find out what kind of door it is standing at.
 let mode='pass';                 // 'lock' | 'accounts' | 'pass'
 // A sign-in link (handoff.py) lands here first: say what signing in opens.
-const LINK=location.pathname.indexOf('/handoff/')===0;
-if(LINK)sub.textContent='Sign in to open the page your agent is waiting on.';
+// a link from your phone chat: the hand-off of a page, or opening your secrets after a restart
+const UNLOCK=location.pathname==='/unlock';
+const LINK=location.pathname.indexOf('/handoff/')===0||UNLOCK;
+const LINK_WORDS=UNLOCK?'Sign in to open your secrets for your missions.':'Sign in to open the page your agent is waiting on.';
+if(LINK)sub.textContent=LINK_WORDS;
 fetch('/api/users/who').then(r=>r.json()).then(d=>{
   if(!d)return;
   // a door this browser can't open with a password (Bento itself started it): say so, ask nothing
@@ -128,7 +131,7 @@ fetch('/api/users/who').then(r=>r.json()).then(d=>{
   if(!d.any)return;
   mode='accounts';who.hidden=false;who.focus();
   pw.placeholder='Password';
-  sub.textContent=LINK?'Sign in to open the page your agent is waiting on.':'Sign in to your desktop.';
+  sub.textContent=LINK?LINK_WORDS:'Sign in to your desktop.';
 }).catch(()=>{});
 
 f.addEventListener('submit',async e=>{

@@ -70,7 +70,7 @@ SECURITY_MODULES = frozenset({
 # and a page that talks an agent into `read_file` then `fetch_url` has them; writing a database
 # is writing your own grants, and reading it is reading every conversation at once.
 SECRET_FILES = frozenset({
-    "session.key", "vault.key", "vault.json", "users.json", "seal.json",
+    "session.key", "vault.key", "vault.json", "users.json", "seal.json", "away.key", "away.json",
     "security-events.jsonl", "integrity.json", "integrity.anchor", "entry.token",
     "integrity.keys", "integrity.held", "integrity.writes", "integrity.updating", "integrity.lock",
     "ledger.key", "ledger.anchor",

@@ -4,8 +4,9 @@ Your agent can work on a website as you: post on your social account, fetch invo
 supplier's portal, keep an eye on a page that needs a sign-in. It does this in the shared browser
 (the Web window), signed in with your own session. Nothing about your password is kept by Bento.
 The site's own cookie is, in the browser's profile, and on a machine with accounts that profile is
-sealed with your Bento password: it opens into memory only while you're signed in, and nobody
-else on the machine can open it. See [the vault](vault.md#on-a-machine-with-accounts-sealed-with-your-password).
+sealed with your Bento password, so no other account can open it. A mission on the site runs with
+nobody signed in when you let your website sign-ins work while you're away (the default; Settings →
+Accounts → Your secrets). See [the vault](vault.md#on-a-machine-with-accounts-sealed-with-your-password).
 
 Three things hold, whoever is asking:
 

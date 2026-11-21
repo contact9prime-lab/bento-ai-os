@@ -249,6 +249,14 @@ def set_shape(cfg: dict, shape: str, use: str = "", screen: bool = False) -> dic
 
 def _has_model(cfg: dict) -> tuple[bool, str]:
     m = (cfg.get("default_model") or "").strip()
+    if m and cfg.get("_tenant"):
+        # an Isolated Tenant starts with none of the machine's keys: a model name it inherited is
+        # a brain only once its own provider has a key (or needs none)
+        prov = m.split("/", 1)[0]
+        p = (cfg.get("providers") or {}).get(prov) or {}
+        if prov in ("ollama", "custom") or p.get("api_key"):
+            return True, m
+        m = ""
     if m:
         return True, m
     for name, p in (cfg.get("providers") or {}).items():

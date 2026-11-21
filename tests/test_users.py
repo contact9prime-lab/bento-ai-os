@@ -154,7 +154,9 @@ def test_a_user_sees_the_machines_provider_keys(two):
     machine["providers"]["anthropic"] = {"enabled": True, "api_key": "sk-machine"}
     cfgmod.save_config(machine)
     a, _ = two
-    assert usersmod.cfg_for(a["id"])["providers"]["anthropic"]["api_key"] == "sk-machine"
+    from agentos import providers
+    # kept in the machine's vault (vault.adopt); every account's view opens the same key
+    assert providers._key(usersmod.cfg_for(a["id"])["providers"]["anthropic"]) == "sk-machine"
 
 
 def test_channels_do_not_cross(two):
@@ -163,7 +165,10 @@ def test_channels_do_not_cross(two):
     ca.setdefault("telegram", {})["bot_token"] = "ada-token"
     usersmod.save_user_cfg(a["id"], ca)
     usersmod.reset_caches()
-    assert usersmod.cfg_for(a["id"]).get("telegram", {}).get("bot_token") == "ada-token"
+    from agentos import vault
+    tok = usersmod.cfg_for(a["id"]).get("telegram", {}).get("bot_token")
+    with usersmod.as_user(a["id"]):
+        assert vault.get(tok) == "ada-token"          # in her own vault
     assert usersmod.cfg_for(b["id"]).get("telegram", {}).get("bot_token") in ("", None)
 
 
@@ -194,7 +199,9 @@ def test_an_admins_machine_save_does_not_carry_their_own_channels_into_it(two):
         cfgmod.save_config(cfg)
     raw = json.loads(cfgmod.CONFIG_PATH.read_text())
     assert "ada-private" not in json.dumps(raw)
-    assert raw["providers"]["anthropic"]["api_key"] == "sk-shared"
+    from agentos import providers
+    assert "sk-shared" not in json.dumps(raw)                   # the machine's vault holds it
+    assert providers._key(raw["providers"]["anthropic"]) == "sk-shared"
 
 
 def test_an_admin_change_reaches_everybody_without_a_restart(two):
@@ -276,7 +283,10 @@ def test_the_first_user_keeps_everything_that_was_already_there(home):
     with usersmod.as_user(u["id"]):
         assert cfgmod.load_soul() == "# the soul they wrote"
         assert cfgmod.is_first_run() is False, "they already set this machine up"
-    assert usersmod.cfg_for(u["id"])["telegram"]["bot_token"] == "theirs"
+    from agentos import vault
+    tok = usersmod.cfg_for(u["id"])["telegram"]["bot_token"]
+    with usersmod.as_user(u["id"]):
+        assert vault.get(tok) == "theirs"                   # moved into their own vault
 
 
 def test_what_the_first_user_inherited_is_not_left_lying_in_the_machine_file(home):

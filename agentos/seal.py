@@ -17,14 +17,18 @@ The shape, and what each part is for:
   as an HttpOnly cookie. Neither half alone opens anything, so this process's memory holds
   nothing that unlocks. A request from that browser carries its half (`from_request`), the two
   are combined for one use (`key_here`) and dropped.
-- **Work nobody is watching borrows** (`borrow`): it asks a page this person has open to lend its
-  half for one step, over the socket (`seal_need` → `POST /api/seal/lend`). No page open, and
-  the step is refused in a sentence that says to open Bento signed in. A restart forgets every
-  pad, so after one the person types their password once to open their secrets again.
+- **Work nobody is watching** reads the copy the person allowed for while they're away
+  (away.py: until revoked, for some days, once), locked with the machine's service key, so a
+  mission runs with nobody signed in. A secret set to "only while I'm signed in" has no such
+  copy: the step borrows (`borrow`), asking a page this person has open to lend its half
+  (`seal_need` → `POST /api/seal/lend`), and with none open it is refused in a sentence that
+  names the secret and where to change it. A restart forgets every pad, so after one those
+  secrets wait for the person's password once.
 
 What this does NOT defend, and the docs say: while a secret is in use (a step reading the mail,
-a browser that is running) it is in this process or in RAM, and root can read RAM. At rest, and
-whenever that person is signed out, nothing on this machine opens it. A machine with no accounts
+a browser that is running) it is in this process or in RAM, and root can read RAM. A copy for while
+you're away can be opened by root at any time, which is the price of a mission running unattended.
+A secret set to signed-in only can't be opened by anything on this machine while its owner is out. A machine with no accounts
 has nobody to sign in, and keeps the vault's own key (vault.py says which).
 
 Kept free of HTTP and asyncio at import, like vault.py; `borrow` is the one async door.
@@ -258,6 +262,9 @@ def start_fresh(uid: str) -> list[str]:
     if prof.exists():
         prof.unlink()
         gone.append("your website sign-ins")
+    # fresh means fresh: the copies kept for while you were away go with what they copied
+    with contextlib.suppress(OSError):
+        (home / "browser" / "profile.away").unlink()
     with contextlib.suppress(OSError):
         _path(uid).unlink()
     drop_user(uid)
@@ -466,4 +473,5 @@ def status(uid: str) -> dict:
             "needs_recovery": bool(d.get("pw_stale")), "since": d.get("at"),
             "code_at": d.get("rc_at") or d.get("at"),
             "detail": "Sealed with your password. Only you, signed in, can open it. Not an admin, "
-                      "not another account, not root while you're signed out."}
+                      "not another account, not root while you're signed out. A secret you let "
+                      "work while you're away is the exception, and its line says so."}

@@ -565,14 +565,17 @@ class Browser:
         box = base / SEALED_PROFILE
         try:
             if box.exists():
-                try:
-                    priv = await seal.borrow(self.uid, "open your signed-in browser")
-                except seal.Sealed as e:
-                    raise CDPError(str(e)) from None
-                try:
-                    data = seal.open_bytes(self.uid, priv, json.loads(box.read_text()), "browser")
-                finally:
-                    priv = None
+                data = await asyncio.to_thread(_open_away, self.uid, base)
+                if data is None:
+                    try:
+                        priv = await seal.borrow(self.uid, "open your signed-in browser")
+                    except seal.Sealed:
+                        from . import vault
+                        raise CDPError(vault.away_refusal(vault.BROWSER)) from None
+                    try:
+                        data = seal.open_bytes(self.uid, priv, json.loads(box.read_text()), "browser")
+                    finally:
+                        priv = None
                 await asyncio.to_thread(_untar, data, run)
             elif plain.exists():
                 # the first start after the update: the old clear profile moves in and is sealed
@@ -591,13 +594,12 @@ class Browser:
         if not self.run_dir or not self.run_dir.exists():
             return
         from . import seal
-        box = seal.seal_bytes(self.uid, _tar(self.run_dir), "browser")
+        tar = _tar(self.run_dir)
+        box = seal.seal_bytes(self.uid, tar, "browser")
         dest = self.home / "browser" / SEALED_PROFILE
-        tmp = dest.with_suffix(".tmp")
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w") as f:
-            json.dump(box, f)
-        os.replace(tmp, dest)
+        _write_box(dest, box)
+        _keep_away(self.uid, self.home / "browser", tar)
+        tar = None
         self.sealed_at = time.time()
 
     def _close_profile(self) -> None:
@@ -1218,6 +1220,100 @@ async def get(uid: str, cfg: dict, home: Path) -> Browser:
 
 
 SEALED_PROFILE = "profile.sealed"
+AWAY_PROFILE = "profile.away"         # the copy for while you're away (away.py), when allowed
+
+
+def _write_box(dest: Path, box: dict) -> None:
+    tmp = dest.with_suffix(".tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        json.dump(box, f)
+    os.replace(tmp, dest)
+
+
+def _away_ctx(uid: str):
+    from . import users as usersmod
+    return usersmod.as_user(uid)
+
+
+def _open_away(uid: str, base: Path) -> bytes | None:
+    """The profile from its away copy, when the person allowed one and it is still good, and no
+    page of theirs could lend the key for a "once". None means: ask for the key."""
+    from . import away, seal, vault
+    with _away_ctx(uid):
+        meta = vault.away_meta(vault.BROWSER)
+        f = base / AWAY_PROFILE
+        if not f.exists() or not away.usable(meta):
+            return None
+        if seal.key_here(uid) or (meta.get("mode") == "once" and seal.open_here(uid)):
+            return None
+        try:
+            data = away.unlock(uid, "browser", json.loads(f.read_text()))
+        except Exception:
+            data = None
+        if data is not None and meta.get("mode") == "once" and not meta.get("used"):
+            meta["used"] = time.time()
+            vault.note_away(vault.BROWSER, meta)
+        return data
+
+
+def _keep_away(uid: str, base: Path, tar: bytes) -> None:
+    """As the profile is put away: refresh its away copy if the person allows one (new accounts
+    start allowed, until revoked), and delete it when they don't or its time is up."""
+    from . import away, vault
+    with _away_ctx(uid):
+        meta = vault.away_meta(vault.BROWSER)
+        if meta is None:
+            meta = away.choice(away.DEFAULT)
+        f = base / AWAY_PROFILE
+        if meta.get("box") and away.spent(meta):
+            meta = away.ended(meta)
+        if meta.get("mode") in (None, "", "off"):
+            with contextlib.suppress(OSError):
+                f.unlink()
+            meta.pop("box", None)
+        else:
+            try:
+                _write_box(f, away.lock(uid, "browser", tar))
+                meta["box"] = True
+            except RuntimeError:
+                meta.pop("box", None)
+        vault.note_away(vault.BROWSER, meta)
+
+
+def has_profile(uid: str) -> bool:
+    from . import users as usersmod
+    b = usersmod.home_for(uid) / "browser"
+    return (b / SEALED_PROFILE).exists() or (b / "profile").exists()
+
+
+def away_switch(uid: str, meta: dict, priv: bytes | None) -> dict:
+    """vault.set_away for the browser. Switching on needs the profile's plaintext: the copy that
+    is there, or the sealed profile opened with the person's key."""
+    from . import away, seal, vault, users as usersmod
+    base = usersmod.home_for(uid) / "browser"
+    f = base / AWAY_PROFILE
+    old = vault.away_meta(vault.BROWSER) or {}
+    if meta["mode"] == "off":
+        with contextlib.suppress(OSError):
+            f.unlink()
+    elif not (f.exists() and old.get("box")):
+        sealed = base / SEALED_PROFILE
+        if not sealed.exists():
+            # nothing signed in yet: the choice is kept and the copy is made at the first seal
+            vault.note_away(vault.BROWSER, meta)
+            return meta
+        if not priv:
+            raise seal.Sealed("Sign in to switch this on: Bento needs your key once to make the "
+                              "copy that works while you're away.")
+        tar = seal.open_bytes(uid, priv, json.loads(sealed.read_text()), "browser")
+        _write_box(f, away.lock(uid, "browser", tar))
+        tar = None
+        meta["box"] = True
+    else:
+        meta["box"] = True
+    vault.note_away(vault.BROWSER, meta)
+    return meta
 RESEAL_S = 5 * 60
 # Chromium rebuilds these, and they are most of a profile's size: never sealed.
 _NO_SEAL = {"Cache", "Code Cache", "GPUCache", "GrShaderCache", "ShaderCache", "GraphiteDawnCache",

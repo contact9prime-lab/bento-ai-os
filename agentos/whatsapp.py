@@ -78,6 +78,15 @@ _TITLES = {"deny": "Deny", "once": "Allow once", "always": "Allow & remember"}
 MODES = ("baileys", "cloud")
 
 
+def secret(cfg: dict, key: str) -> str:
+    """A Cloud API secret (access token, app secret) as the code that sends or checks wants it.
+    Config holds a vault reference (vault.adopt); it is opened in the config's own account."""
+    from . import users as usersmod, vault
+    ref, uid = conf(cfg).get(key) or "", str(cfg.get("_uid") or "")
+    with usersmod.as_user(uid):
+        return vault.held(ref, "whatsapp")
+
+
 def conf(cfg: dict) -> dict:
     """The WhatsApp block, read through the channel registry.
 
@@ -206,6 +215,9 @@ class WhatsAppBridge(usersmod.Scoped):
     def _c(self) -> dict:
         return conf(self.cfg)
 
+    def _secret(self, key: str) -> str:
+        return secret(self.cfg, key)
+
     def window_open(self, wa_id: str = "") -> bool:
         """Is Meta's 24-hour customer-service window open for this chat?
 
@@ -223,7 +235,7 @@ class WhatsAppBridge(usersmod.Scoped):
         async with httpx.AsyncClient(timeout=45) as client:
             r = await client.post(
                 f"{GRAPH}/{path}", json=payload,
-                headers={"Authorization": f"Bearer {c.get('access_token', '')}"})
+                headers={"Authorization": f"Bearer {self._secret('access_token')}"})
         data = r.json() if r.content else {}
         if r.status_code >= 400:
             err = (data.get("error") or {})
@@ -307,7 +319,7 @@ class WhatsAppBridge(usersmod.Scoped):
                     f"{GRAPH}/{c['phone_number_id']}/media",
                     data={"messaging_product": "whatsapp", "type": "image/png"},
                     files={"file": ("office.png", png, "image/png")},
-                    headers={"Authorization": f"Bearer {c.get('access_token', '')}"})
+                    headers={"Authorization": f"Bearer {self._secret('access_token')}"})
             up = r.json() if r.content else {}
             if r.status_code >= 400 or not up.get("id"):
                 raise RuntimeError((up.get("error") or {}).get("message") or f"HTTP {r.status_code}")
@@ -344,7 +356,7 @@ class WhatsAppBridge(usersmod.Scoped):
                     f"{GRAPH}/{c['phone_number_id']}/media",
                     data={"messaging_product": "whatsapp", "type": "video/mp4"},
                     files={"file": ("story.mp4", data, "video/mp4")},
-                    headers={"Authorization": f"Bearer {c.get('access_token', '')}"})
+                    headers={"Authorization": f"Bearer {self._secret('access_token')}"})
             up = r.json() if r.content else {}
             if r.status_code >= 400 or not up.get("id"):
                 raise RuntimeError((up.get("error") or {}).get("message") or f"HTTP {r.status_code}")
@@ -409,7 +421,7 @@ class WhatsAppBridge(usersmod.Scoped):
                         f"{GRAPH}/{c['phone_number_id']}/media",
                         data={"messaging_product": "whatsapp", "type": mime},
                         files={"file": (p.name, fh, mime)},
-                        headers={"Authorization": f"Bearer {c.get('access_token', '')}"})
+                        headers={"Authorization": f"Bearer {self._secret('access_token')}"})
             up = r.json() if r.content else {}
             if r.status_code >= 400 or not up.get("id"):
                 raise RuntimeError((up.get("error") or {}).get("message") or f"HTTP {r.status_code}")

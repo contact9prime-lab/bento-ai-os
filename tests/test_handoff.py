@@ -460,7 +460,8 @@ def test_the_server_keeps_it_behind_the_remote_gate():
 
 def test_the_sign_in_page_comes_back_to_the_link():
     login = (Path(handoff.__file__).parent / "ui" / "login.html").read_text(encoding="utf-8")
-    assert "const LINK=location.pathname.indexOf('/handoff/')===0;" in login
+    # the hand-off's link, and the one a phone chat sends to open your secrets (unlock.py)
+    assert "const LINK=location.pathname.indexOf('/handoff/')===0||UNLOCK;" in login
     assert "location.replace(LINK?location.pathname:'/')" in login           # back to the link, same origin
     assert "Sign in to open the page your agent is waiting on." in login
 

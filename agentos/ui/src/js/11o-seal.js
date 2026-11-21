@@ -72,7 +72,7 @@ async function renderSeal(){
           toast('✓ Your secrets are open while you’re signed in');renderSeal()}
         catch(e){toast(e.message||'that did not open it',{kind:'err'})}finally{b.disabled=false}};
       pw.onkeydown=e=>{if(e.key==='Enter')b.click()};
-      g.append(row('Closed since Bento restarted','Enter your password once to let your missions use them again.',[pw,b]));
+      g.append(row('Closed since Bento restarted','Secrets set to only while you’re signed in wait for your password once.',[pw,b]));
     }else{
       g.append(row('Open while you’re signed in','Missions can use them while a page of yours is open, even locked.'));
     }
@@ -85,8 +85,55 @@ async function renderSeal(){
         await sealShowCode(d.recovery_code,'This replaces your old recovery code. If you forget your password, it is the only way back to your saved passwords and website sign-ins.');
         renderSeal()}catch(e){toast(e.message||'could not make a new code',{kind:'err'})}};
     g.append(row('Recovery code',when?'Made '+when+'. Shown once, never kept on this machine.':'Shown once, never kept on this machine.',[nb]));
+    if((st.secrets||[]).length){
+      const h=mk('div','seal-awayh');h.append(mk('b','','While you’re away'));
+      h.append(pInfoEl(st.away_cost||''));
+      g.append(h,mk('div','ghint','Missions, schedules and your phone bots use these with nobody signed in. Pick how long each one may.'));
+      st.secrets.forEach(x=>g.append(row(x.label,x.words,[sealAwaySelect(x)])));
+    }
   }
   box.replaceChildren(g);
+}
+
+/* The ⓘ beside a heading: one or two sentences, shown on hover, focus or tap. */
+function pInfoEl(text){
+  const b=document.createElement('button');b.type='button';b.className='pinfo';b.textContent='i';
+  b.dataset.tip=text;b.setAttribute('aria-label',text);
+  return b;
+}
+
+/* How long one secret works while you're away (away.py). Switching one on needs your key,
+   which this browser carries; after a restart, the password is asked once first. */
+var SEAL_CHOICES=[['off','Only while I’m signed in'],['always','Until I revoke it'],
+  ['d7','For 7 days'],['d30','For 30 days'],['once','Once, for the next run']];
+function sealAwaySelect(x){
+  const sel=document.createElement('select');sel.className='seal-away';sel.setAttribute('aria-label','While you’re away: '+x.label);
+  const cur=x.mode==='until'?'until':x.mode;
+  SEAL_CHOICES.forEach(([v,t])=>{const o=document.createElement('option');o.value=v;o.textContent=t;sel.append(o)});
+  if(cur==='until'&&x.until){const o=document.createElement('option');o.value='until';
+    o.textContent='Until '+new Date(x.until*1000).toLocaleDateString(undefined,{day:'numeric',month:'short'});sel.append(o)}
+  sel.value=cur;
+  sel.onchange=async()=>{
+    const v=sel.value;if(v==='until')return;
+    const body={name:x.name,mode:v.startsWith('d')?'until':v};if(v.startsWith('d'))body.days=+v.slice(1);
+    const send=()=>fetch('/api/seal/away',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    sel.disabled=true;
+    try{
+      let r=await send();
+      if(r.status===409){
+        const pw=await sealAskPassword('Your password','Bento needs your key once to make the copy that works while you’re away.');
+        if(!pw){renderSeal();return}
+        const o=await fetch('/api/seal/open',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
+        if(!o.ok){const d=await o.json().catch(()=>({}));toast(d.error||'that did not open it',{kind:'err'});renderSeal();return}
+        r=await send();
+      }
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok)toast(d.error||'could not change it',{kind:'err'});
+      else toast('✓ '+x.label+': '+((d.secrets||[]).find(y=>y.name===x.name)||{}).words);
+    }catch(e){toast('could not change it',{kind:'err'})}
+    renderSeal();
+  };
+  return sel;
 }
 
 function sealAskPassword(title,msg){
@@ -109,7 +156,11 @@ function sealAskPassword(title,msg){
 async function sealBoot(){
   const st=await sealLoad();
   if(!st||!st.sealed||st.open||SEAL.told)return;
+  // only what is set to "only while I'm signed in" is closed: the rest works while you're away
+  const closed=(st.secrets||[]).filter(x=>!x.away);
+  if(st.secrets&&!closed.length)return;
   SEAL.told=true;
-  toast('Bento restarted, so your saved passwords and website sign-ins are closed. Enter your password once to open them.',
+  toast((closed.length?`Bento restarted, so ${closed.length===1?closed[0].label+' is':closed.length+' of your secrets are'} closed until you sign in. `
+    :'Bento restarted, so your secrets are closed. ')+'Enter your password once to open '+(closed.length===1?'it.':'them.'),
     {label:'Open',go:()=>{if(typeof placeSettings==='function')placeSettings('accounts','Your secrets')()}});
 }
