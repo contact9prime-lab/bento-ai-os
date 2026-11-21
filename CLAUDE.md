@@ -2601,6 +2601,13 @@ What AgentOS **depends on**, it is effectively distributing, and that set must b
 permissively licensed (MIT/Apache/BSD/ISC). `packaging/audit-licenses.sh` gates
 it and must stay green.
 
+**Bundled data counts too, and the audit doesn't see it**, so it is listed by hand in
+`THIRD_PARTY_NOTICES.md` → Bundled data, with its licence text beside the data. MITRE ATT&CK
+(the ethics library's source) is accepted as permissive: its terms allow commercial use,
+copying and changes with MITRE's notice kept, and there is no copyleft (the owner's call,
+2026-11). Its "Enterprise" is the name of a matrix, not a paid edition. A new bundled data
+set with any other terms is asked about first.
+
 Anything copyleft that is genuinely useful is **asked for, not shipped**:
 
 - `agentos/components.py` — the catalogue. Each entry states what it unlocks, its
