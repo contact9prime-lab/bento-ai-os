@@ -47,10 +47,12 @@ from . import accounts as accountsmod
 from . import brief as briefmod
 from . import avatars as avatarsmod
 from . import playground as playgroundmod
+from . import phonelive
 from . import drama as dramamod
 from . import arena as arenamod
 from . import world as worldmod
 from . import vault as vaultmod
+from . import seal as sealmod
 from . import signin as signinmod
 from . import mail as mailmod
 from . import calendars as calendarsmod
@@ -198,15 +200,21 @@ def _start_account_bridges() -> list[str]:
     except KeyError:
         machine = None
     m = (machine or {}).get("telegram") or {}
-    machine_tok = m.get("bot_token", "") if m.get("enabled") else ""
+    # tokens are vault references (vault.adopt): two accounts may hold the same reference
+    # name for different bots, so compare what they open to, each in its own account
+    with usersmod.as_user(""):
+        machine_tok = vaultmod.held(m.get("bot_token", ""), "telegram") if m.get("enabled") else ""
     for u in usersmod.list_users():
         uid = u["id"]
         try:
             t = (usersmod.cfg_for(uid, machine=machine).get("telegram") or {})
         except Exception:
             continue
-        tok = t.get("bot_token", "")
-        if not (t.get("enabled") and tok):
+        if not (t.get("enabled") and t.get("bot_token")):
+            continue
+        with usersmod.as_user(uid):
+            tok = vaultmod.held(t.get("bot_token", ""), "telegram")
+        if not tok:
             continue
         if tok == machine_tok or tok in seen:
             other = seen.get(tok, "the machine")
@@ -250,6 +258,13 @@ async def startup():
     cfg = cfgmod.load_config()
     cfgmod.ensure_dirs(cfg)
     state["loop"] = asyncio.get_running_loop()
+    sealmod.bind(state["loop"], _seal_ask)        # a sealed account's key is lent by its open page
+    # a signed-in-only secret a mission needs while nobody is: a link on the person's own phone
+    from . import unlock as _unlockmod
+    _unlockmod.bind(phones=_owner_wall_phones, cfg=lambda: state.machine_cfg(), loop=state["loop"],
+                    ledger=lambda uid, action, res, why: _ledger_as(uid, action, res, why))
+    with contextlib.suppress(Exception):
+        _cdpb.sweep_runs()       # an opened profile a crashed server left in RAM goes (cdpbrowser.py)
     secevents.on_alert(_security_alert)
     integrity.on_hold(_integrity_held)
     if integrity.armed():       # serve() only: the suite shares a checkout it must not trip on
@@ -293,6 +308,7 @@ async def startup():
         # agents talking, collected for whoever listens off the desktop (a Telegram
         # turn's comic strip) — the one place every such event already passes
         playgroundmod.observe(event)
+        phonelive.observe(event)      # a phone turn's live steps (phonelive.py)
         # the World scene feels it, for the account whose work this is, and only while
         # that account has a world live (returns at once otherwise)
         worldmod.observe(event, usersmod.current())
@@ -314,6 +330,7 @@ async def startup():
         person's OWN sessions, not across accounts. On a single-user machine
         every uid is '' and this is exactly `broadcast`."""
         playgroundmod.observe(event)
+        phonelive.observe(event)      # a phone turn's live steps (phonelive.py)
         worldmod.observe(event, uid)
         _drama_seen(event, uid)
         dead = []
@@ -434,8 +451,13 @@ async def startup():
     vaultmod.set_reader_log(lambda name, actor: state["store"].log(
         "vault", f"read {name} for {actor or 'the system'}", {"name": name, "actor": actor}))
     try:
-        if vaultmod.adopt(cfg):
-            cfgmod.save_config(cfg)
+        with usersmod.as_user(""):
+            # one key for what the service opens by itself (away.py): the machine's vault moves
+            # onto it once, then provider keys and the machine's tokens are adopted into it
+            if (n := vaultmod.to_service()):
+                store.log("vault", f"the machine's vault moved to the service key ({n} items)")
+            if vaultmod.adopt(cfg):
+                cfgmod.save_config(cfg)
     except Exception as e:                                          # noqa: BLE001
         store.log("vault", f"could not adopt the config's secrets: {e}")
     # A device that was linked before a restart is still linked: WhatsApp keeps the
@@ -5054,10 +5076,12 @@ async def api_get_config():
     cfg = json.loads(json.dumps(state["cfg"]))
     for p in cfg["providers"].values():
         if p.get("api_key"):
-            p["api_key"] = "•••" + p["api_key"][-4:]
+            # a vault reference says only that a key is set; an old clear one shows its last four
+            p["api_key"] = "•••" if vaultmod.is_ref(p["api_key"]) else "•••" + p["api_key"][-4:]
             p["_has_key"] = True
     if cfg.get("telegram", {}).get("bot_token"):
-        cfg["telegram"]["bot_token"] = "•••" + cfg["telegram"]["bot_token"][-4:]
+        t_ = cfg["telegram"]["bot_token"]
+        cfg["telegram"]["bot_token"] = "•••" if vaultmod.is_ref(t_) else "•••" + t_[-4:]
         cfg["telegram"]["_has_token"] = True
     for acct in ("mail", "calendar"):
         # an app password is a credential to somebody's whole mailbox: never echoed
@@ -5285,7 +5309,10 @@ async def api_put_config(patch: dict):
     # version somebody reports as a bug six months later.
     mine = usersmod.current()
     if usersmod.enabled() and not usersmod.is_admin(mine):
-        theirs = [k for k in (patch or {}) if k not in usersmod.USER_KEYS]
+        # an Isolated Tenant's admin may change the tenant's own keys (users.TENANT_KEYS), and only those
+        own = set(usersmod.USER_KEYS) | (set(usersmod.TENANT_KEYS) if usersmod.tenant_of(mine)
+                                         and usersmod.is_tenant_admin(mine) else set())
+        theirs = [k for k in (patch or {}) if k not in own]
         if theirs:
             return JSONResponse(
                 {"error": "only an admin can change machine settings on this machine "
@@ -7191,7 +7218,7 @@ async def api_whatsapp_webhook(request: Request):
     if not c.get("enabled"):
         return JSONResponse({"error": "whatsapp is off"}, status_code=404)
     raw = await request.body()
-    if not wamod.verify_signature(c.get("app_secret") or "", raw,
+    if not wamod.verify_signature(wamod.secret(state["cfg"], "app_secret"), raw,
                                   request.headers.get("x-hub-signature-256", "")):
         state["store"].log("whatsapp",
                            f"refused an unsigned webhook delivery from {_client_addr(request)}")
@@ -9707,6 +9734,11 @@ def _ethics_public(eth: dict) -> dict:
     return {k: v for k, v in (eth or {}).items() if k != "token"}
 
 
+def _ledger_as(uid: str, action: str, resource: str, reason: str):
+    with usersmod.as_user(uid or ""):
+        _ledger(action, resource, reason, surface="phone")
+
+
 def _ledger_for(entry: dict, action: str, resource: str, reason: str):
     """A ledger row in the account that was asked."""
     with usersmod.as_user(entry.get("uid") or ""):
@@ -10116,6 +10148,9 @@ REMOTE_OPEN_PATHS = ("/login", "/api/remote/login", "/api/users/login",
                      # backoff sign-in uses, and the identity it unlocks is the one
                      # already inside the signed cookie — never one it is handed.
                      "/api/session/unlock",
+                     # A locked screen still lends its half of the key to a mission (the
+                     # owner's choice). It needs a valid cookie AND this session's pad here.
+                     "/api/seal/lend", "/api/seal/wants",
                      "/api/users/who", "/assets/", "/manifest.webmanifest",
                      "/favicon.ico", "/apple-touch-icon.png",
                      # Flow webhooks. A service posting from the internet has no session
@@ -10268,9 +10303,13 @@ async def resolve_user(request: Request, call_next):
         # lock screen has to be able to say whose desktop this is. Nothing else runs
         # while locked — `remote_access_gate` refuses every path but the open ones.
     token = usersmod._current.set(uid)
+    # this browser's half of its account's sealed key, for this request only (seal.py)
+    share = sealmod.from_request(uid, _session_jti(request) if uid else "",
+                                 request.cookies.get(sealmod.COOKIE, ""))
     try:
         return await call_next(request)
     finally:
+        sealmod.reset_request(share)
         usersmod._current.reset(token)
 
 
@@ -10479,6 +10518,57 @@ def _set_session_cookie(resp, request, token: str, days: int = 30) -> None:
     """
     resp.set_cookie(remotemod.COOKIE, token, max_age=days * 86400,
                     httponly=True, samesite="lax", secure=_is_https(request), path="/")
+
+
+def _set_seal_cookie(resp, request, value: str, days: int = 30) -> None:
+    """The browser's half of its account's key (seal.py). Same rules as the session cookie, and
+    HttpOnly: no script, an app's included, ever reads it."""
+    resp.set_cookie(sealmod.COOKIE, value, max_age=days * 86400,
+                    httponly=True, samesite="lax", secure=_is_https(request), path="/")
+
+
+def _seal_sign_in(uid: str, password: str) -> tuple[dict, bytes | None]:
+    """At a sign-in with the password: seal an account for the first time (and move its vault
+    in, a recovery code to show once), or open its seal. ({words for the page}, private key)."""
+    if not uid:
+        return {}, None
+    if not sealmod.exists(uid):
+        priv, code = sealmod.establish(uid, password)
+        with usersmod.as_user(uid):
+            moved = vaultmod.reseal(uid)
+            usersmod.store_for(uid).log("system", f"secrets sealed with your password ({moved} moved in)")
+        with contextlib.suppress(Exception):
+            with usersmod.as_user(uid):
+                _ledger("seal.create", f"user:{uid}", "account secrets sealed; recovery code shown once")
+        return {"recovery_code": code}, priv
+    try:
+        return {}, sealmod.open_with_password(uid, password)
+    except sealmod.Sealed as e:
+        return {"needs_recovery": sealmod.needs_recovery(uid), "seal": str(e)}, None
+
+
+def _lend_seal(resp, request, uid: str, token: str, priv: bytes | None) -> None:
+    """Split the key for the session this cookie starts: half to the browser, the pad here."""
+    if not (uid and priv):
+        return
+    sid = str((remotemod.session_claims(state.machine_cfg(), token) or {}).get("jti") or "")
+    if sid:
+        _set_seal_cookie(resp, request, sealmod.lend_cookie(uid, sid, priv))
+        sealmod.note_sign_in(uid)
+
+
+async def _seal_ask(uid: str, ticket: str, why: str) -> bool:
+    """A step nobody is watching wants this account's key: ask a page of theirs to lend its half.
+    False when no page of theirs is open, so the step says so at once."""
+    asked = False
+    owners = state.get("client_uids") or {}
+    for ws in list(state.get("clients") or ()):
+        if owners.get(ws, "") != uid:
+            continue
+        with contextlib.suppress(Exception):
+            await ws.send_text(json.dumps({"type": "seal_need", "ticket": ticket, "why": why[:160]}))
+            asked = True
+    return asked
 
 
 def _principal_of(request) -> Principal:
@@ -12148,6 +12238,20 @@ async def login_page():
     return FileResponse(UI_DIR / "login.html", headers=NO_STORE)
 
 
+@app.get("/unlock")
+async def unlock_page():
+    """The page a phone chat's link opens (unlock.py): behind the remote gate like every page, so a
+    phone with no session gets the sign-in page here first and comes back. It opens the person's
+    closed secrets for their missions; it never takes a password anywhere but this machine."""
+    return FileResponse(UI_DIR / "unlock.html", headers={**NO_STORE, **_UNLOCK_HEAD})
+
+
+_UNLOCK_HEAD = {"Referrer-Policy": "no-referrer", "X-Frame-Options": "DENY", "X-Content-Type-Options": "nosniff",
+                "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; "
+                                           "script-src 'unsafe-inline'; connect-src 'self'; img-src data:; "
+                                           "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"}
+
+
 @app.post("/api/remote/login")
 async def api_remote_login(body: dict, request: Request):
     """Sign in from elsewhere.
@@ -12220,9 +12324,11 @@ async def _sign_out(request: Request):
     """This browser's session ends, and so does any copy of its cookie: its apps, its sockets, the id."""
     claims = remotemod.session_claims(state.machine_cfg(), request.cookies.get(remotemod.COOKIE, ""))
     _end_token_session(str((claims or {}).get("jti") or ""))
+    sealmod.drop(str((claims or {}).get("jti") or ""))       # this session's half of the key goes
     remotemod.end_session(claims)
     resp = JSONResponse({"ok": True})
     resp.delete_cookie(remotemod.COOKIE, path="/")
+    resp.delete_cookie(sealmod.COOKIE, path="/")
     await _ws_recheck()
     return resp
 
@@ -12277,6 +12383,7 @@ async def api_session_lock(request: Request):
     # the apps open in this browser stop with it: their calls carry the token, not
     # the cookie, so the lock has to reach the token as well
     new_sid = str((remotemod.session_claims(cfg, locked) or {}).get("jti") or "")
+    sealmod.move(_session_jti(request), new_sid)
     for e in _app_tokens_of_session(_session_jti(request)):
         e["locked"], e["sid"] = True, new_sid
     # The cookie from before the lock must not open the screen from a copy, and on a machine with no
@@ -12332,11 +12439,166 @@ async def api_session_unlock(body: dict, request: Request):
     opened = remotemod.issue_session(cfg, uid)
     _set_session_cookie(resp, request, opened)
     new_sid = str((remotemod.session_claims(cfg, opened) or {}).get("jti") or "")
+    sealmod.drop(str(claims.get("jti") or ""))
+    if uid and sealmod.exists(uid):
+        _w, priv = await asyncio.to_thread(_seal_sign_in, uid, pw)
+        _lend_seal(resp, request, uid, opened, priv)
+        priv = None
     for e in _app_tokens_of_session(str(claims.get("jti") or "")):
         e["locked"], e["sid"] = False, new_sid
     with contextlib.suppress(Exception):
         usersmod.store_for(uid).log("system", "desktop unlocked")
     return resp
+
+
+# ---------------------------------------------------------------------------
+# Sealed secrets (seal.py): each account's vault and signed-in sites open only from that
+# person's own signed-in browser. These are the person's doors to their own seal.
+# ---------------------------------------------------------------------------
+
+def _seal_session_uid(request: Request) -> str:
+    """The account a session cookie signs, locked or not; '' when it doesn't verify."""
+    claims = remotemod.session_claims(state.machine_cfg(), request.cookies.get(remotemod.COOKIE, ""))
+    return str((claims or {}).get("uid") or "") if claims else ""
+
+
+async def _seal_password_ok(request: Request, uid: str, pw: str):
+    """The person's own password, with sign-in's backoff. None when it matches, else the answer."""
+    who = (usersmod.get(uid) or {}).get("name", uid)
+    if (wait := remotemod.target_locked_for(who)):
+        return JSONResponse({"error": f"too many attempts — wait {wait}s"}, status_code=429)
+    if not usersmod.check_password(uid, pw):
+        _login_failed(_login_source(request), who, f"seal of {who}")
+        return JSONResponse({"error": "that password does not match"}, status_code=403)
+    return None
+
+
+@app.get("/api/seal")
+async def api_seal_status():
+    out = sealmod.status(usersmod.current())
+    if out.get("sealed"):
+        # each secret with its choice for while you're away (away.py), in words
+        out["secrets"] = await asyncio.to_thread(vaultmod.away_list)
+        from . import away as awaymod
+        out["away_cost"] = awaymod.COST_WORDS
+    return out
+
+
+@app.put("/api/seal/away")
+async def api_seal_away(body: dict):
+    """The person's choice for one secret: only while signed in, until revoked, for some days,
+    or once. Switching one on needs their key, which this request carries (their cookie half and
+    their session's pad here); revoking needs nothing. No agent tool reaches this."""
+    uid = usersmod.current()
+    if not uid or not sealmod.exists(uid):
+        return JSONResponse({"error": "there is no seal for this account yet"}, status_code=400)
+    name = str((body or {}).get("name") or "")
+    mode = str((body or {}).get("mode") or "")
+    days = (body or {}).get("days")
+    priv = sealmod.key_here(uid)
+    try:
+        meta = await asyncio.to_thread(vaultmod.set_away, name, mode, days, priv)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    except KeyError:
+        return JSONResponse({"error": f"there is no secret called {name!r}"}, status_code=404)
+    except sealmod.Sealed as e:
+        return JSONResponse({"error": str(e)}, status_code=409)
+    finally:
+        priv = None
+    vaultmod.forget_held()
+    from . import away as awaymod
+    _ledger("seal.away", f"vault:{name}", f"{name}: {awaymod.words(meta)}")
+    return {"ok": True, "secrets": await asyncio.to_thread(vaultmod.away_list)}
+
+
+@app.get("/api/seal/wants")
+async def api_seal_wants(request: Request):
+    """A locked screen asks what a mission is waiting on it for (it has no socket)."""
+    uid = _seal_session_uid(request)
+    if not uid:
+        return JSONResponse({"error": "sign in required"}, status_code=401)
+    return {"wants": sealmod.wants(uid)}
+
+
+@app.post("/api/seal/lend")
+async def api_seal_lend(body: dict, request: Request):
+    """This browser lends its half of the key to one waiting step. It needs a cookie that verifies
+    AND this session's half here; neither alone opens anything."""
+    uid = _seal_session_uid(request)
+    if not uid or uid != usersmod.current():
+        return JSONResponse({"error": "sign in required"}, status_code=401)
+    return {"ok": sealmod.lent(str((body or {}).get("ticket") or ""), uid)}
+
+
+@app.post("/api/seal/open")
+async def api_seal_open(body: dict, request: Request):
+    """After a restart the server holds no half for anybody: the password opens the seal again."""
+    uid = usersmod.current()
+    if not uid or not sealmod.exists(uid):
+        return JSONResponse({"error": "there is no seal to open for this account"}, status_code=400)
+    pw = str((body or {}).get("password") or "")
+    if (no := await _seal_password_ok(request, uid, pw)):
+        return no
+    words, priv = await asyncio.to_thread(_seal_sign_in, uid, pw)
+    if not priv:
+        return JSONResponse({"error": words.get("seal") or "the seal did not open", **words}, status_code=409)
+    resp = JSONResponse({"ok": True})
+    _lend_seal(resp, request, uid, request.cookies.get(remotemod.COOKIE, ""), priv)
+    priv = None
+    return resp
+
+
+@app.post("/api/seal/recover")
+async def api_seal_recover(body: dict, request: Request):
+    """After an admin reset: the recovery code opens the seal and it is wrapped under the new
+    password, or the person starts fresh and what was sealed is gone. A new code either way."""
+    uid = usersmod.current()
+    b = body or {}
+    if not uid or not sealmod.needs_recovery(uid):
+        return JSONResponse({"error": "this account doesn't need recovering"}, status_code=400)
+    pw = str(b.get("password") or "")
+    if (no := await _seal_password_ok(request, uid, pw)):
+        return no
+    if b.get("fresh"):
+        gone = await asyncio.to_thread(sealmod.start_fresh, uid)
+        words, priv = await asyncio.to_thread(_seal_sign_in, uid, pw)
+        _ledger("seal.fresh", f"user:{uid}", "started fresh without a recovery code: " + (", ".join(gone) or "nothing"))
+        out = {"ok": True, "gone": gone, **words}
+    else:
+        try:
+            priv = await asyncio.to_thread(sealmod.open_with_code, uid, str(b.get("code") or ""))
+        except sealmod.Sealed as e:
+            who = (usersmod.get(uid) or {}).get("name", uid)
+            _login_failed(_login_source(request), who, f"recovery code of {who}")
+            return JSONResponse({"error": str(e)}, status_code=403)
+        await asyncio.to_thread(sealmod.rewrap, uid, priv, pw)
+        code = await asyncio.to_thread(sealmod.new_recovery, uid, priv)
+        _ledger("seal.recover", f"user:{uid}", "seal opened with the recovery code; a new code shown once")
+        out = {"ok": True, "recovery_code": code}
+    resp = JSONResponse(out)
+    _lend_seal(resp, request, uid, request.cookies.get(remotemod.COOKIE, ""), priv)
+    priv = None
+    return resp
+
+
+@app.post("/api/seal/code")
+async def api_seal_code(body: dict, request: Request):
+    """A new recovery code, shown once; the old one stops working. Needs the password."""
+    uid = usersmod.current()
+    if not uid or not sealmod.exists(uid):
+        return JSONResponse({"error": "there is no seal for this account yet"}, status_code=400)
+    pw = str((body or {}).get("password") or "")
+    if (no := await _seal_password_ok(request, uid, pw)):
+        return no
+    try:
+        priv = await asyncio.to_thread(sealmod.open_with_password, uid, pw)
+    except sealmod.Sealed as e:
+        return JSONResponse({"error": str(e)}, status_code=409)
+    code = await asyncio.to_thread(sealmod.new_recovery, uid, priv)
+    priv = None
+    _ledger("seal.code", f"user:{uid}", "a new recovery code shown once")
+    return {"ok": True, "recovery_code": code}
 
 
 @app.get("/api/remote")
@@ -13297,10 +13559,14 @@ def _me() -> dict:
     """Who this request is, in the shape the UI draws."""
     uid = usersmod.current()
     u = usersmod.get(uid) if uid else None
+    tid = usersmod.tenant_of(uid) if uid else ""
     return {"id": uid, "name": (u or {}).get("name", ""),
             "display": (u or {}).get("display", ""),
             "role": (u or {}).get("role", "admin" if not usersmod.enabled() else ""),
             "admin": usersmod.is_admin(uid),
+            # an Isolated Tenant's admin manages its people and its keys, never the machine's
+            "tenant_admin": bool(uid) and usersmod.is_tenant_admin(uid),
+            "scope": "isolated" if tid else "shared", "tenant": tid,
             "multiuser": usersmod.enabled()}
 
 
@@ -13390,9 +13656,12 @@ async def api_users_login(body: dict, request: Request):
     remotemod.note_success(addr)
     remotemod.note_target_success(name)
     tok = remotemod.issue_session(state.machine_cfg(), u["id"])
+    sealed, priv = await asyncio.to_thread(_seal_sign_in, u["id"], pw)
     resp = JSONResponse({"ok": True, "id": u["id"], "name": u["name"],
-                         "role": u["role"]})
+                         "role": u["role"], **sealed})
     _set_session_cookie(resp, request, tok)
+    _lend_seal(resp, request, u["id"], tok, priv)
+    priv = None
     usersmod.store_for(u["id"]).log("system", f"signed in: {u['name']}")
     return resp
 
@@ -13418,8 +13687,10 @@ async def api_session_everywhere(request: Request, body: dict | None = None):
             return JSONResponse({"error": "no such user"}, status_code=404)
         usersmod.end_sessions(uid)
         _end_account_tokens(uid)
+        sealmod.drop_user(uid)
         if uid == me:
             resp.delete_cookie(remotemod.COOKIE, path="/")
+            resp.delete_cookie(sealmod.COOKIE, path="/")
         _ledger("session.end", f"user:{uid}", "signed out everywhere")
     else:
         if not remotemod.lock_kind(cfg):
@@ -13449,23 +13720,54 @@ def _end_account_tokens(uid: str, keep_sid: str = "", new_sid: str = "") -> None
 
 @app.get("/api/users")
 async def api_users():
-    """The roster. Readable by everyone — you cannot share an app with somebody
-    whose name you are not allowed to see."""
-    return {"users": usersmod.list_users(), "me": _me(), "roles": list(usersmod.ROLES)}
+    """The roster: the people in your own tenant (you cannot share an app with somebody whose name
+    you are not allowed to see). The machine's admin sees everyone, with their tenant, and the
+    tenants. An Isolated Tenant's people never see the machine's, nor the machine's theirs."""
+    me = usersmod.current()
+    everyone = usersmod.list_users()
+    if usersmod.enabled() and not usersmod.is_admin(me):
+        t = usersmod.tenant_of(me)
+        everyone = [u for u in everyone if str(u.get("tenant") or "") == t]
+    for u in everyone:
+        u["scope"] = "isolated" if u.get("tenant") else "shared"
+    out = {"users": everyone, "me": _me(), "roles": list(usersmod.ROLES),
+           "scopes": list(usersmod.SCOPES)}
+    if usersmod.is_admin(me):
+        out["tenants"] = usersmod.tenants()
+    return out
+
+
+def _may_add(me: str, scope: str, tenant: str) -> str:
+    """Why `me` may not add an account here, or ''. The machine's admin adds anyone anywhere; an
+    Isolated Tenant's admin adds people to their own tenant only."""
+    if usersmod.is_admin(me):
+        return ""
+    t = usersmod.tenant_of(me)
+    if t and usersmod.is_tenant_admin(me) and scope == "isolated" and tenant == t:
+        return ""
+    return "only an admin can add an account here"
 
 
 @app.post("/api/users")
 async def api_users_create(body: dict, request: Request):
-    if (r := _require_admin()):
-        return r
     b = body or {}
+    me = usersmod.current()
     first = not usersmod.enabled()
+    scope = str(b.get("scope") or "shared")
+    tenant = str(b.get("tenant") or "")
+    if not first and usersmod.tenant_of(me) and not usersmod.is_admin(me):
+        scope, tenant = "isolated", usersmod.tenant_of(me)   # a tenant admin adds to their own
+    if not first and (why := _may_add(me, scope, tenant)):
+        return JSONResponse({"error": why}, status_code=403)
     try:
         u = usersmod.create(str(b.get("name") or ""), str(b.get("password") or ""),
                             role=str(b.get("role") or "executor"),
-                            display=str(b.get("display") or ""))
+                            display=str(b.get("display") or ""), scope=scope, tenant=tenant)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
+    if not first:
+        _ledger("account.create", f"user:{u['id']}",
+                f"{u['name']} added, {'an Isolated Tenant' if u.get('tenant') else 'the Shared Tenant'}")
     resp = JSONResponse({"ok": True, "user": u, "signed_in": first})
     if first:
         # Creating the first account is what turns this into a machine that needs
@@ -13476,8 +13778,12 @@ async def api_users_create(body: dict, request: Request):
         with usersmod.as_user(u["id"]):
             usersmod.store_for(u["id"]).log(
                 "system", f"multi-user turned on; {u['name']} is the first admin")
-        _set_session_cookie(resp, request,
-                            remotemod.issue_session(state.machine_cfg(), u["id"]))
+        first_tok = remotemod.issue_session(state.machine_cfg(), u["id"])
+        sealed, priv = await asyncio.to_thread(_seal_sign_in, u["id"], str(b.get("password") or ""))
+        resp = JSONResponse({"ok": True, "user": u, "signed_in": first, **sealed})
+        _set_session_cookie(resp, request, first_tok)
+        _lend_seal(resp, request, u["id"], first_tok, priv)
+        priv = None
     else:
         state["store"].log("system", f"user created: {u['name']} ({u['role']})")
     return resp
@@ -13487,12 +13793,34 @@ async def api_users_create(body: dict, request: Request):
 async def api_users_update(uid: str, body: dict, request: Request):
     b = body or {}
     me = usersmod.current()
-    admin = usersmod.is_admin(me)
+    # the machine's admin, or an Isolated Tenant's admin for somebody in their own tenant
+    admin = usersmod.can_manage(me, uid) if usersmod.enabled() else True
     ended = False
-    # Your own password is yours. Everything else about an account is the machine's.
+    seal_priv = None
+    # Your own password is yours. Everything else about an account is its admin's.
     if not admin and uid != me:
         return JSONResponse({"error": "only an admin can change another account"},
                             status_code=403)
+    if b.get("scope"):
+        # which tenant an account is in decides whose keys it spends: the machine's admin only
+        if not usersmod.is_admin(me):
+            return JSONResponse({"error": "only the machine's admin can change an account's scope"},
+                                status_code=403)
+        scope, tenant = str(b["scope"]), str(b.get("tenant") or "")
+        drop = usersmod.would_drop(uid, scope, tenant)
+        if drop and not b.get("confirm"):
+            name = next((t["name"] for t in usersmod.tenants() if t["id"] == drop), drop)
+            return JSONResponse({"error": f"this leaves {name} with nobody in it, so its own LLM "
+                                          "keys are removed. Send confirm to go ahead.",
+                                 "confirm": True, "drops": name}, status_code=409)
+        try:
+            moved = usersmod.set_scope(uid, scope, tenant)
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        _ledger("account.scope", f"user:{uid}",
+                f"now {'an Isolated Tenant' if moved['tenant'] else 'the Shared Tenant'}"
+                + (f"; {moved['dropped']} and its keys removed" if moved["dropped"] else ""))
+        ended = True
     try:
         if b.get("password"):
             # changing your own asks for the one you have now: an unattended open
@@ -13505,7 +13833,16 @@ async def api_users_update(uid: str, body: dict, request: Request):
                 if not usersmod.check_password(uid, str(b.get("current") or "")):
                     _login_failed(_login_source(request), who, f"current password of {who}")
                     return JSONResponse({"error": "that isn't your current password"}, status_code=403)
+            seal_priv = None
+            if uid == me and sealmod.exists(uid):
+                # your own: the seal is re-wrapped under the new password, nothing is lost
+                _w, seal_priv = await asyncio.to_thread(_seal_sign_in, uid, str(b.get("current") or ""))
             usersmod.set_password(uid, str(b["password"]))
+            if seal_priv:
+                await asyncio.to_thread(sealmod.rewrap, uid, seal_priv, str(b["password"]))
+            elif uid != me:
+                # somebody else's: the old wrap can't be redone, so their recovery code opens it now
+                sealmod.mark_password_reset(uid)
             _ledger("account.password", f"user:{uid}", "password changed")
             ended = True
         if b.get("role"):
@@ -13531,6 +13868,10 @@ async def api_users_update(uid: str, body: dict, request: Request):
             fresh = remotemod.issue_session(cfg, uid)
             _set_session_cookie(resp, request, fresh)
             new_sid = str((remotemod.session_claims(cfg, fresh) or {}).get("jti") or "")
+            sealmod.drop_user(uid)
+            if b.get("password") and seal_priv:
+                _lend_seal(resp, request, uid, fresh, seal_priv)
+            seal_priv = None
         _end_account_tokens(uid, _session_jti_of(request) if new_sid else "", new_sid)
         await _ws_recheck()
     return resp
@@ -13538,8 +13879,8 @@ async def api_users_update(uid: str, body: dict, request: Request):
 
 @app.delete("/api/users/{uid}")
 async def api_users_delete(uid: str, wipe: bool = False):
-    if (r := _require_admin()):
-        return r
+    if usersmod.enabled() and not usersmod.can_manage(usersmod.current(), uid):
+        return JSONResponse({"error": "only an admin can do that"}, status_code=403)
     if uid == usersmod.current():
         return JSONResponse({"error": "you cannot delete the account you are using"},
                             status_code=400)
@@ -13548,6 +13889,7 @@ async def api_users_delete(uid: str, wipe: bool = False):
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     _end_account_tokens(uid)
+    sealmod.drop_user(uid)
     await _ws_recheck()
     return out
 
@@ -14929,7 +15271,7 @@ async def _arena_seat(aid: str, c: dict, task: str, uid: str):
             got = usagemod.cost(cfg, c["model"], c["tokens_in"], c["tokens_out"])
             c["priced"] = got is not None or usagemod.is_local(c["model"])
             c["cost"] = got or 0.0
-            usagemod.record(store, cfg, c["model"], {"input": c["tokens_in"], "output": c["tokens_out"]},
+            usagemod.turn(store, cfg, c["model"], {"input": c["tokens_in"], "output": c["tokens_out"]},
                             surface="arena", conversation_id=cid, kind="chat")
             answer = res.get("content") or "".join(said)
         else:
@@ -18848,7 +19190,9 @@ async def api_speech_save(body: dict):
     """A cloud voice spends money, so it is the machine's setting: admin only where
     there are accounts, like a provider key."""
     from . import speech
-    if usersmod.enabled() and not usersmod.is_admin(usersmod.current()):
+    me = usersmod.current()
+    tenant = usersmod.tenant_of(me) if usersmod.enabled() else ""
+    if usersmod.enabled() and not usersmod.is_admin(me) and not (tenant and usersmod.is_tenant_admin(me)):
         return JSONResponse({"error": "only an admin can change this machine's voice engine"},
                             status_code=403)
     try:
@@ -18856,7 +19200,9 @@ async def api_speech_save(body: dict):
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     cfgmod.save_config(state["cfg"])
-    if state["cfg"] is not state.machine_cfg():
+    if tenant:
+        pass          # an Isolated Tenant's voice is its own (users.TENANT_KEYS), never the machine's
+    elif state["cfg"] is not state.machine_cfg():
         # hearing.py reads the machine's copy: the key that speaks is the key that hears
         m = state.machine_cfg().setdefault("speech", {})
         for k, v in state["cfg"]["speech"].items():
@@ -20368,7 +20714,7 @@ async def api_chat(body: dict, request: Request):
             knowledge.turn_ended()
     store.add_message(cid, "assistant", result["content"], {"steps": result["steps"]})
     store.touch_conversation(cid)
-    usagemod.record(store, cfg, model, result.get("tokens") or {},
+    usagemod.turn(store, cfg, model, result.get("tokens") or {},
                     surface=("gui" if principal.kind == "app" else "api"),
                     principal=principal.label, conversation_id=cid)
     knowledge.schedule_extraction(cfg, store, cid, text, result["content"], state.get("broadcast"))
@@ -20634,7 +20980,36 @@ async def _browser_attention(uid: str, payload: dict):
 
 
 from . import cdpbrowser as _cdpb  # noqa: E402
-_cdpb.bind(attention=_browser_attention, presence=_someone_here)
+def _owner_wall_phones(uid: str) -> list:
+    """This account's own phone chats, for a sign-in wall nobody is at a screen for (a mission
+    on its schedule): (key, ask, say) per bridge with an owner chat. Only the account's own
+    bridges, never another account's: a wall shows a page signed in as this person."""
+    bridges = []
+    if usersmod.enabled() and uid:
+        svc = (getattr(usersmod, "_services", {}) or {}).get(uid) or {}
+        bridges = [(k, svc.get(k)) for k in ("telegram", "whatsapp") if svc.get(k) is not None]
+    elif not usersmod.enabled():
+        for k in ("telegram", "whatsapp"):
+            with contextlib.suppress(Exception):
+                if k in state:
+                    bridges.append((k, state[k]))
+    out = []
+    for kind, b in bridges:
+        with contextlib.suppress(Exception):
+            if kind == "telegram":
+                chat = b._t().get("owner_chat_id") or 0
+                if chat and b._t().get("enabled"):
+                    out.append((f"tg:{chat}", lambda att, png, b=b, c=chat: b.ask_wall(c, att, png),
+                                lambda text, buttons, b=b, c=chat: b.say_wall(c, text, buttons)))
+            else:
+                wa = b._c().get("owner_wa_id") or ""
+                if wa and b._c().get("enabled"):
+                    out.append((f"wa:{wa}", lambda att, png, b=b, w=wa: b.ask_wall(w, att, png),
+                                lambda text, buttons, b=b, w=wa: b.say_wall(w, text, buttons)))
+    return out
+
+
+_cdpb.bind(attention=_browser_attention, presence=_someone_here, owner_phones=_owner_wall_phones)
 
 
 # ---------------------------------------------------------------------------
@@ -20717,6 +21092,49 @@ async def api_browser():
     return {**st, "running": bool(b), **({"state": b.snapshot_state()} if b else {})}
 
 
+@app.get("/api/sites")
+async def api_sites():
+    """The sites this person is signed in to in their shared browser, with each site's own
+    warning about automation (cdpbrowser.STRICT_SITES). Only the record: never a cookie."""
+    rows = _cdpb.signed_in(usersmod.home_for(usersmod.current() or ""))
+    return {"sites": [{**r, "warn": _cdpb.strict_words(r["site"])} for r in rows],
+            "browser": _cdpb.status(state["cfg"])}
+
+
+@app.post("/api/sites/signin")
+async def api_sites_signin(body: dict):
+    """Open a site in the shared browser so the person signs in there (the same path as the
+    agent's browser_sign_in). Answers at once; the Web window shows the page, and the sign-in
+    is recorded when the form has gone. A person's act, so nothing asks a gate."""
+    site = _cdpb.site_of("https://" + str((body or {}).get("site") or "").strip().split("://")[-1])
+    if not site or "." not in site:
+        return JSONResponse({"error": "say which site, like instagram.com"}, status_code=400)
+    st = _cdpb.status(state["cfg"])
+    if not st.get("ok"):
+        return JSONResponse({"error": st.get("why") or "the shared browser can't run here"}, status_code=409)
+    tb, store = state["toolbox"], state["store"]
+
+    async def go():
+        with contextlib.suppress(Exception):
+            said = await tb.browser_sign_in(site)
+            store.log("browser", f"sign-in to {site}: {said.splitlines()[0][:160]}")
+            await state["broadcast"]({"type": "sites"})
+    asyncio.create_task(go())
+    store.log("browser", f"sign-in to {site} opened by you")
+    return {"ok": True, "site": site, "warn": _cdpb.strict_words(site)}
+
+
+@app.post("/api/sites/forget")
+async def api_sites_forget(body: dict):
+    """Sign the shared browser out of a site: its cookies and storage, and the record."""
+    site = str((body or {}).get("site") or "")
+    uid = usersmod.current() or ""
+    said = await _cdpb.forget_site(uid, state["cfg"], usersmod.home_for(uid), site)
+    state["store"].log("browser", said)
+    await state["broadcast"]({"type": "sites"})
+    return {"ok": True, "said": said}
+
+
 @app.websocket("/ws/browser")
 async def ws_browser(ws: WebSocket):
     """One window onto the person's shared browser: JPEG frames out (binary), state and the
@@ -20731,6 +21149,10 @@ async def ws_browser(ws: WebSocket):
             hello = json.loads(await asyncio.wait_for(ws.receive_text(), 15))
         except Exception:
             hello = {}
+        # this window's own cookie carries the browser's half of a sealed profile (seal.py),
+        # for the start only: the holder is emptied as soon as the browser is open
+        jti = str((remotemod.session_claims(state.machine_cfg(), ws.cookies.get(remotemod.COOKIE, "")) or {}).get("jti") or "")
+        held = sealmod.from_request(uid, jti, ws.cookies.get(sealmod.COOKIE, "") if uid else "")
         try:
             b = await _cdpb.get(uid, state["cfg"], usersmod.home_for(uid))
         except Exception as e:
@@ -20738,6 +21160,8 @@ async def ws_browser(ws: WebSocket):
                 await ws.send_text(json.dumps({"type": "error", "text": str(e)}))
                 await ws.close()
             return
+        finally:
+            sealmod.reset_request(held)
         lock = asyncio.Lock()   # frames and state come from different tasks: one send at a time
 
         async def send_bytes(data):
@@ -21796,7 +22220,7 @@ async def _run_chat(cid: str, data: dict):
             # tokens has still spent them.
             from . import spaces as _spacemod
             _surface = data.get("surface") if data.get("surface") in CLIENT_SURFACES else "gui"
-            usagemod.record(store, cfg, model, tk, surface=_surface, conversation_id=cid,
+            usagemod.turn(store, cfg, model, tk, surface=_surface, conversation_id=cid,
                             space_id=_spacemod.active_for(cfg, _surface, store, cid),
                             cost_usd=result.get("cost_usd"))
             knowledge.schedule_extraction(cfg, store, cid, text, result["content"],
@@ -22020,6 +22444,66 @@ async def api_pricing_set(body: dict | None = None):
 async def api_usage(days: float = 1.0, group: str = "model", space: str = ""):
     """What has been spent. `group`: model | day | surface | kind | conversation | space."""
     return usagemod.report(state["store"], state["cfg"], days=days, group=group, space=space)
+
+
+def _usage_admin() -> bool:
+    """Who may see everybody's usage and set the quotas: the machine's admin, or an Isolated
+    Tenant's admin for their own tenant. A machine with no accounts has nobody to refuse."""
+    if not usersmod.enabled():
+        return True
+    me = usersmod.current()
+    return usersmod.is_admin(me) or bool(usersmod.tenant_of(me) and usersmod.is_tenant_admin(me))
+
+
+def _usage_accounts() -> list[dict]:
+    """The accounts an admin may set quotas for: the machine's admin sees the Shared Tenant,
+    a tenant's admin its own people."""
+    if not usersmod.enabled():
+        return []
+    t = usersmod.tenant_of(usersmod.current())
+    return [{"id": u["id"], "name": u.get("name") or u["id"], "role": u.get("role") or ""}
+            for u in usersmod.list_users() if str(u.get("tenant") or "") == t]
+
+
+@app.get("/api/usage/llms")
+async def api_usage_llms(days: float = 1.0, everyone: bool = False):
+    """Spend per LLM, tokens in, out and in all, and money as the provider stated it or as
+    estimated from the price list, with this account's daily quota left. An admin also gets every
+    account's (their tenant's) and the sharing settings."""
+    days = max(1.0, min(float(days or 1), 365.0))
+    me = usersmod.current() if usersmod.enabled() else ""
+    out = {"days": days, "llms": usagemod.by_llm(state["store"], state["cfg"], days, me),
+           "admin": _usage_admin()}
+    out["words"] = usagemod.words(out["llms"], days)
+    out["daily"] = [{"day": r["bucket"], "in": r["tin"] or 0, "out": r["tout"] or 0, "usd": round(r["cost"] or 0, 4)}
+                    for r in sorted(usagemod.report(state["store"], state["cfg"], days=14, group="day")["rows"],
+                                    key=lambda r: r["bucket"])]
+    if out["admin"]:
+        out["sharing"] = usagemod.sharing(state["cfg"])
+        out["accounts"] = _usage_accounts()
+        out["providers"] = [{"id": p, "name": usagemod.llm_name(p),
+                             "on": bool((c or {}).get("enabled"))}
+                            for p, c in (state["cfg"].get("providers") or {}).items()
+                            if p not in usagemod.LOCAL]
+        if everyone:
+            out["everyone"] = await asyncio.to_thread(usagemod.everyone, state["cfg"], days, me)
+    return out
+
+
+@app.put("/api/usage/sharing")
+async def api_usage_sharing(body: dict):
+    """Which LLMs are shared with the accounts, and each account's daily quota. The machine's
+    admin sets the machine's; an Isolated Tenant's admin sets the tenant's own."""
+    if not _usage_admin():
+        return JSONResponse({"error": "only an admin can share LLMs and set quotas"}, status_code=403)
+    uids = {a["id"] for a in _usage_accounts()}
+    clean, dropped = usagemod.clean_sharing(body or {}, state["cfg"].get("providers") or {}, uids)
+    state["cfg"]["llm_sharing"] = clean
+    cfgmod.save_config(state["cfg"])
+    n = sum(len(v) for v in clean["quota"].values())
+    _ledger("usage.sharing", "llm:*",
+            f"{len(clean['off'])} not shared, {n} quota(s)" + (f"; dropped {', '.join(dropped)}" if dropped else ""))
+    return {"ok": True, "sharing": clean, "dropped": dropped}
 
 
 @app.get("/api/evals")

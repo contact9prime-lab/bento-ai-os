@@ -474,7 +474,13 @@ def switched_off(cfg: dict, engine: str) -> bool:
     `executors.claude_code.enabled` switch was read by nothing, so it is not this.
     """
     off = ((cfg or {}).get("executors") or {}).get("off") or []
+    if (cfg or {}).get("_tenant") and str(engine or "") != "aria":
+        return True       # an Isolated Tenant: the agents here are signed in as the machine's owner
     return str(engine or "") in off
+
+
+TENANT_WORDS = ("is signed in as this machine's owner, so an Isolated Tenant can't use it. "
+                "Your tenant answers with its own provider keys.")
 
 
 def set_use(cfg: dict, engine: str, on: bool) -> tuple[bool, str]:
@@ -878,14 +884,19 @@ async def ask_fenced(cfg: dict, toolbox, messages: list[dict], principal=None, s
         return "", "", why
     if engine == "aria":
         from . import providers
+        from . import usage as usagemod
         parts: list[str] = []
+        label = getattr(principal, "label", "") or "user"
+        kind = "app" if getattr(principal, "kind", "") == "app" else "background"
         try:
             async def go():
-                async for ev in providers.chat(cfg, model, messages, []):
-                    if ev.get("type") == "text" and ev.get("text"):
-                        parts.append(ev["text"])
-                        if sink:
-                            await sink(ev["text"])
+                # counted at the door, as the principal's (an app's spend is the app's)
+                with usagemod.caller(kind=kind, principal=label, surface=surface):
+                    async for ev in providers.chat(cfg, model, messages, []):
+                        if ev.get("type") == "text" and ev.get("text"):
+                            parts.append(ev["text"])
+                            if sink:
+                                await sink(ev["text"])
             await asyncio.wait_for(go(), timeout)
         except asyncio.TimeoutError:
             return "".join(parts), model, f"{model} took longer than {int(timeout)}s"
@@ -1790,6 +1801,8 @@ def brains(cfg: dict, models: list[dict], engine: str = "") -> dict:
     for pid, mods in sorted(by_prov.items()):
         if not pid:
             continue
+        if pid == "pool" and (cfg or {}).get("_tenant"):
+            continue          # the community's leader spends the machine's keys, not the tenant's
         out.append({"id": pid, "name": "Your community's leader" if pid == "pool" else pid,
                     "what": "The brain of the machine that leads your community" if pid == "pool" else "",
                     "kind": "provider",
@@ -1817,7 +1830,8 @@ def brains(cfg: dict, models: list[dict], engine: str = "") -> dict:
             "available": (bool(r.get("installed")) and spec["id"] in DRIVEN
                           and not switched_off(cfg, spec["id"])),
             "on": not switched_off(cfg, spec["id"]),
-            "reason": (f"{spec['title']} is switched off in AI providers."
+            "reason": (f"{spec['title']} {TENANT_WORDS}" if (cfg or {}).get("_tenant") else
+                       f"{spec['title']} is switched off in AI providers."
                        if r.get("installed") and switched_off(cfg, spec["id"]) else "") or r.get("why_not", "") or (
                 "" if spec["id"] in DRIVEN else
                 f"{spec['title']} is installed, but AgentOS cannot run a turn on it yet."),
@@ -1991,7 +2005,7 @@ LINKED_LEAD_TOOLS = ("delegate", "huddle", "department_task", "linked_teams")
 # with. Each call is the gate's, so a click asks and a wall hands the window to the person.
 WORKSPACE_DOOR_TOOLS = ("browser_open", "browser_read", "browser_click", "browser_type", "browser_key",
                         "browser_scroll", "browser_tabs", "browser_screenshot", "browser_wait_for_person",
-                        "terminal_sessions", "terminal_read", "terminal_send",
+                        "browser_sign_in", "browser_sites", "browser_upload", "terminal_sessions", "terminal_read", "terminal_send",
                         "app_windows", "app_window_open", "app_window_look", "app_window_act")
 # Finding and connecting a capability through this OS, so a forwarded lead does not reach
 # for its own MCP settings or a pip install, which this machine's permissions never see.
@@ -2011,7 +2025,7 @@ STAGE_FILE_TOOLS = ("stage_file",)
 # Claude Code it answered without what the person had told it and wrote what it learned
 # into the CLI's own memory files, which nothing here reads (the owner's record has a reply
 # saying it "recorded these rules in memory": none of them is in this OS's memory).
-MIND_DOOR_TOOLS = ("remember", "recall", "forget", "kg_add", "kg_query")
+MIND_DOOR_TOOLS = ("remember", "recall", "forget", "kg_add", "kg_query", "usage_report")
 DOOR_TOOLS = (TEAM_TOOLS + WORKSPACE_DOOR_TOOLS + CAPABILITY_DOOR_TOOLS + STAGE_DOOR_TOOLS + STAGE_FILE_TOOLS
               + MIND_DOOR_TOOLS)
 MIND_CHARS = 6000
@@ -2100,7 +2114,9 @@ def workspace_note(prefix: str = "mcp__bento__") -> str:
     return (f"\n\nTHE PERSON'S WINDOWS. {prefix}browser_open/read/click/type use the person's own "
             f"signed-in browser (a window on their desktop), not an anonymous fetch: use it for sites "
             f"they are signed in to. When a page wants a sign-in, a code or a CAPTCHA, call "
-            f"{prefix}browser_wait_for_person and carry on in the same tab once it returns. "
+            f"{prefix}browser_wait_for_person and carry on in the same tab once it returns. When they say "
+            f"'log in to my <site>', call {prefix}browser_sign_in; {prefix}browser_sites says which sites "
+            f"they are signed in to, which a mission can then use (permissions.sites). "
             f"{prefix}terminal_read/send use the terminal sessions they have open; "
             f"{prefix}app_window_open/look/act open and use an installed app in a window.")
 

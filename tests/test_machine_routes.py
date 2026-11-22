@@ -29,7 +29,7 @@ ACCOUNT_ROUTES = (
     "/api/agent", "/api/agents", "/api/apps", "/api/arena", "/api/accounts", "/api/assets",
     "/api/automations", "/api/avatars", "/api/brain", "/api/brief", "/api/chat", "/api/channels",
     "/api/companies", "/api/company", "/api/conversations", "/api/devices/alarms", "/api/devices/company", "/api/voiceprint",
-    "/api/drama", "/api/ethics", "/api/evals", "/api/fabric", "/api/files/which", "/api/flows", "/api/freetalk",
+    "/api/drama", "/api/ethics", "/api/evals", "/api/fabric", "/api/files/which", "/api/sites", "/api/seal", "/api/flows", "/api/freetalk",
     "/api/grants", "/api/handoff", "/api/hands", "/api/hooks", "/api/intent", "/api/jobs", "/api/kg", "/api/knowledge",
     "/api/logs", "/api/mcp", "/api/memories", "/api/office", "/api/onboarding", "/api/phone", "/api/plane/llm",
     "/api/policy/trace", "/api/provision/zero", "/api/quarantine", "/api/remote/login",
@@ -45,7 +45,7 @@ ACCOUNT_ROUTES = (
 )
 # A handler that checks for itself. Named checks only, so a comment can't count.
 SELF_CHECK = re.compile(r"_require_admin\(\)|usersmod\.is_admin\(|_backup_admin\(\)|_ocp_gate\(|_standby_do\(|"
-                        r"_restore_refusal\(|_tie_mine\(")
+                        r"_restore_refusal\(|_tie_mine\(|usersmod\.can_manage\(|_usage_admin\(")
 
 
 def _routes():

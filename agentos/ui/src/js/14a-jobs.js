@@ -121,6 +121,9 @@ function jobForm(r){
     if(n.kind==='minutes')return `<label class="job-q"><span>${esc(n.label)}</span>
       <span class="job-mins"><input id="${id}" type="number" min="5" step="5" value="${esc(n.default||'60')}"> minutes</span>
       ${n.help?`<em>${esc(n.help)}</em>`:''}</label>`;
+    if(n.kind==='choice'&&(n.choices||[]).length)return `<label class="job-q"><span>${esc(n.label)}</span>
+      <select id="${id}">${n.choices.map(c=>`<option value="${esc(c[0])}" ${c[0]===(n.default||'')?'selected':''}>${esc(c[1])}</option>`).join('')}</select>
+      ${n.help?`<em>${esc(n.help)}</em>`:''}</label>`;
     if(n.kind==='lines')return `<label class="job-q"><span>${esc(n.label)}</span>
       <textarea id="${id}" rows="3" placeholder="${esc(n.placeholder||'')}" spellcheck="false" autocomplete="off">${esc(n.default||'')}</textarea>
       ${n.help?`<em>${esc(n.help)}</em>`:''}</label>`;
@@ -178,9 +181,15 @@ async function jobConsent(r){
       if(t.kind==='os_event')return `<li>runs when something changes in that folder</li>`;
       return '';
     }).join('');
-    box.innerHTML=`<b>What you are agreeing to</b><ul>${when}${reads}${reach}
+    // signed-in sites: what it may do there, the site's own warning, and whether you are
+    // signed in yet (Sign in opens it in the Web window, the same door as Settings → Websites)
+    const sites=(d.sites||[]).map(s=>`<li>${esc(s.words)}${s.signed_in?' · <span class="job-ok">signed in</span>'
+      :` · <span class="job-warn">not signed in yet</span> <button class="endbtn job-signin" data-site="${esc(s.site)}">Sign in</button>`}
+      ${s.warn?`<div class="job-warn">${esc(s.warn)}</div>`:''}</li>`).join('');
+    box.innerHTML=`<b>What you are agreeing to</b><ul>${when}${reads}${reach}${sites}
       <li>delivers by: ${esc((d.delivery||{}).label||'report')}</li>
       <li>${d.grants.length} permission${d.grants.length===1?'':'s'}, all revocable in Permissions</li></ul>`;
+    box.querySelectorAll('.job-signin').forEach(b=>b.onclick=e=>{e.preventDefault();sitesSignIn(b.dataset.site)});
   }catch(e){}
 }
 
@@ -423,7 +432,10 @@ function jobGrantWords(g){
   const verb={'tool.use':'use','fs.read':'read','fs.write':'write to','net.fetch':'fetch from',
     'agent.invoke':'hand work to','memory.read':'read memory','memory.write':'write memory',
     'mail.read':'read your mail','calendar.read':'read your calendar','skill.use':'use the skill',
-    'agent.message':'ask','mcp.call':'call the MCP server'}[g.action];
+    'agent.message':'ask','mcp.call':'call the MCP server','browser.read':'read pages, signed in as you, on',
+    'browser.act':'click and type, as you, on','browser.commit':'post, send or submit on its own on'}[g.action];
+  // a site's own warning rides on its read row (cdpbrowser.STRICT_SITES), said once
+  if(g.action==='browser.read'&&/doesn't allow/.test(g.note||''))return who+verb+' '+tail+'. '+String(g.note).split('. ').slice(1).join('. ');
   if(!verb)return who+g.action+(tail?' '+tail:'');
   return who+verb+(tail&&!/memory|mail|calendar/.test(verb)?' '+tail:'');
 }

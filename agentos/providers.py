@@ -182,6 +182,13 @@ def _openai_messages(messages: list) -> list:
     return msgs
 
 
+def _key(p: dict) -> str:
+    """A provider's API key as the request wants it. Config holds a reference into the
+    machine's vault (vault.adopt, locked with the service key), opened here whoever is asking."""
+    from . import vault
+    return vault.machine_value((p or {}).get("api_key"), "provider")
+
+
 async def _chat_openai(base_url: str, api_key: str, model: str, messages: list, tools: list,
                        options: dict | None = None) -> AsyncIterator[dict]:
     msgs = _openai_messages(messages)
@@ -229,6 +236,12 @@ async def _chat_openai(base_url: str, api_key: str, model: str, messages: list, 
                     u = chunk["usage"]
                     usage["input"] = u.get("prompt_tokens", 0)
                     usage["output"] = u.get("completion_tokens", 0)
+                    # the bill as the provider states it (OpenRouter sends `cost`): exact, not estimated
+                    if isinstance(u.get("cost"), (int, float)):
+                        usage["cost"] = float(u["cost"])
+                    cached = ((u.get("prompt_tokens_details") or {}).get("cached_tokens") or 0)
+                    if cached:
+                        usage["cache_read"] = int(cached)      # part of input, billed cheaper
                 choices = chunk.get("choices") or []
                 if not choices:
                     continue
@@ -324,7 +337,15 @@ async def _chat_anthropic(base_url: str, api_key: str, model: str, messages: lis
                 ev = json.loads(line[5:].strip())
                 t = ev.get("type")
                 if t == "message_start":
-                    usage["input"] = ((ev.get("message") or {}).get("usage") or {}).get("input_tokens", 0)
+                    mu = ((ev.get("message") or {}).get("usage") or {})
+                    # Anthropic counts cache writes and reads apart from input_tokens: all of it was
+                    # read, so it is all input, and each is priced at its own rate (usage.cost)
+                    cw, cr = int(mu.get("cache_creation_input_tokens") or 0), int(mu.get("cache_read_input_tokens") or 0)
+                    usage["input"] = int(mu.get("input_tokens", 0) or 0) + cw + cr
+                    if cw:
+                        usage["cache_write"] = cw
+                    if cr:
+                        usage["cache_read"] = cr
                 elif t == "message_delta":
                     usage["output"] = (ev.get("usage") or {}).get("output_tokens", usage["output"])
                     if (ev.get("delta") or {}).get("stop_reason"):
@@ -373,11 +394,20 @@ def parse_model_id(model_id: str) -> tuple[str, str]:
 async def chat(cfg: dict, model_id: str, messages: list, tools: list,
                options: dict | None = None) -> AsyncIterator[dict]:
     provider, model = parse_model_id(model_id)
+    from . import usage as usagemod
+    why = usagemod.quota_refusal(cfg, model_id)
+    if why:
+        raise ProviderError(why)
+    if provider == "pool" and (cfg or {}).get("_tenant"):
+        raise ProviderError("Your community's leader answers with this machine's keys, so an "
+                            "Isolated Tenant can't use it. Pick one of your tenant's providers.")
     if provider == "pool":
         # The community's brain (pool.py): the call goes to the leader over the link and
         # its events come back. This machine's keys, if it has any, never leave it.
         from . import pool as poolmod
         async for ev in poolmod.chat(cfg, model, messages, tools, options):
+            if ev.get("type") == "usage":
+                usagemod.meter(cfg, model_id, ev)    # what this account asked of the leader
             yield ev
         return
     p = cfg["providers"].get(provider)
@@ -389,12 +419,12 @@ async def chat(cfg: dict, model_id: str, messages: list, tools: list,
     elif provider == "anthropic":
         if not p.get("api_key"):
             raise ProviderError("Anthropic API key not set — add it in Settings.")
-        gen = _chat_anthropic(p["base_url"], p["api_key"], model, messages, tools, options)
+        gen = _chat_anthropic(p["base_url"], _key(p), model, messages, tools, options)
     elif provider == "google":
         if not p.get("api_key"):
             raise ProviderError("Google (Gemini) API key not set — add it in Settings.")
         # Gemini speaks an OpenAI-compatible dialect under /v1beta/openai
-        gen = _chat_openai(openai_base(provider, p), p["api_key"], model, messages, tools, options)
+        gen = _chat_openai(openai_base(provider, p), _key(p), model, messages, tools, options)
     elif provider in ("openai", "custom", "openrouter", "deepseek", "moonshot"):
         if provider == "custom" and not p.get("base_url"):
             raise ProviderError("Custom provider base URL not set — add it in Settings.")
@@ -414,11 +444,14 @@ async def chat(cfg: dict, model_id: str, messages: list, tools: list,
             raise ProviderError(f"{_KEYED[provider]} API key not set — add it in Settings.")
         # openai_base, not the raw setting: the URL that answers a turn has to be
         # the one the picker listed from, or a model you can see is one you cannot use.
-        gen = _chat_openai(openai_base(provider, p), p.get("api_key", ""), model,
+        gen = _chat_openai(openai_base(provider, p), _key(p), model,
                            messages, tools, options)
     else:
         raise ProviderError(f"Unknown provider: {provider}")
     async for ev in gen:
+        if ev.get("type") == "usage":
+            # every call is counted here, once, in the account that made it (usage.meter)
+            usagemod.meter(cfg, model_id, ev)
         yield ev
 
 
@@ -662,7 +695,7 @@ async def available_models(cfg: dict) -> list[dict]:
     results = await asyncio.gather(
         ollama_models(p["ollama"]["base_url"]) if ollama_on else _none(),
         # Anthropic has no OpenAI-style /models endpoint; the rest do.
-        *[(openai_models(openai_base(prov, p[prov]), p[prov].get("api_key", ""))
+        *[(openai_models(openai_base(prov, p[prov]), _key(p[prov]))
            if prov != "anthropic" else _none()) for prov in provs],
         return_exceptions=True)
     out: list[dict] = []

@@ -148,6 +148,8 @@ def validate(body: dict, store=None, pending: set | None = None) -> dict:
     perms = {**perms, "memory": mem, "talk": bool(perms.get("talk"))}
     if perms.get("devices"):
         perms["devices"] = clean_devices(perms["devices"])
+    if perms.get("sites"):
+        perms["sites"] = clean_sites(perms["sites"])
     out = {
         "name": name,
         "description": (body.get("description") or "").strip()[:500],
@@ -338,6 +340,44 @@ def _validate_trigger(t: dict) -> dict:
 # Permissions: a definition, expressed as grants
 # ---------------------------------------------------------------------------
 
+SITE_RE = re.compile(r"[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+")
+PUBLISH = ("ask", "auto")
+
+
+def clean_sites(items) -> list[dict]:
+    """The signed-in sites a mission's roster may use in the shared browser, read field by
+    field: `site` (a host, "www." and any path dropped), `act` (click and type there, not only
+    read) and `publish` ("ask": every post, send, submit, pay or delete is a person's yes;
+    "auto": the roster may do them on its own). Anything else is dropped. A site the person is
+    not signed in to is still allowed here: the mission says so before it runs (sites_ready)."""
+    out, seen = [], set()
+    for it in (items or [])[:12]:
+        if isinstance(it, str):
+            it = {"site": it}
+        if not isinstance(it, dict):
+            continue
+        raw = str(it.get("site") or "").strip().lower()
+        raw = raw.split("://")[-1].split("/")[0].split("?")[0]
+        raw = raw[4:] if raw.startswith("www.") else raw
+        if not SITE_RE.fullmatch(raw) or raw in seen:
+            continue
+        seen.add(raw)
+        act = bool(it.get("act"))
+        pub = str(it.get("publish") or "ask").lower()
+        out.append({"site": raw, "act": act, "publish": pub if (act and pub in PUBLISH) else "ask"})
+    return out
+
+
+def site_words(site: dict) -> str:
+    """What a mission may do on one site, in a sentence (the consent screen and the CLI)."""
+    s = site["site"]
+    if not site.get("act"):
+        return f"reads pages on {s}, signed in as you"
+    if site.get("publish") == "auto":
+        return f"reads, clicks and types on {s} as you, and posts, sends or submits there on its own"
+    return f"reads, clicks and types on {s} as you; every post, send or submit there asks you first"
+
+
 DEVICE_SCOPE = re.compile(r"([A-Za-z0-9][\w .'-]{0,39})/(\*|[a-z0-9_.-]{1,64})")
 
 
@@ -438,6 +478,18 @@ def declared_grants(flow: dict) -> list[dict]:
             add("subagent", sub, "device.get", f"device:{machine.lower()}/{item}", note=f"granted by flow '{name}'")
             add("subagent", sub, "device.set", f"device:{machine.lower()}/{item}",
                 note=f"may ask you to set {item} on {machine} for flow '{name}' (you say yes to every set)")
+        # signed-in sites in the shared browser: looking, acting, and (only when the mission
+        # says "auto") what can't be taken back. Without the last row every post is asked.
+        for site in clean_sites(perms.get("sites") or []):
+            from .cdpbrowser import strict_words
+            warn = strict_words(site["site"])
+            add("subagent", sub, "browser.read", f"site:{site['site']}",
+                note=f"{site_words(site)} for flow '{name}'" + (f". {warn}" if warn else ""))
+            if site["act"]:
+                add("subagent", sub, "browser.act", f"site:{site['site']}", note=f"granted by flow '{name}'")
+            if site["act"] and site["publish"] == "auto":
+                add("subagent", sub, "browser.commit", f"site:{site['site']}",
+                    note=f"may post, send or submit on {site['site']} on its own for flow '{name}'")
         for m in (perms.get("models_deny") or []):
             add("subagent", sub, "model.use", f"model:{m}", effect="deny",
                 note=f"denied by flow '{name}'")
@@ -889,6 +941,12 @@ RULES
   device {{"machine":"<as Devices lists it>","item":"<its inventory item>","when":"on|off|above|below|changes|offline|online","value":N,"for":SECONDS}}
   (for example "when cold room B is above -15 for 2 minutes").
   Add a trigger ONLY if the user asked for one. A flow with no trigger runs when they say so.
+- `permissions.sites`: websites the roster uses in the person's own signed-in browser, for
+  anything with no API (a social account, a supplier portal, a store's admin, a page behind a
+  login). Each is {{"site":"instagram.com","act":true,"publish":"ask"}}: `act` false only reads;
+  `publish` "ask" (the default) makes every post, send, submit, payment or delete a person's
+  yes, "auto" only when the user clearly said it may post on its own. The roster's agents need
+  the browser_* tools in their own `tools` and in permissions.tools. Sites signed in here: {sites}
 - Sinks: origin (answer wherever it was triggered from — the usual choice), telegram, gui,
   notify, report.
 - If the request is vague, choose the smallest thing that is unmistakably useful and say what
@@ -919,7 +977,7 @@ NOW ANSWER. JSON only, exactly this shape:
                  "max_seconds": 300}}],
  "roster": [{{"subagent": "name", "why": "what it is for here"}}],
  "permissions": {{"tools": ["..."], "skills": [], "net": [], "fs_read": [], "fs_write": [],
-                 "memory": "read-space"}},
+                 "sites": [], "memory": "read-space"}},
  "sinks": [{{"kind": "origin"}}],
  "triggers": [],
  "suggested_mcp": [{{"key": "a key from the list above", "why": "one line"}}],
@@ -1041,7 +1099,13 @@ async def compose(cfg: dict, store, request: str, tools: list, model: str = "",
     part_lines = "\n".join(f"  - {p['key']}: {p['description']}"
                            + (" (already connected)" if p["connected"] else "")
                            for p in parts) or "  (nothing in the catalogue matches this request)"
-    prompt = COMPOSE_PROMPT.format(intent=intent, agents=agents,
+    try:
+        from . import cdpbrowser as _cb
+        from . import users as _um
+        signed = ", ".join(r["site"] for r in _cb.signed_in(_um.home_for(_um.current() or ""))) or "none yet"
+    except Exception:
+        signed = "none yet"
+    prompt = COMPOSE_PROMPT.format(intent=intent, agents=agents, sites=signed,
                                    tools=tool_lines, skills=skills, parts=part_lines)
     # the MACHINE's brain (executors.ask_brain) — Claude Code when that is what answers
     # here; a named `model` still wins. When nothing answers, the sentence says why.

@@ -102,7 +102,7 @@ async def run_tui():
     # loopback included (server._authed). Ask who this is first — the fallback REPL
     # is a door like the full TUI, and an empty one reads as broken.
     from .remote import COOKIE
-    token = ""
+    token = seal_k = ""
     async with httpx.AsyncClient(timeout=8) as http:
         try:
             who = (await http.get(base + "/api/users/who")).json()
@@ -117,10 +117,20 @@ async def run_tui():
                 return
             r = await http.post(base + "/api/users/login", json={"name": uname, "password": pw})
             token = r.cookies.get(COOKIE) or "" if r.status_code == 200 else ""
+            seal_k = r.cookies.get("bento_k") or "" if token else ""
+            said = (r.json() if token and r.content else {}) or {}
+            if said.get("recovery_code"):
+                print(f"\n  Save your recovery code: {said['recovery_code']}\n  Your saved passwords and "
+                      "website sign-ins are now locked with your password. Bento won't show it again.\n")
+            elif said.get("needs_recovery"):
+                print("\n  Your password was reset by an admin. Sign in once in a browser to enter your "
+                      "recovery code.\n")
             if not token:
                 print(f"{C['err']}{(r.json() if r.content else {}).get('error', 'that did not work')}{C['r']}")
     jar = {COOKIE: token} if token else {}
-    hdrs = {"Cookie": f"{COOKIE}={token}"} if token else None
+    if token and seal_k:
+        jar["bento_k"] = seal_k       # this terminal's half of the sealed key (seal.py)
+    hdrs = {"Cookie": "; ".join(f"{k}={v}" for k, v in jar.items())} if jar else None
 
     async with httpx.AsyncClient(timeout=8, cookies=jar) as http:
         async def get(path):

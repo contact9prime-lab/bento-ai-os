@@ -194,6 +194,15 @@ bento job schedules                          # every schedule, and the app each 
 bento job schedules "Volume Compression Tracker"   # one app's
 ```
 
+## Missions on a website you're signed in to
+
+Run my social account, Fetch from a portal and Watch a page behind a sign-in work in the shared
+browser, signed in as you. The consent screen names each site, whether it's signed in yet, and
+whether posting asks you first (the default) or happens on its own. A sign-in page or a code met
+while you're away goes to your phone. The whole story is in [Websites you're signed in to](sites.md).
+
+![The mission's consent: what it may do on the site, that it isn't signed in yet, and the site's warning](screenshots/missions-site-consent.png)
+
 ## Missions that read your mail and calendar
 
 Four missions need an account (`docs/accounts.md`): triage my inbox, brief me

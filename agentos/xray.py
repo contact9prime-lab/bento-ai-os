@@ -79,6 +79,7 @@ ACTION_WORDS = {"agent.invoke": "hand-over", "agent.message": "asked a colleague
                 "mail.send": "sent mail", "calendar.read": "read the calendar",
                 "capability.grant": "asked for an ability", "company.switch": "opened a company", "company.create": "started a company", "model.use": "used a model",
                 "browser.read": "read the browser", "browser.act": "used the browser",
+                "browser.commit": "posted or sent in the browser",
                 "media.generate": "made a picture", "grant.write": "permission written",
                 "grant.revoke": "permission removed", "company.review": "sign-off",
                 "company.audit": "audit", "skill.use": "used a skill", "flow.read": "read a mission",

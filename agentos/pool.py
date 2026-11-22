@@ -929,10 +929,13 @@ class Pool:
             tools = req.get("tools") if isinstance(req.get("tools"), list) else []
             opts = req.get("options") if isinstance(req.get("options"), dict) else None
             opts = fit_window(opts, msgs, tools)
-            async for ev in self.chat(cfg, model, msgs, tools, opts):
-                if ev.get("type") == "usage":
-                    usage = ev
-                events.append(ev)
+            from . import usage as usagemod
+            # counted at the door, as the member's: who the call was for travels with it
+            with usagemod.caller(kind="pool", principal=f"pool:{principal_id(fp)}", surface="pool"):
+                async for ev in self.chat(cfg, model, msgs, tools, opts):
+                    if ev.get("type") == "usage":
+                        usage = ev
+                    events.append(ev)
         except Exception as ex:
             return {"ok": False, "error": f"{type(ex).__name__}: {str(ex)[:300]}"}
         finally:
@@ -940,7 +943,7 @@ class Pool:
         try:
             from . import usage as usagemod
             tok = {"input": usage.get("input", 0), "output": usage.get("output", 0)} if usage else {}
-            usagemod.record(self.store(), cfg, model, tok, surface="pool",
+            usagemod.turn(self.store(), cfg, model, tok, surface="pool",
                             principal=f"pool:{principal_id(fp)}", conversation_id="")
         except Exception:
             pass

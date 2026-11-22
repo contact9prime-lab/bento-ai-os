@@ -366,6 +366,8 @@ def _users(home: Path) -> list[dict]:
 def _vault_scope(rel: str) -> str:
     """The keyring entry a vault's key lives under (vault._scope, from its place)."""
     parts = PurePosixPath(rel).parts
+    if rel == "away.json":
+        return "away-service"            # the service key (away.py), recorded the same way
     if len(parts) == 3 and parts[0] == "users":
         return f"vault-{parts[1]}"
     return "vault-machine"
@@ -478,7 +480,7 @@ def create(dest, passphrase: str, *, home=None, workspace: bool = True, version:
                     manifest["databases"].append(rel)
                     items.append(("home/" + rel, copy))
                     continue
-                if PurePosixPath(rel).name == "vault.json":
+                if PurePosixPath(rel).name == "vault.json" or rel == "away.json":
                     manifest["vaults"].append(_vault_entry(rel, p, keys))
                 items.append(("home/" + rel, p))
             if ws:
@@ -524,7 +526,7 @@ def _vault_entry(rel: str, p: Path, keys: dict) -> dict:
         mech = json.loads(p.read_text()).get("key") or ""
     except Exception:
         mech = ""
-    carried = mech == "file"
+    carried = mech in ("file", "service")      # a service-keyed vault travels with away.json
     if mech == "keyring":
         k = vaultmod._keyring_get(_vault_scope(rel))
         if k:
@@ -980,14 +982,15 @@ def _vaults_back(home: Path, manifest: dict, keys: dict, keyring: bool) -> list[
         if mech != "keyring" or not vf.is_file():
             continue
         k = keys.get(rel)
-        who = "your" if rel == "vault.json" else f"account {PurePosixPath(rel).parts[1]}'s"
+        who = ("your" if rel == "vault.json" else "the while-you're-away" if rel == "away.json"
+               else f"account {PurePosixPath(rel).parts[1]}'s")
         if not k:
             out.append(f"The passwords in {who} vault could not be carried (its key was in a keyring "
                        "the backup could not reach). Sign in to mail and calendar again.")
             continue
         if keyring and vaultmod._keyring_tool() and vaultmod._keyring_set(_vault_scope(rel), k):
             continue
-        kp = vf.parent / vaultmod.KEY_FILE
+        kp = vf.parent / ("away.key" if rel == "away.json" else vaultmod.KEY_FILE)
         fd = os.open(kp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w") as f:
             f.write(k)

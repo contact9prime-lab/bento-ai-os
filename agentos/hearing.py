@@ -57,12 +57,13 @@ def _conf(cfg: dict) -> dict:
 
 def _openai(cfg: dict) -> tuple[str, str]:
     """(base url, key): the key under Voice first, then the one under AI providers."""
-    own = str((((cfg or {}).get("speech") or {}).get("openai") or {}).get("api_key") or "")
-    if own and not own.startswith("vault:"):
+    from . import vault
+    own = vault.machine_value((((cfg or {}).get("speech") or {}).get("openai") or {}).get("api_key"), "voice")
+    if own:
         return "https://api.openai.com/v1", own
     p = ((cfg or {}).get("providers") or {}).get("openai") or {}
-    key = str(p.get("api_key") or "")
-    if not key or key.startswith("vault:"):
+    key = vault.machine_value(p.get("api_key"), "voice")
+    if not key:
         return "", ""
     from . import providers
     base = providers.openai_base("openai", p) if p.get("base_url") else "https://api.openai.com/v1"
@@ -71,8 +72,8 @@ def _openai(cfg: dict) -> tuple[str, str]:
 
 def _voice_key(cfg: dict, engine: str) -> str:
     """The key saved under Settings → Voice for ElevenLabs or Google Cloud."""
-    k = str((((cfg or {}).get("speech") or {}).get(engine) or {}).get("api_key") or "")
-    return "" if k.startswith("vault:") else k
+    from . import vault
+    return vault.machine_value((((cfg or {}).get("speech") or {}).get(engine) or {}).get("api_key"), "voice")
 
 
 def _whisper(cfg: dict) -> tuple[str, str]:

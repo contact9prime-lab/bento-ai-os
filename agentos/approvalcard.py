@@ -177,6 +177,11 @@ def body(name: str, args: dict) -> str:
         # what is installed is the text read earlier, so that text is the body
         from . import skillhub
         return skillhub.card_text(str(args.get("source") or ""))
+    if name in ("browser_click", "browser_type", "browser_key") and args.get("_commit"):
+        # the page's own label for what is pressed, never a bare ref number (cdpbrowser.commit_of)
+        site = str(args.get("_site") or "the site")
+        typed = f"\nTypes: {_fmt(args['text'])}" if name == "browser_type" and args.get("text") else ""
+        return f"On {site}, as you: {args['_commit']}{typed}"
     rows = []
     for k, v in args.items():
         if str(k).startswith("_") or k == "description" and name == "Bash":

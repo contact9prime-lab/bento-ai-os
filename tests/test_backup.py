@@ -177,16 +177,20 @@ def test_a_keyring_key_travels_and_lands_where_this_machine_can_keep_it(tmp_path
     con.close()
     monkeypatch.setattr(cfgmod, "AGENTOS_HOME", home)
     vault.put("mail.password", "hunter2-app-password")
-    assert json.loads((home / "vault.json").read_text())["key"] == "keyring"
+    # the machine's vault is locked with the service key (away.py), and that key is in the keyring
+    assert json.loads((home / "vault.json").read_text())["key"] == "service"
+    assert json.loads((home / "away.json").read_text())["key"] == "keyring"
     m = backup.create(tmp_path / "b.bento", PW, home=home, workspace=False)
-    assert m["vaults"] == [{"path": "vault.json", "mechanism": "keyring", "carried": True}]
+    assert sorted(m["vaults"], key=lambda v: v["path"]) == [
+        {"path": "away.json", "mechanism": "keyring", "carried": True},
+        {"path": "vault.json", "mechanism": "service", "carried": True}]
     # the new machine has no keyring at all
     ring.clear()
     monkeypatch.setattr(vault, "_keyring_tool", lambda: "")
     new = tmp_path / "new"
     r = backup.restore(tmp_path / "b.bento", PW, home=new)
-    assert json.loads((new / "vault.json").read_text())["key"] == "file"
-    assert (new / "vault.key").stat().st_mode & 0o777 == 0o600
+    assert json.loads((new / "away.json").read_text())["key"] == "file"
+    assert (new / "away.key").stat().st_mode & 0o777 == 0o600
     assert any("no keyring" in a for a in r["attention"])
     monkeypatch.setattr(cfgmod, "AGENTOS_HOME", new)
     assert vault.get("vault:mail.password") == "hunter2-app-password"

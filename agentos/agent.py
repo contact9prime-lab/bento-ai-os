@@ -47,7 +47,8 @@ UNTRUSTED_TOOLS = {
     "discover_skills",    # and its listing is whatever its author wrote
     # the shared browser: everything that hands back a page's words or picture
     "browser_open", "browser_read", "browser_click", "browser_type", "browser_key",
-    "browser_scroll", "browser_screenshot", "browser_tabs", "browser_wait_for_person",
+    "browser_scroll", "browser_screenshot", "browser_tabs", "browser_wait_for_person", "browser_sign_in",
+    "browser_upload",
     "pool_task",          # what another machine's worker wrote
     "linked_teams",       # names another machine chose
 }
@@ -56,7 +57,7 @@ UNTRUSTED_TOOLS = {
 # it, so a page a specialist read could steer its lead with nothing held back.
 TAINT_CARRIERS = {"ask_agent", "delegate", "run_flow", "department_task", "huddle"}
 # Browser steps that change something on a page, and so carry the site they act on
-BROWSER_ACTS = ("browser_click", "browser_type", "browser_key")
+BROWSER_ACTS = ("browser_click", "browser_type", "browser_key", "browser_upload")
 
 
 def _untrusted_source(name: str, args: dict) -> str:
@@ -545,7 +546,7 @@ def gate_fields(name: str, args: dict, who: str = "", why: str = "") -> dict:
     on, what is in a terminal's foreground, who asked for a device. Read here and never taken
     from the caller. The agent loop and /api/tool both use it, because a browser act from
     an app was decided as `site:*` when only the loop filled these in."""
-    args = {k: v for k, v in (args or {}).items() if k not in ("_fg", "_site", "_who", "_why")}
+    args = {k: v for k, v in (args or {}).items() if k not in ("_fg", "_site", "_who", "_why", "_commit")}
     if name == "terminal_send":
         # keys typed into a running program (an editor, ssh, a [y/N] prompt) are not a
         # command the classifier can judge, so they always go to a person
@@ -559,6 +560,16 @@ def gate_fields(name: str, args: dict, who: str = "", why: str = "") -> dict:
     if name in BROWSER_ACTS:
         # or a caller could name a harmless site to a grant and click somewhere else
         args["_site"] = _browser_site()
+        # a post, send, pay or delete is its own consent: read off the label the page showed
+        # under that ref (cdpbrowser.commit_of), never the model's word for what it clicks
+        try:
+            from . import cdpbrowser
+            from . import users as _um
+            got = cdpbrowser.commit_of(_um.current() or "", name, args)
+        except Exception:
+            got = ""
+        if got:
+            args["_commit"] = got
     if name in ("device_get", "device_set"):
         args.update({"_who": who or "your agent", "_why": " ".join(str(why or "").split())[:300]})
     return args
@@ -1615,7 +1626,22 @@ class Agent:
         except Exception:
             return []
 
+    def _usage_caller(self):
+        """Who this run's model calls are for, so the door records each one there (usage.meter)."""
+        from . import usage as usagemod
+        p = getattr(self, "principal", None)
+        kind = {"app": "app", "subagent": "subagent", "flow": "mission", "workflow": "mission"}.get(
+            getattr(p, "kind", ""), "chat")
+        return usagemod.caller(kind=kind, principal=getattr(p, "label", "user") or "user",
+                               surface=getattr(self, "surface", "") or "",
+                               conversation_id=getattr(self, "conversation_id", "") or "",
+                               space_id=getattr(self, "space_id", "") or "")
+
     async def run(self, history: list[dict]) -> dict:
+        with self._usage_caller():
+            return await self._run(history)
+
+    async def _run(self, history: list[dict]) -> dict:
         """history: prior messages (user/assistant, internal format), last one the new user msg.
         Returns {'content': final_text, 'steps': [...]} — steps are the tool trace for persistence.
         When the turn parked (see `_park_here`) it also returns `parked` and `messages`,

@@ -225,6 +225,27 @@ detect them", and it was five gaps, so check all five when you touch sharing:
   files after they approved the write. Only an admin's workspace is shared: a non-admin
   choosing a workspace must never be a way to reach a folder.
 
+**A tenant decides whose LLM keys an account spends, and nothing else** (`users.TENANT_KEYS`,
+`tenant_of`/`is_tenant_admin`/`can_manage`/`set_scope`/`tenant_cfg`/`save_tenant_cfg`, `vault.in_tenant`,
+the Users app's scope, `bento user scope|tenants`; `docs/users.md`, `tests/test_tenants.py`). Asked for as
+"Shared-Tenant by default, everyone shares the keys and the data is separate; Isolated Tenant is done
+ground up, its own admin, account management and keys", and "don't share MCP and data between the
+accounts in any case". Five rules:
+- **`is_admin` is the MACHINE's admin** (role admin and no tenant), and all ~100 machine-wide doors ask
+  it. An Isolated Tenant's admin is `is_tenant_admin` + `can_manage` for its own people, and must never
+  answer True to `is_admin`. `admin_count` counts machine admins; `_last_admin` is per tenant.
+- **An isolated view has none of the machine's keys**: `cfg_for` lays `tenant_cfg` (defaults with every
+  key blanked, then the tenant's file) over the machine's, `machine_changed` skips TENANT_KEYS for it,
+  and its references are `vault:tenant.<id>.…`, opened in `tenants/<id>/vault.json` on the service key.
+- **The machine's agent CLIs and community brain are signed in as its owner**, so an isolated view
+  reads them switched off (`executors.switched_off`) and `providers.chat` refuses `pool/`.
+- **Nothing crosses tenants**: the roster lists only your tenant (the machine's admin sees all),
+  `users.shared`/`take` and account links (`teamlink._same_tenant_or_refuse`) stay inside one. Data and
+  MCP servers were already each account's own.
+- **Only the machine's admin moves an account** (`PUT /api/users/{id}` `scope`). A new tenant's first
+  person is its admin; a move into the Shared Tenant is never as its admin; emptying a tenant removes it
+  and its keys after a 409 `confirm`. Every move is an `account.scope` ledger row.
+
 **A passphrase is not a user, and the two locks are alternatives.** `remote.lock_kind`
 is the whole rule: accounts win, and a shared passphrase in front of them is one more
 secret held in common by people this OS otherwise keeps in separate directories. Every
@@ -1135,13 +1156,85 @@ was for. Full story in `docs/vault.md`. Four things that have to stay true:
   permissions and nothing more, and `status()["detail"]` says exactly that. A card that
   said "encrypted" and stopped would be worse than the clear-text file it replaced.
 - **`adopt()` moves clear-text secrets on load and stops when the vault cannot store** — a
-  migration that blanks the value it was moving is a lost account. `SECRET_KEYS` is the
-  list of what moves: account secrets only. Provider keys and the Telegram token are the
-  machine's and stay (USER_KEYS says why).
+  migration that blanks the value it was moving is a lost account. `_secret_places` is the
+  list of what moves into the account's vault; `_machine_places` (provider and voice keys) moves
+  only on a MACHINE save, into the machine's vault, which is locked with the service key
+  (`key: "service"`, `vault.to_service` moves an old one across once). Every reader opens them
+  with `vault.machine_value` (`providers._key`, `speech._key`, hearing, the image and video
+  tools): a reference read as a key is a 401 on every turn. `users.adopt` carries the first
+  account's references into its own vault (`_carry_secrets`), or its mailbox and bot broke.
 
 `accounts.state()` reads the RAW section (a reference counts as a password) and never
 resolves; only the module that opens the box resolves. Keep it that way: resolving in a
 state function is how a value ends up on a screen.
+
+**On a machine with accounts, each account's secrets are sealed with its password, and
+nothing in memory unlocks them alone** (`agentos/seal.py`, vault `key: "sealed"`,
+`vault.reseal`, cdpbrowser's `profile.sealed`, `/api/seal*`, login.html's recovery screens,
+`11o-seal.js`; `docs/vault.md`, `tests/test_seal.py`, live run `packaging/dev/seal-e2e/run.py`).
+Asked for as "per account, not cross-pollinated even from root; signed in to read it, period"
+and "do not keep in memory something that might unlock something". The owner chose a recovery
+code shown once (old accounts get theirs at their next sign-in) and that a lock keeps missions
+working. Seven rules:
+- **A key pair per account.** Sealing uses only the public half (`seal_bytes`), so a vault write
+  or a profile put away needs nothing secret. The private half is wrapped by scrypt(password)
+  and by scrypt(recovery code), each with its own salt, and stored nowhere in clear.
+- **Signed in, the private half is SPLIT** (`lend_cookie`): a pad here per session, the XOR in the
+  browser's HttpOnly `bento_k` cookie. Neither opens anything alone. The middleware puts this
+  request's half in a holder that is EMPTIED when the request ends (`_Held`), because a task
+  started from a request copies its context. Never cache the combined key.
+- **Work nobody is watching borrows** (`borrow`, `borrow_blocking` from a worker thread): it asks
+  an open page of that person (`seal_need` → `/api/seal/lend`), or a locked page that polls
+  `/api/seal/wants`; none open is a refusal in words. Read the vault off the event loop
+  (calendars' `to_thread`), or the wait can't be answered.
+- **Sign-out, everywhere, delete and an admin reset drop the pads**; a lock MOVES the pad to the
+  new cookie; a restart forgets them all and the person types their password once
+  (`/api/seal/open`). An admin reset marks the wrap stale (`mark_password_reset`): the person's
+  recovery code opens it (`/api/seal/recover`), or `start_fresh` removes what can't be opened.
+- **The browser profile is sealed at rest** and opened into a 0700 folder in `/dev/shm` only with
+  the key, resealed every `RESEAL_S` and at stop, the folder removed; `sweep_runs` clears what a
+  crash left. Chromium's own cookie "encryption" on Linux uses a public key: do not count it.
+- **Said, not overclaimed**: while a secret is in use it is in memory, and root can read memory.
+  The machine's own vault (no accounts, device passwords) has nobody to sign in and keeps its key.
+- `seal.py` is a SECURITY_MODULE and `seal.json` a SECRET_FILE. No route, verb or tool returns a
+  key or a recovery code after it was shown once.
+
+**Missions run with nobody signed in, for as long as the person said** (`agentos/away.py`,
+`vault.set_away`/`away_list`/`_open_sealed`/`held`, cdpbrowser's `profile.away`, `PUT /api/seal/away`,
+`bento vault away`, the Your secrets card; `tests/test_away.py`). The owner's correction: "Bento starts
+as a service for everyone; once stored for future missions it works unless revoked or given a time
+limit; allowed once, it works the next time and resets, signed in or not". Six rules:
+- **Each secret has a choice**: off (signed in only), always (until revoked, the DEFAULT for a new
+  secret and for everything `reseal` migrates, because it worked unattended before), until a date,
+  once (`ONCE_S` after its first use, then off with `ended`).
+- **The away copy is the secret locked with the service key** (`away.json`/`away.key` in the machine
+  home, keyring when one answers, never re-minted: the vault's rule). It is made ONLY while the
+  plaintext is in hand: `put`, or `set_away` with the person's key from their request (or the
+  terminal's typed password). Nothing makes one from the sealed copy alone.
+- **A read prefers your key in this request, then the away copy, then a page that lends**; a "once"
+  is not spent while a page of yours could lend. Spent copies are deleted on the next read or seal.
+- **Said, not hidden**: root can open an away copy (`COST_WORDS`, on the card's ⓘ and in the docs);
+  no other account or admin can through Bento. `vault.held` caches a bot token for an hour, and only
+  when it may be used unattended anyway, so signing out still closes a signed-in-only one.
+- **Tokens a running service uses live in the vault too** (`vault._secret_places`: SECRET_KEYS, each
+  channel `Field(secret=True)`, and MCP env/headers whose NAME matches `trace.SECRET`), adopted on
+  load and before every save (`config.save_config`, `users.save_user_cfg`), resolved where used:
+  `TelegramBridge._token`, `whatsapp.secret`, `mcp_client._opened`; MCP sign-ins are vault items with
+  a marker file (`mcp_oauth._write`). Two accounts hold the same reference NAME for different bots,
+  so the one-poller-per-token check compares what they open to.
+- **Faces**: the card's select per secret (`sealAwaySelect`), `bento vault [list|away]`. Every change
+  is a `seal.away` ledger row. No agent tool reaches any of it. Backup carries the service key like a
+  vault key; factory reset forgets it; `start_fresh` removes the browser's copy.
+
+**After a restart, your phone types the password, never your chat** (`agentos/unlock.py`, `/unlock`,
+`ui/unlock.html`, login.html's `UNLOCK`; `tests/test_unlock.py`). Asked for as "a link to type my password,
+like the GitHub sign-in hand-off … never typed into the chat … only through remote access, no second door,
+the chat paired to my account". A step refused a signed-in-only secret calls `unlock.closed`: that
+account's OWN paired chats (`_owner_wall_phones`) get `<remote address>/unlock`, once per `EVERY_S`; with
+remote access off they get `handoff.REMOTE_OFF` and no link. `/unlock` is an ordinary page behind the
+remote gate (not in REMOTE_OPEN_PATHS, no ticket): signing in there IS typing the password (it opens the
+seal), and the page opens the closed secrets with `PUT /api/seal/away`. The step waits `WAIT_S` in its
+worker thread (`vault._wait_for_phone`, never on the loop) and carries on.
 
 ## Backup: the whole machine in one file, and restore checks everything first
 
@@ -2169,6 +2262,16 @@ read as "queuing them" beside a newer chat. Now the message is saved, then only 
 event goes to the screens with the conversation id (turn_start, steps, turn_end before telegram_out), minus the
 CLI's own `mcp__bento__*` copies, so the Office and Chat see a phone turn.
 
+**And the phone sees it too** (`agentos/phonelive.py`, `Live`, `/steps on|off` on both channels,
+`telegram.live_steps`/`whatsapp.live_steps`; `tests/test_phone_steps.py`, live run
+`packaging/dev/phone-steps-e2e/run.py`). Reported as "it sends the message to the department and sub
+department and doesn't show those interim steps in the channels": the screens got every event, the phone
+got "typing…". A tap per phone turn is fed by the server's broadcast (beside playground's), so it sees what
+the screens see: events naming the conversation, plus every run the turn started (a `flow_start` naming it,
+then any run whose `parent_run` is ours; a specialist the chat hands work to names the chat on its running
+`status`). Telegram edits one quiet message, WhatsApp sends a few batches; nothing for a turn under `first`
+seconds, and the steps finish before the answer is sent. Lines are words (who, what, a sign-off), never work.
+
 ## WhatsApp is one channel with two transports
 
 `conf(cfg)["mode"]` decides which is live, and they fail in opposite directions:
@@ -2199,7 +2302,11 @@ because a linked device is a credential.
   outlives a crashed AgentOS keeps a live session nobody is reading.
 - **The session directory is the phone.** `~/.agentos/whatsapp/session`, 0700,
   deleted on unlink and on factory reset. "Disconnected"
-  with the keys still on disk is still a linked device.
+  with the keys still on disk is still a linked device. On a machine with accounts it is
+  `users/<id>/whatsapp/session`, one Node process per account: `BaileysTransport.uid` is pinned
+  when it is made, and every session path and forget uses it, never the context it is called
+  from. Its environment is `executors.ENV_KEEP`, never `os.environ` (which holds provider keys).
+  `tests/test_whatsapp_per_account.py`.
 - **A logout is never retried.** Exit code 2 means the credentials are void; retrying
   reads as "it keeps failing" rather than "you need to scan again".
 - **Both sides need a deadline.** A socket that never opens produces no event at all,
@@ -4475,6 +4582,32 @@ or a CAPTCHA is handed to the person in the same session the agent then carries 
   frame the whole window squeezed into the view (390x201 for a 390x735 page). The pop-up is a surface of its own.
   `tests/test_live_windows.py` types a password in a real Chromium and checks the frame size.
 
+**A signed-in site is the person's, and posting there is its own permission** (`cdpbrowser.commit_of`/
+`signed_in`/`note_signed_in`/`forget_site`/`STRICT_SITES`/`_OWNER_PHONES`, `browser_sign_in`/`browser_sites`/
+`browser_upload`, `policy.person_rule`'s commit branch, `bento job add --site/--about/--publish/--what/--page`, `flows.clean_sites`, `jobs` recipes `social-account`/
+`portal-fetch`/`login-watch` and the `operator` specialist, `/api/sites*`, `11n-sites.js`, `bento sites`;
+`docs/sites.md`, `tests/test_signed_in_sites.py`, live run `packaging/dev/sites-e2e/run.py`). Asked for as "login
+to my instagram and start managing my content … then it can build a mission on it"; the owner chose "your choice
+per mission" for publishing and "browser first" for Instagram (the Graph API road is planned, not built). Six rules:
+- **What a click commits is read off the PAGE** (`commit_of` over `Browser.seen`, the labels of the last `read()`),
+  injected as `_commit` by the loop after the model's args, never the model's words. A pressable label matching
+  `COMMIT_WORDS`, Enter after typing in a non-search field, or a target the page did not show is
+  `browser.commit site:<host>`; everything else is `browser.act`.
+- **A commit by anyone but the person asks, at every autonomy** (`person_rule`: a non-user principal allowed only by
+  the default). Only a mission whose definition says `publish: "auto"` holds a `browser.commit` grant, and that grant
+  counts only inside its own flow. No Remember on a commit in chat.
+- **A mission names its sites** (`permissions.sites`, `clean_sites`: at most 12, `www.` and paths dropped, publish
+  forced to `ask` without `act`); `declared_grants` writes read, act and commit rows from them, and the consent says
+  signed in or not and `strict_words` for a site that forbids automation. Never hide that warning.
+- **The record is a list of sites, never a credential** (`sites.json`, 0600, beside the profile). The cookie is the
+  browser profile's. Forget clears the site's cookies and storage over CDP.
+- **A wall with nobody at the desk goes to the owner's phones** (`_OWNER_PHONES`, bound by the server as
+  `_owner_wall_phones`, lent by `tool_wait` for that wait only and taken back in a `finally`). The code reply is
+  caught by the bridge before it is logged or saved, as for a phone turn. No phone: "[nobody here]" tells the
+  mission to file a `needs_you` Brief item.
+- **Upload only from `outputs.roots`** (`browser_upload`, `DOM.setFileInputFiles`); it is `browser.act`, so a commit
+  after it still asks. The approval card names the label (`approvalcard.body`), never a bare ref.
+
 ## Several tasks at once: a desktop per running task, and Telegram side by side
 
 `24m-taskdesks.js` (TASKDESK, `taskDeskLeaving`/`Done`/`Close`), the Task app (`initCopilot` pinned by
@@ -4543,6 +4676,32 @@ log showed that window on ~1,000-token requests, and one embedding call took 2 m
   loaded" in for every test, or the developer's real Ollama decided a test's window.
 - **A window that grows is kept per model** (`ollama_windows`, a USER_KEY like `default_model`): by the agent
   loop's "filled the window" retry and by `ollama_window`. It only grows, under `OLLAMA_WINDOW_CEILING`.
+
+## Usage: every call counted at the door, and quotas on what is shared
+
+`usage.meter` (called in `providers.chat` on every `usage` event, the pool branch included),
+`usage.CALLER`/`caller` (set by `Agent.run`, `ask_fenced`, the pool leader), `usage.turn`,
+`by_llm`/`everyone`/`words`, `quota_refusal`/`clean_sharing`, `llm_sharing` (in `users.TENANT_KEYS`),
+`/api/usage/llms`, `PUT /api/usage/sharing`, Token Analytics (`19-tokens…js`, `44c-usage.css`), the
+`usage_report` tool, `bento usage llms|share|quota`; `docs/models.md`, `tests/test_usage_quota.py`. Asked
+for as "usage for all the LLMs and all the accounts … the agents should answer … per account quotas per
+LLM shared, by tokens or cost or both, unlimited by default". Five rules:
+- **One door counts, once.** Every provider call is a row in the CALLING account's database, at the door.
+  A turn's bookkeeping after it ends goes through `usage.turn`, which records only what never passed the
+  door (an agent CLI's turn, with the bill it stated). Never call `record` for a provider model after a
+  turn: that counts it twice. `record` itself always records (a video's price, a test).
+- **Money says where it came from** (`cost_src`): `reported` is the provider's or the CLI's own figure,
+  `estimated` is the price list (cached input at `CACHE_READ`/`CACHE_WRITE`). Every face shows which.
+- **A quota is checked before the call, in the account's own words** (`quota_refusal` at the top of
+  `providers.chat`): `off` providers and per-LLM daily `tokens`/`usd`, "*" for everyone without their own,
+  never an admin (`is_tenant_admin`), never a local model. Absent is unlimited. A non-admin's call is
+  priced at the machine's prices (`_priced_by_admin`): `/api/pricing` writes into the asker's view, and
+  setting your own price to $0 was a way under a dollar quota.
+- **The machine's admin sets the machine's; a tenant's admin the tenant's** (`llm_sharing` is a
+  TENANT_KEY, so `machine_changed` never writes it into an isolated view). Every change is a
+  `usage.sharing` ledger row. No agent tool sets a quota: `usage_report` only reads.
+- **An admin's everyone view reads each account's own database** (`everyone`), filtered to their tenant
+  unless they are the machine's admin; a non-admin's `everyone` is refused.
 
 ## The footprint is a feature: this may be a Raspberry Pi
 

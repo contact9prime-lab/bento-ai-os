@@ -71,7 +71,7 @@ const APPS={
   themes:{id:'themes',title:'Themes',icon:'',w:720,h:600,desc:'Switch, build & AI-design desktop themes',render:renderThemes},
   personalize:{id:'personalize',title:'Personalize',icon:'',w:620,h:560,desc:'AI wallpapers & gallery',render:renderPersonalize},
   snapshots:{id:'snapshots',title:'Snapshots',icon:'',w:560,h:500,desc:'Restore points — roll the OS back in time',render:renderSnapshots},
-  tokens:{id:'tokens',title:'Token Analytics',icon:'',w:600,h:540,desc:'Token usage over time, by model',render:renderTokens},
+  tokens:{id:'tokens',title:'Token Analytics',icon:'',w:640,h:600,desc:'Tokens and money by LLM and account, and daily quotas',render:renderTokens},
   train:{id:'train',title:'Train',icon:'',w:1100,h:700,desc:'Fine-tune & evaluate your own models (TrainForge)',
     render:renderTrain,onClose(w){if(w._onSetup)TRAIN_SETUP_LISTENERS.delete(w._onSetup);return true}},
   mission:{id:'mission',title:'Mission Control',icon:'◎',w:860,h:600,desc:'The whole lifecycle: Train · Test · Operate · Build · Ship · Manage',

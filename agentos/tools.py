@@ -66,6 +66,12 @@ class _Word:
         self.open_brace = False     # an unquoted {, which a comma or .. makes an expansion
 
 
+
+def _provider_key(p: dict) -> str:
+    """A provider's API key, opened from the machine's vault (providers._key)."""
+    from .providers import _key
+    return _key(p)
+
 def shell_parse(cmd: str) -> list | None:
     """The command line as segments of words, split where the shell would split it, or
     None when this reader cannot be sure what the shell would do. str.split left quotes
@@ -606,6 +612,8 @@ SAFE_TOOLS = {
     "list_assets", "get_asset", "list_automations", "read_app_data", "update_app_data",
     "mail_search",
     "mail_read", "calendar_events", "find_tools", "openclaw_report",
+    # what this account spent on each LLM, and its quotas (usage.py): numbers, never a key
+    "usage_report",
     # skills from the open: looking and reading. read_skill is untrusted (agent.py)
     "discover_skills", "read_skill",
     "port_openclaw_plugin", "verify_openclaw_port",
@@ -635,7 +643,7 @@ SAFE_TOOLS = {
     # the shared browser: looking, and handing it to the person. Clicking and typing
     # are risky (risk_of): in a signed-in browser a click can buy, post or delete
     "browser_open", "browser_read", "browser_scroll", "browser_screenshot", "browser_tabs",
-    "browser_wait_for_person",
+    "browser_wait_for_person", "browser_sign_in", "browser_sites",
     # the shared terminal: listing and reading it. Typing into it is judged in risk_of
     "terminal_sessions", "terminal_read",
     # projected app windows: listing and looking. Opening one and acting in it are risky
@@ -2477,7 +2485,7 @@ class Toolbox(usersmod.Scoped):
                         continue
                     model = icfg.get("model") or "gemini-2.5-flash-image"
                     base = (google.get("base_url") or "https://generativelanguage.googleapis.com").rstrip("/")
-                    headers = {"x-goog-api-key": google["api_key"]}
+                    headers = {"x-goog-api-key": _provider_key(google)}
                     # Imagen models speak :predict; Gemini image models speak
                     # :generateContent and must be told to answer with an image.
                     if model.startswith("imagen"):
@@ -2536,7 +2544,7 @@ class Toolbox(usersmod.Scoped):
                     base = (openai.get("base_url") or "https://api.openai.com/v1").rstrip("/")
                     async with httpx.AsyncClient(timeout=240.0) as c:
                         r = await c.post(f"{base}/images/generations",
-                                         headers={"Authorization": f"Bearer {openai['api_key']}"},
+                                         headers={"Authorization": f"Bearer {_provider_key(openai)}"},
                                          json=body)
                     if r.status_code == 200:
                         item = (r.json().get("data") or [{}])[0]
@@ -2793,7 +2801,7 @@ class Toolbox(usersmod.Scoped):
         try:
             async with httpx.AsyncClient(timeout=600.0) as cl:
                 r = await cl.post(base + videogen.ENDPOINT, json=body,
-                                  headers={"x-goog-api-key": google["api_key"]})
+                                  headers={"x-goog-api-key": _provider_key(google)})
         except Exception as e:
             return f"[error] could not reach Google: {type(e).__name__}"
         try:
@@ -2817,7 +2825,7 @@ class Toolbox(usersmod.Scoped):
         try:
             usagemod.record(self.store, self.cfg, f"google/{c['model']}", {}, kind="video",
                             conversation_id=conversation_id, space_id=space_id,
-                            cost_usd=videogen.cost(secs, c["resolution"]))
+                            cost_usd=videogen.cost(secs, c["resolution"]), estimated=True)
         except Exception:
             pass
         if self.broadcast:
@@ -3039,6 +3047,26 @@ class Toolbox(usersmod.Scoped):
         risk = folder_risk(p, mode)
         return (f"Shared {p} ({mode}) with {', '.join(who) if who else 'everyone'}."
                 + (f"\n⚠ {risk}" if risk else ""))
+
+    async def usage_report(self, days: float = 1, everyone: bool = False) -> str:
+        """What this account spent on each LLM: calls, tokens in, out and in all, dollars (the
+        provider's own figure apart from our estimate), and the daily quota left. `everyone`
+        is for an admin: the machine's admin sees every account, a tenant's admin their own
+        tenant's. Asked for as "such should be available to the agents to answer"."""
+        from . import usage as usagemod
+        try:
+            days = max(1.0, min(366.0, float(days or 1)))
+        except (TypeError, ValueError):
+            days = 1.0
+        uid = usersmod.current() or ""
+        if everyone:
+            if usersmod.enabled() and not usersmod.is_tenant_admin(uid):
+                return "[refused] only an admin can see other accounts' usage"
+            out = []
+            for a in usagemod.everyone(self.cfg, days, viewer=uid):
+                out.append(f"## {a['name']}\n" + usagemod.words(a["llms"], days))
+            return "\n\n".join(out) or "No accounts here."
+        return usagemod.words(usagemod.by_llm(self.store, self.cfg, days, uid), days)
 
     async def list_folders(self) -> str:
         """Which folders the agent may work in besides its workspace, and who for."""
@@ -4468,6 +4496,9 @@ class Toolbox(usersmod.Scoped):
             if level == "safe" and args.get("enter", True) is not False:
                 return "safe", ""
             return "risky", f"Types `{text[:120]}` into {where} and runs it."
+        if name == "browser_upload":
+            return "risky", (f"Gives your file {Path(str(args.get('path') or '?')).name} to "
+                             f"{args.get('_site') or 'the page'}, in your signed-in browser.")
         if name in ("browser_click", "browser_type", "browser_key"):
             site = str(args.get("_site") or "") or "the page"
             what = (f"Clicks “{args.get('text')}”" if name == "browser_click" and args.get("text") else
@@ -4475,6 +4506,9 @@ class Toolbox(usersmod.Scoped):
                     f"Types into {('item ' + str(args.get('ref'))) if args.get('ref') not in (None, '') else 'the page'}"
                     + (" and submits" if args.get("submit") else "") if name == "browser_type" else
                     f"Presses {args.get('key') or 'a key'}")
+            if args.get("_commit"):
+                return "risky", (f"{what} on {site}, in your signed-in browser: {args['_commit']}, "
+                                 f"which posts, sends or submits something that can't be taken back.")
             return "risky", f"{what} on {site}, in your signed-in browser."
         # mail_search / mail_read / calendar_events are SAFE here on purpose: a
         # read changes nothing, and marking it risky put it under the taint ceiling —
@@ -5853,6 +5887,54 @@ class Toolbox(usersmod.Scoped):
     async def browser_wait_for_person(self, reason: str, minutes: int = 5) -> str:
         return await self._browser_do(lambda m, b: m.tool_wait(b, reason, int(minutes or 5) * 60))
 
+    async def browser_sign_in(self, site: str, page: str = "") -> str:
+        from . import cdpbrowser
+        from . import users as usersmod
+        site = cdpbrowser.site_of("https://" + str(site or "").strip().split("://")[-1])
+        if not site or "." not in site:
+            return "[error] say which site, like instagram.com"
+        url = str(page or "").strip() or f"https://{site}"
+        if cdpbrowser.site_of(cdpbrowser.normalise(url)) not in (site, "www." + site) and \
+                not cdpbrowser.site_of(cdpbrowser.normalise(url)).endswith("." + site):
+            return f"[error] the sign-in page has to be on {site}"
+        opened = await self.browser_open(url)
+        if opened.startswith("[error]") or opened.startswith("[refused"):
+            return opened
+        return await self._browser_do(lambda m, b: m.tool_sign_in(b, site, usersmod.home_for(usersmod.current() or "")))
+
+    async def browser_upload(self, path: str, ref: int | str | None = None) -> str:
+        from . import outputs
+        from . import users as usersmod
+        raw = Path(os.path.expanduser(str(path or "").strip()))
+        if not raw.is_absolute():
+            raw = Path(usersmod.workspace_of(self.cfg)) / raw
+        try:
+            real = raw.resolve(strict=True)
+        except (OSError, RuntimeError):
+            return f"[error] there is no file at {path}"
+        roots = outputs.roots(self.cfg, admin=usersmod.is_admin(usersmod.current() or ""))
+        if not real.is_file() or not any(real == r or r in real.parents for r in roots):
+            return ("[refused] only a file in your workspace or a folder shared with you can be given to "
+                    "a site")
+        async def go(m, b):
+            name = await b.agent_upload(str(real), ref=ref, who=self.cfg.get("agent_name") or "agent")
+            await b.settle(4)
+            return f"gave {name} to the page's file field.\n" + m._page_words(await b.read())
+        return await self._browser_do(go)
+
+    async def browser_sites(self) -> str:
+        from . import cdpbrowser
+        from . import users as usersmod
+        rows = cdpbrowser.signed_in(usersmod.home_for(usersmod.current() or ""))
+        if not rows:
+            return "No sites are signed in to in the shared browser yet. browser_sign_in starts one."
+        out = []
+        for r in rows:
+            when = time.strftime("%d %b %Y", time.localtime(float(r.get("last") or 0)))
+            warn = cdpbrowser.strict_words(r["site"])
+            out.append(f"- {r['site']}: signed in, last seen {when}" + (f". Note: {warn}" if warn else ""))
+        return "\n".join(out)
+
     async def browser_screenshot(self) -> str:
         async def go(m, b):
             png = await b.screenshot()
@@ -6495,6 +6577,15 @@ TOOL_SCHEMAS = [
         "name": "list_folders",
         "description": "Which folders the agent may work in besides its workspace, and who for.",
         "parameters": {"type": "object", "properties": {}},
+    }, {
+        "name": "usage_report",
+        "description": ("What has been spent on each LLM (OpenAI, Anthropic, Gemini…): calls, tokens in, "
+                        "out and in all, and dollars, saying which part is the provider's own figure "
+                        "and which is estimated from the price list, plus the daily quota left. Use it "
+                        "to answer questions about usage, cost, tokens or quotas."),
+        "parameters": {"type": "object", "properties": {
+            "days": {"type": "number", "description": "1 = today (the default), 7, 30…"},
+            "everyone": {"type": "boolean", "description": "an admin only: every account's usage"}}},
     }, {
         "name": "set_engine",
         "description": ("Choose the brain for this machine: which executor answers and which "
@@ -7450,6 +7541,36 @@ WORKSPACE_TOOL_SCHEMAS = [
         "parameters": {"type": "object", "properties": {
             "reason": {"type": "string", "description": "what they should do, in one short sentence"},
             "minutes": {"type": "integer"}}, "required": ["reason"]},
+    },
+    {
+        "name": "browser_sign_in",
+        "description": "Sign the person in to a website in their shared browser, so you and their missions "
+                       "can use it afterwards (a social account, a supplier portal, a store's admin, anything "
+                       "with no API). Opens the site; when it asks for a sign-in, a code or a check, the "
+                       "person does it in the browser window or from their phone, and the browser keeps them "
+                       "signed in. You never see or type their password. Use it when they say 'log in to my "
+                       "Instagram' or before building a mission on a site they have not signed in to yet.",
+        "parameters": {"type": "object", "properties": {
+            "site": {"type": "string", "description": "the site, like instagram.com or portal.acme.com"},
+            "page": {"type": "string", "description": "a sign-in page if the front page has none, optional"}},
+            "required": ["site"]},
+    },
+    {
+        "name": "browser_upload",
+        "description": "Give one of the person's own files to a page's file field in the shared browser: a "
+                       "picture for a post, an invoice for a portal, a CV for an application. Only files in "
+                       "their workspace or folders shared with them. Pressing the page's own Post or Submit "
+                       "afterwards is a separate step, asked of the person unless they allowed it.",
+        "parameters": {"type": "object", "properties": {
+            "path": {"type": "string", "description": "the file, in the workspace"},
+            "ref": {"type": "integer", "description": "the file field or its button from browser_read, optional"}},
+            "required": ["path"]},
+    },
+    {
+        "name": "browser_sites",
+        "description": "The websites the person is signed in to in their shared browser, with when. A mission "
+                       "can use these in permissions.sites; a site that is not listed needs browser_sign_in first.",
+        "parameters": {"type": "object", "properties": {}},
     },
 ]
 WORKSPACE_TOOL_SCHEMAS += [

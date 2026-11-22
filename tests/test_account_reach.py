@@ -209,15 +209,16 @@ def test_an_admins_machine_save_reaches_everyone_and_still_no_alias(two):
     a, b, ada, _ = two
     machine = servermod.state.machine_cfg()
     ca, cb = usersmod.cfg_for(a["id"]), usersmod.cfg_for(b["id"])
+    from agentos import providers as provmod
     with usersmod.as_user(a["id"]):
         ca["providers"]["openai"]["api_key"] = "sk-admins"
         cfgmod.save_config(ca)
-    assert machine["providers"]["openai"]["api_key"] == "sk-admins"
-    assert cb["providers"]["openai"]["api_key"] == "sk-admins"
+    # the key went into the machine's vault (vault.adopt): every view holds its reference
+    assert provmod._key(machine["providers"]["openai"]) == "sk-admins"
+    assert provmod._key(cb["providers"]["openai"]) == "sk-admins"
     # the push must not leave them sharing the object again
     cb["providers"]["openai"]["api_key"] = "sk-bobs"
-    assert machine["providers"]["openai"]["api_key"] == "sk-admins"
-    assert ca["providers"]["openai"]["api_key"] == "sk-admins"
+    assert provmod._key(machine["providers"]["openai"]) == "sk-admins"
     # a section the admin's code still holds stays live: a later write through it is saved
     held = ca.setdefault("team", {})
     with usersmod.as_user(a["id"]):
@@ -287,7 +288,8 @@ def test_the_settings_page_can_send_back_what_it_read(running):
                                 "headers": {"Authorization": "Bearer real-token-long"}}}
     got = running.get("/api/config").json()
     assert running.put("/api/config", json={"providers": {"openai": got["providers"]["openai"]}}).status_code == 200
-    assert cfg["providers"]["openai"]["api_key"] == "sk-the-real-provider-key"
+    from agentos import providers as provmod
+    assert provmod._key(cfg["providers"]["openai"]) == "sk-the-real-provider-key"
     sent = {"x": {**got["mcp_servers"]["x"], "enabled": False}}
     sent["x"]["env"] = {**sent["x"]["env"], "ADDED": "new-value"}
     assert running.put("/api/mcp", json={"servers": sent}).status_code == 200

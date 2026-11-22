@@ -37,7 +37,12 @@ def test_an_account_never_sees_the_machines_telegram_as_its_own(tmp_path, monkey
         c = usersmod.cfg_for("newbie", machine=machine)
         assert c["telegram"] == {} and c["whatsapp"] == {} and c["providers"] == {"x": 1}
         (tmp_path / "own.json").write_text('{"telegram": {"bot_token": "9:mine"}}')
-        assert usersmod.cfg_for("own", machine=machine)["telegram"] == {"bot_token": "9:mine"}
+        tok = usersmod.cfg_for("own", machine=machine)["telegram"]["bot_token"]
+        # its own token, moved into its own vault (vault.adopt); the file holds a reference
+        from agentos import vault
+        assert vault.is_ref(tok) and "9:mine" not in (tmp_path / "own.json").read_text()
+        with usersmod.as_user("own"):
+            assert vault.get(tok) == "9:mine"
     finally:
         usersmod._cfgs.clear()
 

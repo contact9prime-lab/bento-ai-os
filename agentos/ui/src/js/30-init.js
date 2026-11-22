@@ -82,6 +82,7 @@ loadAutomations();   // the palette and the hot-corner picker both read this lis
 loadToolNames();     // tool + MCP names for automation steps
 loadUserApps().then(loadWidgets);
 loadNativeApps();
+setTimeout(()=>{if(typeof sealBoot==='function')sealBoot()},2500);   // sealed secrets after a restart (11o-seal.js)
 usersBoot();         // who is signed in — nothing at all unless this machine has accounts
 APPS_READY=true;
 // If this page is the Linux session's desktop, tell the compositor how much

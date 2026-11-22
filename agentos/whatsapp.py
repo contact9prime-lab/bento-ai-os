@@ -78,6 +78,15 @@ _TITLES = {"deny": "Deny", "once": "Allow once", "always": "Allow & remember"}
 MODES = ("baileys", "cloud")
 
 
+def secret(cfg: dict, key: str) -> str:
+    """A Cloud API secret (access token, app secret) as the code that sends or checks wants it.
+    Config holds a vault reference (vault.adopt); it is opened in the config's own account."""
+    from . import users as usersmod, vault
+    ref, uid = conf(cfg).get(key) or "", str(cfg.get("_uid") or "")
+    with usersmod.as_user(uid):
+        return vault.held(ref, "whatsapp")
+
+
 def conf(cfg: dict) -> dict:
     """The WhatsApp block, read through the channel registry.
 
@@ -192,6 +201,7 @@ class WhatsAppBridge(usersmod.Scoped):
         self.broadcast = broadcast
         self.status = "off"        # off | needs | ready | error
         self.error = ""
+        self._live: dict = {}      # conversation -> its turn's steps on the phone (phonelive.Live)
         self._busy = False
         self._pending: dict[str, asyncio.Future] = {}
         self._seen: dict[str, float] = {}   # message id -> when, for redelivery
@@ -204,6 +214,9 @@ class WhatsAppBridge(usersmod.Scoped):
 
     def _c(self) -> dict:
         return conf(self.cfg)
+
+    def _secret(self, key: str) -> str:
+        return secret(self.cfg, key)
 
     def window_open(self, wa_id: str = "") -> bool:
         """Is Meta's 24-hour customer-service window open for this chat?
@@ -222,7 +235,7 @@ class WhatsAppBridge(usersmod.Scoped):
         async with httpx.AsyncClient(timeout=45) as client:
             r = await client.post(
                 f"{GRAPH}/{path}", json=payload,
-                headers={"Authorization": f"Bearer {c.get('access_token', '')}"})
+                headers={"Authorization": f"Bearer {self._secret('access_token')}"})
         data = r.json() if r.content else {}
         if r.status_code >= 400:
             err = (data.get("error") or {})
@@ -306,7 +319,7 @@ class WhatsAppBridge(usersmod.Scoped):
                     f"{GRAPH}/{c['phone_number_id']}/media",
                     data={"messaging_product": "whatsapp", "type": "image/png"},
                     files={"file": ("office.png", png, "image/png")},
-                    headers={"Authorization": f"Bearer {c.get('access_token', '')}"})
+                    headers={"Authorization": f"Bearer {self._secret('access_token')}"})
             up = r.json() if r.content else {}
             if r.status_code >= 400 or not up.get("id"):
                 raise RuntimeError((up.get("error") or {}).get("message") or f"HTTP {r.status_code}")
@@ -343,7 +356,7 @@ class WhatsAppBridge(usersmod.Scoped):
                     f"{GRAPH}/{c['phone_number_id']}/media",
                     data={"messaging_product": "whatsapp", "type": "video/mp4"},
                     files={"file": ("story.mp4", data, "video/mp4")},
-                    headers={"Authorization": f"Bearer {c.get('access_token', '')}"})
+                    headers={"Authorization": f"Bearer {self._secret('access_token')}"})
             up = r.json() if r.content else {}
             if r.status_code >= 400 or not up.get("id"):
                 raise RuntimeError((up.get("error") or {}).get("message") or f"HTTP {r.status_code}")
@@ -408,7 +421,7 @@ class WhatsAppBridge(usersmod.Scoped):
                         f"{GRAPH}/{c['phone_number_id']}/media",
                         data={"messaging_product": "whatsapp", "type": mime},
                         files={"file": (p.name, fh, mime)},
-                        headers={"Authorization": f"Bearer {c.get('access_token', '')}"})
+                        headers={"Authorization": f"Bearer {self._secret('access_token')}"})
             up = r.json() if r.content else {}
             if r.status_code >= 400 or not up.get("id"):
                 raise RuntimeError((up.get("error") or {}).get("message") or f"HTTP {r.status_code}")
@@ -701,6 +714,17 @@ class WhatsAppBridge(usersmod.Scoped):
             if out.startswith("[error]"):
                 await self.send(out, wa_id)
             return
+        if low.startswith("/steps"):
+            # the live steps of a turn (phonelive.py): `whatsapp.live_steps`
+            arg = low[6:].strip()
+            if arg in ("on", "off"):
+                self.cfg.setdefault("whatsapp", {})["live_steps"] = arg == "on"
+                cfgmod.save_config(self.cfg)
+            on = self._c().get("live_steps", True) is not False
+            await self.send("⚙ While I work, I'll send the steps every few seconds: hand-overs, a "
+                            "department's people, sign-offs. /steps off hides them." if on
+                            else "⚙ I'll only send the answer. /steps on shows the steps while I work.", wa_id)
+            return
         if low.startswith("/clips"):
             arg = low[6:].strip()
             if arg in ("on", "off"):
@@ -923,11 +947,23 @@ class WhatsAppBridge(usersmod.Scoped):
         # as on Telegram (playground.listen; closed in `finally`)
         from . import playground as _pg
         tap = _pg.listen(cid)
+        # what the turn is doing, while it works (phonelive.py): a WhatsApp message can't be
+        # edited, so the new steps go as a short message every few seconds, a few a turn
+        from . import phonelive
+        live = None
+        if phonelive.on(self.cfg, "whatsapp"):
+            async def _live_send(text):
+                await self.send(text, wa_id)
+            live = phonelive.Live(phonelive.listen(cid), _live_send, every=6.0, first=4.0)
+        self._live[cid] = live
         try:
             await self._turn_in(chat, wa_id, text, cid)
             await self.send_talk(list(tap), wa_id)
         finally:
             _pg.close(cid, tap)
+            self._live.pop(cid, None)
+            if live:
+                await live.end()
 
     async def _turn_in(self, chat: dict, wa_id: str, text: str, cid: str):
         from . import history as _history
@@ -994,6 +1030,9 @@ class WhatsAppBridge(usersmod.Scoped):
             self.store, self.cfg, self.toolbox, cid=cid, text=text, surface="whatsapp",
             emit=emit, approver=approver, note=note, tell=tell)
         reply = out["reply"]
+        live = self._live.get(cid)
+        if live:
+            await live.end()        # the last steps go before the answer, never after it
         self.store.add_message(cid, "assistant", reply, {"steps": out["steps"], **out["meta"]})
         self.store.touch_conversation(cid)
         await self.send(reply, wa_id)

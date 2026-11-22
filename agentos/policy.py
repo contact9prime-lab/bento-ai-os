@@ -308,6 +308,14 @@ def person_rule(principal, name: str, args: dict, dec, pdp=None, level: str = ""
         dec.effect = "ask"
         dec.grant_offer = None
         must = "every set is asked"
+    elif name in ("browser_click", "browser_type", "browser_key") and args.get("_commit") \
+            and getattr(principal, "kind", "") != "user" and dec.effect == "allow" \
+            and dec.rule in ("default", ""):
+        # a post, send, submit, payment or delete in the person's signed-in browser, by anyone
+        # but their own agent: only a grant says it may (a mission set to post on its own, or a
+        # person's remember), so autonomy alone never publishes in their name
+        dec.effect = "ask"
+        must = f"{args['_commit']} on {args.get('_site') or 'a site'} posts or sends as you"
     elif name == "terminal_send" and args.get("_fg") and dec.effect == "allow" \
             and dec.rule in ("default", ""):
         # keys into a running program in the person's terminal: a person says yes
@@ -428,12 +436,20 @@ def action_of(name: str, args: dict, mcp=None, ocp=None) -> tuple[str, str]:
     # The shared browser. Two actions: looking at pages, and acting on one in the person's
     # signed-in browser. "May read pages" and "may click on my bank's site" are not the
     # same consent, and the resource is the SITE so a grant can name one.
-    if name in ("browser_click", "browser_type", "browser_key"):
+    if name in ("browser_click", "browser_type", "browser_key", "browser_upload"):
+        # one that can't be taken back (post, send, pay, delete: cdpbrowser.commit_of, read off
+        # the page by the loop) is its own action, so a mission can act on a site and still ask
+        # a person before it publishes
+        if args.get("_commit"):
+            return "browser.commit", f"site:{args.get('_site') or '*'}"
         return "browser.act", f"site:{args.get('_site') or '*'}"
     if name == "browser_open":
         from urllib.parse import urlparse
         h = (urlparse(str(args.get("url") or "")).hostname or "").lower()
         return "browser.read", f"site:{(h[4:] if h.startswith('www.') else h) or '*'}"
+    if name == "browser_sign_in":
+        s = str(args.get("site") or "").strip().lower().split("://")[-1].split("/")[0]
+        return "browser.read", f"site:{(s[4:] if s.startswith('www.') else s) or '*'}"
     if name.startswith("browser_"):
         return "browser.read", "site:*"
     # A shared terminal session: typing into it is its own action, grantable per session
@@ -708,7 +724,8 @@ TAINT_WATCH = {"remember", "forget", "kg_add", "save_skill", "save_automation",
 # exactly like balanced, under a label that said "asks before every action".
 PARANOID_FREE = {
     "browser_open", "browser_read", "browser_scroll", "browser_screenshot", "browser_tabs",
-    "browser_wait_for_person", "terminal_sessions", "terminal_read", "app_windows", "app_window_look",
+    "browser_wait_for_person", "browser_sign_in", "browser_sites", "terminal_sessions", "terminal_read",
+    "app_windows", "app_window_look",
     "read_file", "list_dir", "search_files", "list_folders", "read_source", "search_docs",
     "fetch_url", "recall", "kg_query", "timeline", "list_spaces", "list_flows", "list_assets",
     "get_asset", "list_automations", "read_app_data", "system_info", "desktop_state",
@@ -1010,7 +1027,8 @@ def _same_site_taint(taint, tool: str, resource: str) -> bool:
     spending your session somewhere else; a page's own scripts can already act on their
     own site, so words read there add nothing it could not do itself. Anything else read
     this turn (another site, a mail, a fetch) brings the ceiling back."""
-    if tool not in ("browser_click", "browser_type", "browser_key") or not resource.startswith("site:"):
+    if tool not in ("browser_click", "browser_type", "browser_key", "browser_upload") \
+            or not resource.startswith("site:"):
         return False
     site = resource[5:]
     if not site or site == "*" or not taint:

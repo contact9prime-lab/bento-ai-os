@@ -50,6 +50,7 @@ Code, Gemini CLI or Codex, and each specialist can run on a different one. The
 | [Watch me once](watch.md) | Do the same few steps twice and the desktop offers to make them one click, pinned to the desktop and, if you like, played every morning |
 | [Time travel](timetravel.md) | A scrubber over every step an agent took: see what going back would undo, rewind files, memory and windows, or fork from a step on another brain |
 | [Live windows](live-windows.md) | Your own signed-in browser, terminal sessions that stay, and installed apps drawn in a window, used by you and your agent together. When a page wants a code or a CAPTCHA, the window asks you and the agent carries on |
+| [Websites you're signed in to](sites.md) | Sign in once and your agent and missions work on the site as you: post on a social account, fetch from a portal, watch a page. Posting asks you first, and a sign-in code goes to your phone |
 | [Accounts](accounts.md) | The mailbox and the calendar the agent may read for you: Sign in with Google or Microsoft, an MCP server, or an app password; what is never touched; the missions built on them |
 | [Backup and moving machines](backup.md) | One encrypted file with the whole machine: every account, the vault's keys and the workspace. Restore it here or on a new computer, and see what needs you after |
 | [Put Bento in the cloud](cloud.md) | Free, in one click on Render: its memory is kept sealed in your own free storage bucket, so a restart loses nothing. Or a paid plan, Fly.io, or your own server, with what each costs |

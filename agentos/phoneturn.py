@@ -76,7 +76,7 @@ async def answer(store, cfg: dict, toolbox, *, cid: str, text: str, surface: str
             res = await control.run_subagent(defn, task, context=thread, conversation_id=cid,
                                              approver=approver)
             usage = res.get("usage") or {}
-            _usage.record(store, cfg, res.get("model") or "", {"input": usage.get("in", 0),
+            _usage.turn(store, cfg, res.get("model") or "", {"input": usage.get("in", 0),
                           "output": usage.get("out", 0)}, surface=surface, conversation_id=cid)
             return {"reply": f"@{defn['name']} · {res['status']}\n\n"
                              + (res["content"] or res["fault"] or "(no output)"),
@@ -110,7 +110,7 @@ async def answer(store, cfg: dict, toolbox, *, cid: str, text: str, surface: str
                 pass
             engine = nxt["executor"]
             model, exec_model = (nxt["model"], "") if engine == "aria" else (model, nxt.get("model") or "")
-        _usage.record(store, cfg, out["model"], out["tokens"], surface=surface, conversation_id=cid,
+        _usage.turn(store, cfg, out["model"], out["tokens"], surface=surface, conversation_id=cid,
                       cost_usd=out.get("cost_usd"))
         return {"reply": out["said"] or NO_TEXT, "steps": out["steps"], "meta": out["meta"]}
     finally:

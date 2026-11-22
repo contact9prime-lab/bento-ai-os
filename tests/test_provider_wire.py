@@ -56,5 +56,5 @@ def test_images_and_plain_messages_still_shaped_right():
 def test_agent_threads_extra_from_the_tool_call_event():
     import inspect
     from agentos.agent import Agent
-    src = inspect.getsource(Agent.run)
+    src = inspect.getsource(Agent._run)        # run() wraps it in the usage caller
     assert '"extra": t["extra"]' in src, "the agent must carry the signature into history"

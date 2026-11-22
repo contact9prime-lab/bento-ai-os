@@ -105,15 +105,18 @@ def test_secrets_are_masked_by_default(capsys):
     _run(key="providers.anthropic.api_key")
     out = capsys.readouterr().out
     assert "sk-ant-abcdefgh1234" not in out
-    assert "1234" in out, "masking should still show enough to recognise the key"
+    assert "in the vault" in out, "masking says the key is set, and where it is"
 
 
-def test_raw_shows_them(capsys):
+def test_raw_shows_the_reference_never_the_key(capsys):
+    """A provider key is in the machine's vault (vault.adopt): config holds a reference, and no
+    verb prints a vault value, --raw included."""
     cfg = cfgmod.load_config()
     cfg["providers"]["anthropic"]["api_key"] = "sk-ant-abcdefgh1234"
     cfgmod.save_config(cfg)
     _run(key="providers.anthropic.api_key", raw=True)
-    assert "sk-ant-abcdefgh1234" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "sk-ant-abcdefgh1234" not in out and "vault:provider.anthropic.api_key" in out
 
 
 def test_the_whole_dump_leaks_no_secret(capsys):

@@ -452,7 +452,7 @@ var OB_CLOUD=[
   {id:'google',label:'Google (Gemini)',model:'gemini-3.8-flash',
    where:'aistudio.google.com'},
   {id:'openai',label:'OpenAI',model:'gpt-6.1-sol',where:'platform.openai.com'},
-  {id:'deepseek',label:'DeepSeek',model:'deepseek-flash',where:'platform.deepseek.com'},
+  {id:'deepseek',label:'DeepSeek',model:'deepseek-v4-flash',where:'platform.deepseek.com'},
   {id:'moonshot',label:'Moonshot (Kimi)',model:'kimi-k3.1-pro',
    where:'platform.moonshot.ai'},
   {id:'openrouter',label:'OpenRouter — many models, one key',
@@ -943,6 +943,8 @@ var OB_WIRE={
           headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
         const d=await r.json().catch(()=>({}));
         if(!r.ok)return obMsg(d.error||'could not create the account','warn');
+        if(d.recovery_code&&typeof sealShowCode==='function')await sealShowCode(d.recovery_code,
+          'Your saved passwords and website sign-ins are now locked with your password. Nobody else can open them, not even an admin. If you forget your password, this code is the only way back in.');
         obMsg(d.signed_in?`signed in as ${body.name} — this is your machine now`
                          :`${body.name} can sign in, here and from their phone`,'ok');
         if(typeof usersBoot==='function')usersBoot();

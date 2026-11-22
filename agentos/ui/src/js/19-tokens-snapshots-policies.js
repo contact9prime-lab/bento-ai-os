@@ -1,31 +1,118 @@
 /* ================= token analytics app ================= */
+/* ================= usage app =================
+   Every call to an LLM is counted where it is made (usage.meter), in the account that made it:
+   tokens in, out and in all, and dollars, the provider's own figure kept apart from our estimate.
+   An admin also sees every account and sets which LLMs are shared and each account's daily quota.
+   GUI here; TUI `bento usage llms|share|quota`; the agent answers through `usage_report`. */
+var USAGE={days:1,d:null,rows:null};
+function usageFmt(n){n=+n||0;return n>=1e6?(n/1e6).toFixed(2)+'M':n>=1e4?(n/1e3).toFixed(1)+'k':n.toLocaleString()}
+function usageUsd(v){v=+v||0;return v===0?'$0':v<1?'$'+v.toFixed(4):'$'+v.toFixed(2)}
+function usageMoneyWords(l){
+  if(l.usd_exact&&l.usd_estimated)return `${usageUsd(l.usd_exact)} stated by the provider, ${usageUsd(l.usd_estimated)} estimated`;
+  if(l.usd_estimated)return 'estimated from the price list';
+  if(l.usd_exact)return 'as the provider stated it';
+  return l.unpriced?'no price for this model':'';
+}
 async function renderTokens(body){
-  const d=await (await fetch('/api/analytics/tokens')).json();
-  const fmt=n=>n>=1e6?(n/1e6).toFixed(2)+'M':n>=1e3?(n/1e3).toFixed(1)+'k':(''+n);
-  const t=d.total||{in:0,out:0,turns:0};
-  const models=Object.entries(d.by_model||{}).sort((a,b)=>(b[1].in+b[1].out)-(a[1].in+a[1].out));
-  const maxM=Math.max(1,...models.map(([,v])=>v.in+v.out));
-  const days=(d.by_day||[]).slice(-14);
-  const maxD=Math.max(1,...days.map(x=>x.in+x.out));
-  body.innerHTML=`<div class="pad">
+  let d;
+  try{d=await apiJSON('/api/usage/llms?days='+USAGE.days+'&everyone=1')}
+  catch(e){body.innerHTML=`<div class="pad"><p class="mut">${esc(e.message||'Usage could not be read.')}</p></div>`;return}
+  USAGE.d=d;
+  const llms=d.llms||[];
+  const sum=llms.reduce((a,l)=>({in:a.in+l.in,out:a.out+l.out,usd:a.usd+l.usd,est:a.est+l.usd_estimated,calls:a.calls+l.calls}),{in:0,out:0,usd:0,est:0,calls:0});
+  const when={1:'Today',7:'Last 7 days',30:'Last 30 days'}[USAGE.days]||'';
+  const seg=`<div class="seg usg-days">${[[1,'Today'],[7,'7 days'],[30,'30 days']].map(([n,t])=>
+    `<button class="${USAGE.days===n?'on':''}" onclick="USAGE.days=${n};refreshApp('tokens')">${t}</button>`).join('')}</div>`;
+  const pb=panelShell(body,{title:'Token Analytics',sub:`${when} · ${sum.calls} call${sum.calls===1?'':'s'}`,actions:seg});
+  const maxT=Math.max(1,...llms.map(l=>l.total));
+  const days=(d.daily||[]).slice(-14),maxD=Math.max(1,...days.map(x=>x.in+x.out));
+  const rows=llms.map(l=>{
+    const q=l.quota;
+    let qh='';
+    if(q){
+      const parts=[];
+      if(q.tokens)parts.push(`${usageFmt(q.left_tokens)} of ${usageFmt(q.tokens)} tokens left`);
+      if(q.usd)parts.push(`${usageUsd(q.left_usd)} of ${usageUsd(q.usd)} left`);
+      const used=q.tokens?1-(q.left_tokens/q.tokens):1-(q.left_usd/q.usd);
+      qh=`<div class="usg-q"><span>Today's quota: ${parts.join(', ')}</span><div class="bar"><i class="${used>=.9?'hot':''}" style="width:${Math.min(100,used*100)}%"></i></div></div>`;
+    }
+    return `<div class="usg-llm" data-f="${esc(l.name+' '+l.models.map(m=>m.model).join(' '))}">
+      <div class="usg-top"><b>${esc(l.name)}</b><span class="usg-usd">${usageUsd(l.usd)}</span></div>
+      <div class="usg-nums"><span>${l.calls} call${l.calls===1?'':'s'}</span><span>${usageFmt(l.in)} in</span><span>${usageFmt(l.out)} out</span><span>${usageFmt(l.total)} in all</span></div>
+      <div class="bar"><i style="width:${l.total/maxT*100}%"></i></div>
+      <div class="usg-how mut">${esc(usageMoneyWords(l))}${l.models.length>1?' · '+l.models.map(m=>esc(m.model.split('/').slice(1).join('/')||m.model)).join(', '):''}</div>
+      ${qh}</div>`;
+  }).join('');
+  pb.innerHTML=`
     <div class="tmgrid">
-      <div class="stat"><div class="lbl">Total tokens</div><div class="val">${fmt(t.in+t.out)}</div></div>
-      <div class="stat"><div class="lbl">Input</div><div class="val">${fmt(t.in)}</div></div>
-      <div class="stat"><div class="lbl">Output</div><div class="val">${fmt(t.out)}</div></div>
+      <div class="stat"><div class="lbl">In all</div><div class="val">${usageFmt(sum.in+sum.out)}</div></div>
+      <div class="stat"><div class="lbl">Input</div><div class="val">${usageFmt(sum.in)}</div></div>
+      <div class="stat"><div class="lbl">Output</div><div class="val">${usageFmt(sum.out)}</div></div>
+      <div class="stat"><div class="lbl">Spent ${pInfo('A provider that states its bill (OpenRouter, an agent CLI) is counted as stated. Everything else is estimated from the price list, cached input included.')}</div><div class="val">${usageUsd(sum.usd)}${sum.est&&sum.est<sum.usd?` <small>${usageUsd(sum.est)} of it estimated</small>`:sum.est?' <small>estimated</small>':''}</div></div>
     </div>
-    <div class="tmsec">By model · ${t.turns} turns</div>
-    ${models.length?models.map(([m,v])=>`<div style="margin-bottom:9px">
-      <div style="display:flex;justify-content:space-between;font-size:12.5px"><span>${esc(m.split('/').pop())}</span>
-        <span class="mut">${fmt(v.in+v.out)} · ${v.turns}t</span></div>
-      <div class="bar"><i style="width:${(v.in+v.out)/maxM*100}%"></i></div></div>`).join('')
-      :'<p class="mut">No usage yet. Token counts are recorded per turn (local models report via Ollama; cloud models via their usage API).</p>'}
-    <div class="tmsec">Last ${days.length} days</div>
-    <div style="display:flex;align-items:flex-end;gap:5px;height:90px;padding:6px 0">
-      ${days.length?days.map(x=>`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;height:100%">
-        <div style="flex:1;width:100%;display:flex;align-items:flex-end"><div title="${x.day}: ${fmt(x.in+x.out)}" style="width:100%;border-radius:4px 4px 0 0;background:linear-gradient(var(--acc),var(--acc2));height:${(x.in+x.out)/maxD*100}%;min-height:2px"></div></div>
-        <div style="font-size:9px;color:var(--dim2)">${x.day.slice(5)}</div></div>`).join(''):'<p class="mut">no daily data yet</p>'}
-    </div>
-  </div>`;
+    <div class="tmsec">${d.admin?'Yours, by LLM':'By LLM'}</div>
+    ${rows||(d.admin?'<p class="mut">You haven\'t used a model yet. Every call is counted here as it happens.</p>'
+      :emptyBox('Nothing yet','Every call to a model is counted here as it happens.','','tokens','What have I spent on each model this week?'))}
+    ${days.length?`<div class="tmsec">By day</div>
+    <div class="usg-chart">${days.map(x=>`<div class="usg-col"><div class="usg-bh"><div title="${esc(x.day)}: ${usageFmt(x.in+x.out)} tokens, ${usageUsd(x.usd)}" style="height:${(x.in+x.out)/maxD*100}%"></div></div><span>${esc(x.day.slice(5))}</span></div>`).join('')}</div>`:''}
+    ${d.admin?usageAdminHTML(d):''}`;
+  if(d.admin)usageQuotaPaint();
+}
+function usageAdminHTML(d){
+  const ev=d.everyone||[];
+  const llmIds=[...new Set(ev.flatMap(a=>a.llms.map(l=>l.llm)))];
+  const table=ev.length>1||ev.some(a=>a.llms.length)?`<div class="usg-tw"><table class="usg-t"><thead><tr><th>Account</th>${llmIds.map(i=>`<th>${esc((ev.flatMap(a=>a.llms).find(l=>l.llm===i)||{}).name||i)}</th>`).join('')}<th>All</th></tr></thead><tbody>
+    ${ev.map(a=>{const by=Object.fromEntries(a.llms.map(l=>[l.llm,l]));const tot=a.llms.reduce((s,l)=>({t:s.t+l.total,u:s.u+l.usd}),{t:0,u:0});
+      return `<tr><td>${esc(a.name)}</td>${llmIds.map(i=>by[i]?`<td>${usageFmt(by[i].total)}<small>${usageUsd(by[i].usd)}</small></td>`:'<td class="mut">–</td>').join('')}<td><b>${usageFmt(tot.t)}</b><small>${usageUsd(tot.u)}</small></td></tr>`}).join('')}
+    </tbody></table></div>`:'<p class="mut">No account has used a model yet.</p>';
+  USAGE.rows=usageQuotaRows(d.sharing||{});
+  return `<div class="tmsec">Everyone</div>${table}
+    <div class="tmsec">Shared LLMs and daily quotas ${pInfo('Unlimited unless you set a limit. A limit for Everyone applies to each account without its own, and never to an admin. A day ends at midnight here.')}</div>
+    <div class="usg-share">${usageShareable(d).map(p=>`<label class="usg-chk ck"><input type="checkbox" data-p="${esc(p.id)}" ${((d.sharing||{}).off||[]).includes(p.id)?'':'checked'}><span>${esc(p.name)}</span></label>`).join('')||'<p class="mut">No provider is switched on yet.</p>'}</div>
+    <div id="usg-quotas"></div>
+    <div class="row usg-act"><button onclick="usageQuotaAdd()">＋ Add a limit</button><button class="pact" onclick="usageSave()">Save</button></div>`;
+}
+/* The providers worth a tick: switched on, or already not shared. One switched off shares nothing. */
+function usageShareable(d){
+  const off=((d.sharing||{}).off)||[];
+  return (d.providers||[]).filter(p=>p.on||off.includes(p.id));
+}
+function usageQuotaRows(sh){
+  const out=[];
+  for(const [who,per] of Object.entries(sh.quota||{}))for(const [llm,lim] of Object.entries(per||{}))
+    out.push({who,llm,tokens:lim.tokens||'',usd:lim.usd||''});
+  return out;
+}
+function usageQuotaPaint(){
+  const box=$('#usg-quotas');if(!box)return;
+  const d=USAGE.d||{},accs=d.accounts||[],provs=usageShareable(d);
+  if(!USAGE.rows.length){box.innerHTML='<p class="mut">No limits: every account may use every shared LLM as much as it likes.</p>';return}
+  box.innerHTML=USAGE.rows.map((r,i)=>`<div class="usg-qrow" data-i="${i}">
+    <select data-k="who"><option value="*">Everyone</option>${accs.map(a=>`<option value="${esc(a.id)}" ${r.who===a.id?'selected':''}>${esc(a.name)}</option>`).join('')}</select>
+    <select data-k="llm">${provs.map(p=>`<option value="${esc(p.id)}" ${r.llm===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}${r.llm&&!provs.some(p=>p.id===r.llm)?`<option selected value="${esc(r.llm)}">${esc(r.llm)}</option>`:''}</select>
+    <label><input data-k="tokens" type="number" min="0" step="1000" placeholder="no limit" value="${esc(r.tokens)}"><span>tokens a day</span></label>
+    <label><input data-k="usd" type="number" min="0" step="0.5" placeholder="no limit" value="${esc(r.usd)}"><span>$ a day</span></label>
+    <button aria-label="Remove this limit" onclick="USAGE.rows.splice(${i},1);usageQuotaPaint()">✕</button></div>`).join('');
+  box.querySelectorAll('.usg-qrow [data-k]').forEach(el=>el.onchange=()=>{
+    const r=USAGE.rows[+el.closest('.usg-qrow').dataset.i];if(r)r[el.dataset.k]=el.value});
+  USAGE.rows.forEach((r,i)=>{const s=box.querySelector(`.usg-qrow[data-i="${i}"] [data-k="who"]`);if(s)s.value=r.who});
+}
+function usageQuotaAdd(){
+  const p=usageShareable(USAGE.d||{})[0];
+  USAGE.rows.push({who:'*',llm:p?p.id:'',tokens:'',usd:''});usageQuotaPaint();
+}
+async function usageSave(){
+  const off=[...document.querySelectorAll('.usg-share input[data-p]')].filter(x=>!x.checked).map(x=>x.dataset.p);
+  const quota={};
+  for(const r of USAGE.rows){
+    const t=+r.tokens||0,u=+r.usd||0;if(!r.llm||!(t||u))continue;
+    (quota[r.who]=quota[r.who]||{})[r.llm]={...(t?{tokens:t}:{}),...(u?{usd:u}:{})};
+  }
+  const r=await fetch('/api/usage/sharing',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({off,quota})});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok)return toast(j.error||'Could not save the quotas.',{kind:'err'});
+  toast(j.dropped&&j.dropped.length?`Saved. Left out: ${j.dropped.join(', ')}`:'Saved the shared LLMs and quotas.');
+  refreshApp('tokens');
 }
 
 /* ================= snapshots app ================= */

@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<meta name="robots" content="noindex, nofollow">
+<title>Bento Box AI — open your secrets</title>
+<style>
+/* The page a phone chat's link opens (unlock.py). Standalone, like login.html: a phone that has
+   just signed in to open one thing should not load the whole desktop for it. Every word on it
+   is drawn with text nodes. */
+:root{--bg:#0b0d10;--bg2:#111419;--line:#232a35;--txt:#e6ebf2;--dim:#8a94a6;--acc:#5eead4;--acc2:#22d3ee;
+  --err:#f87171;--safe-t:env(safe-area-inset-top,0px);--safe-b:env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{min-height:100%}
+body{background:linear-gradient(160deg,#0a0f16,#0b0d10 55%,#0d1118);color:var(--txt);
+  display:flex;justify-content:center;padding:calc(28px + var(--safe-t)) 16px calc(28px + var(--safe-b));
+  font:400 15px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+main{width:min(440px,100%);display:flex;flex-direction:column;gap:14px}
+h1{font-size:21px;font-weight:700;letter-spacing:-.01em}
+p{color:var(--dim);font-size:14px}
+.card{background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+.card b{font-size:15px}
+.card small{color:var(--dim);font-size:13px}
+.choices{display:flex;flex-wrap:wrap;gap:8px}
+button{min-height:44px;padding:10px 14px;font:inherit;font-size:14px;font-weight:650;border-radius:12px;cursor:pointer;
+  border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--txt)}
+button.go{border:none;color:#04211c;background:linear-gradient(135deg,var(--acc),var(--acc2));width:100%}
+button:disabled{opacity:.55;cursor:default}
+input{width:100%;padding:13px 14px;font:inherit;font-size:16px;color:var(--txt);background:rgba(255,255,255,.05);
+  border:1px solid var(--line);border-radius:12px;outline:none}
+input:focus{border-color:var(--acc)}
+.err{color:var(--err);font-size:13px;min-height:18px}
+.ok{color:var(--acc);font-weight:650}
+.done{font-size:13px;color:var(--acc)}
+</style>
+</head>
+<body>
+<main id="m"><h1>Open your secrets</h1><p>Loading…</p></main>
+<script>
+'use strict';
+const m=document.getElementById('m');
+const el=(t,c,txt)=>{const e=document.createElement(t);if(c)e.className=c;if(txt!=null)e.textContent=txt;return e};
+const CHOICES=[['once','For the next run'],['d1','For today'],['always','Until I revoke it']];
+async function api(path,opts){
+  const r=await fetch(path,Object.assign({headers:{'Content-Type':'application/json'}},opts||{}));
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(d.error||('HTTP '+r.status));
+  return d;
+}
+function body(d){return{method:'PUT',body:JSON.stringify(d)}}
+async function setAway(name,v){
+  const b={name,mode:v.startsWith('d')?'until':v};if(v.startsWith('d'))b.days=+v.slice(1);
+  return api('/api/seal/away',body(b));
+}
+async function paint(note){
+  let st;
+  try{st=await api('/api/seal')}catch(e){m.replaceChildren(el('h1','','Open your secrets'),el('p','',e.message));return}
+  const parts=[el('h1','','Open your secrets')];
+  if(!st.sealed){parts.push(el('p','',st.detail||'There is nothing sealed on this account.'));m.replaceChildren(...parts);return}
+  if(!st.open){
+    // still signed in on this phone from before the restart: the password goes into THIS page
+    parts.push(el('p','','Bento restarted. Type your Bento password to open your secrets. It goes to your Bento, never into a chat.'));
+    const pw=el('input');pw.type='password';pw.autocomplete='current-password';pw.placeholder='Your Bento password';
+    const err=el('div','err');const go=el('button','go','Open');
+    go.onclick=async()=>{go.disabled=true;err.textContent='';
+      try{await api('/api/seal/open',{method:'POST',body:JSON.stringify({password:pw.value})});pw.value='';paint()}
+      catch(e){err.textContent=e.message}finally{go.disabled=false}};
+    pw.onkeydown=e=>{if(e.key==='Enter')go.click()};
+    parts.push(pw,go,err);m.replaceChildren(...parts);pw.focus();return;
+  }
+  const closed=(st.secrets||[]).filter(x=>!x.away);
+  if(!closed.length){
+    parts.push(el('p','ok','Your secrets are open.'),
+      el('p','',note||'Every one of them works while you’re away, so your missions can carry on. You can close this page.'));
+    m.replaceChildren(...parts);return;
+  }
+  parts.push(el('p','','These work only while you’re signed in, so your missions can’t use them while you’re away. Open them for:'));
+  const all=el('button','go','Open all for the next run');
+  all.onclick=async()=>{all.disabled=true;
+    try{for(const x of closed)await setAway(x.name,'once');paint('Opened for the next run. The waiting mission carries on. You can close this page.')}
+    catch(e){all.disabled=false;alertLine(e.message)}};
+  parts.push(all);
+  closed.forEach(x=>{
+    const c=el('div','card');c.append(el('b','',x.label),el('small','',x.words));
+    const row=el('div','choices');
+    CHOICES.forEach(([v,t])=>{const b=el('button','',t);
+      b.onclick=async()=>{row.querySelectorAll('button').forEach(z=>z.disabled=true);
+        try{await setAway(x.name,v);paint()}catch(e){alertLine(e.message);row.querySelectorAll('button').forEach(z=>z.disabled=false)}};
+      row.append(b)});
+    c.append(row);parts.push(c);
+  });
+  parts.push(el('p','','You can change these any time in Settings → Accounts → Your secrets.'));
+  const line=el('div','err');line.id='line';parts.push(line);
+  m.replaceChildren(...parts);
+}
+function alertLine(t){const l=document.getElementById('line');if(l)l.textContent=t}
+paint();
+</script>
+</body>
+</html>

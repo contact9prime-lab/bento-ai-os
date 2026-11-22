@@ -53,7 +53,7 @@ LINK_FILE_LIMIT = 16 * 1024 * 1024
 NODE_MODULES = BRIDGE_DIR / "node_modules"
 
 
-def session_dir() -> Path:
+def session_dir(uid: str | None = None) -> Path:
     """Where this ACCOUNT's linked device lives — resolved, never a constant.
 
     It was `cfgmod.AGENTOS_HOME / "whatsapp" / "session"`, evaluated once at import,
@@ -67,7 +67,7 @@ def session_dir() -> Path:
     the exact directory it always used.
     """
     from . import users as usersmod
-    return usersmod.home_for(usersmod.current()) / "whatsapp" / "session"
+    return usersmod.home_for(usersmod.current() if uid is None else uid) / "whatsapp" / "session"
 
 
 #: How long to wait for the first QR (or a restored session) before saying so.
@@ -109,10 +109,10 @@ def why_not() -> str:
     return ""
 
 
-def forget_session() -> bool:
+def forget_session(uid: str | None = None) -> bool:
     """Unlink: drop the stored device credentials so the next start asks for a scan."""
     import shutil as _sh
-    d = session_dir()
+    d = session_dir(uid)
     if not d.exists():
         return False
     _sh.rmtree(d, ignore_errors=True)
@@ -160,6 +160,11 @@ class BaileysTransport:
         #: `…@lid`). See `send()`: the domain cannot be guessed from the id.
         self._jids: dict[str, str] = {}
         self._stopping = False
+        # Whose phone this process is: pinned once, so a logout or a forget read from any context
+        # touches this account's session and no other's. One process per account (a bridge per
+        # account, users.services), each with only its own session folder.
+        from . import users as usersmod
+        self.uid = usersmod.current() or ""
 
     # -- lifecycle ----------------------------------------------------------
 
@@ -172,15 +177,18 @@ class BaileysTransport:
             return gap
         self._stopping = False
         self.state, self.error, self.qr = "starting", "", ""
-        sess = session_dir()
+        sess = session_dir(self.uid)
         sess.mkdir(parents=True, exist_ok=True)
         try:
             sess.chmod(0o700)      # a linked-device credential is a credential
         except OSError:
             pass
         from .mcp_client import _extended_path
-        env = {**os.environ, "PATH": _extended_path(),
-               "WA_SESSION_DIR": str(sess)}
+        from .executors import ENV_KEEP
+        # an allow-list, as for an MCP server: this process holds provider keys and other people's
+        # tokens in its environment, and the bridge needs a path, a proxy and its own folder
+        env = {**{k: v for k, v in os.environ.items() if k in ENV_KEEP or k.startswith("LC_")},
+               "PATH": _extended_path(), "WA_SESSION_DIR": str(sess)}
         self.proc = await asyncio.create_subprocess_exec(
             node_path(), str(BRIDGE_DIR / "bridge.js"),
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
@@ -206,7 +214,7 @@ class BaileysTransport:
         await self._write({"type": "logout"})
         await asyncio.sleep(1.0)
         await self.stop()
-        forget_session()
+        forget_session(self.uid)
         self.state = "logged_out"
 
     # -- the protocol -------------------------------------------------------
@@ -266,10 +274,10 @@ class BaileysTransport:
             st = ev.get("state") or ""
             if st == "logged_out":
                 self.state, self.qr = "logged_out", ""
-                forget_session()
+                forget_session(self.uid)
             elif st == "closed" and ev.get("reason") == "logged_out":
                 self.state, self.qr = "logged_out", ""
-                forget_session()
+                forget_session(self.uid)
         elif kind == "error":
             self.error = ev.get("message") or "unknown bridge error"
             if ev.get("fatal"):

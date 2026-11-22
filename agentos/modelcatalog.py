@@ -22,7 +22,7 @@ from __future__ import annotations
 import datetime as _dt
 
 #: When these lists were last checked against the providers' own pages.
-CHECKED = "2026-11-15"
+CHECKED = "2026-11-21"
 #: `bento version bump` warns when the catalogue is older than this.
 STALE_DAYS = 45
 
@@ -51,8 +51,11 @@ CATALOGUE: dict[str, dict] = {
         "source": "https://openrouter.ai/api/v1/models",
     },
     "deepseek": {
-        "default": "deepseek-flash",
-        "models": ["deepseek-flash", "deepseek-v4-pro"],
+        # 2026-11-21: DeepSeek's own V4 notes name the fast model `deepseek-v4-flash` (read through
+        # search, the docs host was not reachable from where this was checked); `deepseek-flash`
+        # appeared nowhere and would have been a dead choice
+        "default": "deepseek-v4-flash",
+        "models": ["deepseek-v4-flash", "deepseek-v4-pro"],
         "source": "https://api-docs.deepseek.com/quick_start/pricing/",
     },
     "moonshot": {

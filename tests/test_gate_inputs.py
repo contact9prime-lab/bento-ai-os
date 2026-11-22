@@ -625,8 +625,9 @@ def test_the_route_and_the_loop_share_the_rule():
 
 # Every tool is placed. A new one fails this until somebody decides which list it is on.
 NOT_MACHINE = {
+    "usage_report",       # reads the account's own usage rows; an admin's everyone view is its own check
     "app_window_act", "app_window_look", "app_window_open", "app_windows", "ask_agent", "audio", "brief_item",
-    "browser_click", "browser_key", "browser_open", "browser_read", "browser_screenshot", "browser_scroll",
+    "browser_click", "browser_sign_in", "browser_sites", "browser_upload", "browser_key", "browser_open", "browser_read", "browser_screenshot", "browser_scroll",
     "browser_tabs", "browser_type", "browser_wait_for_person", "calendar_events", "community_recall",
     "control_desktop", "create_app", "create_space", "create_trigger", "delegate", "delete_asset", "delete_skill",
     "department_task", "desktop_state", "device_get", "device_set", "discover_mcp_servers", "discover_skills",

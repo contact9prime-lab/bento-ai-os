@@ -485,11 +485,88 @@ def usage_cmd(args):
     from .memory import Store
 
     cfg = cfgmod.load_config()
+    if getattr(args, "action", "") in ("llms", "share", "quota"):
+        return _usage_llms_cli(args, cfg)
     rep = usagemod.report(Store(cfgmod.DB_PATH), cfg, days=args.days, group=args.by)
     if not rep["rows"]:
         print(f"no turns recorded in the last {args.days:g} day(s).")
         return
     print(usagemod.format_report(rep))
+
+
+def _usage_llms_cli(args, cfg):
+    """`bento usage llms|share|quota`: spend per LLM and per account, and the machine's shared LLMs
+    and daily quotas. The terminal is the machine's admin at the box, as for `bento user`; an
+    Isolated Tenant's admin sets the tenant's own in Token Analytics."""
+    from . import config as cfgmod
+    from . import usage as usagemod
+    from . import users as usersmod
+    rest = list(args.rest or [])
+    if args.action == "llms":
+        if args.everyone or not usersmod.enabled():
+            admin = next((u["id"] for u in usersmod.list_users() if usersmod.is_admin(u["id"])), "") \
+                if usersmod.enabled() else ""
+            for a in usagemod.everyone(cfg, args.days, viewer=admin):
+                if usersmod.enabled():
+                    print(f"## {a['name']}")
+                print(usagemod.words(a["llms"], args.days))
+                print()
+            return
+        uid = ""
+        if args.user:
+            u = usersmod.by_name(args.user) or usersmod.get(args.user)
+            if not u:
+                raise SystemExit(f"✗ no account called {args.user} (bento user list)")
+            uid = u["id"]
+        print(usagemod.words(usagemod.by_llm(usersmod.store_for(uid), usersmod.cfg_for(uid) if uid else cfg,
+                                             args.days, uid), args.days))
+        return
+    sh = usagemod.sharing(cfg)
+    uids = {u["id"] for u in usersmod.list_users() if not u.get("tenant")} if usersmod.enabled() else set()
+    if args.action == "share":
+        if len(rest) != 2 or rest[1] not in ("on", "off"):
+            raise SystemExit("usage: bento usage share PROVIDER on|off")
+        off = [p for p in (sh.get("off") or []) if p != rest[0]] + ([rest[0]] if rest[1] == "off" else [])
+        raw = {**sh, "off": off}
+    else:
+        if not rest:
+            q = sh.get("quota") or {}
+            if not q:
+                print("No daily quotas: every account may use every shared LLM as much as it likes.")
+            names = {u["id"]: u.get("name") for u in usersmod.list_users()} if usersmod.enabled() else {}
+            for who, per in q.items():
+                for llm, lim in per.items():
+                    bits = [f"{int(lim['tokens']):,} tokens" if lim.get("tokens") else "",
+                            f"${lim['usd']:.2f}" if lim.get("usd") else ""]
+                    print(f"  {('everyone' if who == '*' else names.get(who, who)):<16} {llm:<28} "
+                          + " and ".join(b for b in bits if b) + " a day")
+            if sh.get("off"):
+                print("Not shared with the accounts: " + ", ".join(usagemod.llm_name(p) for p in sh["off"]))
+            return
+        if len(rest) != 2:
+            raise SystemExit("usage: bento usage quota everyone|NAME LLM [--tokens N] [--usd X]  (0 and 0 clears it)")
+        who = "*" if rest[0] in ("everyone", "*") else (usersmod.by_name(rest[0]) or {}).get("id")
+        if not who:
+            raise SystemExit(f"✗ no account called {rest[0]} (bento user list)")
+        quota = {w: dict(p) for w, p in (sh.get("quota") or {}).items()}
+        lim = {k: v for k, v in (("tokens", args.tokens or 0), ("usd", args.usd or 0)) if v}
+        if lim:
+            quota.setdefault(who, {})[rest[1]] = lim
+        else:
+            quota.get(who, {}).pop(rest[1], None)
+        raw = {**sh, "quota": quota}
+    clean, dropped = usagemod.clean_sharing(raw, cfg.get("providers") or {}, uids)
+    cfg["llm_sharing"] = clean
+    cfgmod.save_config(cfg)
+    try:
+        usersmod.store_for("").audit_add(
+            uid="", principal_kind="user", principal_id="", surface="cli", action="usage.sharing",
+            resource="llm:*", effect="allow", rule="person",
+            reason=f"{len(clean['off'])} not shared, {sum(len(v) for v in clean['quota'].values())} quota(s)",
+            outcome="ok")
+    except Exception:
+        pass
+    print("✓ saved" + (f"; left out: {', '.join(dropped)}" if dropped else ""))
 
 
 def eval_cmd(args):
@@ -3365,7 +3442,8 @@ def _job_cli(args):
                    (("topics", args.topics), ("folder", args.folder), ("url", args.url),
                     ("urls", args.urls), ("names", args.names), ("client", args.client),
                     ("day", args.day), ("at", args.at), ("minutes", args.minutes),
-                    ("deliver", args.deliver))
+                    ("deliver", args.deliver), ("site", args.site), ("about", args.about),
+                    ("publish", args.publish), ("what", args.what), ("page", args.page))
                    if v}
         try:
             res = jobsmod.install(cfg, store, args.name, answers)
@@ -3378,6 +3456,12 @@ def _job_cli(args):
         print(f"  delivers: {res['delivery']['label'].lower()}")
         if res.get("substituted"):
             print(f"  note: {res['substituted']}")
+        # a site it works on: signed in yet, and what the site says about automation (jobs.sites_view)
+        for sv in jobsmod.sites_view(((res["flow"].get("permissions") or {}).get("sites")) or []):
+            print(f"  site: {sv['words']}" + ("" if sv["signed_in"] else
+                  f"  ·  not signed in yet: bento sites signin {sv['site']}"))
+            if sv.get("warn"):
+                print(f"  ⚠ {sv['warn']}")
         # The clock lives in the running server's scheduler; a job added while it is
         # down is still a real row, it just starts ticking at the next start.
         print(f"\n  bento job run {res['flow']['name']}     try it now")
@@ -3674,6 +3758,50 @@ def _ethics_cli2(act, rest, cfg, port, live, ledger):
         return
 
 
+def _sites_cli(args):
+    """`bento sites` — the websites this machine's shared browser is signed in to (cdpbrowser),
+    from a terminal: list them, open one to sign in (it shows in the Web window, or on a phone
+    through a sign-in link when nobody is at a screen), and sign the browser out of one. A
+    terminal can't draw a sign-in page, so `signin` needs the server and a screen or phone."""
+    from . import cdpbrowser
+    from . import config as cfgmod
+    from . import users as usersmod
+    cfg = cfgmod.load_config()
+    port = int(os.environ.get("AGENTOS_PORT") or cfg.get("port") or 8321)
+    act, site = args.action, (args.site or "").strip()
+    if act == "list":
+        if usersmod.enabled():
+            print("This machine has accounts: each person's websites are in Settings → Accounts → "
+                  "Websites, signed in as them. The list below is the machine's own.")
+        rows = cdpbrowser.signed_in(usersmod.home_for(""))
+        if not rows:
+            print("No websites signed in yet. `bento sites signin instagram.com` opens one.")
+        for r in rows:
+            when = time.strftime("%d %b %Y", time.localtime(float(r.get("last") or 0)))
+            print(f"  {r['site']:<28} signed in, last seen {when}")
+            if cdpbrowser.strict_words(r["site"]):
+                print(f"  {'':<28} note: {cdpbrowser.strict_words(r['site'])}")
+        return
+    if not site:
+        print(f"✗ say which site: bento sites {act} instagram.com")
+        sys.exit(2)
+    try:
+        got = _api_call(port, "/api/sites/" + ("signin" if act == "signin" else "forget"), "POST", {"site": site})
+    except OSError:
+        print("✗ Bento isn't running here. Start it (`bento serve`), then try again.")
+        sys.exit(1)
+    if got.get("error"):
+        print(f"✗ {got['error']}")
+        sys.exit(1)
+    if act == "signin":
+        print(f"✓ {got.get('site')} is open in the Web window. Sign in there (or from your phone when "
+              f"a mission asks), and it is remembered.")
+        if got.get("warn"):
+            print(f"  note: {got['warn']}")
+    else:
+        print(f"✓ {got.get('said') or 'signed out'}")
+
+
 def _handoff_cli(args):
     """`bento handoff` — sign-in links for your phone (agentos/handoff.py), from a terminal:
     whether they are offered here, what is open now, and closing it. The link's page is a
@@ -3803,14 +3931,63 @@ def _vault_cli(args):
                 sys.exit(2)
             print("forgotten" if vault.forget(args.name) else f"no secret called '{args.name}'")
             return
+        if args.action == "away":
+            _vault_away(args, uid)
+            return
         print(f"vault: {st['detail']}")
         if st.get("path"):
             print(f"  file: {st['path']}")
+        away = {x["name"]: x for x in (st.get("away") or [])}
         if args.action == "list" or st["count"]:
             for n in st["names"]:
-                print(f"  {n}")
+                x = away.get(n)
+                print(f"  {n:<32} {x['words']}" if x else f"  {n}")
+            if "browser" in away:
+                print(f"  {'browser':<32} {away['browser']['words']}  (websites you're signed in to)")
         if not st["count"]:
             print("  (nothing stored yet)")
+        if away:
+            print("  change one: bento vault away <name> off|always|once|until --days N")
+
+
+def _vault_away(args, uid: str):
+    """`bento vault away <name> <mode>`: how long one secret works with nobody signed in. Turning
+    one on needs your key, so the terminal asks for your password (never on the command line)."""
+    from . import away as awaymod
+    from . import seal
+    from . import vault
+    if not args.name or not args.mode:
+        for x in vault.away_list():
+            print(f"  {x['name']:<32} {x['words']}")
+        print("bento vault away <name> off|always|once|until --days N")
+        print(awaymod.COST_WORDS)
+        return
+    priv = None
+    try:
+        try:
+            meta = vault.set_away(args.name, args.mode, args.days)
+        except seal.Sealed:
+            import getpass
+            pw = getpass.getpass("Your Bento password (to make the copy that works while you're away): ")
+            priv = seal.open_with_password(uid, pw)
+            meta = vault.set_away(args.name, args.mode, args.days, priv)
+    except (ValueError, seal.Sealed) as e:
+        print(f"✗ {e}")
+        sys.exit(1)
+    except KeyError:
+        print(f"✗ no secret called '{args.name}' (bento vault list)")
+        sys.exit(1)
+    finally:
+        priv = None
+    print(f"✓ {vault.label(args.name)}: {awaymod.words(meta)}")
+    try:
+        from . import users as usersmod
+        usersmod.store_for(uid).audit_add(
+            uid=uid, principal_kind="user", principal_id="", surface="cli", action="seal.away",
+            resource=f"vault:{args.name}", effect="allow", rule="person",
+            reason=f"{args.name}: {awaymod.words(meta)}"[:400], outcome="ok")
+    except Exception:
+        pass
 
 
 def _account_cli(args, aid: str):
@@ -6786,7 +6963,7 @@ def _video_cli(args):
     google = cfg["providers"]["google"]
     base = (google.get("base_url") or "https://generativelanguage.googleapis.com").rstrip("/")
     print("  Making it (this can take a minute or two)…")
-    r = httpx.post(base + videogen.ENDPOINT, timeout=600.0, headers={"x-goog-api-key": google["api_key"]},
+    r = httpx.post(base + videogen.ENDPOINT, timeout=600.0, headers={"x-goog-api-key": __import__("agentos.providers", fromlist=["_key"])._key(google)},
                    json=videogen.request(prompt, secs, args.aspect, c["resolution"], c["model"]))
     try:
         ans = r.json()
@@ -6801,7 +6978,7 @@ def _video_cli(args):
                                       title=prompt[:80], prompt=prompt,
                                       source=f"bento video (google/{c['model']}, {secs}s {c['resolution']})"))
     usagemod.record(store, cfg, f"google/{c['model']}", {}, kind="video", surface="cli",
-                    cost_usd=videogen.cost(secs, c["resolution"]))
+                    cost_usd=videogen.cost(secs, c["resolution"]), estimated=True)
     print(f"  ✓ asset {row['id']}  ·  bento assets path {row['id']}")
 
 
@@ -8833,15 +9010,20 @@ def _looks_secret(key: str) -> bool:
     return any(h in k for h in _SECRET_HINTS)
 
 
+def _mask_one(v: str) -> str:
+    # a vault reference says only that it is set: the value is in the vault and no verb prints it
+    return "••• (in the vault)" if v.startswith("vault:") else "•••" + v[-4:]
+
+
 def _redact(value, key: str = ""):
     """A copy of `value` with anything secret-looking masked, preserving shape."""
     if isinstance(value, dict):
-        return {k: ("•••" + str(v)[-4:] if _looks_secret(k) and isinstance(v, str) and v
+        return {k: (_mask_one(v) if _looks_secret(k) and isinstance(v, str) and v
                     else _redact(v, k)) for k, v in value.items()}
     if isinstance(value, list):
         return [_redact(v, key) for v in value]
     if _looks_secret(key) and isinstance(value, str) and value:
-        return "•••" + value[-4:]
+        return _mask_one(value)
     return value
 
 
@@ -9149,8 +9331,48 @@ def _user_cli(args):
                   "`bento user add NAME` turns on accounts — everything already here "
                   "becomes that account's.")
             return
+        names = {t["id"]: t["name"] for t in usersmod.tenants()}
         for u in usersmod.list_users():
-            print(f"  {u['name']:<16} {u['role']:<9} {u.get('display') or ''}")
+            where = names.get(u.get("tenant") or "", "") or "Shared Tenant"
+            print(f"  {u['name']:<16} {u['role']:<9} {where:<24} {u.get('display') or ''}")
+        return
+
+    if act == "scope":
+        # which tenant an account spends keys from: the Shared Tenant (the machine's), or an
+        # Isolated Tenant of its own with its own admin, people and LLM keys (users.set_scope)
+        u = usersmod.by_name(args.name or "")
+        if not u or args.scope not in usersmod.SCOPES:
+            print("usage: bento user scope NAME shared|isolated [--tenant ID] [--yes]")
+            sys.exit(2)
+        drop = usersmod.would_drop(u["id"], args.scope, args.tenant)
+        if drop and not args.yes:
+            print(f"this leaves its tenant with nobody in it, so the tenant's own LLM keys are removed. "
+                  "Add --yes to go ahead.")
+            sys.exit(1)
+        try:
+            r = usersmod.set_scope(u["id"], args.scope, args.tenant)
+        except ValueError as e:
+            print(e)
+            sys.exit(1)
+        print(f"✓ {u['name']} is in " + ("an Isolated Tenant (" + r["tenant"] + "), role " + r["role"]
+                                          if r["tenant"] else "the Shared Tenant, role " + r["role"])
+              + (f"; {r['dropped']} and its keys removed" if r["dropped"] else ""))
+        try:
+            usersmod.store_for("").audit_add(uid="", principal_kind="user", principal_id="", surface="cli",
+                                             action="account.scope", resource=f"user:{u['id']}",
+                                             effect="allow", rule="person", reason=f"now {args.scope}",
+                                             outcome="ok")
+        except Exception:
+            pass
+        return
+
+    if act == "tenants":
+        ts = usersmod.tenants()
+        if not ts:
+            print("every account is in the Shared Tenant: they share this machine's LLM keys, "
+                  "and each one's data is its own.")
+        for t in ts:
+            print(f"  {t['id']:<14} {t['name']:<28} {t['members']} people, admin: {', '.join(t['admins']) or 'none'}")
         return
 
     if act == "add":
@@ -9165,11 +9387,13 @@ def _user_cli(args):
                   "  · the first account is an admin, whatever you ask for")
         pw = args.password or getpass.getpass("password: ")
         try:
-            u = usersmod.create(args.name, pw, role=args.role, display=args.display)
+            u = usersmod.create(args.name, pw, role=args.role, display=args.display,
+                                scope=args.scope or "shared", tenant=args.tenant)
         except ValueError as e:
             print(e)
             sys.exit(1)
-        print(f"✓ {u['name']} ({u['role']}) — home {usersmod.home_for(u['id'])}")
+        print(f"✓ {u['name']} ({u['role']}) — home {usersmod.home_for(u['id'])}"
+              + (f"\n  in an Isolated Tenant of its own: it sets up its own LLM keys" if u.get("tenant") else ""))
         return
 
     if act in ("role", "passwd", "signout", "remove"):
@@ -10422,6 +10646,13 @@ def main():
     p_ask.add_argument("--full", action="store_true", help="full autonomy (no approval prompts)")
 
     p_usage = verb("usage", help="what the agent has spent — tokens, and money where the model is priced")
+    p_usage.add_argument("action", nargs="?", default="report", choices=["report", "llms", "share", "quota"],
+                         help="llms: by LLM, tokens and money; share PROVIDER on|off; quota WHO LLM")
+    p_usage.add_argument("rest", nargs="*", help=argparse.SUPPRESS)
+    p_usage.add_argument("--user", default="", help="llms: one account's")
+    p_usage.add_argument("--everyone", action="store_true", help="llms: every account's")
+    p_usage.add_argument("--tokens", type=int, default=0, help="quota: tokens a day (0: no limit)")
+    p_usage.add_argument("--usd", type=float, default=0.0, help="quota: dollars a day (0: no limit)")
     p_usage.add_argument("--days", type=float, default=1.0, help="how far back (default: 1)")
     p_usage.add_argument("--by", default="model",
                          choices=["model", "day", "surface", "kind", "conversation", "space"])
@@ -10841,12 +11072,21 @@ def main():
     p_job.add_argument("--at", default="", help="time of day, HH:MM")
     p_job.add_argument("--minutes", default="", help="how often, in minutes")
     p_job.add_argument("--deliver", default="", help="report | notify | telegram | whatsapp")
+    p_job.add_argument("--site", default="", help="social-account / portal-fetch / login-watch: the site, e.g. instagram.com")
+    p_job.add_argument("--about", default="", help="social-account: what the account is about, and how it sounds")
+    p_job.add_argument("--publish", default="", help="social-account: ask (show me each post first) | auto")
+    p_job.add_argument("--what", default="", help="portal-fetch: what to bring back")
+    p_job.add_argument("--page", default="", help="login-watch: the page on the site to watch")
 
     p_user = verb("user", help="accounts — several people on one machine, "
                                          "each with their own home")
     p_user.add_argument("action", nargs="?", default="list",
-                        choices=["list", "add", "role", "passwd", "signout", "remove"])
+                        choices=["list", "add", "role", "passwd", "signout", "remove", "scope", "tenants"])
     p_user.add_argument("name", nargs="?", default="")
+    p_user.add_argument("scope", nargs="?", default="",
+                        help="scope: shared (the machine's LLM keys) or isolated (its own tenant)")
+    p_user.add_argument("--tenant", default="", help="add/scope: join this Isolated Tenant")
+    p_user.add_argument("--yes", action="store_true", help="scope: go ahead when it removes an empty tenant")
     p_user.add_argument("--role", default="executor", choices=["admin", "executor"])
     p_user.add_argument("--display", default="", help="the name shown on screen")
     p_user.add_argument("--password", default="", help="prompted for if omitted")
@@ -11126,6 +11366,9 @@ def main():
     p_ethics.add_argument("action", nargs="?", default="",
                           choices=["", "show", "check", "own", "prove", "proved", "forget", "flags", "report", "score", "clear", "library", "reviewer"])
     p_ethics.add_argument("rest", nargs=argparse.REMAINDER)
+    p_sites = verb("sites", help="websites your browser is signed in to for your agent: list, sign in, forget")
+    p_sites.add_argument("action", nargs="?", default="list", choices=["list", "signin", "forget"])
+    p_sites.add_argument("site", nargs="?", default="")
     p_handoff = verb("handoff", help="sign-in links for your phone: are they offered, what is open, close it")
     p_handoff.add_argument("action", nargs="?", default="status", choices=["status", "on", "off", "close"])
     p_voice = verb("voice", help="which engine reads your agents aloud: this browser, this computer, "
@@ -11140,8 +11383,11 @@ def main():
     p_voice.add_argument("-o", "--out", default="", help="try: where to write the audio")
     p_vault = verb("vault", help="the secrets this machine keeps for you — where, how protected, "
                                   "and which; never their values")
-    p_vault.add_argument("action", nargs="?", default="status", choices=["status", "list", "forget"])
-    p_vault.add_argument("name", nargs="?", default="", help="forget: the secret's name")
+    p_vault.add_argument("action", nargs="?", default="status", choices=["status", "list", "forget", "away"])
+    p_vault.add_argument("name", nargs="?", default="", help="forget/away: the secret's name")
+    p_vault.add_argument("mode", nargs="?", default="",
+                         help="away: off (only while signed in) | always (until revoked) | until | once")
+    p_vault.add_argument("--days", type=float, default=None, help="away until: how many days")
     p_vault.add_argument("--user", default="", help="which account's vault, on a machine with users")
     for _aid, _acts in (("mail", ["show", "set", "test", "search", "read", "signin", "signout"]),
                         ("calendar", ["show", "set", "test", "today", "week", "signin", "signout"])):
@@ -11477,6 +11723,8 @@ def main():
         _ethics_cli(args)
     elif args.cmd == "handoff":
         _handoff_cli(args)
+    elif args.cmd == "sites":
+        _sites_cli(args)
     elif args.cmd == "voice":
         sys.exit(_voice_cli(args) or 0)
     elif args.cmd == "vault":

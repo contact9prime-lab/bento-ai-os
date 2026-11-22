@@ -474,6 +474,12 @@ def save_config(cfg: dict) -> None:
     uid = usersmod.current() if usersmod.enabled() else ""
     if uid:
         usersmod.save_user_cfg(uid, cfg)
+        tid = usersmod.tenant_of(uid)
+        if tid:
+            # an Isolated Tenant's admin saves the tenant's keys; nobody in it writes the machine's
+            if usersmod.is_tenant_admin(uid):
+                usersmod.save_tenant_cfg(tid, cfg)
+            return
         if not usersmod.is_admin(uid):
             return
         cfg = usersmod.machine_view(cfg)
@@ -484,6 +490,13 @@ def save_config(cfg: dict) -> None:
         usersmod.machine_changed(cfg)
     AGENTOS_HOME.mkdir(parents=True, exist_ok=True)
     lock_home()
+    # the machine's own tokens go into the machine's vault before the file is written
+    from . import vault
+    try:
+        with usersmod.as_user(""):
+            vault.adopt(cfg)
+    except Exception:
+        pass
     write_private(CONFIG_PATH, json.dumps(cfg, indent=2))
     from . import integrity
     integrity.noted(CONFIG_PATH)      # the OS's own write, so the watcher can tell it from another's

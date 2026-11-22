@@ -3304,6 +3304,9 @@ body.dev-touch .ob-face,body.dev-touch .ob-crew-name input,body.dev-touch #ob-cr
    {width:100%}`, which is one class MORE specific than a bare `.usr-role` and
    quietly won — the select took the whole line and pushed every button below it,
    turning one account into three rows. */
+/* the scope (users.TENANT_KEYS): as compact as the role beside it, never a whole row */
+.usr-row .usr-scope{flex:none;width:190px;font-size:var(--fs-sm);padding:5px 8px}
+@media (max-width:560px){.usr-row .usr-scope{width:100%}}
 .usr-row .usr-role{flex:none;width:132px;font-size:var(--fs-sm);padding:5px 8px;
   border-radius:var(--r-sm);background:var(--bg3);border:1px solid var(--hairline);
   color:var(--txt)}
@@ -8023,6 +8026,53 @@ body:not(.immersive) #mbrail #fwdchip::after{content:'';width:8px;height:8px;bor
 #mbrail #tray-net.off{background:color-mix(in srgb,var(--warn,#f5a524) 18%,transparent)}
 /* what opens from the rail opens beside it, not over it */
 body.mb-rail #ccpop,body.mb-rail #netpop,body.mb-rail #notifpanel,body.mb-rail #powermenu{right:calc(var(--railw) + 8px)}
+/* Your secrets (11o-seal.js): the recovery code dialog and its password box. */
+.seal-dlg{max-width:440px}
+.seal-code{font:600 clamp(15px,4.4vw,18px)/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.05em;
+  margin:12px 0 6px;padding:14px;border:1px dashed var(--acc);border-radius:12px;
+  background:color-mix(in srgb,var(--acc) 8%,transparent);user-select:all;text-align:center}
+.seal-code span{display:inline-block;white-space:nowrap}
+.seal-tick{display:flex;gap:10px;align-items:flex-start;text-align:left;font-size:13px;margin:10px 0 4px;cursor:pointer}
+.seal-tick input{width:20px;height:20px;flex:none;margin-top:1px}
+.seal-pw{width:100%;margin:12px 0 4px;padding:10px 12px;font:inherit;font-size:16px;border-radius:10px;
+  border:1px solid var(--line,var(--bg3));background:var(--bg2);color:var(--txt)}
+.seal-awayh{display:flex;align-items:center;gap:6px;margin:14px 16px 0;font-size:13px}
+.seal-away{max-width:100%;padding:8px 10px;font:inherit;font-size:13px;border-radius:9px;
+  border:1px solid var(--line,var(--bg3));background:var(--bg2);color:var(--txt);min-height:var(--tap,32px)}
+/* Token Analytics: by LLM, everyone, and the shared LLMs with their daily quotas (19-tokens…js). */
+.usg-llm{padding:10px 12px;border:1px solid var(--line);border-radius:var(--r-md,10px);margin-bottom:8px;background:color-mix(in srgb,var(--bg2) 60%,transparent)}
+.usg-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.usg-usd{font-variant-numeric:tabular-nums;font-weight:700}
+.usg-nums{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:var(--fs-xs);color:var(--dim);margin:4px 0 6px;font-variant-numeric:tabular-nums}
+.usg-how{font-size:var(--fs-xs);margin-top:5px;overflow-wrap:anywhere}
+.usg-q{margin-top:8px;font-size:var(--fs-xs)}
+.usg-q .bar{margin-top:4px}
+.usg-chart{display:flex;align-items:flex-end;gap:5px;height:96px;padding:6px 0}
+.usg-col{flex:1;min-width:0;max-width:56px;display:flex;flex-direction:column;align-items:center;gap:3px;height:100%}
+.usg-col span{font-size:9px;color:var(--dim2)}
+.usg-bh{flex:1;width:100%;display:flex;align-items:flex-end}
+.usg-bh div{width:100%;border-radius:4px 4px 0 0;background:var(--acc-grad,linear-gradient(var(--acc),var(--acc2)));min-height:2px}
+.usg-tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.usg-t{width:100%;border-collapse:collapse;font-size:var(--fs-sm);font-variant-numeric:tabular-nums}
+.usg-t th,.usg-t td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap;vertical-align:top}
+.usg-t th{font-size:var(--fs-2xs);color:var(--dim2);font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.usg-t td small{display:block;color:var(--dim2);font-size:var(--fs-2xs)}
+.usg-share{display:flex;flex-wrap:wrap;gap:6px 16px;margin-bottom:10px}
+.usg-chk{display:inline-flex;align-items:center;gap:8px;min-height:var(--tap,32px);white-space:nowrap}
+.usg-chk input[type=checkbox]{margin:0;flex:0 0 auto;width:18px;height:18px;min-width:0;max-width:18px;padding:0}
+.usg-qrow{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1.2fr) minmax(0,1fr) minmax(0,1fr) auto;gap:8px;align-items:center;margin-bottom:8px}
+.usg-qrow label{display:flex;flex-direction:column;gap:2px;font-size:var(--fs-2xs);color:var(--dim2)}
+.usg-qrow input,.usg-qrow select{width:100%;min-width:0}
+.usg-qrow button{min-width:var(--tap,32px);min-height:var(--tap,32px)}
+.usg-act{gap:8px;justify-content:flex-end;margin-top:6px}
+.usg-act button{flex:0 0 auto}
+.usg-days button{min-height:var(--tap,28px)}
+@media (max-width:560px){
+  .usg-qrow{grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;padding:8px;border:1px solid var(--line);border-radius:8px}
+  .usg-qrow > button{grid-column:3;grid-row:1}
+  .usg-qrow > label:nth-of-type(1){grid-column:1;grid-row:2}
+  .usg-qrow > label:nth-of-type(2){grid-column:2;grid-row:2}
+}
 </style>
 </head>
 <body>
@@ -16976,7 +17026,7 @@ const APPS={
   themes:{id:'themes',title:'Themes',icon:'',w:720,h:600,desc:'Switch, build & AI-design desktop themes',render:renderThemes},
   personalize:{id:'personalize',title:'Personalize',icon:'',w:620,h:560,desc:'AI wallpapers & gallery',render:renderPersonalize},
   snapshots:{id:'snapshots',title:'Snapshots',icon:'',w:560,h:500,desc:'Restore points — roll the OS back in time',render:renderSnapshots},
-  tokens:{id:'tokens',title:'Token Analytics',icon:'',w:600,h:540,desc:'Token usage over time, by model',render:renderTokens},
+  tokens:{id:'tokens',title:'Token Analytics',icon:'',w:640,h:600,desc:'Tokens and money by LLM and account, and daily quotas',render:renderTokens},
   train:{id:'train',title:'Train',icon:'',w:1100,h:700,desc:'Fine-tune & evaluate your own models (TrainForge)',
     render:renderTrain,onClose(w){if(w._onSetup)TRAIN_SETUP_LISTENERS.delete(w._onSetup);return true}},
   mission:{id:'mission',title:'Mission Control',icon:'◎',w:860,h:600,desc:'The whole lifecycle: Train · Test · Operate · Build · Ship · Manage',
@@ -20162,6 +20212,8 @@ function handle(ev){
         try{f.contentWindow.postMessage({agentos:'app_data',key:ev.key||''},'*')}catch(_){}});
       break;
     case 'grants': refreshApp('permissions'); if(ev.revoked)reloadAppFrames(); break;
+    case 'sites': if(typeof renderSites==='function')renderSites(); break;
+    case 'seal_need': if(typeof sealLend==='function')sealLend(ev); break;
     case 'widgets': if(Date.now()>widgetEchoUntil)loadWidgets(); break;
     case 'arena': arenaEvent(ev); break;
     case 'checkpoint': ttLayoutSave(ev.id); if(TT.w&&TT.conv===ev.conversation_id)refreshApp('timetravel'); break;
@@ -21871,6 +21923,10 @@ function setTab(body,all){
     P.push(`<h2>Accounts</h2><p class="lead">The mailbox and calendar your agent reads for you, and the GitHub account it pushes to. ${pInfo('Sign in with Google or Microsoft, or use an app password for anything else. Passwords are kept in the vault, and every read is logged.')}</p>`);
     P.push(`<div id="acct-list" data-f="accounts mail calendar sign in google microsoft oauth imap caldav ics gmail outlook icloud fastmail app password vault mcp"><p class="mut">checking…</p></div>`);
     setTimeout(renderAccounts,0);
+    P.push(`<div id="site-list" data-f="websites browser signed in instagram linkedin portal login"><p class="mut">checking…</p></div>`);
+    setTimeout(renderSites,0);
+    P.push(`<div id="seal-card" data-f="secrets sealed vault password recovery code encrypted"></div>`);
+    setTimeout(renderSeal,0);
     P.push(pGroup('GitHub',[
       pRow('Personal access token',pSecret('s-gh-token',cfg.github&&cfg.github._has_token,(cfg.github&&cfg.github.token)||'','github_pat_… / ghp_…'),
         {desc:(cfg.github&&cfg.github._has_token)?'A token is saved. Fine-grained tokens work best.':'Lets the agent create repos and push what it builds.',
@@ -25618,7 +25674,7 @@ var SETSUBS={
   network:[['Discovery','Discovery and linkage'],['Linked teams','Linked teams'],['Community','Community'],['Messages','Messages'],['Mapping','Team to agent mapping'],['Maps','Maps']],
   permissions:[['Autonomy','On their own'],['Ethics','Ethics'],['Security','Security'],['Ledger','The ledger']],
   channels:[['Authorization','Authorization'],['Approvals','Approvals'],['Overview','Ways to reach it'],['Remote browser','Remote browser'],['Telegram','Telegram'],['WhatsApp','WhatsApp'],['Built in','Built in']],
-  accounts:[['Sign in','Sign in'],['Mail & calendar','Mail'],['App registration','App registration'],['Vault','Vault'],['GitHub','GitHub']],
+  accounts:[['Sign in','Sign in'],['Mail & calendar','Mail'],['Websites','Websites'],['Your secrets','Your secrets'],['App registration','App registration'],['Vault','Vault'],['GitHub','GitHub']],
   voice:[['Speech','Speech'],['Listening','Listening']],
   look:[['Look','Look'],['Characters','Characters'],['Office','Office'],['This screen','On this screen']],
   system:[['Version','Version'],['People','People'],['Setup','Footprint'],['Backup & cloud','Backup'],['Machine','Machine']],
@@ -26119,6 +26175,223 @@ async function voiceEnginePaint(){
   now.textContent=((d.titles||{})[cur])||cur;
   const bv=document.getElementById('v-voice'),row=bv&&bv.closest('.prow');
   if(row)row.style.display=cur==='browser'?'':'none';
+}
+/* ================= Websites: the sites your agent uses in your browser, signed in as you ======
+   The shared browser (cdpbrowser) keeps a sign-in as cookies in this account's own profile; this
+   card lists which sites have been signed in to (GET /api/sites), opens a new one for you to sign
+   in (POST /api/sites/signin: the Web window shows it), and signs the browser out of one (Forget).
+   A mission names its sites in permissions.sites and the consent screen says whether each is
+   signed in. Faces — GUI and SUI: this card. TUI: `bento sites`. Phone: a mission that meets a
+   sign-in with nobody at a screen asks on the owner's Telegram or WhatsApp (cdpbrowser.tool_wait).
+   `var`, not `let`: the bundle's TDZ trap. */
+var SITES={list:[],browser:null,busy:''};
+
+async function renderSites(){
+  const box=document.getElementById('site-list');if(!box)return;
+  let d={};try{d=await apiJSON('/api/sites')}catch(e){box.innerHTML=`<p class="mut">${esc(e.message||'could not read the sites')}</p>`;return}
+  SITES.list=d.sites||[];SITES.browser=d.browser||{};
+  const ok=SITES.browser.ok!==false;
+  const rows=SITES.list.map(r=>{
+    const when=new Date((+r.last||0)*1000).toLocaleDateString(undefined,{day:'numeric',month:'short'});
+    return `<div class="prow" data-f="website ${esc(r.site)}"><div class="pl"><b>${esc(r.site)}</b>
+      <small class="mut">signed in · last seen ${esc(when)}${r.warn?' '+pInfo(r.warn):''}</small></div>
+      <div class="pc"><button class="endbtn" onclick="sitesForget('${jsq(r.site)}')">Forget</button></div></div>`;
+  }).join('')||`<div class="ghint">No websites yet. Sign in to one below, or ask your agent to log in to it.</div>`;
+  box.innerHTML=`<div class="pgroup chan" data-f="websites browser signed in instagram linkedin portal login">
+    <h3>Websites</h3>
+    <div class="ghint">Sites your agent and your missions use in your browser, signed in as you. ${pInfo('The sign-in stays in your browser on this machine. Your agent never sees the password. Posting or sending on a site asks you first unless a mission was set to post on its own.')}</div>
+    ${rows}
+    <div class="prow"><div class="pl"><b>Sign in to a site</b><small>${ok?'It opens in the Web window, for you to sign in.':esc(SITES.browser.why||'The shared browser can’t run here.')}</small></div>
+      <div class="pc sites-add"><input id="sites-new" placeholder="instagram.com" spellcheck="false" autocomplete="off" ${ok?'':'disabled'}>
+      <button class="endbtn" id="sites-go" ${ok?'':'disabled'} onclick="sitesSignIn()">Sign in</button></div></div>
+  </div>`;
+  const inp=document.getElementById('sites-new');if(inp)inp.onkeydown=e=>{if(e.key==='Enter')sitesSignIn()};
+}
+
+/* the page's sign-in: the server opens the site in the shared browser and the Web window shows
+   it here. The card repaints when the sign-in is recorded (the `sites` event). */
+async function sitesSignIn(site){
+  site=String(site||((document.getElementById('sites-new')||{}).value)||'').trim();
+  if(!site){toast('Type the site, like instagram.com');return}
+  try{
+    const j=await apiJSON('/api/sites/signin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({site})});
+    if(typeof openApp==='function')openApp('browser');
+    toast(`Sign in to ${j.site} in the Web window. I’ll remember it once you’re in.`);
+    if(j.warn)setTimeout(()=>toast(j.warn,{kind:'warn'}),600);
+  }catch(e){toast(e.message||'could not open it')}
+}
+
+async function sitesForget(site){
+  const ask=`Sign your browser out of ${site}? Missions that use it will ask you to sign in again.`;
+  if(typeof osConfirm==='function'?!(await osConfirm(ask)):!confirm(ask))return;
+  try{await apiJSON('/api/sites/forget',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({site})});
+    toast(`Signed out of ${site}`);renderSites()}catch(e){toast(e.message||'could not reach the server')}
+}
+/* ================= Your secrets: sealed with your password (seal.py) ======================
+   Each account's vault and website sign-ins are locked with a key made from that person's
+   password. While they're signed in, half of it sits in this browser's cookie and half on the
+   server, so neither alone opens anything. This file is the desktop's part:
+   - `seal_need` (09-websocket.js) asks this page to lend its half to one mission step;
+   - after a server restart the server holds no half, so the card (and one toast) asks for the
+     password once;
+   - a recovery code is shown once, by `sealShowCode`, when an account is first sealed here
+     (the first account made from the desktop) or a new one is asked for.
+   Faces: GUI and SUI, this card and the sign-in page (login.html). TUI: `bento vault`, which
+   says the vault is sealed and that it opens from a signed-in browser.
+   `var`, not `let`: the bundle's TDZ trap. */
+var SEAL={st:null,told:false};
+
+async function sealLoad(){
+  try{SEAL.st=await apiJSON('/api/seal')}catch(e){SEAL.st=null}
+  return SEAL.st;
+}
+
+/* One step of a mission needs the key and this page is the person's: lend this browser's half
+   (the cookie goes with the request; script never reads it). Said in a quiet toast. */
+async function sealLend(ev){
+  try{
+    const r=await fetch('/api/seal/lend',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ticket:ev.ticket})});
+    const d=await r.json().catch(()=>({}));
+    if(d.ok&&ev.why)toast('Opened for a mission: '+ev.why,{kind:'info'});
+  }catch(e){}
+}
+
+/* The code is shown once and never stored: copy it, download it, and say it was kept. */
+function sealShowCode(code,why){
+  return new Promise(res=>{
+    const mk=(t,c,txt)=>{const e=document.createElement(t);if(c)e.className=c;if(txt!=null)e.textContent=txt;return e};
+    const scr=mk('div','dlg-scrim');const dlg=mk('div','dlg seal-dlg');dlg.setAttribute('role','dialog');
+    dlg.setAttribute('aria-modal','true');
+    const ok=mk('button','dlg-ok','Continue');ok.disabled=true;
+    const tick=document.createElement('input');tick.type='checkbox';tick.onchange=()=>{ok.disabled=!tick.checked};
+    const lab=mk('label','seal-tick');lab.append(tick,mk('span','',"I've saved it somewhere safe. Bento won't show it again."));
+    const copy=mk('button','dlg-cancel','Copy');
+    copy.onclick=async()=>{try{await navigator.clipboard.writeText(code);copy.textContent='Copied'}catch(e){copy.textContent='Select it and copy'}};
+    const save=mk('button','dlg-cancel','Download');
+    save.onclick=()=>{const a=document.createElement('a');a.download='bento-recovery-code.txt';
+      a.href=URL.createObjectURL(new Blob(['Bento recovery code\n\n'+code+'\n\nKeep this somewhere safe, away from this computer.\n'],{type:'text/plain'}));
+      document.body.append(a);a.click();a.remove()};
+    const row=mk('div','dlg-b');row.append(copy,save);
+    dlg.append(mk('div','dlg-icn','🔑'),mk('div','dlg-t','Save your recovery code'),mk('div','dlg-m',why||''),
+      (()=>{const c=mk('div','seal-code');code.split('-').forEach((g,i,a)=>c.append(mk('span','',g+(i<a.length-1?'-':''))));return c})(),row,lab,(()=>{const b=mk('div','dlg-b');b.append(ok);return b})());
+    scr.append(dlg);document.body.append(scr);
+    ok.onclick=()=>{scr.remove();res(true)};
+    tick.focus();
+  });
+}
+
+/* Settings → Accounts → Your secrets */
+async function renderSeal(){
+  const box=document.getElementById('seal-card');if(!box)return;
+  const st=await sealLoad();
+  if(!st){box.replaceChildren();return}
+  const mk=(t,c,txt)=>{const e=document.createElement(t);if(c)e.className=c;if(txt!=null)e.textContent=txt;return e};
+  const g=mk('div','pgroup chan');g.dataset.f='secrets sealed vault password recovery code encrypted';
+  g.append(mk('h3','','Your secrets'));
+  const hint=mk('div','ghint',st.detail||'');g.append(hint);
+  if(st.sealed){
+    const row=(title,sub,ctl)=>{const r=mk('div','prow');const l=mk('div','pl');l.append(mk('b','',title),mk('small','',sub));
+      const c=mk('div','pc');if(ctl)c.append(...ctl);r.append(l,c);return r};
+    if(!st.open){
+      const pw=document.createElement('input');pw.type='password';pw.placeholder='Your password';pw.autocomplete='current-password';
+      const b=mk('button','endbtn','Open');
+      b.onclick=async()=>{b.disabled=true;
+        try{await apiJSON('/api/seal/open',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw.value})});
+          toast('✓ Your secrets are open while you’re signed in');renderSeal()}
+        catch(e){toast(e.message||'that did not open it',{kind:'err'})}finally{b.disabled=false}};
+      pw.onkeydown=e=>{if(e.key==='Enter')b.click()};
+      g.append(row('Closed since Bento restarted','Secrets set to only while you’re signed in wait for your password once.',[pw,b]));
+    }else{
+      g.append(row('Open while you’re signed in','Missions can use them while a page of yours is open, even locked.'));
+    }
+    const when=st.code_at?new Date(st.code_at*1000).toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'}):'';
+    const nb=mk('button','endbtn','New code');
+    nb.onclick=async()=>{
+      const pw=await sealAskPassword('A new recovery code','The old one stops working. Enter your password to make a new one.');
+      if(!pw)return;
+      try{const d=await apiJSON('/api/seal/code',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
+        await sealShowCode(d.recovery_code,'This replaces your old recovery code. If you forget your password, it is the only way back to your saved passwords and website sign-ins.');
+        renderSeal()}catch(e){toast(e.message||'could not make a new code',{kind:'err'})}};
+    g.append(row('Recovery code',when?'Made '+when+'. Shown once, never kept on this machine.':'Shown once, never kept on this machine.',[nb]));
+    if((st.secrets||[]).length){
+      const h=mk('div','seal-awayh');h.append(mk('b','','While you’re away'));
+      h.append(pInfoEl(st.away_cost||''));
+      g.append(h,mk('div','ghint','Missions, schedules and your phone bots use these with nobody signed in. Pick how long each one may.'));
+      st.secrets.forEach(x=>g.append(row(x.label,x.words,[sealAwaySelect(x)])));
+    }
+  }
+  box.replaceChildren(g);
+}
+
+/* The ⓘ beside a heading: one or two sentences, shown on hover, focus or tap. */
+function pInfoEl(text){
+  const b=document.createElement('button');b.type='button';b.className='pinfo';b.textContent='i';
+  b.dataset.tip=text;b.setAttribute('aria-label',text);
+  return b;
+}
+
+/* How long one secret works while you're away (away.py). Switching one on needs your key,
+   which this browser carries; after a restart, the password is asked once first. */
+var SEAL_CHOICES=[['off','Only while I’m signed in'],['always','Until I revoke it'],
+  ['d7','For 7 days'],['d30','For 30 days'],['once','Once, for the next run']];
+function sealAwaySelect(x){
+  const sel=document.createElement('select');sel.className='seal-away';sel.setAttribute('aria-label','While you’re away: '+x.label);
+  const cur=x.mode==='until'?'until':x.mode;
+  SEAL_CHOICES.forEach(([v,t])=>{const o=document.createElement('option');o.value=v;o.textContent=t;sel.append(o)});
+  if(cur==='until'&&x.until){const o=document.createElement('option');o.value='until';
+    o.textContent='Until '+new Date(x.until*1000).toLocaleDateString(undefined,{day:'numeric',month:'short'});sel.append(o)}
+  sel.value=cur;
+  sel.onchange=async()=>{
+    const v=sel.value;if(v==='until')return;
+    const body={name:x.name,mode:v.startsWith('d')?'until':v};if(v.startsWith('d'))body.days=+v.slice(1);
+    const send=()=>fetch('/api/seal/away',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    sel.disabled=true;
+    try{
+      let r=await send();
+      if(r.status===409){
+        const pw=await sealAskPassword('Your password','Bento needs your key once to make the copy that works while you’re away.');
+        if(!pw){renderSeal();return}
+        const o=await fetch('/api/seal/open',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
+        if(!o.ok){const d=await o.json().catch(()=>({}));toast(d.error||'that did not open it',{kind:'err'});renderSeal();return}
+        r=await send();
+      }
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok)toast(d.error||'could not change it',{kind:'err'});
+      else toast('✓ '+x.label+': '+((d.secrets||[]).find(y=>y.name===x.name)||{}).words);
+    }catch(e){toast('could not change it',{kind:'err'})}
+    renderSeal();
+  };
+  return sel;
+}
+
+function sealAskPassword(title,msg){
+  return new Promise(res=>{
+    const mk=(t,c,txt)=>{const e=document.createElement(t);if(c)e.className=c;if(txt!=null)e.textContent=txt;return e};
+    const scr=mk('div','dlg-scrim');const dlg=mk('div','dlg');
+    const pw=document.createElement('input');pw.type='password';pw.placeholder='Your password';pw.className='seal-pw';
+    const ok=mk('button','dlg-ok','Continue'),no=mk('button','dlg-cancel','Cancel');
+    const b=mk('div','dlg-b');b.append(no,ok);
+    dlg.append(mk('div','dlg-t',title),mk('div','dlg-m',msg),pw,b);scr.append(dlg);document.body.append(scr);
+    const done=v=>{scr.remove();res(v)};
+    ok.onclick=()=>done(pw.value);no.onclick=()=>done('');
+    pw.onkeydown=e=>{if(e.key==='Enter')done(pw.value);if(e.key==='Escape')done('')};
+    pw.focus();
+  });
+}
+
+/* Once per page: a sealed account whose server forgot its half (a restart) is told where to
+   open it, with the door. Quiet otherwise. */
+async function sealBoot(){
+  const st=await sealLoad();
+  if(!st||!st.sealed||st.open||SEAL.told)return;
+  // only what is set to "only while I'm signed in" is closed: the rest works while you're away
+  const closed=(st.secrets||[]).filter(x=>!x.away);
+  if(st.secrets&&!closed.length)return;
+  SEAL.told=true;
+  toast((closed.length?`Bento restarted, so ${closed.length===1?closed[0].label+' is':closed.length+' of your secrets are'} closed until you sign in. `
+    :'Bento restarted, so your secrets are closed. ')+'Enter your password once to open '+(closed.length===1?'it.':'them.'),
+    {label:'Open',go:()=>{if(typeof placeSettings==='function')placeSettings('accounts','Your secrets')()}});
 }
 /* ================= memory app ================= */
 let memTab='user';
@@ -28609,6 +28882,9 @@ function jobForm(r){
     if(n.kind==='minutes')return `<label class="job-q"><span>${esc(n.label)}</span>
       <span class="job-mins"><input id="${id}" type="number" min="5" step="5" value="${esc(n.default||'60')}"> minutes</span>
       ${n.help?`<em>${esc(n.help)}</em>`:''}</label>`;
+    if(n.kind==='choice'&&(n.choices||[]).length)return `<label class="job-q"><span>${esc(n.label)}</span>
+      <select id="${id}">${n.choices.map(c=>`<option value="${esc(c[0])}" ${c[0]===(n.default||'')?'selected':''}>${esc(c[1])}</option>`).join('')}</select>
+      ${n.help?`<em>${esc(n.help)}</em>`:''}</label>`;
     if(n.kind==='lines')return `<label class="job-q"><span>${esc(n.label)}</span>
       <textarea id="${id}" rows="3" placeholder="${esc(n.placeholder||'')}" spellcheck="false" autocomplete="off">${esc(n.default||'')}</textarea>
       ${n.help?`<em>${esc(n.help)}</em>`:''}</label>`;
@@ -28666,9 +28942,15 @@ async function jobConsent(r){
       if(t.kind==='os_event')return `<li>runs when something changes in that folder</li>`;
       return '';
     }).join('');
-    box.innerHTML=`<b>What you are agreeing to</b><ul>${when}${reads}${reach}
+    // signed-in sites: what it may do there, the site's own warning, and whether you are
+    // signed in yet (Sign in opens it in the Web window, the same door as Settings → Websites)
+    const sites=(d.sites||[]).map(s=>`<li>${esc(s.words)}${s.signed_in?' · <span class="job-ok">signed in</span>'
+      :` · <span class="job-warn">not signed in yet</span> <button class="endbtn job-signin" data-site="${esc(s.site)}">Sign in</button>`}
+      ${s.warn?`<div class="job-warn">${esc(s.warn)}</div>`:''}</li>`).join('');
+    box.innerHTML=`<b>What you are agreeing to</b><ul>${when}${reads}${reach}${sites}
       <li>delivers by: ${esc((d.delivery||{}).label||'report')}</li>
       <li>${d.grants.length} permission${d.grants.length===1?'':'s'}, all revocable in Permissions</li></ul>`;
+    box.querySelectorAll('.job-signin').forEach(b=>b.onclick=e=>{e.preventDefault();sitesSignIn(b.dataset.site)});
   }catch(e){}
 }
 
@@ -28911,7 +29193,10 @@ function jobGrantWords(g){
   const verb={'tool.use':'use','fs.read':'read','fs.write':'write to','net.fetch':'fetch from',
     'agent.invoke':'hand work to','memory.read':'read memory','memory.write':'write memory',
     'mail.read':'read your mail','calendar.read':'read your calendar','skill.use':'use the skill',
-    'agent.message':'ask','mcp.call':'call the MCP server'}[g.action];
+    'agent.message':'ask','mcp.call':'call the MCP server','browser.read':'read pages, signed in as you, on',
+    'browser.act':'click and type, as you, on','browser.commit':'post, send or submit on its own on'}[g.action];
+  // a site's own warning rides on its read row (cdpbrowser.STRICT_SITES), said once
+  if(g.action==='browser.read'&&/doesn't allow/.test(g.note||''))return who+verb+' '+tail+'. '+String(g.note).split('. ').slice(1).join('. ');
   if(!verb)return who+g.action+(tail?' '+tail:'');
   return who+verb+(tail&&!/memory|mail|calendar/.test(verb)?' '+tail:'');
 }
@@ -29385,7 +29670,7 @@ var OB_CLOUD=[
   {id:'google',label:'Google (Gemini)',model:'gemini-3.8-flash',
    where:'aistudio.google.com'},
   {id:'openai',label:'OpenAI',model:'gpt-6.1-sol',where:'platform.openai.com'},
-  {id:'deepseek',label:'DeepSeek',model:'deepseek-flash',where:'platform.deepseek.com'},
+  {id:'deepseek',label:'DeepSeek',model:'deepseek-v4-flash',where:'platform.deepseek.com'},
   {id:'moonshot',label:'Moonshot (Kimi)',model:'kimi-k3.1-pro',
    where:'platform.moonshot.ai'},
   {id:'openrouter',label:'OpenRouter — many models, one key',
@@ -29876,6 +30161,8 @@ var OB_WIRE={
           headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
         const d=await r.json().catch(()=>({}));
         if(!r.ok)return obMsg(d.error||'could not create the account','warn');
+        if(d.recovery_code&&typeof sealShowCode==='function')await sealShowCode(d.recovery_code,
+          'Your saved passwords and website sign-ins are now locked with your password. Nobody else can open them, not even an admin. If you forget your password, this code is the only way back in.');
         obMsg(d.signed_in?`signed in as ${body.name} — this is your machine now`
                          :`${body.name} can sign in, here and from their phone`,'ok');
         if(typeof usersBoot==='function')usersBoot();
@@ -31622,33 +31909,120 @@ async function wpSystem(){const r=await fetch('/api/wallpaper/system',{method:'P
 async function pzDel(id){await fetch('/api/wallpapers/'+id,{method:'DELETE'});refreshApp('personalize')}
 
 /* ================= token analytics app ================= */
+/* ================= usage app =================
+   Every call to an LLM is counted where it is made (usage.meter), in the account that made it:
+   tokens in, out and in all, and dollars, the provider's own figure kept apart from our estimate.
+   An admin also sees every account and sets which LLMs are shared and each account's daily quota.
+   GUI here; TUI `bento usage llms|share|quota`; the agent answers through `usage_report`. */
+var USAGE={days:1,d:null,rows:null};
+function usageFmt(n){n=+n||0;return n>=1e6?(n/1e6).toFixed(2)+'M':n>=1e4?(n/1e3).toFixed(1)+'k':n.toLocaleString()}
+function usageUsd(v){v=+v||0;return v===0?'$0':v<1?'$'+v.toFixed(4):'$'+v.toFixed(2)}
+function usageMoneyWords(l){
+  if(l.usd_exact&&l.usd_estimated)return `${usageUsd(l.usd_exact)} stated by the provider, ${usageUsd(l.usd_estimated)} estimated`;
+  if(l.usd_estimated)return 'estimated from the price list';
+  if(l.usd_exact)return 'as the provider stated it';
+  return l.unpriced?'no price for this model':'';
+}
 async function renderTokens(body){
-  const d=await (await fetch('/api/analytics/tokens')).json();
-  const fmt=n=>n>=1e6?(n/1e6).toFixed(2)+'M':n>=1e3?(n/1e3).toFixed(1)+'k':(''+n);
-  const t=d.total||{in:0,out:0,turns:0};
-  const models=Object.entries(d.by_model||{}).sort((a,b)=>(b[1].in+b[1].out)-(a[1].in+a[1].out));
-  const maxM=Math.max(1,...models.map(([,v])=>v.in+v.out));
-  const days=(d.by_day||[]).slice(-14);
-  const maxD=Math.max(1,...days.map(x=>x.in+x.out));
-  body.innerHTML=`<div class="pad">
+  let d;
+  try{d=await apiJSON('/api/usage/llms?days='+USAGE.days+'&everyone=1')}
+  catch(e){body.innerHTML=`<div class="pad"><p class="mut">${esc(e.message||'Usage could not be read.')}</p></div>`;return}
+  USAGE.d=d;
+  const llms=d.llms||[];
+  const sum=llms.reduce((a,l)=>({in:a.in+l.in,out:a.out+l.out,usd:a.usd+l.usd,est:a.est+l.usd_estimated,calls:a.calls+l.calls}),{in:0,out:0,usd:0,est:0,calls:0});
+  const when={1:'Today',7:'Last 7 days',30:'Last 30 days'}[USAGE.days]||'';
+  const seg=`<div class="seg usg-days">${[[1,'Today'],[7,'7 days'],[30,'30 days']].map(([n,t])=>
+    `<button class="${USAGE.days===n?'on':''}" onclick="USAGE.days=${n};refreshApp('tokens')">${t}</button>`).join('')}</div>`;
+  const pb=panelShell(body,{title:'Token Analytics',sub:`${when} · ${sum.calls} call${sum.calls===1?'':'s'}`,actions:seg});
+  const maxT=Math.max(1,...llms.map(l=>l.total));
+  const days=(d.daily||[]).slice(-14),maxD=Math.max(1,...days.map(x=>x.in+x.out));
+  const rows=llms.map(l=>{
+    const q=l.quota;
+    let qh='';
+    if(q){
+      const parts=[];
+      if(q.tokens)parts.push(`${usageFmt(q.left_tokens)} of ${usageFmt(q.tokens)} tokens left`);
+      if(q.usd)parts.push(`${usageUsd(q.left_usd)} of ${usageUsd(q.usd)} left`);
+      const used=q.tokens?1-(q.left_tokens/q.tokens):1-(q.left_usd/q.usd);
+      qh=`<div class="usg-q"><span>Today's quota: ${parts.join(', ')}</span><div class="bar"><i class="${used>=.9?'hot':''}" style="width:${Math.min(100,used*100)}%"></i></div></div>`;
+    }
+    return `<div class="usg-llm" data-f="${esc(l.name+' '+l.models.map(m=>m.model).join(' '))}">
+      <div class="usg-top"><b>${esc(l.name)}</b><span class="usg-usd">${usageUsd(l.usd)}</span></div>
+      <div class="usg-nums"><span>${l.calls} call${l.calls===1?'':'s'}</span><span>${usageFmt(l.in)} in</span><span>${usageFmt(l.out)} out</span><span>${usageFmt(l.total)} in all</span></div>
+      <div class="bar"><i style="width:${l.total/maxT*100}%"></i></div>
+      <div class="usg-how mut">${esc(usageMoneyWords(l))}${l.models.length>1?' · '+l.models.map(m=>esc(m.model.split('/').slice(1).join('/')||m.model)).join(', '):''}</div>
+      ${qh}</div>`;
+  }).join('');
+  pb.innerHTML=`
     <div class="tmgrid">
-      <div class="stat"><div class="lbl">Total tokens</div><div class="val">${fmt(t.in+t.out)}</div></div>
-      <div class="stat"><div class="lbl">Input</div><div class="val">${fmt(t.in)}</div></div>
-      <div class="stat"><div class="lbl">Output</div><div class="val">${fmt(t.out)}</div></div>
+      <div class="stat"><div class="lbl">In all</div><div class="val">${usageFmt(sum.in+sum.out)}</div></div>
+      <div class="stat"><div class="lbl">Input</div><div class="val">${usageFmt(sum.in)}</div></div>
+      <div class="stat"><div class="lbl">Output</div><div class="val">${usageFmt(sum.out)}</div></div>
+      <div class="stat"><div class="lbl">Spent ${pInfo('A provider that states its bill (OpenRouter, an agent CLI) is counted as stated. Everything else is estimated from the price list, cached input included.')}</div><div class="val">${usageUsd(sum.usd)}${sum.est&&sum.est<sum.usd?` <small>${usageUsd(sum.est)} of it estimated</small>`:sum.est?' <small>estimated</small>':''}</div></div>
     </div>
-    <div class="tmsec">By model · ${t.turns} turns</div>
-    ${models.length?models.map(([m,v])=>`<div style="margin-bottom:9px">
-      <div style="display:flex;justify-content:space-between;font-size:12.5px"><span>${esc(m.split('/').pop())}</span>
-        <span class="mut">${fmt(v.in+v.out)} · ${v.turns}t</span></div>
-      <div class="bar"><i style="width:${(v.in+v.out)/maxM*100}%"></i></div></div>`).join('')
-      :'<p class="mut">No usage yet. Token counts are recorded per turn (local models report via Ollama; cloud models via their usage API).</p>'}
-    <div class="tmsec">Last ${days.length} days</div>
-    <div style="display:flex;align-items:flex-end;gap:5px;height:90px;padding:6px 0">
-      ${days.length?days.map(x=>`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;height:100%">
-        <div style="flex:1;width:100%;display:flex;align-items:flex-end"><div title="${x.day}: ${fmt(x.in+x.out)}" style="width:100%;border-radius:4px 4px 0 0;background:linear-gradient(var(--acc),var(--acc2));height:${(x.in+x.out)/maxD*100}%;min-height:2px"></div></div>
-        <div style="font-size:9px;color:var(--dim2)">${x.day.slice(5)}</div></div>`).join(''):'<p class="mut">no daily data yet</p>'}
-    </div>
-  </div>`;
+    <div class="tmsec">${d.admin?'Yours, by LLM':'By LLM'}</div>
+    ${rows||(d.admin?'<p class="mut">You haven\'t used a model yet. Every call is counted here as it happens.</p>'
+      :emptyBox('Nothing yet','Every call to a model is counted here as it happens.','','tokens','What have I spent on each model this week?'))}
+    ${days.length?`<div class="tmsec">By day</div>
+    <div class="usg-chart">${days.map(x=>`<div class="usg-col"><div class="usg-bh"><div title="${esc(x.day)}: ${usageFmt(x.in+x.out)} tokens, ${usageUsd(x.usd)}" style="height:${(x.in+x.out)/maxD*100}%"></div></div><span>${esc(x.day.slice(5))}</span></div>`).join('')}</div>`:''}
+    ${d.admin?usageAdminHTML(d):''}`;
+  if(d.admin)usageQuotaPaint();
+}
+function usageAdminHTML(d){
+  const ev=d.everyone||[];
+  const llmIds=[...new Set(ev.flatMap(a=>a.llms.map(l=>l.llm)))];
+  const table=ev.length>1||ev.some(a=>a.llms.length)?`<div class="usg-tw"><table class="usg-t"><thead><tr><th>Account</th>${llmIds.map(i=>`<th>${esc((ev.flatMap(a=>a.llms).find(l=>l.llm===i)||{}).name||i)}</th>`).join('')}<th>All</th></tr></thead><tbody>
+    ${ev.map(a=>{const by=Object.fromEntries(a.llms.map(l=>[l.llm,l]));const tot=a.llms.reduce((s,l)=>({t:s.t+l.total,u:s.u+l.usd}),{t:0,u:0});
+      return `<tr><td>${esc(a.name)}</td>${llmIds.map(i=>by[i]?`<td>${usageFmt(by[i].total)}<small>${usageUsd(by[i].usd)}</small></td>`:'<td class="mut">–</td>').join('')}<td><b>${usageFmt(tot.t)}</b><small>${usageUsd(tot.u)}</small></td></tr>`}).join('')}
+    </tbody></table></div>`:'<p class="mut">No account has used a model yet.</p>';
+  USAGE.rows=usageQuotaRows(d.sharing||{});
+  return `<div class="tmsec">Everyone</div>${table}
+    <div class="tmsec">Shared LLMs and daily quotas ${pInfo('Unlimited unless you set a limit. A limit for Everyone applies to each account without its own, and never to an admin. A day ends at midnight here.')}</div>
+    <div class="usg-share">${usageShareable(d).map(p=>`<label class="usg-chk ck"><input type="checkbox" data-p="${esc(p.id)}" ${((d.sharing||{}).off||[]).includes(p.id)?'':'checked'}><span>${esc(p.name)}</span></label>`).join('')||'<p class="mut">No provider is switched on yet.</p>'}</div>
+    <div id="usg-quotas"></div>
+    <div class="row usg-act"><button onclick="usageQuotaAdd()">＋ Add a limit</button><button class="pact" onclick="usageSave()">Save</button></div>`;
+}
+/* The providers worth a tick: switched on, or already not shared. One switched off shares nothing. */
+function usageShareable(d){
+  const off=((d.sharing||{}).off)||[];
+  return (d.providers||[]).filter(p=>p.on||off.includes(p.id));
+}
+function usageQuotaRows(sh){
+  const out=[];
+  for(const [who,per] of Object.entries(sh.quota||{}))for(const [llm,lim] of Object.entries(per||{}))
+    out.push({who,llm,tokens:lim.tokens||'',usd:lim.usd||''});
+  return out;
+}
+function usageQuotaPaint(){
+  const box=$('#usg-quotas');if(!box)return;
+  const d=USAGE.d||{},accs=d.accounts||[],provs=usageShareable(d);
+  if(!USAGE.rows.length){box.innerHTML='<p class="mut">No limits: every account may use every shared LLM as much as it likes.</p>';return}
+  box.innerHTML=USAGE.rows.map((r,i)=>`<div class="usg-qrow" data-i="${i}">
+    <select data-k="who"><option value="*">Everyone</option>${accs.map(a=>`<option value="${esc(a.id)}" ${r.who===a.id?'selected':''}>${esc(a.name)}</option>`).join('')}</select>
+    <select data-k="llm">${provs.map(p=>`<option value="${esc(p.id)}" ${r.llm===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}${r.llm&&!provs.some(p=>p.id===r.llm)?`<option selected value="${esc(r.llm)}">${esc(r.llm)}</option>`:''}</select>
+    <label><input data-k="tokens" type="number" min="0" step="1000" placeholder="no limit" value="${esc(r.tokens)}"><span>tokens a day</span></label>
+    <label><input data-k="usd" type="number" min="0" step="0.5" placeholder="no limit" value="${esc(r.usd)}"><span>$ a day</span></label>
+    <button aria-label="Remove this limit" onclick="USAGE.rows.splice(${i},1);usageQuotaPaint()">✕</button></div>`).join('');
+  box.querySelectorAll('.usg-qrow [data-k]').forEach(el=>el.onchange=()=>{
+    const r=USAGE.rows[+el.closest('.usg-qrow').dataset.i];if(r)r[el.dataset.k]=el.value});
+  USAGE.rows.forEach((r,i)=>{const s=box.querySelector(`.usg-qrow[data-i="${i}"] [data-k="who"]`);if(s)s.value=r.who});
+}
+function usageQuotaAdd(){
+  const p=usageShareable(USAGE.d||{})[0];
+  USAGE.rows.push({who:'*',llm:p?p.id:'',tokens:'',usd:''});usageQuotaPaint();
+}
+async function usageSave(){
+  const off=[...document.querySelectorAll('.usg-share input[data-p]')].filter(x=>!x.checked).map(x=>x.dataset.p);
+  const quota={};
+  for(const r of USAGE.rows){
+    const t=+r.tokens||0,u=+r.usd||0;if(!r.llm||!(t||u))continue;
+    (quota[r.who]=quota[r.who]||{})[r.llm]={...(t?{tokens:t}:{}),...(u?{usd:u}:{})};
+  }
+  const r=await fetch('/api/usage/sharing',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({off,quota})});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok)return toast(j.error||'Could not save the quotas.',{kind:'err'});
+  toast(j.dropped&&j.dropped.length?`Saved. Left out: ${j.dropped.join(', ')}`:'Saved the shared LLMs and quotas.');
+  refreshApp('tokens');
 }
 
 /* ================= snapshots app ================= */
@@ -33812,6 +34186,7 @@ async function usersLoad(){
     ]);
     await usersLoadFolders();
     USERS.me=u.me||{};USERS.list=u.users||[];USERS.roles=u.roles||USERS.roles;
+    USERS.tenants=u.tenants||[];
     USERS.shared=s.shared||[];
   }catch(e){}
   return USERS;
@@ -33887,40 +34262,63 @@ function usersOffer(){
           account cannot administer it is a machine nobody can administer.</li>
       </ul>
     </div>
-    <p class="dim">Settings stay shared: one set of provider keys for the machine,
-      not one per person. Agents and apps can be shared deliberately, as copies.</p>
+    <p class="dim">By default everyone shares this machine's LLM keys and keeps their own data
+      (the Shared Tenant). Later you can give somebody an Isolated Tenant of their own, with its
+      own admin, people and keys.</p>
     ${usersForm('Create the first account',true)}
   </div>`;
 }
 
 /* ---- the roster ----------------------------------------------------------- */
 
+/* Who may change an account: the machine's admin anyone; an Isolated Tenant's admin the people
+   in their own tenant (the roster only lists those). users.can_manage is the real rule. */
+function usersManages(){const me=USERS.me||{};return !!(me.admin||(me.tenant_admin&&me.scope==='isolated'))}
+function usersTenantName(tid){
+  if(!tid)return 'Shared Tenant';
+  const t=(USERS.tenants||[]).find(x=>x.id===tid);return t?t.name:'Isolated Tenant';
+}
+/* The machine's admin moves an account between tenants (users.set_scope). */
+function usersScopeSelect(u){
+  const opts=[['shared|','Shared Tenant'],['isolated|','New Isolated Tenant']]
+    .concat((USERS.tenants||[]).map(t=>['isolated|'+t.id,t.name]));
+  const cur=u.tenant?('isolated|'+u.tenant):'shared|';
+  return `<select class="usr-scope" data-uid="${esc(u.id)}" aria-label="Scope of ${esc(u.name)}">${opts.map(([v,t])=>
+    `<option value="${esc(v)}"${v===cur?' selected':''}>${esc(t)}</option>`).join('')}</select>`;
+}
+
 function usersRoster(){
   const me=USERS.me||{};
+  const manage=usersManages();
   const rows=USERS.list.map(u=>{
     const isMe=u.id===me.id;
     return `<div class="usr-row${isMe?' me':''}" data-f="${esc(u.name+' '+u.role)}">
       <span class="usr-av">${esc((u.display||u.name||'?').slice(0,1).toUpperCase())}</span>
       <span class="usr-who"><b>${esc(u.display||u.name)}</b>
-        <em>${esc(u.name)}${isMe?' · this is you':''}</em></span>
-      ${me.admin&&!isMe
+        <em>${esc(u.name)}${isMe?' · this is you':''}${me.admin?' · '+esc(usersTenantName(u.tenant)):''}</em></span>
+      ${me.admin&&!isMe?usersScopeSelect(u):''}
+      ${manage&&!isMe
         ? `<select class="usr-role" data-uid="${esc(u.id)}">${USERS.roles.map(r=>
             `<option value="${esc(r)}"${r===u.role?' selected':''}>${esc(usersRoleName(r))}</option>`).join('')}</select>`
         : `<span class="usr-tag ${u.role==='admin'?'adm':''}">${esc(usersRoleName(u.role))}</span>`}
-      ${isMe||me.admin?`<button class="usr-pw" data-uid="${esc(u.id)}" data-me="${isMe?1:''}">${isMe?'Change my password…':'Reset password…'}</button>`:''}
-      ${isMe||me.admin?`<button class="usr-end" data-uid="${esc(u.id)}" data-me="${isMe?1:''}">Sign out everywhere</button>`:''}
-      ${me.admin&&!isMe?`<button class="usr-del danger" data-uid="${esc(u.id)}"
+      ${isMe||manage?`<button class="usr-pw" data-uid="${esc(u.id)}" data-me="${isMe?1:''}">${isMe?'Change my password…':'Reset password…'}</button>`:''}
+      ${isMe||manage?`<button class="usr-end" data-uid="${esc(u.id)}" data-me="${isMe?1:''}">Sign out everywhere</button>`:''}
+      ${manage&&!isMe?`<button class="usr-del danger" data-uid="${esc(u.id)}"
         data-name="${esc(u.name)}">Remove</button>`:''}
     </div>`;
   }).join('');
   return `<div class="usr-roster">
     <div class="usr-head">
-      <span><b>${USERS.list.length}</b> ${USERS.list.length===1?'account':'accounts'}</span>
+      <span><b>${USERS.list.length}</b> ${USERS.list.length===1?'account':'accounts'}${
+        me.scope==='isolated'?' in your Isolated Tenant':''}</span>
       <span class="sp"></span>
       <button class="usr-out" id="usr-signout">Sign out</button>
     </div>
     ${rows}
-    ${(USERS.me||{}).admin?`<details class="usr-add"><summary>Add somebody</summary>
+    ${me.scope==='isolated'?`<p class="dim usr-foot">Your tenant uses its own LLM keys (Settings → AI
+      providers${me.tenant_admin?', set up by you':', set up by its admin'}). Nobody outside it sees its people,
+      keys or data.</p>`:''}
+    ${manage?`<details class="usr-add"><summary>Add somebody</summary>
       ${usersForm('Add the account',false)}</details>`
       :`<p class="dim usr-foot">Only an admin can add or remove accounts, or reset somebody else’s
         password. Your own password, and everything inside your home, is yours.</p>`}
@@ -33949,8 +34347,14 @@ function usersForm(cta,first){
         <b>Executor</b><em>Everything inside their own home: agents, flows, jobs, apps,
           channels, MCP, credentials, permissions.</em></label>
       <label class="usr-pick"><input type="radio" name="usr-role" value="admin">
-        <b>Admin</b><em>All of that, plus the machine: accounts, providers and models,
-          components, remote access.</em></label></div>`}
+        <b>Admin</b><em>${(USERS.me||{}).admin?`All of that, plus the machine: accounts, providers and models,
+          components, remote access.`:`All of that, plus your tenant: its people and its LLM keys.`}</em></label></div>`}
+    ${first||!(USERS.me||{}).admin?'':`<div class="usr-roles">
+      <label class="usr-pick"><input type="radio" name="usr-scope" value="shared" checked>
+        <b>Shared Tenant</b><em>Uses this machine's LLM keys. Their data is their own.</em></label>
+      <label class="usr-pick"><input type="radio" name="usr-scope" value="isolated">
+        <b>Isolated Tenant</b><em>Their own tenant from the ground up: they're its admin, add its people
+          and set up its own LLM keys.</em></label></div>`}
     <div class="usr-go"><button class="wiz-next" id="usr-save">${esc(cta)}</button>
       <span class="usr-msg" id="usr-msg"></span></div>
   </form>`;
@@ -34111,6 +34515,20 @@ function usersWire(pb,w){
       renderUsers(w?w.el.querySelector('.wbody'):pb.closest('.wbody')||pb,w);
     };
   });
+  pb.querySelectorAll('.usr-scope').forEach(sel=>{
+    sel.onchange=async()=>{
+      const [scope,tenant]=sel.value.split('|');
+      let r=await usersPut(sel.dataset.uid,{scope,tenant});
+      if(r.confirm){
+        if(!await osConfirm('Remove '+(r.drops||'that tenant')+'?',
+          'Nobody would be left in it, so its own LLM keys are removed too.',
+          {confirmText:'Move and remove it',danger:true})){renderUsers(w?w.el.querySelector('.wbody'):pb,w);return}
+        r=await usersPut(sel.dataset.uid,{scope,tenant,confirm:true});
+      }
+      toast(r.error||'✓ moved. They sign in again to pick it up');
+      renderUsers(w?w.el.querySelector('.wbody'):pb,w);
+    };
+  });
   pb.querySelectorAll('.usr-pw').forEach(b=>{
     b.onclick=async()=>{
       // your own: the one you have now first. Somebody else's (an admin resetting it): only the new one.
@@ -34170,7 +34588,8 @@ async function usersCreate(pb,w){
   const body={name:(pb.querySelector('#usr-name')||{}).value||'',
               display:(pb.querySelector('#usr-display')||{}).value||'',
               password:(pb.querySelector('#usr-pass')||{}).value||'',
-              role:(pb.querySelector('input[name=usr-role]:checked')||{}).value||'executor'};
+              role:(pb.querySelector('input[name=usr-role]:checked')||{}).value||'executor',
+              scope:(pb.querySelector('input[name=usr-scope]:checked')||{}).value||'shared'};
   const first=!(USERS.me||{}).multiuser;
   if(first&&!await osConfirm('Turn on accounts for this machine?',
       'Everything already here becomes your account. From now on this desktop asks '+
@@ -34184,6 +34603,8 @@ async function usersCreate(pb,w){
     if(!r.ok){msg.textContent=d.error||'could not create the account';msg.className='usr-msg warn';return}
     toast(d.signed_in?'✓ accounts are on — you are signed in as '+body.name
                      :'✓ '+body.name+' can sign in now');
+    if(d.recovery_code&&typeof sealShowCode==='function')await sealShowCode(d.recovery_code,
+      'Your saved passwords and website sign-ins are now locked with your password. Nobody else can open them, not even an admin. If you forget your password, this code is the only way back in.');
     usersBoot();   // the power menu now has a name to show and a way out
     renderUsers(w?w.el.querySelector('.wbody'):pb,w);
   }catch(e){msg.textContent=String(e);msg.className='usr-msg warn';}
@@ -50590,6 +51011,7 @@ loadAutomations();   // the palette and the hot-corner picker both read this lis
 loadToolNames();     // tool + MCP names for automation steps
 loadUserApps().then(loadWidgets);
 loadNativeApps();
+setTimeout(()=>{if(typeof sealBoot==='function')sealBoot()},2500);   // sealed secrets after a restart (11o-seal.js)
 usersBoot();         // who is signed in — nothing at all unless this machine has accounts
 APPS_READY=true;
 // If this page is the Linux session's desktop, tell the compositor how much

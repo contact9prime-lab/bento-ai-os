@@ -28,6 +28,7 @@ async function usersLoad(){
     ]);
     await usersLoadFolders();
     USERS.me=u.me||{};USERS.list=u.users||[];USERS.roles=u.roles||USERS.roles;
+    USERS.tenants=u.tenants||[];
     USERS.shared=s.shared||[];
   }catch(e){}
   return USERS;
@@ -103,40 +104,63 @@ function usersOffer(){
           account cannot administer it is a machine nobody can administer.</li>
       </ul>
     </div>
-    <p class="dim">Settings stay shared: one set of provider keys for the machine,
-      not one per person. Agents and apps can be shared deliberately, as copies.</p>
+    <p class="dim">By default everyone shares this machine's LLM keys and keeps their own data
+      (the Shared Tenant). Later you can give somebody an Isolated Tenant of their own, with its
+      own admin, people and keys.</p>
     ${usersForm('Create the first account',true)}
   </div>`;
 }
 
 /* ---- the roster ----------------------------------------------------------- */
 
+/* Who may change an account: the machine's admin anyone; an Isolated Tenant's admin the people
+   in their own tenant (the roster only lists those). users.can_manage is the real rule. */
+function usersManages(){const me=USERS.me||{};return !!(me.admin||(me.tenant_admin&&me.scope==='isolated'))}
+function usersTenantName(tid){
+  if(!tid)return 'Shared Tenant';
+  const t=(USERS.tenants||[]).find(x=>x.id===tid);return t?t.name:'Isolated Tenant';
+}
+/* The machine's admin moves an account between tenants (users.set_scope). */
+function usersScopeSelect(u){
+  const opts=[['shared|','Shared Tenant'],['isolated|','New Isolated Tenant']]
+    .concat((USERS.tenants||[]).map(t=>['isolated|'+t.id,t.name]));
+  const cur=u.tenant?('isolated|'+u.tenant):'shared|';
+  return `<select class="usr-scope" data-uid="${esc(u.id)}" aria-label="Scope of ${esc(u.name)}">${opts.map(([v,t])=>
+    `<option value="${esc(v)}"${v===cur?' selected':''}>${esc(t)}</option>`).join('')}</select>`;
+}
+
 function usersRoster(){
   const me=USERS.me||{};
+  const manage=usersManages();
   const rows=USERS.list.map(u=>{
     const isMe=u.id===me.id;
     return `<div class="usr-row${isMe?' me':''}" data-f="${esc(u.name+' '+u.role)}">
       <span class="usr-av">${esc((u.display||u.name||'?').slice(0,1).toUpperCase())}</span>
       <span class="usr-who"><b>${esc(u.display||u.name)}</b>
-        <em>${esc(u.name)}${isMe?' · this is you':''}</em></span>
-      ${me.admin&&!isMe
+        <em>${esc(u.name)}${isMe?' · this is you':''}${me.admin?' · '+esc(usersTenantName(u.tenant)):''}</em></span>
+      ${me.admin&&!isMe?usersScopeSelect(u):''}
+      ${manage&&!isMe
         ? `<select class="usr-role" data-uid="${esc(u.id)}">${USERS.roles.map(r=>
             `<option value="${esc(r)}"${r===u.role?' selected':''}>${esc(usersRoleName(r))}</option>`).join('')}</select>`
         : `<span class="usr-tag ${u.role==='admin'?'adm':''}">${esc(usersRoleName(u.role))}</span>`}
-      ${isMe||me.admin?`<button class="usr-pw" data-uid="${esc(u.id)}" data-me="${isMe?1:''}">${isMe?'Change my password…':'Reset password…'}</button>`:''}
-      ${isMe||me.admin?`<button class="usr-end" data-uid="${esc(u.id)}" data-me="${isMe?1:''}">Sign out everywhere</button>`:''}
-      ${me.admin&&!isMe?`<button class="usr-del danger" data-uid="${esc(u.id)}"
+      ${isMe||manage?`<button class="usr-pw" data-uid="${esc(u.id)}" data-me="${isMe?1:''}">${isMe?'Change my password…':'Reset password…'}</button>`:''}
+      ${isMe||manage?`<button class="usr-end" data-uid="${esc(u.id)}" data-me="${isMe?1:''}">Sign out everywhere</button>`:''}
+      ${manage&&!isMe?`<button class="usr-del danger" data-uid="${esc(u.id)}"
         data-name="${esc(u.name)}">Remove</button>`:''}
     </div>`;
   }).join('');
   return `<div class="usr-roster">
     <div class="usr-head">
-      <span><b>${USERS.list.length}</b> ${USERS.list.length===1?'account':'accounts'}</span>
+      <span><b>${USERS.list.length}</b> ${USERS.list.length===1?'account':'accounts'}${
+        me.scope==='isolated'?' in your Isolated Tenant':''}</span>
       <span class="sp"></span>
       <button class="usr-out" id="usr-signout">Sign out</button>
     </div>
     ${rows}
-    ${(USERS.me||{}).admin?`<details class="usr-add"><summary>Add somebody</summary>
+    ${me.scope==='isolated'?`<p class="dim usr-foot">Your tenant uses its own LLM keys (Settings → AI
+      providers${me.tenant_admin?', set up by you':', set up by its admin'}). Nobody outside it sees its people,
+      keys or data.</p>`:''}
+    ${manage?`<details class="usr-add"><summary>Add somebody</summary>
       ${usersForm('Add the account',false)}</details>`
       :`<p class="dim usr-foot">Only an admin can add or remove accounts, or reset somebody else’s
         password. Your own password, and everything inside your home, is yours.</p>`}
@@ -165,8 +189,14 @@ function usersForm(cta,first){
         <b>Executor</b><em>Everything inside their own home: agents, flows, jobs, apps,
           channels, MCP, credentials, permissions.</em></label>
       <label class="usr-pick"><input type="radio" name="usr-role" value="admin">
-        <b>Admin</b><em>All of that, plus the machine: accounts, providers and models,
-          components, remote access.</em></label></div>`}
+        <b>Admin</b><em>${(USERS.me||{}).admin?`All of that, plus the machine: accounts, providers and models,
+          components, remote access.`:`All of that, plus your tenant: its people and its LLM keys.`}</em></label></div>`}
+    ${first||!(USERS.me||{}).admin?'':`<div class="usr-roles">
+      <label class="usr-pick"><input type="radio" name="usr-scope" value="shared" checked>
+        <b>Shared Tenant</b><em>Uses this machine's LLM keys. Their data is their own.</em></label>
+      <label class="usr-pick"><input type="radio" name="usr-scope" value="isolated">
+        <b>Isolated Tenant</b><em>Their own tenant from the ground up: they're its admin, add its people
+          and set up its own LLM keys.</em></label></div>`}
     <div class="usr-go"><button class="wiz-next" id="usr-save">${esc(cta)}</button>
       <span class="usr-msg" id="usr-msg"></span></div>
   </form>`;
@@ -327,6 +357,20 @@ function usersWire(pb,w){
       renderUsers(w?w.el.querySelector('.wbody'):pb.closest('.wbody')||pb,w);
     };
   });
+  pb.querySelectorAll('.usr-scope').forEach(sel=>{
+    sel.onchange=async()=>{
+      const [scope,tenant]=sel.value.split('|');
+      let r=await usersPut(sel.dataset.uid,{scope,tenant});
+      if(r.confirm){
+        if(!await osConfirm('Remove '+(r.drops||'that tenant')+'?',
+          'Nobody would be left in it, so its own LLM keys are removed too.',
+          {confirmText:'Move and remove it',danger:true})){renderUsers(w?w.el.querySelector('.wbody'):pb,w);return}
+        r=await usersPut(sel.dataset.uid,{scope,tenant,confirm:true});
+      }
+      toast(r.error||'✓ moved. They sign in again to pick it up');
+      renderUsers(w?w.el.querySelector('.wbody'):pb,w);
+    };
+  });
   pb.querySelectorAll('.usr-pw').forEach(b=>{
     b.onclick=async()=>{
       // your own: the one you have now first. Somebody else's (an admin resetting it): only the new one.
@@ -386,7 +430,8 @@ async function usersCreate(pb,w){
   const body={name:(pb.querySelector('#usr-name')||{}).value||'',
               display:(pb.querySelector('#usr-display')||{}).value||'',
               password:(pb.querySelector('#usr-pass')||{}).value||'',
-              role:(pb.querySelector('input[name=usr-role]:checked')||{}).value||'executor'};
+              role:(pb.querySelector('input[name=usr-role]:checked')||{}).value||'executor',
+              scope:(pb.querySelector('input[name=usr-scope]:checked')||{}).value||'shared'};
   const first=!(USERS.me||{}).multiuser;
   if(first&&!await osConfirm('Turn on accounts for this machine?',
       'Everything already here becomes your account. From now on this desktop asks '+
@@ -400,6 +445,8 @@ async function usersCreate(pb,w){
     if(!r.ok){msg.textContent=d.error||'could not create the account';msg.className='usr-msg warn';return}
     toast(d.signed_in?'✓ accounts are on — you are signed in as '+body.name
                      :'✓ '+body.name+' can sign in now');
+    if(d.recovery_code&&typeof sealShowCode==='function')await sealShowCode(d.recovery_code,
+      'Your saved passwords and website sign-ins are now locked with your password. Nobody else can open them, not even an admin. If you forget your password, this code is the only way back in.');
     usersBoot();   // the power menu now has a name to show and a way out
     renderUsers(w?w.el.querySelector('.wbody'):pb,w);
   }catch(e){msg.textContent=String(e);msg.className='usr-msg warn';}

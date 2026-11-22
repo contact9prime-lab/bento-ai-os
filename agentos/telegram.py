@@ -76,8 +76,16 @@ class TelegramBridge(usersmod.Scoped):
     def _t(self) -> dict:
         return self.cfg.get("telegram") or {}
 
+    def _token(self) -> str:
+        """The bot's token. Config holds a vault reference (vault.adopt), opened here in this
+        bridge's own account, once an hour (vault.held), never shown anywhere."""
+        from . import users as usersmod, vault
+        ref, uid = self._t().get("bot_token", ""), str(self.cfg.get("_uid") or "")
+        with usersmod.as_user(uid):
+            return vault.held(ref, "telegram")
+
     async def _api(self, method: str, **params):
-        token = self._t().get("bot_token", "")
+        token = self._token()
         async with httpx.AsyncClient(timeout=70) as client:
             r = await client.post(api_url(token, method), json=params)
         data = r.json()
@@ -210,7 +218,7 @@ class TelegramBridge(usersmod.Scoped):
         """A picture into the chat — the playground's comic strips and roll call
         (agentos/comic.py). The caption carries every word the picture could not."""
         chat_id = chat_id or self._t().get("owner_chat_id")
-        token = self._t().get("bot_token", "")
+        token = self._token()
         if not token or not chat_id:
             return "[error] Telegram is not set up"
         try:
@@ -230,7 +238,7 @@ class TelegramBridge(usersmod.Scoped):
         """A file into the chat as a document (a deck, a report). Bots may send up to
         50 MB; past that the chat is told where the file is instead."""
         chat_id = chat_id or self._t().get("owner_chat_id")
-        token = self._t().get("bot_token", "")
+        token = self._token()
         if not token or not chat_id:
             return "[error] Telegram is not set up"
         p = Path(path)
@@ -405,7 +413,7 @@ class TelegramBridge(usersmod.Scoped):
         """A video that plays in the chat (mp4); anything else goes as a file, which is all
         Telegram does with it."""
         chat_id = chat_id or self._t().get("owner_chat_id")
-        token = self._t().get("bot_token", "")
+        token = self._token()
         if not token or not chat_id or not data:
             return "[error] Telegram is not set up"
         mp4 = "mp4" in (mime or "")
@@ -444,7 +452,7 @@ class TelegramBridge(usersmod.Scoped):
         except Exception as e:
             self.store.log("telegram", f"no narration: {e}")
             return ""
-        token = self._t().get("bot_token", "")
+        token = self._token()
         ext = "mp3" if "mpeg" in (mime or "") or "mp3" in (mime or "") else "wav" if "wav" in (mime or "") else "ogg"
         try:
             async with httpx.AsyncClient(timeout=120) as client:
@@ -463,7 +471,7 @@ class TelegramBridge(usersmod.Scoped):
         """Pictures as one album (sendMediaGroup, ten at most each), a caption under each.
         A single picture is an ordinary photo."""
         chat_id = chat_id or self._t().get("owner_chat_id")
-        token = self._t().get("bot_token", "")
+        token = self._token()
         if not token or not chat_id or not pngs:
             return "[error] Telegram is not set up"
         if len(pngs) == 1:
@@ -717,12 +725,25 @@ class TelegramBridge(usersmod.Scoped):
             await self._api("sendChatAction", chat_id=chat_id, action="typing")
         except Exception:
             pass
+        live = None                  # the turn's steps on the phone (phonelive), ended in `finally`
         try:
             cid = self._conversation(chat)
             # agents talking inside this turn are collected here and sent back as a
             # comic strip after the reply (playground.listen; closed in `finally`)
             from . import playground as _pg
             tap = _pg.listen(cid)
+            # what the turn is doing, on the phone while it works: hand-overs to a department,
+            # who its desk gave each piece to, a boss's sign-off (phonelive.py), one message
+            # edited in place
+            from . import phonelive
+            if phonelive.on(self.cfg, "telegram"):
+                async def _live_send(text):
+                    r = await self._api("sendMessage", chat_id=chat_id, text=text, disable_notification=True)
+                    return r["message_id"]
+
+                async def _live_edit(mid, text):
+                    await self._api("editMessageText", chat_id=chat_id, message_id=mid, text=text)
+                live = phonelive.Live(phonelive.listen(cid), _live_send, _live_edit)
             # The same rebuild as the desktop: a thread answered from the phone
             # must see what the thread saw at the desk, tool traces included. A
             # bespoke last-30 window here is how one conversation ends up with
@@ -793,6 +814,8 @@ class TelegramBridge(usersmod.Scoped):
                 emit=emit, approver=approver, note=note, images=tuple(images),
                 on_run=lambda run: self._runs.__setitem__(chat_id, run), steerable=True, tell=tell)
             reply = out["reply"]
+            if live:
+                await live.end()         # the steps are finished before the answer arrives
             self.store.add_message(cid, "assistant", reply, {"steps": out["steps"], **out["meta"]})
             self.store.touch_conversation(cid)
             # The story first, then the words: the Stage is what the answer looks like, and
@@ -824,6 +847,8 @@ class TelegramBridge(usersmod.Scoped):
                 asyncio.create_task(self._handle(nxt))
             if "tap" in locals():
                 _pg.close(cid, tap)          # idempotent: a failed turn must not leak a tap
+            if live:
+                await live.end()
 
     PHOTO_MAX = 5_000_000      # under the chat's own cap for one picture, as base64
 
@@ -841,7 +866,7 @@ class TelegramBridge(usersmod.Scoped):
             path = str(info.get("file_path") or "")
             if not path or ".." in path:
                 return []
-            token = self._t().get("bot_token", "")
+            token = self._token()
             base = os.environ.get("AGENTOS_TELEGRAM_API", "").rstrip("/") or "https://api.telegram.org"
             async with httpx.AsyncClient(timeout=40) as client:
                 r = await client.get(f"{base}/file/bot{token}/{path}")
@@ -866,7 +891,7 @@ class TelegramBridge(usersmod.Scoped):
             # is the permission
             rows.insert(0, [{"text": "Open on this phone", "callback_data": "bw:open"}])
         kb = {"inline_keyboard": rows}
-        token = self._t().get("bot_token", "")
+        token = self._token()
         if png and token:
             try:
                 async with httpx.AsyncClient(timeout=70) as client:

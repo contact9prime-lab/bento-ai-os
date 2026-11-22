@@ -98,6 +98,25 @@ def _extended_path() -> str:
     return os.pathsep.join(parts)
 
 
+def _opened(values, name: str = "") -> dict:
+    """A server's env or headers as the server gets them: a key kept in the vault (vault.adopt
+    moves any value whose name reads as a secret) is opened here, in this account, for this one
+    start. A key that can't be opened right now (set to work only while you're signed in, with
+    nobody signed in) is left out, and the server says what it lacks."""
+    from . import vault
+    out = {}
+    for k, v in (values or {}).items():
+        if vault.is_ref(v):
+            try:
+                v = vault.get(v, f"MCP server {name}".strip())
+            except Exception:
+                v = ""
+            if not v:
+                continue
+        out[k] = str(v)
+    return out
+
+
 def _resolve_command(cmd: str) -> str:
     """Absolute path for an MCP server command, searched over the extended PATH."""
     import shutil
@@ -177,7 +196,7 @@ def stdio_launch(conf: dict, name: str = "") -> tuple[str, list[str], dict]:
         raise FileNotFoundError(
             f"'{cmd[0]}' not found — install it (node/npm for npx, uv for uvx) "
             f"or use an absolute path in the server's command")
-    own = {k: str(v) for k, v in (conf.get("env") or {}).items()}
+    own = _opened(conf.get("env"), name)
     if not _restricted():
         # An allow-list: this process holds provider keys, and a server gets what its own settings
         # name and nothing else of ours. npx -> node -> the server must inherit the SAME extended
@@ -241,7 +260,7 @@ class MCPServer:
             if (why := refusal(self.conf)):
                 raise RuntimeError(why)
             if transport == "http":
-                headers = {k: str(v) for k, v in (self.conf.get("headers") or {}).items()}
+                headers = await asyncio.to_thread(_opened, self.conf.get("headers"), self.name)
                 url = self.conf.get("url", "")
                 if _restricted():
                     # the name's answer, right before connecting: the save only saw the name

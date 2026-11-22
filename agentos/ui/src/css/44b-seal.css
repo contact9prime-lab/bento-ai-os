@@ -1,0 +1,13 @@
+/* Your secrets (11o-seal.js): the recovery code dialog and its password box. */
+.seal-dlg{max-width:440px}
+.seal-code{font:600 clamp(15px,4.4vw,18px)/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.05em;
+  margin:12px 0 6px;padding:14px;border:1px dashed var(--acc);border-radius:12px;
+  background:color-mix(in srgb,var(--acc) 8%,transparent);user-select:all;text-align:center}
+.seal-code span{display:inline-block;white-space:nowrap}
+.seal-tick{display:flex;gap:10px;align-items:flex-start;text-align:left;font-size:13px;margin:10px 0 4px;cursor:pointer}
+.seal-tick input{width:20px;height:20px;flex:none;margin-top:1px}
+.seal-pw{width:100%;margin:12px 0 4px;padding:10px 12px;font:inherit;font-size:16px;border-radius:10px;
+  border:1px solid var(--line,var(--bg3));background:var(--bg2);color:var(--txt)}
+.seal-awayh{display:flex;align-items:center;gap:6px;margin:14px 16px 0;font-size:13px}
+.seal-away{max-width:100%;padding:8px 10px;font:inherit;font-size:13px;border-radius:9px;
+  border:1px solid var(--line,var(--bg3));background:var(--bg2);color:var(--txt);min-height:var(--tap,32px)}

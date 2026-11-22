@@ -322,7 +322,7 @@ class Scheduler(usersmod.Scoped):
         with contextlib.suppress(Exception):
             # what the job spent is in Usage, as a chat's is: it was counted nowhere
             from . import usage as _usage
-            _usage.record(self.store, self.cfg, engine if engine != "aria" else model, tokens,
+            _usage.turn(self.store, self.cfg, engine if engine != "aria" else model, tokens,
                           surface="task", conversation_id=cid, space_id=space_id, cost_usd=cost_usd)
         try:
             self.store.log("turn", prompt[:200],

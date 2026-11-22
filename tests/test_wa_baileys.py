@@ -204,7 +204,7 @@ def test_forget_session_removes_the_device_credentials(tmp_path, monkeypatch):
     (d / "creds.json").write_text("{}")
     # `session_dir()` and not a constant: the credentials follow the ACCOUNT now,
     # so where they live is a question with an answer that depends on who is asking.
-    monkeypatch.setattr(wa_baileys, "session_dir", lambda: d)
+    monkeypatch.setattr(wa_baileys, "session_dir", lambda uid=None: d)
     assert wa_baileys.paired() is True
     assert wa_baileys.forget_session() is True
     assert wa_baileys.paired() is False
