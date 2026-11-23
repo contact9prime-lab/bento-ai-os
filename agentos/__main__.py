@@ -1474,6 +1474,17 @@ def doctor(fix: bool = False, session: bool = False):
             todo("bento standby pair URL CODE   # a second Bento keeps a sealed copy; or `bento backup DIR` to another disk")
     except Exception as e:  # noqa: BLE001 - a doctor keeps going
         warn(f"copy elsewhere: could not check ({type(e).__name__})")
+    # a 32-bit Pi: deprecated, or too old for anything newer (oldpi.py)
+    try:
+        from . import oldpi as _oldpi
+        _op = _oldpi.state()
+        if _op["too_old"]:
+            bad(f"32-bit Pi: {_op['line']}")
+            todo("flash 64-bit Raspberry Pi OS Bookworm (Raspberry Pi Imager), then run the install line again")
+        elif _op["deprecated"]:
+            warn(f"32-bit Pi: {_op['line']}")
+    except Exception as e:  # noqa: BLE001 - a doctor keeps going
+        warn(f"32-bit check: could not run ({type(e).__name__})")
 
     # 5. optional companions
     ok("git available" if shutil.which("git") else "")

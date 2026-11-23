@@ -12,6 +12,7 @@ import asyncio
 import ipaddress
 import json
 import logging
+import contextlib
 import os
 import re
 import shlex
@@ -22,13 +23,25 @@ from urllib.parse import urlsplit
 from . import config as cfgmod
 from . import users as usersmod
 
+# mcp 2.x renamed the HTTP transport and takes the HTTP client itself (an httpx2 one); 1.x
+# took a factory. Both are understood, so a machine whose environment hasn't re-synced after an
+# update keeps its servers. Before this, 2.x failed the import here and MCP quietly read as
+# "not installed" on every machine that had it.
 try:
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
-    from mcp.client.streamable_http import streamablehttp_client
     MCP_AVAILABLE = True
 except ImportError:  # pragma: no cover
     MCP_AVAILABLE = False
+try:
+    from mcp.client.streamable_http import streamable_http_client      # mcp 2.x, and late 1.x
+    MCP_V2 = True                     # meaning: the transport takes the HTTP client itself
+except ImportError:
+    MCP_V2 = False
+    try:
+        from mcp.client.streamable_http import streamablehttp_client   # mcp 1.x
+    except ImportError:  # pragma: no cover
+        MCP_AVAILABLE = False
 
 CALL_TIMEOUT = 60
 CONNECT_TIMEOUT = 30
@@ -280,9 +293,7 @@ class MCPServer:
                             "to do — upgrade the 'mcp' package")
                     self.status = "authorizing" if not mcp_oauth.has_tokens(self.name, url) \
                         else self.status
-                ctx = streamablehttp_client(url, headers=headers or None, auth=auth,
-                                            **_guarded_for_account())
-                async with ctx as (read, write, _):
+                async with _http_streams(url, headers or None, auth) as (read, write):
                     await self._serve(read, write, on_change)
             else:
                 exe, argv, env = stdio_launch(self.conf, self.name)
@@ -304,7 +315,7 @@ class MCPServer:
             resp = await asyncio.wait_for(session.list_tools(), timeout=CONNECT_TIMEOUT)
             self.tools = [
                 {"name": t.name, "description": t.description or "",
-                 "parameters": t.inputSchema or {"type": "object", "properties": {}}}
+                 "parameters": _field(t, "input_schema", "inputSchema") or {"type": "object", "properties": {}}}
                 for t in resp.tools
             ]
             self.session = session
@@ -320,6 +331,44 @@ class MCPServer:
             self.task.cancel()
 
 
+def _field(obj, snake: str, camel: str, default=None):
+    """A field of an SDK object by its 2.x name or its 1.x one. mcp 2.x renamed them to snake_case,
+    and a getattr of the old name answers None quietly: tool errors read as results."""
+    v = getattr(obj, snake, None)
+    return v if v is not None else getattr(obj, camel, default)
+
+
+@contextlib.asynccontextmanager
+async def _http_streams(url: str, headers, auth):
+    """(read, write) for a streamable-HTTP server, through the guarded client, on either SDK."""
+    if MCP_V2:
+        from mcp.shared._httpx_utils import MCP_DEFAULT_SSE_READ_TIMEOUT, MCP_DEFAULT_TIMEOUT
+        from . import netguard
+        try:
+            import httpx2 as lib                  # mcp 2.x takes only an httpx2 client
+            make = netguard.client2
+        except ImportError:
+            import httpx as lib                   # late 1.x: the same call, on httpx
+            make = netguard.client
+        kw = {"timeout": lib.Timeout(MCP_DEFAULT_TIMEOUT, read=MCP_DEFAULT_SSE_READ_TIMEOUT)}
+        if headers:
+            kw["headers"] = headers
+        if auth is not None:
+            kw["auth"] = auth
+        async with make(local_ok=_local_ok(), **kw) as hc:
+            async with streamable_http_client(url, http_client=hc) as streams:
+                yield streams[0], streams[1]
+        return
+    ctx = streamablehttp_client(url, headers=headers, auth=auth, **_guarded_for_account())
+    async with ctx as (read, write, _):
+        yield read, write
+
+
+def _local_ok() -> bool:
+    from . import users as usersmod
+    return not usersmod.enabled() or usersmod.is_admin(usersmod.current() or "")
+
+
 def _guarded_for_account() -> dict:
     """An account that isn't an admin chooses its own server address, and this machine connects
     to it: the guarded client, every hop. An admin's or a single user's local MCP server is theirs
@@ -327,7 +376,7 @@ def _guarded_for_account() -> dict:
     from . import netguard
     from . import users as usersmod
 
-    local_ok = not usersmod.enabled() or usersmod.is_admin(usersmod.current() or "")
+    local_ok = _local_ok()
 
     def factory(headers=None, timeout=None, auth=None):
         return netguard.client(local_ok=local_ok, follow_redirects=True, headers=headers, timeout=timeout, auth=auth)
@@ -419,12 +468,12 @@ class MCPManager(usersmod.Scoped):
         """
         data = getattr(block, "data", None)
         if isinstance(data, str) and data:
-            return data, getattr(block, "mimeType", "") or ""
+            return data, _field(block, "mime_type", "mimeType") or ""
         resource = getattr(block, "resource", None)
         if resource is not None:
             blob = getattr(resource, "blob", None)
             if isinstance(blob, str) and blob:
-                return blob, getattr(resource, "mimeType", "") or ""
+                return blob, _field(resource, "mime_type", "mimeType") or ""
         return "", ""
 
     async def call(self, server: str, tool: str, args: dict,
@@ -461,6 +510,11 @@ class MCPManager(usersmod.Scoped):
         parts: list[str] = []
         media: list[dict] = []
         first_image_path = ""
+        if not hasattr(res, "content"):
+            # mcp 2.x: a server may answer with a request for more input instead of a result.
+            # Nothing here can answer it on a person's behalf, so it is said, never guessed.
+            return (f"[error] {server}/{tool} asked for more input before it would answer, and "
+                    "Bento can't answer that kind of question for you yet")
         for c in res.content or []:
             ctype = getattr(c, "type", "")
             if ctype == "text":
@@ -501,7 +555,7 @@ class MCPManager(usersmod.Scoped):
                          f"{' · ' + row['mime'] if row.get('mime') else ''}]")
 
         text = "\n".join(p for p in parts if p) or "(no content)"
-        if getattr(res, "isError", False):
+        if _field(res, "is_error", "isError"):
             return f"[error] {text}"
         if not media:
             return text

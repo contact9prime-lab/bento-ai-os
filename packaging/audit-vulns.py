@@ -12,8 +12,8 @@ locked version stays vulnerable until somebody notices.
 What it reads:
   * uv.lock, exported as the requirements every install resolves to (uv export --no-dev), and
     checked with pip-audit (Apache-2.0) run through uvx, so it is never one of Bento's
-    dependencies. The armv7 cryptography pin (pyproject.toml) is a different resolution and is
-    said, not scanned: a Pi on Buster has no newer wheel.
+    dependencies. A 32-bit Pi resolves the same versions: there is no armv7 pin any more, and a Pi
+    on Buster, which can't take them, is refused by install.sh (agentos/oldpi.py).
   * Each Node sidecar's package.json (wa_bridge, ocp_host), resolved into a throwaway lockfile with
     --ignore-scripts (no package code runs) and checked with npm audit. ocp_host has no dependencies.
 
@@ -160,7 +160,6 @@ def main(argv) -> int:
         print(f"  ✗ vuln-exceptions.txt: {s}")
     for p in rep["problems"]:
         print(f"  ✗ {p}")
-    print("  armv7 keeps cryptography 46.0.3 on purpose (no newer wheel for a Pi on Buster); it isn't scanned here.")
     if rep["ok"]:
         print(f"  ✓ no known vulnerability open ({len(rep['findings'])} excepted)" if rep["findings"]
               else "  ✓ no known vulnerability in what Bento installs")

@@ -13,7 +13,16 @@ said in Events, and a restart never calls the same people twice. Set it on the a
 **Known vulnerabilities in what Bento installs are checked on every change and every week.** The Python
 packages in `uv.lock` (pip-audit) and the WhatsApp link's Node packages (npm audit, no package code run).
 The first run found 27 advisories in five packages, and they are upgraded here: cryptography 50.0.2, mcp
-1.30.0, pyjwt 2.15.1, anyio 4.16.0, certifi 2026.11.20. A 32-bit Pi keeps cryptography 46.0.3, as before.
+2.3.0, pyjwt 2.15.1, anyio 4.16.0, certifi 2026.11.20, on every machine.
+
+**mcp 2.x.** Bento's MCP client now reads the 2.x SDK (and still 1.x): stdio and HTTP servers, sign-ins
+(with the issuer check 2.x adds), and the network guard, which now also guards the new HTTP client. Checked
+against real servers.
+
+**32-bit Raspberry Pi OS is deprecated.** It gets the fixed cryptography like every other machine, and the
+installer says 32-bit is deprecated and asks before it continues. On Buster, which can't run the fix, the
+installer stops and offers 0.99.0, the last version that runs there, saying it carries a known
+vulnerability; `--yes` can't answer that. `bento update`, Settings → Version and `bento doctor` say the same.
 
 **Bento says whether a copy of this machine is kept anywhere else.** Settings → System → Backup, setup's new
 step "Keep a copy somewhere else", and `bento doctor` read the same answer: a cloud standby, a storage bucket,

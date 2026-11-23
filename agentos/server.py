@@ -3088,7 +3088,15 @@ async def api_update_status(check: bool = False):
             "branch": updmod.conf(cfg).get("branch"),
             "repo": updmod.repo_of(cfg), "remote": updmod.remote_name(cfg),
             "official": updmod.repo_of(cfg) == updmod.DEFAULT_REPO,
-            "enabled": updmod.conf(cfg).get("enabled", True)}
+            "enabled": updmod.conf(cfg).get("enabled", True),
+            # 32-bit Pi OS: deprecated, or too old for this version (oldpi.py)
+            "oldpi": _oldpi_state()}
+
+
+def _oldpi_state() -> dict:
+    from . import oldpi
+    st = oldpi.state()
+    return st if st["deprecated"] else {}
 
 
 @app.get("/api/changelog")
@@ -7739,7 +7747,7 @@ async def api_mcp_oauth_callback(name: str, code: str = "", state_: str = "",
     qp = dict(request.query_params) if request is not None else {}
     st = qp.get("state") or state_ or None
     err = error or qp.get("error", "")
-    ok = mcp_oauth.resolve(name, code or qp.get("code", ""), st, error=err)
+    ok = mcp_oauth.resolve(name, code or qp.get("code", ""), st, error=err, iss=qp.get("iss") or None)
     # Both come from the URL, and this route takes no cookie and needs no sign-in waiting.
     name, err = html_mod.escape(str(name)), html_mod.escape(str(err))
     if not ok:

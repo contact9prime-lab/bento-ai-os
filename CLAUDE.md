@@ -2555,7 +2555,20 @@ autonomy level. The audit and its 97 fixes are in `docs/security-testing.md`; th
   (`packaging/audit-vulns.py`, `.github/workflows/vulns.yml`, `packaging/vuln-exceptions.txt`;
   `tests/test_audit_vulns.py`). pip-audit over `uv export`, through uvx (never a dependency); npm audit on a throwaway
   lockfile with `--ignore-scripts`. Every PR, push and Monday. An exception is `ID | why | until DATE` and is open
-  again after its date. The script is stdlib only. mcp is held below 2 (`mcp>=1.30,<2`): 2.x changed the client API.
+  again after its date. The script is stdlib only.
+- **The MCP client reads both SDK majors** (`mcp_client._field`, `_http_streams`, `netguard.client2`,
+  `mcp_oauth._callback`; `tests/test_mcp_sdk.py` against real stdio and HTTP servers). 2.x renamed every field
+  to snake case (`input_schema`, `is_error`, `mime_type`): read through `_field`, or a tool's schema is empty and
+  every error reads as a success. Its HTTP transport takes the client itself (httpx2), so the guard is built for
+  either library (`netguard._guard_for`), and a refusal arrives as `httpx2.ConnectError` whose cause is `Refused`.
+  Its sign-in checks the issuer (`iss`), which the callback route carries. Choose by what imports, never by the
+  version number: 1.30 already has `streamable_http_client`.
+- **32-bit Pi OS is deprecated, and Buster is too old** (`agentos/oldpi.py`, install.sh's block before the clone,
+  `updates.can_apply`, `/api/update` `oldpi`, `bento doctor`; `tests/test_install_sh.py`). The owner's call after
+  the scan: no armv7 pin. Bullseye and newer get the fixed cryptography and a "Continue on 32-bit?" question;
+  below glibc 2.31 the installer offers `LAST_OLD` (0.99.0, its commit, branch `buster-0.99.0`) through
+  `ask_deliberate`, which `--yes` never answers, and `bento update` refuses there in the same words. 32-bit is the
+  USERLAND (`getconf LONG_BIT`, `struct.calcsize`), never `uname -m`: a 32-bit Pi OS on a Pi 4 says aarch64.
 - **The suite has its own home** (`tests/conftest.py` sets `AGENTOS_HOME` before anything imports agentos;
   `tests/test_suite_home.py`). The in-process server opened the real `~/.agentos/agentos.db` at import, and
   one run left five test rows in the machine's ledger, signed with a test key: the chain stopped verifying.
