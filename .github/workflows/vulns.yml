@@ -1,0 +1,36 @@
+# Known vulnerabilities in what Bento installs (packaging/audit-vulns.py): the Python packages
+# uv.lock resolves to, through pip-audit, and each Node sidecar's packages, through npm audit.
+# Every pull request, every push to master, and every Monday, because a lock that doesn't change
+# can still turn vulnerable when an advisory is published. Red names the package, the advisory
+# and the version that fixes it; one nobody can fix yet goes in packaging/vuln-exceptions.txt
+# with a date to look at it again.
+name: Vulnerabilities
+
+on:
+  pull_request:
+  push:
+    branches: [master, main]
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: vulns-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: known vulnerabilities
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Audit
+        run: python3 packaging/audit-vulns.py

@@ -283,3 +283,19 @@ body.dev-mobile .dvs-grid{grid-template-columns:1fr}
 .dvs-spark circle{fill:var(--acc);stroke:var(--bg2);stroke-width:1.2}
 .dvs-tr{grid-column:1/-1;color:var(--dim);font-size:var(--fs-2xs);font-variant-numeric:tabular-nums;margin-top:-1px}
 @media (max-width:640px){.dvs-spark{width:64px}}
+
+/* who is called when nobody acknowledges an alarm (alarmcall.py) */
+.dvr-call{margin:12px 0 4px;padding:12px 14px;border:1px solid var(--line);
+  border-radius:12px;background:color-mix(in srgb,var(--bg2) 70%,transparent)}
+.dvr-call[hidden]{display:none}
+.dvc-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.dvc-head h3{margin:0;font-size:var(--fs-md,14px)}
+.dvc-words{margin:6px 0 8px;line-height:1.4}
+.dvc-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px}
+.dvc-step,.dvc-warn{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;min-height:var(--tap,40px)}
+/* two classes: .pbody input{width:100%} (10-panels) would stretch each box onto a line of its own */
+.dvr-call .dvc-n{width:72px;flex:none;min-height:var(--tap,40px)}
+.dvr-call .dvc-sel{width:auto;flex:0 1 auto;min-width:0;max-width:100%;min-height:var(--tap,40px)}
+.dvr-call .dvc-warn input{width:20px;height:20px;flex:none}
+.dvc-hint{margin:6px 0 0}
+@media (max-width:560px){.dvc-step{width:100%}.dvr-call .dvc-to .dvc-sel{flex:1 1 0}}

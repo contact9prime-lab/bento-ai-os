@@ -93,6 +93,8 @@ PRIVATE = (".restoring-", ".before-restore-", ".restore-ready", ".backup-out-",
            ".restore-upload-", ".backup-tmp",
            # the cloud standby's pairing, copies and state (standby.py): this machine's own
            ".standby",
+           # when a backup of THIS machine was last made (offsite.py): a fact about this computer
+           ".offsite",
            # where this machine keeps its home on GitHub (keep.py): this machine's own
            ".keep",
            # what the watcher knows about this machine's code (integrity.py). Which tree is

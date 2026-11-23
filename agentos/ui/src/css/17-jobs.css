@@ -212,3 +212,6 @@ body.dev-touch .job-hchips .of-chip,body.dev-touch .job-hrow .endbtn,body.dev-to
   .flw-l .row:has(textarea)>*{flex:1 1 100%!important;min-width:0}
   .flw-trig>button{min-width:var(--tap,44px);min-height:var(--tap,44px)}
 }
+/* setup's "Keep a copy somewhere else" (14b OB_WIRE.copy): the three ways, as cards */
+.ob-copy-doors{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-top:12px}
+#ob-copy .bk-offsite{margin:10px 0 0}

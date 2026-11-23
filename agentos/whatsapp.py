@@ -292,6 +292,12 @@ class WhatsAppBridge(usersmod.Scoped):
         self.store.log("whatsapp", "→ said something about a sign-in link" if quiet else f"→ sent: {text[:200]}")
         return "sent via WhatsApp"
 
+    async def send_alarm(self, text: str, wa_id: str, code: str) -> str:
+        """An alarm nobody acknowledged (alarmcall.py). No buttons: a reply of ACK takes it.
+        Outside the 24-hour window the Cloud API refuses it, and that refusal is returned."""
+        res = await self.send(text + "\nReply ACK to acknowledge it.", wa_id)
+        return res if str(res).startswith("[error]") else ""
+
     async def say_wall(self, wa_id: str, text: str, buttons: list) -> None:
         """A line about a sign-in link (handoff.py). No buttons here: an address is in the
         words already, and anything else is answered by replying with its word."""
@@ -637,6 +643,15 @@ class WhatsAppBridge(usersmod.Scoped):
                                         "whatsapp")
             if said:
                 self.store.log("whatsapp", f"the owner's chat {wa_id} answered the security hold")
+                await self.send(said, wa_id)
+                return
+
+        # "ack" from a chat that was called about an alarm (alarmcall.py): the board's own mark
+        from . import alarmcall
+        if alarmcall.is_ack(text):
+            said = await alarmcall.answer(f"wa:{wa_id}", f"{self._profile_name(val, wa_id)[:40]} on WhatsApp")
+            if said:
+                self.store.log("whatsapp", f"the chat {wa_id} acknowledged an alarm")
                 await self.send(said, wa_id)
                 return
 

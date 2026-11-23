@@ -702,6 +702,7 @@ function setTab(body,all){
          f:'setup onboarding wizard first run walkthrough tour again restart start over run through'}),
     ],{f:'setup onboarding'}));
     P.push(pGroup('Backup',[
+      '<div id="bk-offsite" class="bk-offsite" hidden></div>',
       '<div id="bk-last" class="bk-last"></div>',
       pRow('Back up this machine','<div id="bk-make"><span class="mut">…</span></div>',
         {stack:true,desc:'One encrypted file with everything, to keep safe or to move to another machine.',

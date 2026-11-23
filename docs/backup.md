@@ -101,6 +101,26 @@ A few things can't move by themselves. After a restore, Settings says which appl
 - Names inside the file are checked: nothing can land outside `~/.agentos`, and links are
   never followed.
 
+## Is a copy kept somewhere else?
+
+A backup on the same disk is lost with the disk, and ransomware that reaches this machine locks it
+with everything else. The top of Settings → System → Backup says whether a copy of this machine is
+kept anywhere else, and how fresh it is:
+
+- **Cloud standby** ([standby.md](standby.md)): a second Bento holds a sealed copy and takes over.
+  It counts once it has received a copy, and warns when the last one is over two days old or failed.
+- **A storage bucket** ([cloud.md](cloud.md)): your home kept sealed in a bucket you own. It counts
+  once a save worked.
+- **A backup file**: counts for a month after it was made, and is never called safe, because Bento
+  can't see where the file went. Keep it on another disk.
+
+![Settings → System → Backup: "Nothing of this machine is kept anywhere else. If this disk fails, or ransomware locks it, everything here is lost." with buttons for Cloud standby, Put Bento in the cloud and Download a backup](screenshots/backup-offsite.png)
+
+Setup asks the same question near its end (**Keep a copy somewhere else**), and `bento doctor`
+prints it as `copy elsewhere`. None of them makes a copy for you: each way has its own door.
+
+![Setup's step "Keep a copy somewhere else": the same warning, and three cards, Cloud standby, Put Bento in the cloud and Download a backup](screenshots/onboarding-copy.png)
+
 ## Snapshots and backups
 
 Snapshots (Settings → System → Snapshots) are quick restore points kept on this machine.

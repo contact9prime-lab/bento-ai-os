@@ -1280,6 +1280,14 @@ what follows. Kept free of HTTP and asyncio, so both verbs work with the server 
 - **The shipped bundle must parse** (`test_the_shipped_bundle_parses`, with Node): one
   dropped `pRow(` in Settings killed every app while every other test passed.
 
+**Off the machine is one answer, said everywhere** (`agentos/offsite.py`, `/api/backup`'s `offsite`,
+`backupOffsite` in 11g, setup's `copy` step and `_step_copy`, `bento doctor`'s copy elsewhere;
+`tests/test_offsite.py`). Asked for after ransomware at seventeen hospitals in a day: a backup on the same disk
+is lost with it, and nothing said whether any copy was kept elsewhere. A standby counts once it holds a copy and
+a bucket once a save worked (both warn past `FRESH_S` or on an error); a downloaded file counts for `STALE_S` and
+is never called safe, because Bento can't see where it went (`note_made`, `.offsite` is in `PRIVATE`). It makes
+nothing: each way keeps its own door.
+
 ## Cloud standby: one side acts, the other holds a sealed copy
 
 `agentos/standby.py` + `/api/standby*` + `bento standby` + Settings → System → Cloud
@@ -2543,6 +2551,11 @@ autonomy level. The audit and its 97 fixes are in `docs/security-testing.md`; th
   its terminal; every accept is an `integrity.accepted` alert and an `integrity.accept` ledger row. The phones
   hear the hold when it trips and at every start while it holds. Replacing the code needs the current one.
 - **Attacks go in `secevents.flag`**, one alert per incident, the OS's words only to a model.
+- **Known vulnerabilities in what Bento installs are checked, and a scanner that didn't run is red**
+  (`packaging/audit-vulns.py`, `.github/workflows/vulns.yml`, `packaging/vuln-exceptions.txt`;
+  `tests/test_audit_vulns.py`). pip-audit over `uv export`, through uvx (never a dependency); npm audit on a throwaway
+  lockfile with `--ignore-scripts`. Every PR, push and Monday. An exception is `ID | why | until DATE` and is open
+  again after its date. The script is stdlib only. mcp is held below 2 (`mcp>=1.30,<2`): 2.x changed the client API.
 - **The suite has its own home** (`tests/conftest.py` sets `AGENTOS_HOME` before anything imports agentos;
   `tests/test_suite_home.py`). The in-process server opened the real `~/.agentos/agentos.db` at import, and
   one run left five test rows in the machine's ledger, signed with a test key: the chain stopped verifying.
@@ -4089,6 +4102,24 @@ device hub instead of the town … the desktops could be used for switching". Fi
   a docked bar, or it threw the bar half its width left.
 - **Words and numbers, no frame loop**: a 4 s refresh that skips while hidden or covered, values moved in place by
   `device_live`. It is in `LITE_SCENES`, so a Pi's own screen can show it.
+
+**An alarm nobody acknowledges is called, then passed on, and a phone that was told can take it**
+(`agentos/alarmcall.py`, `server._alarms_call`/`_alarm_acked`/`_alarm_bridges`, `send_alarm` on both bridges,
+Telegram's `al:` button, WhatsApp's ACK, `/api/devices/escalation`, the rules page's When nobody acknowledges,
+`bento network alarms call`; `docs/network.md`, `tests/test_alarm_escalation.py`). Asked for after a hotel's
+chlorine alarm went out by email that nobody read. Five rules:
+- **Two steps, the person's minutes** (`device_escalation`, a USER_KEY, read field by field by `clean`): their own
+  paired chats after `after_min` from when it was RAISED (since + for), then the one second chat `then_min` later.
+  Warnings only when ticked. Nobody paired goes straight to the second chat, and is said.
+- **The second chat is theirs, looked up again at every send** (`phoneforward.targets` over the account's own
+  bridges); the save refuses one that isn't, and a chat that's gone is said in Events, never called.
+- **Acknowledging from a phone is `_alarm_acked`, the board's own mark**, and only a chat in `told` for that alarm
+  can give it (`Calls.asked_by`, a 10-hex code per alarm in the button). Taken before the agent and before the
+  owner-only buttons. The others who were called hear who took it. It fixes nothing.
+- **Each step is an `escalated` diary line and a `device.escalate` ledger row**; `Calls.restore` reads the lines
+  of alarms still open after a start, so nobody is called twice. devevents skips the ledger copy.
+- **No agent tool, not in CONFIG_SAFE_KEYS**: a model that could change who is called could silence an alarm. The
+  machine's own alarms (owner '') go to every admin's phones with the defaults.
 
 **What a desktop shows is chosen on the desktop: its scene, and the company it opens** (`deskMenu`/`deskBtnPaint`/
 `deskAdd`/`deskShift`/`deskCompanySync` in 03-virtual-desktops.js, `#deskbtn` in shell.html, `01i-apphub.js`,

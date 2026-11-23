@@ -1351,7 +1351,7 @@ def _alarm_rules(owner: str) -> list[dict]:
     return out
 
 
-def _alarm_lines(whose=None, limit: int = 2000) -> list[dict]:
+def _alarm_lines(whose=None, limit: int = 2000, events=("alarm", "cleared", "acknowledged")) -> list[dict]:
     """The diary's alarm lines, each with the account it belongs to. The diary is the machine's and
     one list for everybody, so a screen keeps only `whose`: a line written before lines named their
     owner belongs to the link's owner, and to the machine when no link has that name."""
@@ -1361,7 +1361,7 @@ def _alarm_lines(whose=None, limit: int = 2000) -> list[dict]:
     owners = {lk.get("label"): lk.get("owner") or "" for lk in teamlink._load()["links"]}
     out = []
     for e in devevents.gather([store], limit=limit):
-        if e.get("event") in ("alarm", "cleared", "acknowledged"):
+        if e.get("event") in events:
             e.setdefault("owner", owners.get(e.get("label"), ""))
             if whose is None or e["owner"] in whose:
                 out.append(e)
@@ -1440,7 +1440,182 @@ async def _alarms_judge(owner: str, say: bool = True, machines: list | None = No
                                 alarm=a["id"], level=a.get("level") or "alarm", whose=owner, why=a.get("why") or "")
         with contextlib.suppress(Exception):
             await _tie_tell({"type": "device_alarm", "phase": "cleared", "alarm": a}, owner)
+    if say:
+        with contextlib.suppress(Exception):
+            await _alarms_call(owner, alarms, cleared)
     return alarms
+
+
+# Calling people about an alarm nobody acknowledged (alarmcall.py): after the person's minutes it
+# goes to their own paired phones, then to the one chat of theirs they picked. A phone that was told
+# can acknowledge it (alarmcall.answer, bound below), which is the board's own mark.
+
+def _alarm_bridges(owner: str) -> list:
+    """(kind, bridge) an alarm of this account is said on. An account's own; the machine's alarms
+    (owner '') go to the machine's bridges and every admin's, as a security alert does."""
+    out = []
+    services = getattr(usersmod, "_services", {}) or {}
+    if usersmod.enabled() and owner:
+        svc = services.get(owner) or {}
+        out = [(k, svc[k]) for k in ("telegram", "whatsapp") if svc.get(k) is not None]
+    else:
+        for k in ("telegram", "whatsapp"):
+            with contextlib.suppress(Exception):
+                if k in state:
+                    out.append((k, state[k]))
+        if usersmod.enabled():
+            for uid, svc in list(services.items()):
+                if isinstance(svc, dict) and usersmod.is_admin(uid):
+                    out += [(k, svc[k]) for k in ("telegram", "whatsapp") if svc.get(k) is not None]
+    return list({id(b): (k, b) for k, b in out}.values())
+
+
+def _alarm_own_chats(owner: str) -> list:
+    """(key, kind, bridge, to): each bridge's paired owner chat."""
+    out = []
+    for kind, b in _alarm_bridges(owner):
+        with contextlib.suppress(Exception):
+            if kind == "telegram":
+                chat = b._t().get("owner_chat_id") or 0
+                if chat and b._t().get("enabled") and b._t().get("bot_token"):
+                    out.append((f"tg:{chat}", kind, b, chat))
+            else:
+                wa = b._c().get("owner_wa_id") or ""
+                if wa and b._c().get("enabled"):
+                    out.append((f"wa:{wa}", kind, b, wa))
+    return out
+
+
+def _alarm_second(owner: str, second: dict) -> tuple | None:
+    """The second chat the person picked, looked up again among their chats now. None when it
+    isn't one of them any more or can't be reached; the reason is the second value."""
+    from . import phoneforward
+    br = dict(_alarm_bridges(owner))
+    rows = phoneforward.targets(br.get("telegram"), br.get("whatsapp"))
+    t = next((r for r in rows if r["channel"] == second.get("channel") and str(r["to"]) == str(second.get("to"))), None)
+    if not t:
+        return None, f"{second.get('name') or 'the second chat'} isn't one of your chats any more"
+    if not t["ready"]:
+        return None, t.get("why") or f"{t['name']} can't be reached right now"
+    kind = t["channel"]
+    to = int(t["to"]) if kind == "telegram" else str(t["to"])
+    return ((f"{'tg' if kind == 'telegram' else 'wa'}:{to}", kind, br[kind], to), t["name"]), ""
+
+
+async def _alarm_say(kind: str, b, to, text: str, code: str = "") -> str:
+    """One message about an alarm, with its Acknowledge button where the channel has buttons.
+    Returns '' or why it didn't go."""
+    try:
+        if code and hasattr(b, "send_alarm"):
+            res = await asyncio.wait_for(b.send_alarm(text, to, code), 15)
+        else:
+            res = await asyncio.wait_for(b.send(text, to), 15)
+    except Exception as e:  # noqa: BLE001
+        return f"{type(e).__name__}"
+    res = str(res or "")
+    return res.replace("[error] ", "") if res.startswith("[error]") else ""
+
+
+def _alarm_ledger(owner: str, action: str, resource: str, detail: str) -> None:
+    with contextlib.suppress(Exception), usersmod.as_user(owner):
+        fabricmod.audit_team(state["store"], action, resource, detail)
+
+
+async def _alarms_call(owner: str, alarms: list, cleared: list) -> None:
+    """The escalation step, after a judgement: who is due a call is called; a cleared alarm is
+    said to everyone who was told about it."""
+    from . import alarmcall
+    calls = alarmcall.CALLS
+    if not calls.restored:
+        with contextlib.suppress(Exception):
+            still = {(o, aid) for o, d in _alarms().active.items() for aid in d}
+            calls.restore(_alarm_lines(events=("escalated",)), still)
+        calls.restored = True
+    for a in cleared:
+        for key in calls.ended(owner, a["id"]):
+            for k, kind, b, to in _alarm_chats_by_key(owner, key):
+                await _alarm_say(kind, b, to, f"✓ Cleared on {a.get('machine')}: {a.get('text')}"
+                                 + (f" ({a['why']})" if a.get("why") else ""))
+    with usersmod.as_user(owner):
+        p = alarmcall.policy_of(state["cfg"])
+    now = time.time()
+    for a, step in calls.due(owner, alarms, p, now):
+        open_min = max(1, round((now - float(a.get("since") or now)) / 60))
+        code = alarmcall.code_of(owner, a["id"])
+        told, why = [], []
+        if step == 1:
+            chats = _alarm_own_chats(owner)
+            for key, kind, b, to in chats:
+                err = await _alarm_say(kind, b, to, alarmcall.message(a, 1, open_min), code)
+                (why.append(f"{kind}: {err}") if err else told.append(key))
+            if not chats:
+                why.append("no Telegram or WhatsApp chat is paired")
+            if not told and p.get("second"):
+                step = 2                     # nobody of yours could be told: go straight to the second chat
+        if step == 2:
+            got, reason = _alarm_second(owner, p.get("second") or {})
+            if got:
+                (key, kind, b, to), name = got
+                err = await _alarm_say(kind, b, to, alarmcall.message(a, 2, open_min), code)
+                if err:
+                    why.append(f"{name}: {err}")
+                else:
+                    told.append(key)
+                    for k2, kind2, b2, to2 in _alarm_own_chats(owner):
+                        if k2 in calls.told_keys(owner, a["id"]):
+                            await _alarm_say(kind2, b2, to2, f"Nobody acknowledged the alarm on {a.get('machine')} "
+                                             f"({a.get('text')}), so it went to {name}.")
+            elif reason:
+                why.append(reason)
+        calls.told(owner, a["id"], step, told, now)
+        who = ", ".join(told) if told else "nobody"
+        text = (f"Alarm on {a.get('machine')} not acknowledged after {open_min} min: "
+                + (f"told {len(told)} chat{'' if len(told) == 1 else 's'}" if told else "nobody could be told")
+                + (f" ({'; '.join(why)})" if why else ""))
+        await _device_event(owner, "escalated", a.get("machine") or "", text, alarm=a["id"], step=step,
+                            told=told, whose=owner)
+        _alarm_ledger(owner, "device.escalate", f"alarm:{a['id']}", f"step {step}: {who}"
+                      + (f"; {'; '.join(why)}" if why else ""))
+
+
+def _alarm_chats_by_key(owner: str, key: str) -> list:
+    """The chat a key names, among this account's bridges, to say a cleared or acknowledged alarm."""
+    kind, _, to = key.partition(":")
+    out = []
+    for k, b in _alarm_bridges(owner):
+        if (k == "telegram") != (kind == "tg"):
+            continue
+        out.append((key, k, b, int(to) if k == "telegram" and to.lstrip("-").isdigit() else to))
+        break
+    return out
+
+
+async def _alarm_acked(owner: str, aid: str, by: str, from_key: str = "") -> dict | None:
+    """Somebody saw an alarm (the board or a phone that was told). The board's mark, a line, the
+    screens, and the others who were called hear who took it."""
+    from . import alarmcall
+    got = _alarms().ack(owner, aid, by)
+    if not got:
+        return None
+    await _device_event(owner, "acknowledged", got["machine"],
+                        f"{by} acknowledged on {got['machine']}: {got['text']}", alarm=aid, by=by, whose=owner)
+    await _tie_tell({"type": "device_alarm", "phase": "ack", "alarm": got}, owner)
+    for key in alarmcall.CALLS.ended(owner, aid):
+        if key == from_key:
+            continue
+        for _k, kind, b, to in _alarm_chats_by_key(owner, key):
+            await _alarm_say(kind, b, to, f"✓ {by} acknowledged the alarm on {got['machine']}: {got['text']}")
+    if from_key:
+        _alarm_ledger(owner, "device.acknowledge", f"alarm:{aid}", f"{by}, from {from_key.split(':')[0]}")
+    return got
+
+
+def _bind_alarmcall():
+    from . import alarmcall
+    alarmcall.bind(ack=_alarm_acked)
+
+
+_bind_alarmcall()
 
 
 def _alarm_owners() -> set:
@@ -11064,6 +11239,8 @@ async def api_backup_info(request: Request):
            "last": bk.last_restore() if admin else {}}
     if admin:
         out["plan"] = await asyncio.to_thread(bk.plan)
+        from . import offsite
+        out["offsite"] = await asyncio.to_thread(offsite.state, None, state["cfg"])
     return out
 
 
@@ -11095,6 +11272,8 @@ async def api_backup(body: dict):
         return JSONResponse({"error": str(e)}, status_code=400)
     _backup_audit("backup.create", f"backup made: {m['files']} files, {m['size']} bytes, "
                                    f"{len(m['accounts'])} account(s)")
+    from . import offsite
+    offsite.note_made(m["size"], "download")
     return FileResponse(dest, media_type="application/octet-stream", filename=bk.default_name(),
                         headers={"X-Bento-Files": str(m["files"])},
                         background=BackgroundTask(lambda: dest.unlink(missing_ok=True)))
@@ -17855,12 +18034,8 @@ async def api_device_alarm_ack(body: dict):
     aid = str((body or {}).get("id") or "")[:120]
     by = _account_name(me) if usersmod.enabled() else "you"
     for o in (sorted({"", me}) if usersmod.is_admin(me) else [me]):
-        got = _alarms().ack(o, aid, by or "someone")
+        got = await _alarm_acked(o, aid, by or "someone")
         if got:
-            await _device_event(o, "acknowledged", got["machine"],
-                                f"{by or 'Someone'} acknowledged on {got['machine']}: {got['text']}",
-                                alarm=aid, by=by or "someone", whose=o)
-            await _tie_tell({"type": "device_alarm", "phase": "ack", "alarm": got}, o)
             return {"ok": True, "alarm": got}
     if (body or {}).get("demo") and _demo_shows(me):
         from .demos import warehouse as wh
@@ -17868,6 +18043,45 @@ async def api_device_alarm_ack(body: dict):
         if got and got.get("ok"):
             return got
     return JSONResponse({"error": "that alarm is not raised now"}, 404)
+
+
+@app.get("/api/devices/escalation")
+async def api_device_escalation():
+    """Who is called about an alarm nobody acknowledged (alarmcall.py): your setting, your paired
+    chats that would be told first, and the chats of yours that can be the second."""
+    from . import alarmcall, phoneforward
+    me = usersmod.current() or ""
+    p = alarmcall.policy_of(state["cfg"])
+    br = dict(_alarm_bridges(me))
+    rows = phoneforward.targets(br.get("telegram"), br.get("whatsapp"))
+    own = [{"channel": k, "name": ("your Telegram" if k == "telegram" else "your WhatsApp")}
+           for _key, k, _b, _to in _alarm_own_chats(me)]
+    choices = [{"channel": r["channel"], "to": str(r["to"]), "name": r["name"], "kind": r["kind"],
+                "ready": r["ready"], "why": r.get("why") or ""} for r in rows if r["kind"] != "you"]
+    return {"policy": p, "words": alarmcall.words(p), "own": own, "choices": choices,
+            "nobody": "" if own else "No Telegram or WhatsApp chat is paired, so nobody can be called yet. "
+                                     "Pair one in Settings → Channels."}
+
+
+@app.put("/api/devices/escalation")
+async def api_device_escalation_set(body: dict):
+    """Your choice of who is called and when. The second chat must be one of your chats now."""
+    from . import alarmcall, phoneforward
+    me = usersmod.current() or ""
+    p, dropped = alarmcall.clean(body or {})
+    if p.get("second"):
+        br = dict(_alarm_bridges(me))
+        rows = phoneforward.targets(br.get("telegram"), br.get("whatsapp"))
+        hit = next((r for r in rows if r["channel"] == p["second"]["channel"] and str(r["to"]) == p["second"]["to"]
+                    and r["kind"] != "you"), None)
+        if not hit:
+            return JSONResponse({"error": "That isn't one of your chats. Pick one from the list."}, 400)
+        p["second"]["name"] = hit["name"][:alarmcall.NAME_MAX]
+    cfg = state["cfg"]
+    cfg["device_escalation"] = p
+    cfgmod.save_config(cfg)
+    _ledger("device.escalation", "device:alarms", alarmcall.words(p))
+    return {"ok": True, "policy": p, "words": alarmcall.words(p), "dropped": dropped}
 
 
 @app.put("/api/devices/alarms")

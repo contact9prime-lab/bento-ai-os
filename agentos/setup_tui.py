@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import getpass
+from pathlib import Path
 import shutil
 import sys
 import textwrap
@@ -648,6 +649,40 @@ def _step_look(cfg, store) -> None:
           "Personalize app.")
 
 
+def _step_copy(cfg, store) -> None:
+    """A copy somewhere else (offsite.py): said, and made here if the person wants a file now."""
+    from . import offsite
+    o = offsite.state(cfg=cfg)
+    print("\n  " + o["line"])
+    if o["level"] == "ok":
+        return
+    print(_wrap("Three ways, each sealed: a cloud standby (`bento standby`), a storage bucket "
+                "(`bento cloud`), or a backup file you keep on another disk."))
+    if not _yes("Make a backup file now?", False):
+        return
+    dest = _ask("Where (a folder on another disk is best)", str(Path.home()))
+    try:
+        pw = getpass.getpass("  Passphrase (the only way to open it): ")
+        pw2 = getpass.getpass("  The same again: ")
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return
+    if pw != pw2:
+        print("  The two passphrases are different. Nothing was made.")
+        return
+    from . import backup as bk
+    p = Path(dest).expanduser()
+    if p.is_dir():
+        p = p / bk.default_name()
+    try:
+        m = bk.create(p, pw)
+    except bk.BackupError as e:
+        print(f"  {e}")
+        return
+    offsite.note_made(m["size"], str(m["path"]))
+    print(f"  ✓ {m['path']}. Keep it on another disk: a copy on this one is lost with it.")
+
+
 def _step_account(cfg, store) -> None:
     """Accounts from a terminal, which is where a headless machine needs them.
 
@@ -708,7 +743,7 @@ HANDLERS = {
     "fork": _step_fork, "app": _step_app,
     "agent": _step_agent, "crew": _step_crew, "screen": _step_screen, "voice": _step_voice,
     "flow": _step_flow, "schedule": _step_schedule,
-    "channel": _step_channel, "look": _step_look, "account": _step_account,
+    "channel": _step_channel, "look": _step_look, "copy": _step_copy, "account": _step_account,
 }
 
 

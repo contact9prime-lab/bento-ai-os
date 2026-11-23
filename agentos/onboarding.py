@@ -179,6 +179,15 @@ STEPS: list[Step] = [
          blurb="A theme, a wallpaper, and whether it speaks out loud.",
          produces="a desktop that looks like your machine",
          panel="look"),
+    # Near the end, once there is something worth keeping. Asked for after a reel of
+    # incidents (ransomware at seventeen hospitals in a day): a backup on the same disk is lost
+    # with it. Evidence is a copy somewhere else (offsite.done): a cloud standby, a bucket, or
+    # a backup file made in the last month.
+    Step("copy", "Keep a copy somewhere else", icon="⛁",
+         blurb="A cloud standby, a storage bucket you own, or a backup file on another disk. "
+               "If this disk fails, or ransomware locks it, you still have your Bento.",
+         produces="a sealed copy of this machine that isn't on this machine",
+         panel="system"),
     # Last on purpose. Everything above is somebody setting up THEIR machine, and
     # the first account inherits all of it — so asking this first would mean
     # asking "who are you?" of a machine that does not yet do anything, and then
@@ -201,9 +210,9 @@ SHAPES = ("one", "company")
 #: shows every step, and each one still lives in Settings. Kept as data so the wizard,
 #: `bento setup` and the tests read one table.
 PLANS = {
-    "one": ("shape", "name", "model", "hello", "app", "schedule", "channel", "look"),
+    "one": ("shape", "name", "model", "hello", "app", "schedule", "channel", "look", "copy"),
     "company": ("shape", "name", "model", "hello", "company", "crew", "schedule",
-                "channel", "look", "account"),
+                "channel", "look", "copy", "account"),
 }
 #: Added to either plan when the machine has a screen of its own (a kiosk, a Pi).
 SCREEN_STEPS = ("crew", "screen", "voice")
@@ -399,6 +408,16 @@ def state(cfg: dict, store=None, show_all: bool = False) -> dict:
             if h:
                 return "done", f"heard “{h.get('word') or ''}”" + (" · voice print saved" if vp else "")
             return ("done", "voice print saved") if vp else ("todo", "")
+        if sid == "copy":
+            try:
+                from . import users as usersmod
+                if usersmod.enabled() and not usersmod.is_admin(usersmod.current() or ""):
+                    return "done", "the machine's admin keeps its copies"
+                from . import offsite
+                ok, words = offsite.done(cfg=cfg)
+            except Exception:
+                ok, words = False, ""
+            return ("done", words) if ok else ("todo", "")
         if sid == "look":
             d = cfg.get("desktop") or {}
             if d.get("wallpaper_preset") or d.get("theme") or "voice_tts" in d:

@@ -14,6 +14,7 @@ async function paintBackup(){
   let d;
   try{d=await apiJSON('/api/backup')}catch(e){mk.innerHTML=rs.innerHTML=`<span class="mut">${esc(e.message)}</span>`;return}
   BACKUP.info=d;
+  backupOffsite(d.offsite);
   const last=document.getElementById('bk-last');
   if(last&&d.last&&d.last.restored_at){
     const r=d.last;
@@ -44,6 +45,24 @@ async function paintBackup(){
     <div id="bk-out"></div></div>`;
 }
 var BACKUP=BACKUP||{info:null};
+/* Is a copy kept anywhere else (offsite.py)? A backup on this disk is lost with it, and one that
+   ransomware can reach is locked with everything else. The line and its doors: a cloud standby,
+   a bucket (Put Bento in the cloud), or a file downloaded to another disk. */
+function backupOffsite(o){
+  const el=document.getElementById('bk-offsite');if(!el)return;
+  if(!o){el.hidden=true;return}
+  const icon={ok:'✓',warn:'!',bad:'⚠'}[o.level]||'·';
+  const go={standby:'sb-box',cloud:'cd-box',backup:'bk-make'};
+  el.hidden=false;el.className='bk-offsite '+(o.level||'');
+  el.innerHTML=`<div class="bk-off-line"><b aria-hidden="true">${icon}</b> <span>${esc(o.line||'')}</span></div>
+    ${o.level!=='ok'&&(o.doors||[]).length?`<div class="bk-off-doors">${o.doors.map(x=>
+      `<button class="endbtn" data-go="${esc(go[x.id]||'')}" title="${esc(x.why)}">${esc(x.label)}</button>`).join('')}</div>`:''}`;
+  el.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{
+    const t=document.getElementById(b.dataset.go);if(!t)return;
+    if(typeof setSubReveal==='function')setSubReveal(t);
+    t.scrollIntoView({block:'center',behavior:'smooth'});
+    const f=t.querySelector('input,button');if(f)f.focus({preventScroll:true})});
+}
 async function backupMake(btn){
   const pw=document.getElementById('bk-pw').value,pw2=document.getElementById('bk-pw2').value,msg=document.getElementById('bk-make-msg');
   const min=(BACKUP.info&&BACKUP.info.min)||8;

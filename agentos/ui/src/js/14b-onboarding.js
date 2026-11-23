@@ -410,6 +410,8 @@ var OB_PANES={
       demo. All of it is changeable later in Settings → Appearance.</p>
     <div id="ob-look"><p class="mut">Reading the themes…</p></div>`,
 
+  copy:s=>`<div id="ob-copy"><p class="mut">Looking for a copy…</p></div>`,
+
   /* Deliberately the last step. Everything above is somebody setting this machine
      up, and the first account inherits all of it — so the honest order is "make it
      work, then say who it belongs to", not the other way round. */
@@ -461,6 +463,23 @@ var OB_CLOUD=[
 
 /* ---------- the wiring ---------- */
 var OB_WIRE={
+  /* Where a copy of this machine is kept (offsite.py). Each door opens its card in Settings →
+     System, and closing that window brings setup back, re-probed. */
+  async copy(s){
+    const box=$('#ob-copy');if(!box)return;
+    let d={};try{d=await apiJSON('/api/backup')}catch(e){box.innerHTML=`<p class="mut">${esc(e.message||e)}</p>`;return}
+    const o=d.offsite;
+    if(!d.admin||!o){box.innerHTML='<p class="mut">An admin looks after this machine’s copies.</p>';return}
+    const go={standby:'sb-box',cloud:'cd-box',backup:'bk-make'};
+    box.innerHTML=`<div class="bk-offsite ${esc(o.level)}"><div class="bk-off-line"><b aria-hidden="true">${{ok:'✓',warn:'!',bad:'⚠'}[o.level]||'·'}</b> <span>${esc(o.line)}</span></div></div>
+      <div class="ob-copy-doors">${(o.doors||[]).map(x=>`<button class="job-card" data-go="${esc(go[x.id])}"><b>${esc(x.label)}</b><span>${esc(x.why)}</span></button>`).join('')}</div>`;
+    box.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{
+      const to=b.dataset.go;obClose();
+      SETTAB='system';try{localStorage.setItem('settab','system');localStorage.setItem('setsub.system','Backup & cloud')}catch(e){}
+      const w=openApp('settings');if(w)w._backToSetup='copy';
+      setTimeout(()=>{const el=document.getElementById(to);if(!el)return;
+        if(typeof setSubReveal==='function')setSubReveal(el);el.scrollIntoView({block:'center'})},700)});
+  },
   shape(){
     const sh=(OB.state&&OB.state.shape)||{};
     let pick=sh.shape||'',use=sh.use||'';
@@ -1155,3 +1174,4 @@ async function obRestart(){
   try{await fetch('/api/onboarding/restart',{method:'POST'})}catch(e){}
   obShow({});
 }
+
