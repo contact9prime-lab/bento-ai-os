@@ -10380,9 +10380,14 @@ def _integrity_cli(args):
         except Exception as e:  # noqa: BLE001
             print(f"✗ The vault couldn't keep it: {e}")
             return 1
-        print("✓ Add this to your authenticator app (it is shown once):")
-        print(f"  secret: {got['secret']}")
-        print(f"  link:   {got['uri']}")
+        from . import qr
+        key = " ".join(got["secret"][i:i + 4] for i in range(0, len(got["secret"]), 4))
+        print("✓ Shown once. On your phone, in an authenticator app (Google Authenticator, Microsoft")
+        print("  Authenticator, Authy, 1Password…), tap + and scan this:\n")
+        print(qr.text(got["uri"]))
+        print("\n  No camera? Choose \"Enter a setup key\", type this key and pick time-based:")
+        print(f"  {key}")
+        print("  Then use the 6 digits it shows to accept a change in Settings or from your phone.")
         return 0
     if act in ("seal", "accept"):
         phrase = integrity.SEAL_PHRASE if act == "seal" else integrity.ACCEPT_PHRASE

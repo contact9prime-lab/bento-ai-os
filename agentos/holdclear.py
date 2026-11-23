@@ -197,7 +197,8 @@ def new_code(label: str = "Bento") -> dict:
         _used.clear()
     name = urllib.parse.quote(f"Bento security ({label})")
     uri = f"otpauth://totp/{name}?secret={secret}&issuer=Bento&digits={DIGITS}&period={STEP_S}"
-    return {"secret": secret, "uri": uri}
+    from . import qr
+    return {"secret": secret, "uri": uri, "qr": qr.path(uri)}
 
 
 def _hotp(secret: str, counter: int) -> str:
@@ -227,8 +228,9 @@ def missed() -> None:
     secevents.flag("integrity.accept_refused", "a wrong code or password")
 
 
-def code_ok(code: str, now: float | None = None) -> bool:
-    """The authenticator's code for now (one step either side), never twice."""
+def code_ok(code: str, now: float | None = None, spend: bool = True) -> bool:
+    """The authenticator's code for now (one step either side), never twice. `spend=False` is
+    the setup's "check it works": the same code must still accept a change a minute later."""
     code = "".join(ch for ch in str(code or "") if ch.isdigit())
     secret = _secret()
     if not secret or len(code) != DIGITS:
@@ -239,7 +241,8 @@ def code_ok(code: str, now: float | None = None) -> bool:
             with _lock:
                 if c in _used:
                     return False
-                _used.add(c)
+                if spend:
+                    _used.add(c)
             return True
     return False
 

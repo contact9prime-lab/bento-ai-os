@@ -13533,6 +13533,25 @@ async def api_security_code(request: Request, body: dict):
     return got
 
 
+@app.post("/api/security/code/check")
+async def api_security_code_check(body: dict):
+    """The setup's last step: the 6 digits the app shows, checked and not spent, so a phone whose
+    clock or scan is wrong is found now and not on the day a hold needs it. A wrong one counts."""
+    from . import holdclear
+    denied = _require_admin()
+    if denied:
+        return denied
+    if holdclear.paused():
+        return JSONResponse({"error": "Too many wrong answers. Wait 15 minutes and try again."}, status_code=429)
+    if not holdclear.code_set():
+        return JSONResponse({"error": "No code is set up yet."}, status_code=409)
+    if not holdclear.code_ok(str(body.get("code") or ""), spend=False):
+        holdclear.missed()
+        return JSONResponse({"error": "That isn't the code. Check the phone's clock is set automatically, "
+                                      "then try the next one it shows."}, status_code=403)
+    return {"ok": True}
+
+
 @app.get("/api/security/events")
 async def api_security_events(limit: int = 200, alerts: bool = False):
     """The security record, for an admin. Read only: there is no route that clears it."""

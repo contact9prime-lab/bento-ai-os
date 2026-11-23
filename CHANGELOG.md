@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.99.3 — 2026-11-23
+
+**Setting up the authenticator code is four steps and a square to scan.** Settings → Permissions → Security
+used to show 32 letters and an otpauth link, with no word on what to do with them. Now it says which app to
+install and which password it wants, shows a QR code (made by Bento, `agentos/qr.py`, no new dependency), the
+key in groups of four with Copy for a phone without a camera, and Open in my authenticator app on a phone. The
+last step checks the app's 6 digits without using them up, so a wrong clock is found now and not on the day a
+hold needs the code. `bento integrity code` prints the same square in the terminal.
+
+The password boxes on that card no longer look like a sign-in form to the browser, which was filling your
+username into Settings' search box.
+
 ## 0.99.2 — 2026-11-23
 
 **Three short ethical-AI reels, acted by Bento's own characters.** `packaging/dev/reel/skits` makes 9:16
