@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.99.2 — 2026-11-23
+
+**Three short ethical-AI reels, acted by Bento's own characters.** `packaging/dev/reel/skits` makes 9:16
+videos with voices, music and a ready-to-paste Instagram caption: a smooth talker who tries four ways to get a
+range scan past the ethics check, an email that hides an order for the assistant, and a 2 a.m. "delete
+everything" that has to be typed. The characters are painted by `avatars.py`, voices are Kokoro run locally,
+and every check a skit shows is one the gate really makes. Nothing in the product changed.
+
 ## 0.99.1 — 2026-11-23
 
 **An alarm nobody acknowledges reaches a person.** After the minutes you choose, an alarm on the Devices board
