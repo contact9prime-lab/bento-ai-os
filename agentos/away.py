@@ -55,12 +55,12 @@ def _home() -> Path:
     return Path(cfgmod.AGENTOS_HOME)
 
 
-def _meta_path() -> Path:
-    return _home() / FILE
+def _meta_path(home: Path | None = None) -> Path:
+    return (Path(home) if home else _home()) / FILE
 
 
-def _key_path() -> Path:
-    return _home() / KEY_FILE
+def _key_path(home: Path | None = None) -> Path:
+    return (Path(home) if home else _home()) / KEY_FILE
 
 
 def _vault():
@@ -68,10 +68,11 @@ def _vault():
     return vault
 
 
-def _load(create: bool) -> bytes:
-    """The service key, or b'' when there is none (and create is False) or it can't be found."""
+def _load(create: bool, home: Path | None = None) -> bytes:
+    """The service key, or b'' when there is none (and create is False) or it can't be found.
+    `home` is another machine home than this process's (dbcrypt: a database's key is its home's)."""
     try:
-        meta = json.loads(_meta_path().read_text())
+        meta = json.loads(_meta_path(home).read_text())
     except Exception:
         meta = {}
     mech = meta.get("key") or ""
@@ -81,22 +82,24 @@ def _load(create: bool) -> bytes:
         return base64.b64decode(k) if k else b""
     if mech == "file":
         try:
-            return base64.b64decode(_key_path().read_text().strip())
+            return base64.b64decode(_key_path(home).read_text().strip())
         except Exception:
             return b""
     if not create:
         return b""
     key = os.urandom(32)
     kb = base64.b64encode(key).decode()
-    _home().mkdir(parents=True, exist_ok=True)
-    if v._keyring_tool() and v._keyring_set(SCOPE, kb):
+    (Path(home) if home else _home()).mkdir(parents=True, exist_ok=True)
+    # the keyring entry has ONE name per OS user: only this process's own home may use it, or
+    # making a key for another home (a staged restore, a test's) would overwrite the real one
+    if home is None and v._keyring_tool() and v._keyring_set(SCOPE, kb):
         mech = "keyring"
     else:
-        fd = os.open(_key_path(), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        fd = os.open(_key_path(home), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w") as f:
             f.write(kb)
         mech = "file"
-    fd = os.open(_meta_path(), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    fd = os.open(_meta_path(home), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as f:
         json.dump({"key": mech, "at": time.time()}, f)
     return key

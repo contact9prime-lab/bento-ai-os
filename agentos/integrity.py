@@ -1051,21 +1051,21 @@ def verify_ledgers(full: bool = False) -> list[dict]:
     """Every home's ledger. `full` walks every row (at start and once a day); otherwise only rows
     newer than the last walk, plus the one it stopped on, so a timer costs what the new rows cost.
     A break is one flag per database. A head that moved backwards is a break too."""
-    import sqlite3
+    from . import dbcrypt
 
     from . import memory
     out = []
     for db_path in _databases():
         key = str(db_path)
         try:
-            con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=5)
-        except sqlite3.Error:
+            con = dbcrypt.connect(f"file:{db_path}?mode=ro", uri=True, timeout=5)
+        except dbcrypt.Error:
             continue
         try:
-            con.row_factory = sqlite3.Row
+            con.row_factory = dbcrypt.Row
             after = None if full else _seen_heads.get(key)
             v = memory.verify_chain(con, db_path, after=after)
-        except sqlite3.Error as e:
+        except dbcrypt.Error as e:
             v = {"ok": True, "checked": 0, "skipped": str(e)[:200]}  # busy or locked: look next time
         finally:
             con.close()

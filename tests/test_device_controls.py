@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 os.environ.setdefault("AGENTOS_HOME", tempfile.mkdtemp(prefix="agentos-test-home-"))
 
 from agentos import devicectl, inventory, teamlink                   # noqa: E402
+from agentos import dbcrypt  # noqa: E402
 
 ROOT = Path(__file__).parent.parent
 
@@ -188,8 +189,9 @@ def test_off_closes_what_is_on_its_screen_now_and_on_brings_it_back(pi):
 
 
 def test_its_agent_and_face_are_read_there_and_drawn_here(pi):
-    import sqlite3
-    db = sqlite3.connect(pi / ".agentos/agentos.db.real")
+    # a Pi on an older Bento: a plain database its system python3 reads. A Pi on this version
+    # has its own .venv, which the script prefers, and opens its encrypted one with its own key.
+    db = dbcrypt.connect(pi / ".agentos/agentos.db.real", plain=True)
     db.execute("create table avatars (key text primary key, recipe text, updated_at real)")
     db.execute("insert into avatars values ('@agent', ?, 0)", (json.dumps({"hair": 1, "style": "long", "hue": 172}),))
     db.commit()
@@ -204,6 +206,12 @@ def test_its_agent_and_face_are_read_there_and_drawn_here(pi):
     inventory.note_controls("192.168.1.9", "", st, "pi")
     r = inventory.find(inventory.rows(), "192.168.1.9")
     assert r["agent"]["name"] == "Mr. Pi" and r["agent"]["look"]["hue"] == 172
+
+
+def test_the_state_script_opens_an_encrypted_database_with_bentos_own_python():
+    script = devicectl.STATE_SCRIPT
+    assert 'PY="$S/.venv/bin/python"' in script and "from agentos import dbcrypt" in script
+    assert "_open(\"file:\"" in script, "the database is opened through dbcrypt when it imports"
 
 
 def test_a_look_is_the_closed_set_and_nothing_else_reaches_a_shell(pi):

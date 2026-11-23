@@ -49,6 +49,7 @@ import re
 import secrets
 import shutil
 import sqlite3
+from . import dbcrypt
 import threading
 import time
 from pathlib import Path
@@ -930,8 +931,8 @@ def worked_since(t: float, home=None) -> int:
         if not db.exists():
             continue
         try:
-            con = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=5)
-        except sqlite3.Error:
+            con = dbcrypt.connect(f"file:{db}?mode=ro", uri=True, timeout=5)
+        except dbcrypt.Error:
             continue
         try:
             for q in ("SELECT COUNT(*) FROM messages WHERE role='user' AND created_at > ?",
@@ -939,7 +940,7 @@ def worked_since(t: float, home=None) -> int:
                       "SELECT COUNT(*) FROM task_runs WHERE started_at > ?"):
                 try:
                     n += con.execute(q, (t,)).fetchone()[0] or 0
-                except sqlite3.Error:
+                except dbcrypt.Error:
                     pass
         finally:
             con.close()
@@ -1114,12 +1115,12 @@ def _keep_tables(new: Path, old: Path) -> int:
     """Put this machine's grants and hands back, and switch off any mission or schedule that
     is new or changed. A flow's definition is what writes its grants when it is on, so leaving
     it on would write back what was just restored. Returns how many were switched off."""
-    con = sqlite3.connect(str(new), timeout=10)
+    con = dbcrypt.connect(str(new), timeout=10)
     held = 0
     try:
         have_old = old.exists()
         if have_old:
-            con.execute("ATTACH DATABASE ? AS was", (str(old),))
+            dbcrypt.attach(con, old, "was")       # this machine's own, keyed by what it is
         for table in TRUST_TABLES:
             if not con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone():
                 continue
@@ -1177,9 +1178,9 @@ def _keep_trust(report: dict, home: Path) -> list[str]:
         if db.exists():
             try:
                 held += _keep_tables(db, was / "agentos.db")
-            except sqlite3.Error as e:
+            except dbcrypt.Error as e:
                 notes.append(f"Could not restore permissions in {rel or 'this home'} ({e}), so they were cleared.")
-                con = sqlite3.connect(str(db), timeout=10)
+                con = dbcrypt.connect(str(db), timeout=10)
                 try:
                     con.execute("DELETE FROM grants")
                     con.commit()

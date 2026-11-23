@@ -122,10 +122,54 @@ in the vault. If the keyring is unreachable later (a desktop session that is
 not there), the vault is **locked** and says so — it never mints a fresh key
 and quietly fails to decrypt everything it held.
 
+## Your databases, encrypted at rest
+
+Everything else Bento keeps about you is in its databases: memory, the knowledge graph,
+conversations, the ledger, usage, missions and device readings. Every one of them is encrypted
+with this machine's own key (SQLCipher: each page of the file is AES-256 encrypted with a check
+of its own). A copied database file reads as noise.
+
+- **The key** comes from the machine's service key, the same one that opens the machine's vault,
+  so Bento opens its databases from the moment it starts, with nobody signed in. It is one key
+  for every database on the machine, the accounts' included.
+- **An existing install is converted once**, at the server's first start on this version, before
+  anything opens a database. The encrypted copy is checked table by table before it replaces the
+  plain one. A database another program has open is left plain and done at the next start.
+- **A backup's databases are plain inside the backup file**, which is sealed with its own
+  passphrase. So a backup restores on any machine, and that machine encrypts them with its own key
+  at its next start.
+- **What it doesn't protect.** On a machine with a keyring (a Mac, a Linux desktop) the key is in
+  the keyring, so a disk taken out of the machine opens nothing. On a headless machine the key is
+  a file in Bento's home, beside the databases: a copied database can't be read, but a stolen
+  disk carries both. While Bento runs the key is in its memory, and root can read memory. Your
+  workspace, logs and `soul.md` are files, not databases, and aren't covered. Full-disk
+  encryption (FileVault, LUKS, BitLocker) covers all of it, and Settings says whether this disk
+  has it.
+- **After converting**, the old plain file is replaced, but on an SSD or SD card its old blocks
+  may stay on the flash until they are reused. Nothing a program does can promise otherwise.
+- **A 32-bit Pi** has no SQLCipher build, so its databases stay plain, and Settings and `bento
+  doctor` say so.
+
+Settings → System → Encryption shows both answers: the databases, and whether the disk itself is
+encrypted.
+
+![Settings → System → Encrypted at rest: the databases are encrypted, the disk isn't](screenshots/at-rest.png)
+
+![The same on a 390px phone: the databases encrypted with this machine's key, the disk not](screenshots/at-rest-phone.png)
+
+## Your recovery code, again
+
+Settings → Accounts → Your secrets → Recovery code → **New code** makes a new one and shows it
+once; the old one stops working. It asks for your password first. If you change your own
+password, your recovery code keeps working. If an admin resets your password, your next sign-in
+asks for the recovery code. From a terminal: `bento vault code`.
+
 ## From a terminal
 
 ```
 bento vault              # what protects it, how many secrets, their names
+bento vault code         # a new recovery code, shown once (asks for your password)
+bento vault at-rest      # are the databases and the disk encrypted
 bento vault --user ada   # an account's vault: says it's sealed, names only
 bento vault away --user ada mail.password once   # how long one works while you're away
 bento vault list

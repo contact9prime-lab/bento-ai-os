@@ -275,7 +275,10 @@ async def startup():
     # account's — before the first request touches any of them (agentos/migrate.py)
     try:
         from . import migrate as _migrate
-        for r in _migrate.everyone():
+        # and every plain database encrypted with this machine's key, now, before anything
+        # here opens one (dbcrypt.py)
+        for r in _migrate.everyone(log=lambda m: print("  " + m) if "encrypt" in m else None,
+                                   encrypt=True):
             if not r["ok"]:
                 print(f"  ! {r['home']} could not be brought up to date: {r['error']}")
     except Exception as e:
@@ -655,6 +658,13 @@ async def startup():
     # see `ensure_index`, which every search path already calls.
     mcp_storemod.ensure_index(store, only_refresh=True, cfg=cfg)
     store.log("system", "AgentOS started")
+    # the databases this start encrypted, or why one was left plain: once, in the diary
+    with contextlib.suppress(Exception):
+        from . import dbcrypt as _dbc
+        for r in _dbc.LAST:
+            store.log("system", (f"encrypted {Path(r['path']).name} with this machine's key ({r['ms']} ms)"
+                                 if r["ok"] else f"{Path(r['path']).name} stays unencrypted for now: {r['why']}"))
+        _dbc.LAST.clear()
 
     # Decide the footprint profile ONCE and write down what was decided. `auto` on
     # every boot would mean a machine that behaves differently after a RAM upgrade
@@ -12767,6 +12777,19 @@ async def api_seal_recover(body: dict, request: Request):
     _lend_seal(resp, request, uid, request.cookies.get(remotemod.COOKIE, ""), priv)
     priv = None
     return resp
+
+
+@app.get("/api/at-rest")
+async def api_at_rest():
+    """Are the databases (dbcrypt.py) and the disk (diskcrypt.py) encrypted at rest. Read on
+    every call; the disk's answer is kept an hour by diskcrypt. Which files are still plain
+    names accounts, so only an admin sees them."""
+    from . import dbcrypt, diskcrypt
+    db = await asyncio.to_thread(dbcrypt.status)
+    if not usersmod.is_admin(usersmod.current() or ""):
+        db.pop("plain_files", None)
+    disk = await asyncio.to_thread(diskcrypt.state)
+    return {"db": db, "disk": disk}
 
 
 @app.post("/api/seal/code")

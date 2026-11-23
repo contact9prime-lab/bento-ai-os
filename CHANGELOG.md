@@ -32,6 +32,16 @@ installer says 32-bit is deprecated and asks before it continues. On Buster, whi
 installer stops and offers 0.99.0, the last version that runs there, saying it carries a known
 vulnerability; `--yes` can't answer that. `bento update`, Settings → Version and `bento doctor` say the same.
 
+**Your databases are encrypted at rest with this machine's key.** Memory, the knowledge graph, conversations,
+the ledger, usage and device readings were plain SQLite files. They are now encrypted with SQLCipher, keyed from
+the machine's service key, so a copied file reads as noise. An existing install converts once, at its first start
+on this version, checking every table before the plain file is replaced. Backups keep plain copies inside the
+sealed backup file, and the machine that restores one encrypts them with its own key straight away. Settings →
+System → Encryption, `bento vault at-rest` and `bento doctor` say whether the databases and the disk are
+encrypted, and what that covers: on a headless machine the key is a file beside the databases, so full-disk
+encryption is what protects a stolen disk. A 32-bit Pi has no SQLCipher build and keeps plain databases, and says
+so. `bento vault code` makes a new recovery code from a terminal.
+
 **Bento says whether a copy of this machine is kept anywhere else.** Settings → System → Backup, setup's new
 step "Keep a copy somewhere else", and `bento doctor` read the same answer: a cloud standby, a storage bucket,
 a backup file made in the last month, or nothing, with the doors to each. A copy on the same disk is lost with

@@ -9,6 +9,7 @@ Found by the cloud-standby end-to-end run (two accounts moved to a container).
 """
 import json
 import sqlite3
+from agentos import dbcrypt  # noqa: E402
 import sys
 from pathlib import Path
 
@@ -18,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 def _titles(db: Path):
     if not db.exists():
         return []
-    con = sqlite3.connect(db)
+    con = dbcrypt.connect(db)
     try:
         return [r[0] for r in con.execute("select title from conversations")]
     finally:

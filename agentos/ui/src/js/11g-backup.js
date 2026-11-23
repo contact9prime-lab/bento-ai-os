@@ -126,3 +126,26 @@ async function backupSeen(){
   try{await fetch('/api/backup/last',{method:'DELETE'})}catch(e){}
   const l=document.getElementById('bk-last');if(l)l.innerHTML='';
 }
+
+/* Settings → System → Encrypted at rest: whether the databases are encrypted with this
+   machine's key (dbcrypt.py) and whether the disk is (diskcrypt.py). Two lines, each with what
+   it covers; read on every paint, never assumed. */
+async function paintAtRest(){
+  const el=document.getElementById('ar-box');if(!el)return;
+  let d;
+  try{d=await apiJSON('/api/at-rest')}catch(e){el.textContent=e.message||'could not read it';return}
+  const mk=(t,c,txt)=>{const e=document.createElement(t);if(c)e.className=c;if(txt!=null)e.textContent=txt;return e};
+  const row=(icon,level,title,line,detail)=>{
+    const r=mk('div','ar-row '+level);
+    r.append(mk('b','ar-i',icon));
+    const t=mk('div','ar-t');t.append(mk('div','ar-h',title),mk('div','ar-l',line));
+    if(detail)t.append(mk('div','ar-d mut',detail));
+    r.append(t);return r};
+  const db=d.db||{},dk=d.disk||{};
+  const dbl=db.state==='encrypted'?'ok':'warn';
+  const kids=[row(dbl==='ok'?'✓':'!',dbl,'Databases',db.line||'',db.detail||'')];
+  const dkl={on:'ok',off:'warn'}[dk.state]||'warn';
+  kids.push(row({on:'✓',off:'!'}[dk.state]||'?',dkl,'Disk',dk.line||'',
+    dk.state==='off'?'Turn it on in your system’s settings: FileVault on a Mac, LUKS when Linux is installed, BitLocker on Windows.':''));
+  el.replaceChildren(...kids);
+}

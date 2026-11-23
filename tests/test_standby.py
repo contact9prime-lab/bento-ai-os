@@ -29,6 +29,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from agentos import backup, standby  # noqa: E402
+from agentos import dbcrypt  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -48,7 +49,7 @@ def _home(tmp_path, name, remote=None):
     if remote:
         cfg["remote"] = remote
     (h / "config.json").write_text(json.dumps(cfg))
-    con = sqlite3.connect(h / "agentos.db")
+    con = dbcrypt.connect(h / "agentos.db")
     con.executescript("""
       create table conversations(id text primary key, title text, created_at real, updated_at real);
       create table messages(id text primary key, conversation_id text, role text, content text,
@@ -61,7 +62,7 @@ def _home(tmp_path, name, remote=None):
 
 
 def _say(h, title, role="user"):
-    con = sqlite3.connect(h / "agentos.db")
+    con = dbcrypt.connect(h / "agentos.db")
     cid = uuid.uuid4().hex
     con.execute("insert into conversations values (?,?,?,?)", (cid, title, time.time(), time.time()))
     con.execute("insert into messages values (?,?,?,?,?,?)",
@@ -71,7 +72,7 @@ def _say(h, title, role="user"):
 
 
 def _titles(h):
-    con = sqlite3.connect(h / "agentos.db")
+    con = dbcrypt.connect(h / "agentos.db")
     try:
         return {r[0] for r in con.execute("select title from conversations")}
     finally:

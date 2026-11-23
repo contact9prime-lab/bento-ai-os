@@ -1110,15 +1110,24 @@ def install_deps(root: Path) -> tuple[bool, list[str]]:
     tried: list[str] = []
     uv = _uv()
     if uv:
+        # a 32-bit Pi has no SQLCipher wheel and its Python may report aarch64, so the marker in
+        # pyproject alone doesn't skip it: its databases stay plain and say so (dbcrypt.py)
+        skip: list[str] = []
+        try:
+            from . import oldpi
+            if oldpi.facts()["arm32"]:
+                skip = ["--no-install-package", "sqlcipher3"]
+        except Exception:
+            pass
         # --frozen: install exactly what the lockfile says and do NOT rewrite it.
         # A plain `uv sync` re-resolves on a machine whose uv differs from the one
         # that wrote the lock, leaves uv.lock modified, and the next `bento
         # update` finds "1 uncommitted change" and asks to stash — every time.
-        ok, out = _run([uv, "sync", "--frozen"], cwd=root, timeout=APPLY_TIMEOUT)
+        ok, out = _run([uv, "sync", "--frozen", *skip], cwd=root, timeout=APPLY_TIMEOUT)
         if ok:
             return True, []
         tried.append(f"uv sync --frozen: {_last_line(out)}")
-        ok, out = _run([uv, "sync"], cwd=root, timeout=APPLY_TIMEOUT)
+        ok, out = _run([uv, "sync", *skip], cwd=root, timeout=APPLY_TIMEOUT)
         if ok:
             return True, tried
         tried.append(f"uv sync: {_last_line(out)}")

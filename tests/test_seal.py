@@ -479,3 +479,28 @@ def test_a_sweep_leaves_a_running_servers_profile_alone(tmp_path, monkeypatch):
     dead.mkdir()
     assert cb.sweep_runs() == 1
     assert live.exists() and not dead.exists()
+
+
+def test_a_new_recovery_code_from_a_terminal(home, monkeypatch, capsys):
+    """`bento vault code`: the terminal face of Settings → Your secrets → New code. The password
+    is typed (getpass), the code is printed once, the old one stops working and the new one
+    opens the seal; a wrong password changes nothing."""
+    import getpass
+    from agentos import __main__ as cli
+    u = usersmod.create("ada", PW, role="admin")["id"]
+    priv, old = seal.establish(u, PW)
+    monkeypatch.setattr(getpass, "getpass", lambda prompt="": "not the password")
+    with pytest.raises(SystemExit):
+        cli._vault_code(u)
+    assert seal.open_with_code(u, old) == priv, "a wrong password made no new code"
+    monkeypatch.setattr(getpass, "getpass", lambda prompt="": PW)
+    capsys.readouterr()
+    cli._vault_code(u)
+    out = capsys.readouterr().out
+    new = next(ln.strip() for ln in out.splitlines() if ln.strip().count("-") == 4)
+    assert new != old and "won't show it again" in out
+    assert seal.open_with_code(u, new) == priv
+    with pytest.raises(seal.Sealed):
+        seal.open_with_code(u, old)
+    rows = usersmod.store_for(u).db.execute("SELECT action FROM audit WHERE action='seal.code'").fetchall()
+    assert rows, "a ledger row in the account's own store"

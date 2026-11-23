@@ -22,7 +22,15 @@ v, took = wait_for(lambda: lstatus().get("split"), 120, 2, "split noticed")
 say(f"split noticed {took:.0f}s after healing:", {k: v.get(k) for k in ("worked", "bytes")})
 say("laptop kept its own:", "laptop during the split" in conv_titles_local(), "| cloud's not merged in:", "cloud during the split" not in conv_titles_local())
 import sqlite3
-b = sqlite3.connect(f"file:{LAG/'agentos.db'}?mode=ro", uri=True).execute("select title from brief_items where mission='standby'").fetchall()
+import os as _os
+import sys as _sys
+try:  # Bento's databases are encrypted with their home's key (agentos/dbcrypt.py)
+    _sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..", "..", "..")))
+    from agentos.dbcrypt import connect as _db_connect
+except Exception:
+    import sqlite3 as _sqlite3
+    _db_connect = _sqlite3.connect
+b = _db_connect(f"file:{LAG/'agentos.db'}?mode=ro", uri=True).execute("select title from brief_items where mission='standby'").fetchall()
 say("brief item:", b)
 time.sleep(4)
 say("cloud API:", Cloud().get("/api/config").status_code)
