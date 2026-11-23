@@ -118,6 +118,14 @@ uv sync && uv run bento
 > Bookworm for its OpenSSL 3.0): an **armv6** Pi (Zero / 1), which has no ARM wheel at all. **64-bit Bookworm** remains the smoothest option of all —
 > prebuilt `aarch64` wheels for everything — if reflashing is on the table.
 
+On a 32-bit Pi, Settings → System → Version says so too, and `bento doctor` prints the same line:
+
+![Settings → System → Version on a 32-bit Pi running Bullseye: 32-bit is deprecated, 64-bit is recommended](screenshots/pi32-deprecated.png)
+
+![Settings → System → Version on a 32-bit Pi running Buster: 0.99.0 is the last version it can run](screenshots/pi32-too-old.png)
+
+![The 32-bit deprecation line in Settings on a 390px phone](screenshots/pi32-deprecated-phone.png)
+
 **Reaching it from another machine.** A Pi is usually headless, and the obvious move — binding
 the server to the network — is the wrong one: AgentOS has no authentication and the agent has a
 real shell, so `--host 0.0.0.0` hands your Pi to anyone on the LAN. Forward the loopback port
