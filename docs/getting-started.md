@@ -14,8 +14,8 @@ The desktop opens at **http://127.0.0.1:8321**, and on a fresh install it opens 
 **setup**. It asks one thing first: **one agent, or a company?**, and what it's mostly for
 (just you, a founder, a coder or a consultant). The answer decides the steps down the left:
 
-- **One agent** is eight steps: the question, a name, a brain, a first answer, an app, a mission on
-  a schedule, your phone and the look.
+- **One agent** is nine steps: the question, a name, a brain, a first answer, an app, a mission on
+  a schedule, your phone, the look, and a copy kept somewhere else.
 - **A company** swaps building a specialist and a flow by hand for **Set up your company**: you say
   what it does in a sentence, the departments, their people and a desk each are drafted for you to
   look over, and **Make it** creates them. It adds your crew's office and the accounts step.

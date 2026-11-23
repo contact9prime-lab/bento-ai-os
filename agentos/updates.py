@@ -330,7 +330,11 @@ def can_apply(cfg: dict, switch: bool = False) -> tuple[bool, str]:
     if not root:
         return False, ("This copy was not installed from git, so it cannot update itself. "
                        "Reinstall with the installer, or update however you installed it.")
-    from . import integrity
+    from . import integrity, oldpi
+    old = oldpi.state()
+    if old["too_old"]:
+        # a newer version's dependencies have no wheel here; say it before pulling anything
+        return False, old["line"]
     if integrity.is_locked(root):
         return False, ("The code is locked, so this user can't change it. Run bento integrity unlock, "
                        "update, then bento integrity lock.")

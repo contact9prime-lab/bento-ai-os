@@ -46,6 +46,12 @@ def _hold_help() -> str:
     return holdclear.PHONE_HELP
 
 
+
+def _who_on(frm: dict) -> str:
+    """Who tapped or typed, as the alarm's acknowledgement names them."""
+    name = " ".join(filter(None, [frm.get("first_name", ""), frm.get("last_name", "")])).strip()
+    return (name or ("@" + frm["username"] if frm.get("username") else "someone"))[:40] + " on Telegram"
+
 class TelegramBridge(usersmod.Scoped):
     def __init__(self, cfg: dict, store, toolbox, broadcast):
         self.cfg = cfg
@@ -590,6 +596,14 @@ class TelegramBridge(usersmod.Scoped):
             self.store.log("telegram", f"the paired chat {chat_id} answered the security hold")
             await (self.send_hold(said) if said.endswith(_hold_help()) else self.send(said, chat_id))
             return
+        # "ack" from a chat that was called about an alarm (alarmcall.py): the board's own mark
+        from . import alarmcall
+        if alarmcall.is_ack(text):
+            said = await alarmcall.answer(f"tg:{chat_id}", _who_on(msg.get("from") or {}))
+            if said:
+                self.store.log("telegram", f"the chat {chat_id} acknowledged an alarm")
+                await self.send(said, chat_id)
+                return
         frm = msg.get("from", {})
         title = (chat_info.get("title")
                  or " ".join(filter(None, [frm.get("first_name", ""), frm.get("last_name", "")])).strip()
@@ -1251,7 +1265,31 @@ class TelegramBridge(usersmod.Scoped):
         except Exception as e:  # noqa: BLE001
             return f"Telegram refused it: {e}"
 
+    async def send_alarm(self, text: str, chat_id, code: str) -> str:
+        """An alarm nobody acknowledged (alarmcall.py), with an Acknowledge button. Any chat
+        that was told can tap it, a group included: the person picked that chat."""
+        if not self._t().get("bot_token"):
+            return "[error] No bot token set"
+        try:
+            await self._api("sendMessage", chat_id=chat_id, text=text[:4000],
+                            reply_markup={"inline_keyboard": [[{"text": "Acknowledge", "callback_data": f"al:{code}"}]]})
+        except Exception as e:  # noqa: BLE001
+            return f"[error] telegram send failed: {e}"
+        self.store.log("telegram", f"→ alarm: {text[:200]}")
+        return ""
+
     async def _handle_callback(self, cq: dict):
+        if (cq.get("data") or "").startswith("al:"):
+            # Acknowledge under an alarm (send_alarm). Decided by whether this chat was told
+            # about that alarm (alarmcall.answer), before the owner-only buttons.
+            from . import alarmcall
+            with contextlib.suppress(Exception):
+                await self._api("answerCallbackQuery", callback_query_id=cq["id"])
+            chat_id = ((cq.get("message") or {}).get("chat") or {}).get("id") or (cq.get("from") or {}).get("id")
+            said = await alarmcall.answer(f"tg:{chat_id}", _who_on(cq.get("from") or {}), code=cq["data"][3:40])
+            if said:
+                await self.send(said, chat_id)
+            return
         if (cq.get("data") or "").startswith("ss:"):
             # A session button (/sessions). Any enabled chat has sessions, so this is
             # decided by the chat the button sits in, before the owner-only buttons.

@@ -702,6 +702,7 @@ function setTab(body,all){
          f:'setup onboarding wizard first run walkthrough tour again restart start over run through'}),
     ],{f:'setup onboarding'}));
     P.push(pGroup('Backup',[
+      '<div id="bk-offsite" class="bk-offsite" hidden></div>',
       '<div id="bk-last" class="bk-last"></div>',
       pRow('Back up this machine','<div id="bk-make"><span class="mut">…</span></div>',
         {stack:true,desc:'One encrypted file with everything, to keep safe or to move to another machine.',
@@ -847,7 +848,8 @@ async function paintVersion(check){
   if(srcNote)srcNote.textContent=d.official===false
     ?`a fork, pulled from git remote '${d.remote||''}'. Origin still points at the official repository.`
     :'the official repository';
-  const btn=`<button class="endbtn" style="margin-left:10px" onclick="paintVersion(1)">Check now</button>`;
+  const btn=`<button class="endbtn" style="margin-left:10px" onclick="paintVersion(1)">Check now</button>`
+    +verOldPi(d);
   if(d.update_available){
     // Never a dead button: when an update cannot be installed the reason is the
     // sentence, not a control that fails when pressed.
@@ -887,6 +889,11 @@ async function paintVersion(check){
     el.innerHTML=`<b>${esc(d.current||'?')}</b>${d.build?` <code class="mut">${esc(d.build)}</code>`:''} `
       +`<span class="mut">${d.error?esc(d.error):where}</span>`+btn+verRollback(d);
   }
+}
+/* A 32-bit Pi is told it is deprecated, or that this is the last version it can run (oldpi.py). */
+function verOldPi(d){
+  const o=d&&d.oldpi;if(!o||!o.line)return '';
+  return `<div class="mut" style="margin-top:6px;color:${o.too_old?'var(--err,#e5484d)':'var(--warn,#d9a400)'}">${esc(o.line)}</div>`;
 }
 /* The last update can be taken back while it is still what this copy runs. */
 function verRollback(d){

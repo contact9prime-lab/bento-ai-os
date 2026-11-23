@@ -480,6 +480,37 @@ command -v uv >/dev/null 2>&1 || die "uv installed but is not on PATH — open a
 # was the branch it could no longer reach.
 repo_ok() { [ -f "$1/pyproject.toml" ] && grep -q '"agentos' "$1/pyproject.toml" 2>/dev/null; }
 
+# 32-bit Raspberry Pi OS is deprecated (agentos/oldpi.py says the same in Python). The width is
+# the USERLAND's: 32-bit Pi OS on a Pi 4 boots a 64-bit kernel, so `uname -m` says aarch64 while
+# every wheel it needs is armv7. On Bullseye or newer it installs this version, after saying so.
+# Below glibc 2.31 (Buster) this version can't install: cryptography 50, the security fix, has no
+# wheel there. 0.99.0 is the last version that ran on it, offered only to somebody at a terminal,
+# because it carries a known vulnerability (--yes can't answer it).
+OLDPI_LEGACY=""
+OLDPI_COMMIT="0eb62c88f0f859a999c762263fcac1dac3e70209"     # 0.99.0 (oldpi.LAST_OLD)
+case "$(uname -m)" in arm*|aarch64) _arm=1 ;; *) _arm="" ;; esac
+if [ -n "$_arm" ] && [ "$(getconf LONG_BIT 2>/dev/null)" = 32 ]; then
+  _og="$(ldd --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+' | tail -1)"
+  _ogmaj="${_og%%.*}"; _ogmin="$(printf '%s' "${_og#*.}" | tr -cd '0-9')"
+  [ -z "$_ogmin" ] && _ogmin=0
+  if [ "$_ogmaj" = 2 ] && [ "$_ogmin" -lt 31 ] 2>/dev/null; then
+    warn "This Pi's operating system is older than Raspberry Pi OS Bullseye (glibc $_og), so this version"
+    warn "of Bento can't install here: its security fix needs glibc 2.31. 0.99.0 is the last version that"
+    warn "runs on it, and it has a known vulnerability in one of its packages and gets no updates."
+    if ask_deliberate "Install 0.99.0 anyway?"; then
+      OLDPI_LEGACY=1
+    else
+      die "Nothing was installed. Put 64-bit Raspberry Pi OS Bookworm on this Pi (Raspberry Pi Imager), then run this line again."
+    fi
+  else
+    warn "32-bit Raspberry Pi OS is deprecated. Bento runs here today, but a future version may not."
+    warn "64-bit Raspberry Pi OS is recommended on a Pi 3, 4, 5 or Zero 2 W."
+    if [ -n "$INTERACTIVE" ] && [ -z "$ASSUME_YES" ]; then
+      ask "Continue on 32-bit?" || die "Nothing was installed. Put 64-bit Raspberry Pi OS on this Pi, then run this line again."
+    fi
+  fi
+fi
+
 if [ -d "$DIR/.git" ] && repo_ok "$DIR"; then
   say "updating AgentOS in $DIR"
   # uv.lock and the UI bundle are generated (updates.DERIVED), and a run on this
@@ -553,6 +584,12 @@ else
 fi
 
 repo_ok "$DIR" || die "no AgentOS source in $DIR after cloning — remove it and run this again"
+if [ -n "$OLDPI_LEGACY" ]; then
+  # a branch of its own, so `bento update` (which tracks master) refuses to move it without asking
+  git -C "$DIR" checkout -q -B buster-0.99.0 "$OLDPI_COMMIT" \
+    || die "could not check out 0.99.0 in $DIR. Check its network and run this again"
+  warn "installing 0.99.0 on the branch buster-0.99.0. Updates won't move it; a newer Bento needs a newer OS."
+fi
 cd "$DIR"
 
 # The build toolchain a source compile needs, and the ladder to install it.
@@ -603,7 +640,10 @@ ensure_build_deps() {
 # canonical source for one. If piwheels is unreachable, uv falls back to the PyPI
 # sdist and the compile path below still applies, so this only ever helps.
 UV_PI_ARGS=""
-case "$(uname -m)" in
+# the userland's machine: a 32-bit Pi OS on a 64-bit kernel reports aarch64 but needs armv7 wheels
+MACH="$(uname -m)"
+[ "$MACH" = aarch64 ] && [ "$(getconf LONG_BIT 2>/dev/null)" = 32 ] && MACH=armv7l
+case "$MACH" in
   armv6l|armv7l)
     UV_PI_ARGS="--extra-index-url https://www.piwheels.org/simple --index-strategy unsafe-best-match" ;;
 esac
@@ -683,32 +723,21 @@ else
     _g="$(ldd --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+' | tail -1)"
     _gmaj="${_g%%.*}"; _gmin="$(printf '%s' "${_g#*.}" | tr -cd '0-9')"
     [ -z "$_gmin" ] && _gmin=0
-    # glibc >= 2.28, the floor of the 32-bit wheel this copy locks? (unknown or major>2 counts as yes)
-    if { [ "$_gmaj" = 2 ] && [ "$_gmin" -ge 28 ] 2>/dev/null; } || { [ -n "$_gmaj" ] && [ "$_gmaj" != 2 ] 2>/dev/null; }; then
-      WHEEL_GLIBC=1
-    else
-      WHEEL_GLIBC=0
-    fi
-    case "$(uname -m)" in
+    # This copy's 32-bit wheel needs glibc 2.31 (cryptography 50); 0.99.0's, on Buster, 2.28.
+    _floor=31; [ -n "$OLDPI_LEGACY" ] && _floor=28
+    case "$MACH" in
       armv7l)
-        if [ "$WHEEL_GLIBC" = 0 ]; then
+        if [ "$_gmaj" = 2 ] && [ "$_gmin" -lt "$_floor" ] 2>/dev/null; then
           die "cryptography could not install because this OS is too old for its prebuilt 32-bit ARM wheel.
-   That wheel needs glibc 2.28 or newer (Raspberry Pi OS 'Buster' or later). This system has glibc ${_g:-older than 2.28}.
+   That wheel needs glibc 2.${_floor}; this system has glibc ${_g:-older}. Raspberry Pi OS Bullseye is 2.31.
 
-   Move to Raspberry Pi OS Buster, Bullseye or Bookworm (32-bit is fine) and re-run me."
-        elif ! grep -q "platform_machine == 'armv7l'" uv.lock 2>/dev/null; then
-          # the installer is new but the copy it installs from is not: the pull above failed
-          die "cryptography tried to compile because the copy of Bento in $DIR is older than the fix. Its
-   uv.lock still asks for a cryptography with no wheel for this Pi. Bring the copy up to date and re-run me:
-       git -C \"$DIR\" checkout -- uv.lock agentos/ui/index.html
-       git -C \"$DIR\" pull --ff-only
-   If the pull still refuses, 'git -C \"$DIR\" status' shows what is in the way."
+   Put 64-bit Raspberry Pi OS Bookworm on this Pi (Raspberry Pi Imager) and re-run me."
         else
-          die "cryptography tried to compile on this 32-bit Pi, and it should not have to. This copy locks
-   cryptography 46.0.3 on 32-bit ARM, whose prebuilt wheel runs on glibc 2.28 and newer (Buster
-   included), and this system has glibc ${_g:-unknown}. That usually means an older copy of Bento or
-   an old uv. Update uv and re-run the install line:
+          die "cryptography tried to compile on this 32-bit Pi, and it should not have to. Its prebuilt
+   wheel runs on glibc 2.${_floor} and newer, and this system has glibc ${_g:-unknown}. That usually means
+   an old uv, or a copy of Bento older than this installer. Update both and re-run the install line:
        uv self update
+       git -C \"$DIR\" checkout -- uv.lock agentos/ui/index.html && git -C \"$DIR\" pull --ff-only
    If it still compiles, run 'uv sync -v' and look for the cryptography line: it says which wheel it skipped."
         fi ;;
       armv6l)

@@ -237,6 +237,8 @@ DEFAULTS = {
     "stage": {"big": True, "app": ""},
     # the alarms this person watches their devices for (devboard.py), shown on the Devices scene
     "device_alarms": [],
+    # who is called about an alarm nobody acknowledged (alarmcall.py): my phone, then one chat I picked
+    "device_escalation": {"on": True, "after_min": 10, "then_min": 15, "levels": ["alarm"], "second": None},
     # only MY voice wakes the screen (voiceprint.py). The print itself is a file in my home.
     "voiceprint": {"only": False},
     # the ethics check (ethics.py): `own` is the person's one switch (typed confirmation before

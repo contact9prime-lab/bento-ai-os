@@ -89,9 +89,9 @@ permissive licenses:
 
 | License | Packages |
 |---|---|
-| MIT / MIT-0 | fastapi, mcp, textual, truststore, pydantic, pydantic-core, pydantic-settings, rich, anyio, attrs, jsonschema, jsonschema-specifications, referencing, rpds-py, markdown-it-py, mdit-py-plugins, mdurl, linkify-it-py, uc-micro-py, httpx-sse, h11, PyJWT, platformdirs, annotated-types, annotated-doc, typing-inspection, cffi |
-| BSD (2/3-Clause) | uvicorn, httpx, httpcore, websockets, starlette, sse-starlette, click, idna, pycparser, python-dotenv, Pygments |
-| Apache-2.0 | python-multipart, cryptography (Apache-2.0 OR BSD-3-Clause) |
+| MIT / MIT-0 | fastapi, mcp, mcp-types, textual, truststore, pydantic, pydantic-core, rich, anyio, attrs, jsonschema, jsonschema-specifications, referencing, rpds-py, markdown-it-py, mdit-py-plugins, mdurl, linkify-it-py, uc-micro-py, h11, PyJWT, platformdirs, annotated-types, annotated-doc, typing-inspection, cffi |
+| BSD (2/3-Clause) | uvicorn, httpx, httpcore, httpx2, httpcore2, httpx2-jsfetch, websockets, starlette, sse-starlette, click, idna, pycparser, Pygments |
+| Apache-2.0 | python-multipart, opentelemetry-api, cryptography (Apache-2.0 OR BSD-3-Clause) |
 | PSF-2.0 | typing_extensions |
 
 Each package's full license text is included in its `*.dist-info` directory

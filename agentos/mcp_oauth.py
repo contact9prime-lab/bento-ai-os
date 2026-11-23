@@ -62,6 +62,11 @@ try:
     from mcp.shared.auth import (OAuthClientInformationFull, OAuthClientMetadata,
                                  OAuthToken)
     HAVE_OAUTH = True
+    try:
+        # mcp 2.x: the callback hands back a result object, with the issuer the redirect named
+        from mcp.shared.auth import AuthorizationCodeResult
+    except ImportError:
+        AuthorizationCodeResult = None   # type: ignore[assignment,misc]   # mcp 1.x: a (code, state) tuple
 except Exception:  # pragma: no cover - very old SDK
     OAuthClientProvider = None  # type: ignore
     TokenStorage = object       # type: ignore
@@ -93,6 +98,7 @@ class Pending:
         self.event = asyncio.Event()
         self.code = ""
         self.state: str | None = None
+        self.iss: str | None = None       # RFC 9207: the issuer the redirect named, checked by mcp 2.x
         self.error = ""
 
 
@@ -131,13 +137,13 @@ def pending_url(name: str) -> str:
     return p.url if p else ""
 
 
-def resolve(name: str, code: str, state: str | None, error: str = "") -> bool:
+def resolve(name: str, code: str, state: str | None, error: str = "", iss: str | None = None) -> bool:
     """Called by the callback route, as whoever the browser is signed in as. True if a flow
     of THEIRS was waiting: another account's browser finishes nothing."""
     p = _pending.get((_me(), name))
     if not p:
         return False
-    p.code, p.state, p.error = code, state, error
+    p.code, p.state, p.error, p.iss = code, state, error, (str(iss)[:500] if iss else None)
     p.event.set()
     return True
 
@@ -375,6 +381,8 @@ def provider_for(name: str, url: str, scope: str = ""):
                     pass
         if p.error:
             raise RuntimeError(f"authorisation failed: {p.error}")
+        if AuthorizationCodeResult is not None:
+            return AuthorizationCodeResult(code=p.code, state=p.state, iss=p.iss)
         return p.code, p.state
 
     meta = OAuthClientMetadata(
@@ -385,11 +393,12 @@ def provider_for(name: str, url: str, scope: str = ""):
         token_endpoint_auth_method="none",   # a desktop app keeps no client secret
         scope=scope or None,
     )
+    kw = {} if AuthorizationCodeResult is not None else {"timeout": AUTH_TIMEOUT}   # 2.x dropped it
     return OAuthClientProvider(
         server_url=url,
         client_metadata=meta,
         storage=_Storage(name, url, uid),
         redirect_handler=_redirect,
         callback_handler=_callback,
-        timeout=AUTH_TIMEOUT,
+        **kw,
     )

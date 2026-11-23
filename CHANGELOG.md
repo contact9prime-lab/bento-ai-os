@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.99.1 — 2026-11-23
+
+**An alarm nobody acknowledges reaches a person.** After the minutes you choose, an alarm on the Devices board
+goes to your own paired Telegram and WhatsApp, with the rule's note of what to do. Still not acknowledged, it
+goes to one more chat you picked (somebody you let in, or a group), and you're told it went on. Telegram has
+an Acknowledge button; on WhatsApp, reply ACK. Only a chat that was told can acknowledge, it's the board's own
+mark, and the others hear who took it. A cleared alarm is said to everyone who heard of it, nobody paired is
+said in Events, and a restart never calls the same people twice. Set it on the alarm rules page or with
+`bento network alarms call`.
+
+**Known vulnerabilities in what Bento installs are checked on every change and every week.** The Python
+packages in `uv.lock` (pip-audit) and the WhatsApp link's Node packages (npm audit, no package code run).
+The first run found 27 advisories in five packages, and they are upgraded here: cryptography 50.0.2, mcp
+2.3.0, pyjwt 2.15.1, anyio 4.16.0, certifi 2026.11.20, on every machine.
+
+**mcp 2.x.** Bento's MCP client now reads the 2.x SDK (and still 1.x): stdio and HTTP servers, sign-ins
+(with the issuer check 2.x adds), and the network guard, which now also guards the new HTTP client. Checked
+against real servers.
+
+**32-bit Raspberry Pi OS is deprecated.** It gets the fixed cryptography like every other machine, and the
+installer says 32-bit is deprecated and asks before it continues. On Buster, which can't run the fix, the
+installer stops and offers 0.99.0, the last version that runs there, saying it carries a known
+vulnerability; `--yes` can't answer that. `bento update`, Settings → Version and `bento doctor` say the same.
+
+**Bento says whether a copy of this machine is kept anywhere else.** Settings → System → Backup, setup's new
+step "Keep a copy somewhere else", and `bento doctor` read the same answer: a cloud standby, a storage bucket,
+a backup file made in the last month, or nothing, with the doors to each. A copy on the same disk is lost with
+it.
+
 ## 0.99.0 — 2026-11-21
 
 **A phone sees the work while it happens.** A message from Telegram or WhatsApp that the lead hands to a

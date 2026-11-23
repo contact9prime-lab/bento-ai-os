@@ -50,7 +50,7 @@ def _rows(store, limit: int) -> list[dict]:
             m = {}
         out.append({"at": r.get("created_at") or 0, "event": m.get("event") or "note",
                     "label": m.get("link") or "", "text": r.get("message") or "", "from": "watch",
-                    **{k: m[k] for k in ("alarm", "level", "item", "source", "why", "by") if k in m},
+                    **{k: m[k] for k in ("alarm", "level", "item", "source", "why", "by", "step", "told") if k in m},
                     **({"owner": m["whose"]} if "whose" in m else {})})
     where = " OR ".join("action LIKE ?" for _ in PREFIXES)
     for r in store.db.execute(f"SELECT ts, action, resource, detail, reason, effect FROM audit "
@@ -58,7 +58,7 @@ def _rows(store, limit: int) -> list[dict]:
                               (*[p + "%" for p in PREFIXES], limit)).fetchall():
         r = dict(r)
         if r["action"] in ("device.moved", "device.hardware", "device.get", "device.set", "device.permits", "device.esp",
-                           "device.trigger"):
+                           "device.trigger", "device.escalate", "device.acknowledge"):
             continue                    # the watch's own line says it (how it was found, what changed)
         out.append({"at": r["ts"] or 0, "event": r["action"].split(".", 1)[1], "action": r["action"],
                     "label": _label(r["resource"]),

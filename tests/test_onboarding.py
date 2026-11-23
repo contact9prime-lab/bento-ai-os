@@ -210,6 +210,8 @@ def test_everything_answered_counts_as_finished(store):
     ob.skip(cfg, "fork")
     # and a desktop with no microphone passes over the wake word on purpose
     ob.skip(cfg, "voice")
+    # and somebody who keeps no copy elsewhere has said so (offsite.py says it again in Settings)
+    ob.skip(cfg, "copy")
     # one agent, on a machine with its own screen: every step it keeps is answered
     ob.set_shape(cfg, "one", "everyone", screen=True)
     store.create_conversation("hi")

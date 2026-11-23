@@ -381,18 +381,17 @@ def test_the_cryptography_message_is_arch_aware():
 
 def test_the_32bit_message_names_glibc_and_never_sends_buster_to_rustup():
     """On 32-bit ARM the cause of a cryptography compile is glibc, never OpenSSL or
-    Rust, which are only what the fallback build trips over. This copy locks a
-    release whose armv7 wheel needs glibc 2.28, so Buster installs it; a compile
-    there means an old uv or an old copy, and an OS older than Buster is the only
-    thing that should be told to move."""
+    Rust, which are only what the fallback build trips over. This copy locks
+    cryptography 50, whose armv7 wheel needs glibc 2.31 (Bullseye); 0.99.0, the Buster
+    road, needed 2.28. A compile above the floor means an old uv or an old copy."""
     assert re.search(r'ldd --version', SRC), "the installer must read the system's glibc"
-    assert re.search(r'-ge 28', SRC), "the 2.28 wheel floor must be the comparison"
+    assert '_floor=31; [ -n "$OLDPI_LEGACY" ] && _floor=28' in SRC, "the floor follows the copy installed"
     seg = SRC.split('MUST be linked with OpenSSL 3', 1)[1][:3000]
     arm7 = seg[seg.index('armv7l)'):seg.index('armv6l)')]
-    assert 'glibc 2.28' in arm7 and 'Buster' in arm7, "the armv7 message must name the real floor"
-    assert '46.0.3' in arm7 and 'uv self update' in arm7, (
-        "on a new-enough glibc the fix is the locked wheel and a current uv")
-    assert 'rustup' not in arm7, "a 32-bit Buster Pi must never be sent to build Rust"
+    assert '-lt "$_floor"' in arm7 and 'Bullseye' in arm7, "the armv7 message must name the real floor"
+    assert 'uv self update' in arm7 and 'pull --ff-only' in arm7, (
+        "on a new-enough glibc the fix is a current uv and a current copy")
+    assert 'rustup' not in arm7, "a 32-bit Pi must never be sent to build Rust"
 
 
 LOCK = (REPO / "uv.lock")
@@ -405,22 +404,18 @@ def _lock_packages(name):
     return [b for b in blocks if re.match(rf'name = "{re.escape(name)}"\n', b)]
 
 
-def test_32bit_arm_locks_a_cryptography_whose_wheel_runs_on_buster():
-    """Reported from a Pi on Buster: "cryptography ships a prebuilt 32-bit ARM wheel
-    but it needs glibc 2.31; this system has glibc 2.28". From 46.0.4 on, the
-    armv7 wheel is tagged manylinux_2_31 only, so uv compiled it with Rust. The lock
-    must give armv7 a release that still has a manylinux_2_28 armv7 wheel, and give
-    everyone else the current one."""
-    assert re.search(r'"cryptography>=41,<46\.0\.4; platform_machine == \'armv7l\'"',
-                     PYPROJECT.read_text()), "pyproject must cap cryptography on armv7l"
+def test_32bit_arm_gets_the_fixed_cryptography_too():
+    """The vulnerability scan found 32-bit Pis held on cryptography 46.0.3 with a known
+    advisory (PYSEC-2026-3552). cryptography 50 ships a manylinux_2_31 armv7 wheel, so
+    Bullseye and Bookworm take the fix; only Buster (2.28) can't, and oldpi.py says so.
+    One cryptography for every machine, with a 32-bit wheel in it."""
+    assert '"cryptography>=50",' in PYPROJECT.read_text()
+    assert "armv7l'" not in PYPROJECT.read_text().split("[project.scripts]")[0], "no 32-bit pin any more"
     blocks = _lock_packages("cryptography")
-    arm = [b for b in blocks if "platform_machine == 'armv7l'" in b.split("\nwheels", 1)[0]]
-    other = [b for b in blocks if "platform_machine != 'armv7l'" in b.split("\nwheels", 1)[0]]
-    assert arm and other, "the lock must fork cryptography on armv7l"
-    assert re.search(r'manylinux_2_28_armv7l[^"]*\.whl', arm[0]), (
-        "the armv7 cryptography must ship a wheel Buster's glibc 2.28 can install")
-    assert re.search(r'abi3-manylinux_2_28_armv7l', arm[0]), (
-        "an abi3 wheel, so it fits every Python the pin may pick")
+    assert len(blocks) == 1, "the lock no longer forks cryptography on armv7"
+    assert int(re.search(r'version = "(\d+)\.', blocks[0]).group(1)) >= 50
+    assert re.search(r'abi3-manylinux_2_31_armv7l\.whl', blocks[0]), (
+        "an abi3 armv7 wheel a Bullseye Pi can install, so no Pi compiles it")
 
 
 # ------------------------------------- 4. the question a headless install must ask
@@ -581,9 +576,61 @@ def test_a_rewritten_lock_does_not_keep_an_old_copy_old(tmp_path):
 
 
 def test_an_old_copy_is_named_when_cryptography_still_compiles():
-    """If the pull still fails, the armv7 message says the COPY is old (its lock has
-    no armv7 entry) and how to bring it up to date, not "update uv"."""
+    """If it still compiles above the floor, the armv7 message says the COPY or uv is old and
+    how to bring both up to date."""
     seg = SRC.split('MUST be linked with OpenSSL 3', 1)[1][:4000]
     arm7 = seg[seg.index('armv7l)'):seg.index('armv6l)')]
-    assert "grep -q \"platform_machine == 'armv7l'\" uv.lock" in arm7
-    assert 'older than the fix' in arm7 and 'pull --ff-only' in arm7
+    assert 'older than this installer' in arm7 and 'pull --ff-only' in arm7
+
+
+# ------------------------------------- 32-bit Pi OS: deprecated, and too old below Bullseye
+
+def _oldpi_block():
+    return SRC[SRC.index('OLDPI_LEGACY=""'):SRC.index('if [ -d "$DIR/.git" ] && repo_ok "$DIR"; then')]
+
+
+def _run_oldpi(tmp_path, machine, bits, glibc, deliberate="no", interactive="1"):
+    import subprocess
+    bin_ = tmp_path / "bin"
+    bin_.mkdir(exist_ok=True)
+    for name, out in (("uname", machine), ("getconf", str(bits)),
+                      ("ldd", f"ldd (Debian GLIBC {glibc}-10+rpi1) {glibc}")):
+        f = bin_ / name
+        f.write_text(f"#!/bin/sh\necho '{out}'\n")
+        f.chmod(0o755)
+    script = ('warn(){ echo "WARN $*"; }; die(){ echo "DIE $*"; exit 1; }\n'
+              'ask(){ return 1; }\n'
+              f'ask_deliberate(){{ [ "{deliberate}" = yes ]; }}\n'
+              f'INTERACTIVE="{interactive}"; ASSUME_YES=""\n'
+              + _oldpi_block() + '\necho "LEGACY=$OLDPI_LEGACY"\n')
+    return subprocess.run(["sh", "-c", script], capture_output=True, text=True,
+                          env={**os.environ, "PATH": f"{bin_}:{os.environ['PATH']}"}).stdout
+
+
+def test_a_32bit_pi_on_bullseye_is_told_it_is_deprecated_and_asked(tmp_path):
+    out = _run_oldpi(tmp_path, "armv7l", 32, "2.31")
+    assert "deprecated" in out and "64-bit" in out
+    assert "DIE Nothing was installed" in out, "an interactive person who says no stops here"
+    out = _run_oldpi(tmp_path, "armv7l", 32, "2.36", interactive="")
+    assert "deprecated" in out and "LEGACY=" in out and "DIE" not in out, (
+        "an install from the hub (nobody at a terminal) carries on, having said it")
+
+
+def test_the_32bit_check_reads_the_userland_not_uname(tmp_path):
+    """32-bit Pi OS on a Pi 4 boots a 64-bit kernel: uname says aarch64."""
+    assert "deprecated" in _run_oldpi(tmp_path, "aarch64", 32, "2.36", interactive="")
+    out = _run_oldpi(tmp_path, "aarch64", 64, "2.36", interactive="")
+    assert "WARN" not in out, "a 64-bit Pi hears nothing"
+    assert 'MACH=armv7l' in SRC, "the wheel choice and the failure message read the same width"
+
+
+def test_buster_is_offered_the_last_version_that_runs_there_and_never_by_yes(tmp_path):
+    out = _run_oldpi(tmp_path, "armv7l", 32, "2.28")
+    assert "0.99.0" in out and "known vulnerability" in out and "DIE Nothing was installed" in out
+    out = _run_oldpi(tmp_path, "armv7l", 32, "2.28", deliberate="yes")
+    assert "LEGACY=1" in out and "DIE" not in out
+    block = _oldpi_block()
+    assert 'ask_deliberate "Install 0.99.0 anyway?"' in block, "--yes must not answer for a vulnerable install"
+    from agentos import oldpi
+    assert f'OLDPI_COMMIT="{oldpi.LAST_OLD["commit"]}"' in block
+    assert 'checkout -q -B buster-0.99.0 "$OLDPI_COMMIT"' in SRC

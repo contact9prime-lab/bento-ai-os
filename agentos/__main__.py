@@ -1465,6 +1465,26 @@ def doctor(fix: bool = False, session: bool = False):
                        f" · keeping {ret.get('logs_days', 30)}d of logs"))
     except Exception as e:
         bad(f"db check failed: {e}")
+    # a copy somewhere else (offsite.py): a backup on this disk is lost with the disk
+    try:
+        from . import offsite as _offsite
+        _o = _offsite.state(cfg=cfg)
+        {"ok": ok, "warn": warn, "bad": warn}[_o["level"]](f"copy elsewhere: {_o['line']}")
+        if _o["level"] != "ok" and _o["doors"]:
+            todo("bento standby pair URL CODE   # a second Bento keeps a sealed copy; or `bento backup DIR` to another disk")
+    except Exception as e:  # noqa: BLE001 - a doctor keeps going
+        warn(f"copy elsewhere: could not check ({type(e).__name__})")
+    # a 32-bit Pi: deprecated, or too old for anything newer (oldpi.py)
+    try:
+        from . import oldpi as _oldpi
+        _op = _oldpi.state()
+        if _op["too_old"]:
+            bad(f"32-bit Pi: {_op['line']}")
+            todo("flash 64-bit Raspberry Pi OS Bookworm (Raspberry Pi Imager), then run the install line again")
+        elif _op["deprecated"]:
+            warn(f"32-bit Pi: {_op['line']}")
+    except Exception as e:  # noqa: BLE001 - a doctor keeps going
+        warn(f"32-bit check: could not run ({type(e).__name__})")
 
     # 5. optional companions
     ok("git available" if shutil.which("git") else "")
@@ -4371,11 +4391,14 @@ def _backup_cli(args):
     except bk.BackupError as e:
         print(f"✗ {e}", file=sys.stderr)
         sys.exit(1)
+    from . import offsite
+    offsite.note_made(m["size"], str(m["path"]))
     print(f"✓ backed up to {m['path']} ({_size(m['size'])}, {m['files']} files, "
           f"{len(m['accounts']) or 'no'} account{'s' if len(m['accounts']) != 1 else ''}).")
     if m["changed_while_reading"]:
         print(f"  {len(m['changed_while_reading'])} file(s) changed while it was being made.")
     print("  Restore it with `bento restore FILE`, here or on another machine.")
+    print("  Keep it on another disk: a copy on this one is lost with it.")
 
 
 def _print_manifest(m: dict) -> None:
@@ -6617,11 +6640,53 @@ def _alarm_rules_cli(rest, args):
         except OSError as e:
             sys.exit(f"  alarm rules are held by the running server, and it isn't answering at {base} ({e})")
 
+    if rest and rest[0] == "call":
+        # who is called about an alarm nobody acknowledged (alarmcall.py)
+        got = ask("/api/devices/escalation")
+        p = dict(got.get("policy") or {})
+        words = list(rest[1:])
+        if words:
+            for w in list(words):
+                if w in ("on", "off"):
+                    p["on"] = w == "on"
+                elif w == "warnings":
+                    p["levels"] = ["alarm", "warning"]
+                elif w == "alarms":
+                    p["levels"] = ["alarm"]
+            for flag, key in (("--after", "after_min"), ("--then", "then_min")):
+                if flag in words:
+                    i = words.index(flag)
+                    p[key] = words[i + 1] if i + 1 < len(words) else p.get(key)
+            if "--second" in words:
+                i = words.index("--second")
+                want = (words[i + 1] if i + 1 < len(words) else "").lower()
+                if want in ("none", "nobody", ""):
+                    p["second"] = None
+                else:
+                    hit = next((c for c in got.get("choices") or [] if want in (c["name"].lower(), c["to"])), None)
+                    if not hit:
+                        sys.exit("  not one of your chats: " + (", ".join(c["name"] for c in got.get("choices") or [])
+                                                             or "none yet (let somebody in on Telegram or WhatsApp)"))
+                    p["second"] = {"channel": hit["channel"], "to": hit["to"], "name": hit["name"]}
+            got = ask("/api/devices/escalation", "PUT", p)
+            for d in got.get("dropped") or []:
+                print(f"  corrected: {d}")
+            print("  " + got.get("words", ""))
+            return
+        print("  " + got.get("words", ""))
+        own = ", ".join(o["name"] for o in got.get("own") or [])
+        print(f"  first: {own}" if own else "  " + (got.get("nobody") or ""))
+        for c in got.get("choices") or []:
+            mark = "→" if (p.get("second") or {}).get("to") == c["to"] else " "
+            print(f"  {mark} {c['name']:<28} {c['channel']}" + ("" if c["ready"] else f"  ({c['why']})"))
+        print("\n  bento network alarms call on|off [warnings|alarms] [--after MIN] [--then MIN] [--second NAME|none]")
+        return
     board = ask("/api/devices/board")
     if not rest:
         print(devboard.rules_text(board))
         print("\n  bento network alarms add <machine> <item> above|below|on|off [value] [for <seconds>] [warning]")
         print("  bento network alarms remove <number>")
+        print("  bento network alarms call      (who is called when nobody acknowledges one)")
         return
     rules = board.get("rules") or []
     if rest[0] == "remove":

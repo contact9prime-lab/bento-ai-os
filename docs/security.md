@@ -455,6 +455,33 @@ if the code that arrived has another digest. Commits between signed tags read as
 pinned takes those only with `bento update --apply --allow-unsigned`. To sign everything on the branch, sign each
 commit you want machines to take.
 
+### Known vulnerabilities in what Bento installs
+
+Bento's own updates are signed and fast-forward only, but the packages it installs are other
+people's code, and a locked version stays vulnerable until somebody notices.
+`packaging/audit-vulns.py` checks them on every pull request, every push to master and every Monday
+(`.github/workflows/vulns.yml`):
+
+- The Python packages `uv.lock` resolves to, with pip-audit, run through `uvx` so it is never one of
+  Bento's dependencies.
+- Each Node sidecar's packages (the WhatsApp link), resolved into a throwaway lockfile with
+  `--ignore-scripts`, so no package code runs, and checked with `npm audit`.
+
+A red run names the package, the advisory and the version that fixes it. The fix is
+`uv lock --upgrade-package NAME`. An advisory nobody can fix yet goes in
+`packaging/vuln-exceptions.txt` as `ID | why | until YYYY-MM-DD`; past its date it counts as open
+again. A scanner that didn't run is red too, never a pass.
+
+The first run found 27 advisories in five locked packages (anyio, certifi, cryptography, mcp,
+pyjwt). They were upgraded in the same change, and every machine gets the same versions: mcp moved
+to 2.x (Bento's MCP client reads both majors), and a 32-bit Pi gets the fixed cryptography too. A Pi
+on Buster can't take it, so the installer refuses there and offers the last version that ran, 0.99.0,
+saying it has a known vulnerability (see [Installation](installation.md)).
+
+```sh
+python3 packaging/audit-vulns.py           # the same check, on your machine
+```
+
 ### The ledger
 
 Each ledger row is an HMAC chained to the one before it, under `ledger.key` beside that home's database. `outcome`,

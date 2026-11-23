@@ -1,0 +1,3 @@
+# Advisories nobody can fix yet, read by packaging/audit-vulns.py.
+# One per line: ID | why it is accepted for now | until YYYY-MM-DD
+# A line past its date is read as not excepted, so it is looked at again.

@@ -561,6 +561,42 @@ minute and a short opening was usually missed.
 A Pi on an older Bento doesn't send changes. The hub then judges its readings once a minute, so a
 mission still starts, a little later.
 
+### When nobody acknowledges an alarm
+
+An alarm that nobody acknowledges is passed on to people. You choose how, on the alarm rules page
+(the Devices scene's Rules, or Devices → Alarm rules), under **When nobody acknowledges**:
+
+- After a number of minutes (10 by default), it goes to your own paired Telegram and WhatsApp chats,
+  with what it is and the rule's note of what to do.
+- If you picked a second chat, it goes there after more minutes (15 by default), and you're told it
+  went on. The second chat is somebody you let in on your Telegram or WhatsApp, or a group. It is
+  looked up again every time, so a chat that's gone is said and not called.
+- On Telegram it comes with an **Acknowledge** button. On WhatsApp, reply ACK. Only a chat that was
+  told about that alarm can acknowledge it. Acknowledging there is the same mark as on the board:
+  it says who saw it, it fixes nothing, and the others who were called hear who took it.
+- When it clears, everyone who was told hears that.
+
+Alarms are called and warnings aren't, unless you tick **Warnings too**. If no chat is paired, the
+Events tab says nobody could be told. On WhatsApp's own API a message outside the 24-hour window is
+refused by Meta, and that refusal is what Events says. Each call is a line in Events and a ledger
+row, so a restart reads back who was told and never calls them twice.
+
+The machine's own alarms on a machine with accounts (a machine nobody owns) go to every admin's
+phones, with the defaults. No agent can change who is called.
+
+![The alarm rules page in Devices: "When nobody acknowledges" says alarms go to your phone after 1 min, then to Sam (night shift) 1 min later, with the minutes, the chat picker and a Warnings too box, above the compressor's rule card](screenshots/alarm-calls.png)
+
+![The same card on a 390px phone: the minutes, the chat picker on a line of its own, and Warnings too](screenshots/alarm-calls-phone.png)
+
+![Devices after Sam tapped Acknowledge on Telegram: the compressor alarm reads "Seen by Sam on Telegram"](screenshots/alarm-acknowledged.png)
+
+```sh
+bento network alarms call                                   # who is called, and the chats you can pick
+bento network alarms call --after 5 --then 10 --second "Night shift"
+bento network alarms call warnings                          # warnings too
+bento network alarms call off
+```
+
 ### A mission that starts on its own
 
 A mission can start when a device does something, with nobody asking. In Missions → Build, add a

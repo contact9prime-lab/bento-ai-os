@@ -239,40 +239,63 @@ def _proxy_for(scheme: str) -> str:
     return urllib.request.getproxies().get(scheme, "")
 
 
-class GuardTransport(httpx.AsyncBaseTransport):
-    """Every request this client makes, redirects included, passes `handle_async_request`."""
+def _guard_for(lib):
+    """The guarding transport, built for one HTTP library. httpx for everything of ours; httpx2
+    (the same API under another name) for mcp 2.x, which takes only an httpx2 client. One body,
+    so the two can't judge an address differently."""
 
-    def __init__(self, strict: bool = False, local_ok: bool = False):
-        self.strict, self.local_ok = strict, local_ok
-        self._inner = httpx.AsyncHTTPTransport()
-        self._proxied: dict[str, httpx.AsyncHTTPTransport] = {}
+    class Guard(lib.AsyncBaseTransport):
+        """Every request this client makes, redirects included, passes `handle_async_request`."""
 
-    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
-        url = request.url
-        host = url.raw_host.decode("ascii", "replace")
-        port = url.port or (443 if url.scheme == "https" else 80)
-        proxy = _proxy_for(url.scheme)
-        if proxy and not urllib.request.proxy_bypass(host):
-            # A proxy resolves for itself, so there is nothing to pin. An address it was named
-            # directly is still judged here, and a name that resolves here is judged too.
+        def __init__(self, strict: bool = False, local_ok: bool = False):
+            self.strict, self.local_ok = strict, local_ok
+            self._inner = lib.AsyncHTTPTransport()
+            self._proxied: dict = {}
+
+        async def _pin(self, host: str, port: int) -> str:
             try:
-                await pin(host, port, self.strict, self.local_ok)
-            except httpx.ConnectError:
-                pass
-            t = self._proxied.setdefault(url.scheme, httpx.AsyncHTTPTransport(proxy=proxy))
-            return await t.handle_async_request(request)
-        address = await pin(host, port, self.strict, self.local_ok)
-        extensions = dict(request.extensions)
-        if url.scheme == "https":
-            extensions["sni_hostname"] = host     # the certificate is checked against the name
-        pinned = httpx.Request(request.method, url.copy_with(host=address), headers=request.headers,
-                               stream=request.stream, extensions=extensions)
-        return await self._inner.handle_async_request(pinned)
+                return await pin(host, port, self.strict, self.local_ok)
+            except Refused as e:
+                if lib is httpx:
+                    raise
+                raise lib.ConnectError(str(e)) from e      # a refusal in this library's own words
+            except httpx.ConnectError as e:
+                if lib is httpx:
+                    raise
+                raise lib.ConnectError(str(e)) from e
 
-    async def aclose(self) -> None:
-        await self._inner.aclose()
-        for t in self._proxied.values():
-            await t.aclose()
+        async def handle_async_request(self, request):
+            url = request.url
+            host = url.raw_host.decode("ascii", "replace")
+            port = url.port or (443 if url.scheme == "https" else 80)
+            proxy = _proxy_for(url.scheme)
+            if proxy and not urllib.request.proxy_bypass(host):
+                # A proxy resolves for itself, so there is nothing to pin. An address it was named
+                # directly is still judged here, and a name that resolves here is judged too.
+                try:
+                    await self._pin(host, port)
+                except lib.ConnectError as e:
+                    if isinstance(e, Refused) or isinstance(e.__cause__, Refused):
+                        raise
+                t = self._proxied.setdefault(url.scheme, lib.AsyncHTTPTransport(proxy=proxy))
+                return await t.handle_async_request(request)
+            address = await self._pin(host, port)
+            extensions = dict(request.extensions)
+            if url.scheme == "https":
+                extensions["sni_hostname"] = host     # the certificate is checked against the name
+            pinned = lib.Request(request.method, url.copy_with(host=address), headers=request.headers,
+                                 stream=request.stream, extensions=extensions)
+            return await self._inner.handle_async_request(pinned)
+
+        async def aclose(self) -> None:
+            await self._inner.aclose()
+            for t in self._proxied.values():
+                await t.aclose()
+
+    return Guard
+
+
+GuardTransport = _guard_for(httpx)
 
 
 def client(*, strict: bool = False, local_ok: bool = False, **kw) -> httpx.AsyncClient:
@@ -280,6 +303,19 @@ def client(*, strict: bool = False, local_ok: bool = False, **kw) -> httpx.Async
     allow-list. `local_ok` keeps the metadata refusal and nothing else, for an address a person
     with the machine's authority typed themselves."""
     return httpx.AsyncClient(transport=GuardTransport(strict=strict, local_ok=local_ok), **kw)
+
+
+_GUARD2 = None
+
+
+def client2(*, strict: bool = False, local_ok: bool = False, **kw):
+    """The same guarded client as an httpx2.AsyncClient, for mcp 2.x. Raises ImportError when
+    httpx2 isn't installed (mcp 1.x brings httpx only)."""
+    global _GUARD2
+    import httpx2
+    if _GUARD2 is None:
+        _GUARD2 = _guard_for(httpx2)
+    return httpx2.AsyncClient(transport=_GUARD2(strict=strict, local_ok=local_ok), **kw)
 
 
 async def read_capped(url: str, cap: int, *, strict: bool = False, timeout: float = 60.0,

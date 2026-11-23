@@ -1673,6 +1673,15 @@ body.dev-touch .prefs label:has(> input[type=checkbox]:not(.psw input)){min-heig
 .tm-cell.inherited{opacity:.55;font-style:italic}
 .co-talk-off{padding:8px 16px}
 #co-talk .tm-legend{padding:6px 16px 12px}
+/* is a copy kept anywhere else (11g backupOffsite, offsite.py) */
+.bk-offsite{margin:10px 16px 4px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);
+  background:color-mix(in srgb,var(--bg2) 80%,transparent)}
+.bk-offsite[hidden]{display:none}
+.bk-offsite.ok b{color:var(--ok)}.bk-offsite.warn b{color:var(--warn,#d9a400)}
+.bk-offsite.bad{border-color:color-mix(in srgb,var(--err) 45%,var(--line))}.bk-offsite.bad b{color:var(--err)}
+.bk-off-line{display:flex;gap:8px;align-items:baseline;line-height:1.4}
+.bk-off-doors{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.bk-off-doors .endbtn{min-height:var(--tap,32px)}
 /* ================= window switcher (Ctrl+Tab) ================= */
 #switcher{position:fixed;inset:0;z-index:9720;display:none;align-items:center;justify-content:center;background:rgba(5,7,10,.4);backdrop-filter:blur(4px)}
 #switcher.show{display:flex}
@@ -3066,6 +3075,9 @@ body.dev-touch .job-hchips .of-chip,body.dev-touch .job-hrow .endbtn,body.dev-to
   .flw-l .row:has(textarea)>*{flex:1 1 100%!important;min-width:0}
   .flw-trig>button{min-width:var(--tap,44px);min-height:var(--tap,44px)}
 }
+/* setup's "Keep a copy somewhere else" (14b OB_WIRE.copy): the three ways, as cards */
+.ob-copy-doors{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-top:12px}
+#ob-copy .bk-offsite{margin:10px 0 0}
 /* ================= onboarding =================
    Two columns: a rail you can move around in freely, and one pane at a time. The
    rail is the point — a linear wizard hides how much is left and gives you nowhere
@@ -7178,6 +7190,22 @@ body.dev-mobile .dvs-grid{grid-template-columns:1fr}
 .dvs-spark circle{fill:var(--acc);stroke:var(--bg2);stroke-width:1.2}
 .dvs-tr{grid-column:1/-1;color:var(--dim);font-size:var(--fs-2xs);font-variant-numeric:tabular-nums;margin-top:-1px}
 @media (max-width:640px){.dvs-spark{width:64px}}
+
+/* who is called when nobody acknowledges an alarm (alarmcall.py) */
+.dvr-call{margin:12px 0 4px;padding:12px 14px;border:1px solid var(--line);
+  border-radius:12px;background:color-mix(in srgb,var(--bg2) 70%,transparent)}
+.dvr-call[hidden]{display:none}
+.dvc-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.dvc-head h3{margin:0;font-size:var(--fs-md,14px)}
+.dvc-words{margin:6px 0 8px;line-height:1.4}
+.dvc-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px}
+.dvc-step,.dvc-warn{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;min-height:var(--tap,40px)}
+/* two classes: .pbody input{width:100%} (10-panels) would stretch each box onto a line of its own */
+.dvr-call .dvc-n{width:72px;flex:none;min-height:var(--tap,40px)}
+.dvr-call .dvc-sel{width:auto;flex:0 1 auto;min-width:0;max-width:100%;min-height:var(--tap,40px)}
+.dvr-call .dvc-warn input{width:20px;height:20px;flex:none}
+.dvc-hint{margin:6px 0 0}
+@media (max-width:560px){.dvc-step{width:100%}.dvr-call .dvc-to .dvc-sel{flex:1 1 0}}
 /* The Stage's blueprint (24v-blueprint.js): a drafting sheet the thing is taken apart on.
    Cyan ink on navy, a grid, registration marks and a title block, as an engineer's drawing;
    a white highlight for the part under your finger. Certainty is the line itself (solid,
@@ -14008,6 +14036,7 @@ function devRulesHTML(d){
     <div class="dvr-top"><div><h2>Alarm rules ${pInfo('An alarm shows while its condition holds and clears by itself when it stops. Acknowledge only marks that you saw it. A mission that is on watches its own rules, and you change those in the mission.')}</h2>
       <p class="dvr-sum">${rules.length} rule${rules.length===1?'':'s'} · <b class="${raised?'bad':'ok'}">${raised?raised+' raised now':'none raised'}</b>${paused?` · ${paused} paused`:''}</p></div>
       ${ms.length?`<button class="wiz-next" data-dvr="new">＋ New rule</button>`:''}</div>
+    <div class="dvr-call" data-dvcall></div>
     <div class="dvr-bar"><div class="dvs-tabs" role="group" aria-label="Which rules">${DEVR_FILTERS.filter(([k])=>k==='all'||n(k)).map(([k,l])=>
         `<button class="${flt===k?'on':''}" data-dvr="filter" data-v="${k}" aria-pressed="${flt===k}">${l} <em>${n(k)}</em></button>`).join('')}</div>
       ${rules.length>4?`<input class="dvr-q" data-dvr-q type="search" value="${esc(DEVSCENE.rq||'')}" placeholder="Find a rule" aria-label="Find a rule">`:''}</div>
@@ -14027,6 +14056,7 @@ function devRulesWire(host,repaint,reload){
       return k};
     x.oninput=()=>{set();const p=host.querySelector('.dvr-preview');if(p)p.innerHTML=devRulePreview(devRulesBoard()||{})};
     x.onchange=()=>{const k=set();if(k==='machine'||k==='item'||k==='when'||k==='level')repaint()}});
+  devCallMount(host.querySelector('[data-dvcall]'));
   const q=host.querySelector('[data-dvr-q]');
   if(q)q.oninput=()=>{DEVSCENE.rq=q.value;clearTimeout(DEVSCENE.qt);DEVSCENE.qt=setTimeout(()=>{repaint();
     const n=host.querySelector('[data-dvr-q]');if(n){n.focus();n.setSelectionRange(n.value.length,n.value.length)}},250)};
@@ -14163,6 +14193,59 @@ function devSceneAlarm(ev){
   if(seen||a.level!=='alarm')return;
   const n=typeof deskShowing==='function'?deskShowing('devices'):0;
   toast(`⚠ ${a.machine}: ${a.label||a.text}${a.note?'. '+a.note:''}`,{kind:'err',label:'See devices',ms:12000,go:()=>n?switchDesk(n):openApp('devices')});
+}
+/* ---- Who is called when nobody acknowledges an alarm (alarmcall.py) ----
+   Asked for after a hotel's chlorine alarm went out by email nobody read. After your minutes an
+   alarm goes to your own paired phones, then to one chat of yours you pick here. A chat's name is
+   somebody's own words, so this card is built from text nodes. Faces: GUI this card, on the scene's
+   Rules page and in Devices. TUI `bento network alarms call`. SUI the same page. */
+var DEVCALL={d:null,at:0,busy:false};
+function devCallMount(el){
+  if(!el)return;
+  if(DEVCALL.d)devCallDraw(el);
+  if(Date.now()-DEVCALL.at<20000&&DEVCALL.d)return;
+  DEVCALL.at=Date.now();
+  apiJSON('/api/devices/escalation').then(d=>{DEVCALL.d=d;document.querySelectorAll('[data-dvcall]').forEach(devCallDraw)})
+    .catch(()=>{el.hidden=true});
+}
+function devCallDraw(el){
+  const d=DEVCALL.d;if(!d)return;
+  const p=d.policy||{},mk=(t,c,x)=>{const n=document.createElement(t);if(c)n.className=c;if(x!==undefined)n.textContent=x;return n};
+  el.textContent='';el.hidden=false;
+  const head=mk('div','dvc-head');
+  const h=mk('h3','',"When nobody acknowledges");head.appendChild(h);
+  const sw=mk('label','psw');const on=mk('input');on.type='checkbox';on.checked=!!p.on;on.setAttribute('aria-label','Call people about alarms');
+  sw.appendChild(on);sw.appendChild(mk('span'));head.appendChild(sw);el.appendChild(head);
+  el.appendChild(mk('p','dvc-words',d.words||''));
+  if(d.nobody){el.appendChild(mk('p','mut',d.nobody))}
+  const row=mk('div','dvc-row');
+  const num=(v,label)=>{const i=mk('input','dvc-n');i.type='number';i.min=1;i.max=1440;i.value=v;i.setAttribute('aria-label',label);return i};
+  const after=num(p.after_min||10,'Minutes before your phone is called'),then=num(p.then_min||15,'Minutes before the second chat is called');
+  const a1=mk('span','dvc-step');a1.append('Your phone after ',after,' min');row.appendChild(a1);
+  const sel=mk('select','dvc-sel');sel.setAttribute('aria-label','Then call');
+  const none=mk('option','','nobody else');none.value='';sel.appendChild(none);
+  (d.choices||[]).forEach(c=>{const o=mk('option','',c.name+(c.channel==='telegram'?' · Telegram':' · WhatsApp')+(c.ready?'':' (can\'t be reached now)'));
+    o.value=c.channel+'|'+c.to;if(p.second&&p.second.channel===c.channel&&p.second.to===c.to)o.selected=true;sel.appendChild(o)});
+  const a2=mk('span','dvc-step dvc-to');a2.append('then ',sel);row.appendChild(a2);
+  if(p.second){const a3=mk('span','dvc-step');a3.append(then,' min later');row.appendChild(a3)}
+  const wl=mk('label','dvc-warn');const w=mk('input');w.type='checkbox';w.checked=(p.levels||[]).indexOf('warning')>=0;
+  wl.append(w,' Warnings too');row.appendChild(wl);
+  el.appendChild(row);
+  if(!(d.choices||[]).length)el.appendChild(mk('p','mut dvc-hint','To call somebody else, let them in on your Telegram or WhatsApp first.'));
+  const save=async()=>{
+    if(DEVCALL.busy)return;DEVCALL.busy=true;
+    const [ch,to]=(sel.value||'|').split('|');
+    const body={on:on.checked,after_min:+after.value||10,then_min:+then.value||(p.then_min||15),
+      levels:w.checked?['alarm','warning']:['alarm'],second:ch?{channel:ch,to:to}:null};
+    try{const r=await fetch('/api/devices/escalation',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      const j=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(j.error||'could not be saved');
+      DEVCALL.d={...d,policy:j.policy,words:j.words};
+      toast((j.dropped||[]).length?'Saved. '+j.dropped.join('; '):'Saved. '+j.words,{kind:(j.dropped||[]).length?'warn':'ok'});
+    }catch(e){toast('Could not save who is called: '+(e.message||e),{kind:'err'})}
+    DEVCALL.busy=false;document.querySelectorAll('[data-dvcall]').forEach(devCallDraw);
+  };
+  [on,sel,w,after,then].forEach(x=>x.onchange=save);
 }
 // first paint: 01b ran before this file existed, so the scene starts itself (as 01c and 01g do)
 if(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on&&immersiveSceneNow()==='devices')setTimeout(devSceneStart,0);
@@ -22309,6 +22392,7 @@ function setTab(body,all){
          f:'setup onboarding wizard first run walkthrough tour again restart start over run through'}),
     ],{f:'setup onboarding'}));
     P.push(pGroup('Backup',[
+      '<div id="bk-offsite" class="bk-offsite" hidden></div>',
       '<div id="bk-last" class="bk-last"></div>',
       pRow('Back up this machine','<div id="bk-make"><span class="mut">…</span></div>',
         {stack:true,desc:'One encrypted file with everything, to keep safe or to move to another machine.',
@@ -22454,7 +22538,8 @@ async function paintVersion(check){
   if(srcNote)srcNote.textContent=d.official===false
     ?`a fork, pulled from git remote '${d.remote||''}'. Origin still points at the official repository.`
     :'the official repository';
-  const btn=`<button class="endbtn" style="margin-left:10px" onclick="paintVersion(1)">Check now</button>`;
+  const btn=`<button class="endbtn" style="margin-left:10px" onclick="paintVersion(1)">Check now</button>`
+    +verOldPi(d);
   if(d.update_available){
     // Never a dead button: when an update cannot be installed the reason is the
     // sentence, not a control that fails when pressed.
@@ -22494,6 +22579,11 @@ async function paintVersion(check){
     el.innerHTML=`<b>${esc(d.current||'?')}</b>${d.build?` <code class="mut">${esc(d.build)}</code>`:''} `
       +`<span class="mut">${d.error?esc(d.error):where}</span>`+btn+verRollback(d);
   }
+}
+/* A 32-bit Pi is told it is deprecated, or that this is the last version it can run (oldpi.py). */
+function verOldPi(d){
+  const o=d&&d.oldpi;if(!o||!o.line)return '';
+  return `<div class="mut" style="margin-top:6px;color:${o.too_old?'var(--err,#e5484d)':'var(--warn,#d9a400)'}">${esc(o.line)}</div>`;
 }
 /* The last update can be taken back while it is still what this copy runs. */
 function verRollback(d){
@@ -24928,6 +25018,7 @@ async function paintBackup(){
   let d;
   try{d=await apiJSON('/api/backup')}catch(e){mk.innerHTML=rs.innerHTML=`<span class="mut">${esc(e.message)}</span>`;return}
   BACKUP.info=d;
+  backupOffsite(d.offsite);
   const last=document.getElementById('bk-last');
   if(last&&d.last&&d.last.restored_at){
     const r=d.last;
@@ -24958,6 +25049,24 @@ async function paintBackup(){
     <div id="bk-out"></div></div>`;
 }
 var BACKUP=BACKUP||{info:null};
+/* Is a copy kept anywhere else (offsite.py)? A backup on this disk is lost with it, and one that
+   ransomware can reach is locked with everything else. The line and its doors: a cloud standby,
+   a bucket (Put Bento in the cloud), or a file downloaded to another disk. */
+function backupOffsite(o){
+  const el=document.getElementById('bk-offsite');if(!el)return;
+  if(!o){el.hidden=true;return}
+  const icon={ok:'✓',warn:'!',bad:'⚠'}[o.level]||'·';
+  const go={standby:'sb-box',cloud:'cd-box',backup:'bk-make'};
+  el.hidden=false;el.className='bk-offsite '+(o.level||'');
+  el.innerHTML=`<div class="bk-off-line"><b aria-hidden="true">${icon}</b> <span>${esc(o.line||'')}</span></div>
+    ${o.level!=='ok'&&(o.doors||[]).length?`<div class="bk-off-doors">${o.doors.map(x=>
+      `<button class="endbtn" data-go="${esc(go[x.id]||'')}" title="${esc(x.why)}">${esc(x.label)}</button>`).join('')}</div>`:''}`;
+  el.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{
+    const t=document.getElementById(b.dataset.go);if(!t)return;
+    if(typeof setSubReveal==='function')setSubReveal(t);
+    t.scrollIntoView({block:'center',behavior:'smooth'});
+    const f=t.querySelector('input,button');if(f)f.focus({preventScroll:true})});
+}
 async function backupMake(btn){
   const pw=document.getElementById('bk-pw').value,pw2=document.getElementById('bk-pw2').value,msg=document.getElementById('bk-make-msg');
   const min=(BACKUP.info&&BACKUP.info.min)||8;
@@ -29628,6 +29737,8 @@ var OB_PANES={
       demo. All of it is changeable later in Settings → Appearance.</p>
     <div id="ob-look"><p class="mut">Reading the themes…</p></div>`,
 
+  copy:s=>`<div id="ob-copy"><p class="mut">Looking for a copy…</p></div>`,
+
   /* Deliberately the last step. Everything above is somebody setting this machine
      up, and the first account inherits all of it — so the honest order is "make it
      work, then say who it belongs to", not the other way round. */
@@ -29679,6 +29790,23 @@ var OB_CLOUD=[
 
 /* ---------- the wiring ---------- */
 var OB_WIRE={
+  /* Where a copy of this machine is kept (offsite.py). Each door opens its card in Settings →
+     System, and closing that window brings setup back, re-probed. */
+  async copy(s){
+    const box=$('#ob-copy');if(!box)return;
+    let d={};try{d=await apiJSON('/api/backup')}catch(e){box.innerHTML=`<p class="mut">${esc(e.message||e)}</p>`;return}
+    const o=d.offsite;
+    if(!d.admin||!o){box.innerHTML='<p class="mut">An admin looks after this machine’s copies.</p>';return}
+    const go={standby:'sb-box',cloud:'cd-box',backup:'bk-make'};
+    box.innerHTML=`<div class="bk-offsite ${esc(o.level)}"><div class="bk-off-line"><b aria-hidden="true">${{ok:'✓',warn:'!',bad:'⚠'}[o.level]||'·'}</b> <span>${esc(o.line)}</span></div></div>
+      <div class="ob-copy-doors">${(o.doors||[]).map(x=>`<button class="job-card" data-go="${esc(go[x.id])}"><b>${esc(x.label)}</b><span>${esc(x.why)}</span></button>`).join('')}</div>`;
+    box.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{
+      const to=b.dataset.go;obClose();
+      SETTAB='system';try{localStorage.setItem('settab','system');localStorage.setItem('setsub.system','Backup & cloud')}catch(e){}
+      const w=openApp('settings');if(w)w._backToSetup='copy';
+      setTimeout(()=>{const el=document.getElementById(to);if(!el)return;
+        if(typeof setSubReveal==='function')setSubReveal(el);el.scrollIntoView({block:'center'})},700)});
+  },
   shape(){
     const sh=(OB.state&&OB.state.shape)||{};
     let pick=sh.shape||'',use=sh.use||'';
@@ -30373,6 +30501,7 @@ async function obRestart(){
   try{await fetch('/api/onboarding/restart',{method:'POST'})}catch(e){}
   obShow({});
 }
+
 /* ================= Missions → History (agentos/runlog.py) =================
    "I can't find the runs of the schedules in the mission." A scheduled prompt's answer
    was a chat nobody could trace back to its schedule, the Schedule tab showed only the

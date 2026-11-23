@@ -514,6 +514,7 @@ function devRulesHTML(d){
     <div class="dvr-top"><div><h2>Alarm rules ${pInfo('An alarm shows while its condition holds and clears by itself when it stops. Acknowledge only marks that you saw it. A mission that is on watches its own rules, and you change those in the mission.')}</h2>
       <p class="dvr-sum">${rules.length} rule${rules.length===1?'':'s'} · <b class="${raised?'bad':'ok'}">${raised?raised+' raised now':'none raised'}</b>${paused?` · ${paused} paused`:''}</p></div>
       ${ms.length?`<button class="wiz-next" data-dvr="new">＋ New rule</button>`:''}</div>
+    <div class="dvr-call" data-dvcall></div>
     <div class="dvr-bar"><div class="dvs-tabs" role="group" aria-label="Which rules">${DEVR_FILTERS.filter(([k])=>k==='all'||n(k)).map(([k,l])=>
         `<button class="${flt===k?'on':''}" data-dvr="filter" data-v="${k}" aria-pressed="${flt===k}">${l} <em>${n(k)}</em></button>`).join('')}</div>
       ${rules.length>4?`<input class="dvr-q" data-dvr-q type="search" value="${esc(DEVSCENE.rq||'')}" placeholder="Find a rule" aria-label="Find a rule">`:''}</div>
@@ -533,6 +534,7 @@ function devRulesWire(host,repaint,reload){
       return k};
     x.oninput=()=>{set();const p=host.querySelector('.dvr-preview');if(p)p.innerHTML=devRulePreview(devRulesBoard()||{})};
     x.onchange=()=>{const k=set();if(k==='machine'||k==='item'||k==='when'||k==='level')repaint()}});
+  devCallMount(host.querySelector('[data-dvcall]'));
   const q=host.querySelector('[data-dvr-q]');
   if(q)q.oninput=()=>{DEVSCENE.rq=q.value;clearTimeout(DEVSCENE.qt);DEVSCENE.qt=setTimeout(()=>{repaint();
     const n=host.querySelector('[data-dvr-q]');if(n){n.focus();n.setSelectionRange(n.value.length,n.value.length)}},250)};
@@ -669,6 +671,59 @@ function devSceneAlarm(ev){
   if(seen||a.level!=='alarm')return;
   const n=typeof deskShowing==='function'?deskShowing('devices'):0;
   toast(`⚠ ${a.machine}: ${a.label||a.text}${a.note?'. '+a.note:''}`,{kind:'err',label:'See devices',ms:12000,go:()=>n?switchDesk(n):openApp('devices')});
+}
+/* ---- Who is called when nobody acknowledges an alarm (alarmcall.py) ----
+   Asked for after a hotel's chlorine alarm went out by email nobody read. After your minutes an
+   alarm goes to your own paired phones, then to one chat of yours you pick here. A chat's name is
+   somebody's own words, so this card is built from text nodes. Faces: GUI this card, on the scene's
+   Rules page and in Devices. TUI `bento network alarms call`. SUI the same page. */
+var DEVCALL={d:null,at:0,busy:false};
+function devCallMount(el){
+  if(!el)return;
+  if(DEVCALL.d)devCallDraw(el);
+  if(Date.now()-DEVCALL.at<20000&&DEVCALL.d)return;
+  DEVCALL.at=Date.now();
+  apiJSON('/api/devices/escalation').then(d=>{DEVCALL.d=d;document.querySelectorAll('[data-dvcall]').forEach(devCallDraw)})
+    .catch(()=>{el.hidden=true});
+}
+function devCallDraw(el){
+  const d=DEVCALL.d;if(!d)return;
+  const p=d.policy||{},mk=(t,c,x)=>{const n=document.createElement(t);if(c)n.className=c;if(x!==undefined)n.textContent=x;return n};
+  el.textContent='';el.hidden=false;
+  const head=mk('div','dvc-head');
+  const h=mk('h3','',"When nobody acknowledges");head.appendChild(h);
+  const sw=mk('label','psw');const on=mk('input');on.type='checkbox';on.checked=!!p.on;on.setAttribute('aria-label','Call people about alarms');
+  sw.appendChild(on);sw.appendChild(mk('span'));head.appendChild(sw);el.appendChild(head);
+  el.appendChild(mk('p','dvc-words',d.words||''));
+  if(d.nobody){el.appendChild(mk('p','mut',d.nobody))}
+  const row=mk('div','dvc-row');
+  const num=(v,label)=>{const i=mk('input','dvc-n');i.type='number';i.min=1;i.max=1440;i.value=v;i.setAttribute('aria-label',label);return i};
+  const after=num(p.after_min||10,'Minutes before your phone is called'),then=num(p.then_min||15,'Minutes before the second chat is called');
+  const a1=mk('span','dvc-step');a1.append('Your phone after ',after,' min');row.appendChild(a1);
+  const sel=mk('select','dvc-sel');sel.setAttribute('aria-label','Then call');
+  const none=mk('option','','nobody else');none.value='';sel.appendChild(none);
+  (d.choices||[]).forEach(c=>{const o=mk('option','',c.name+(c.channel==='telegram'?' · Telegram':' · WhatsApp')+(c.ready?'':' (can\'t be reached now)'));
+    o.value=c.channel+'|'+c.to;if(p.second&&p.second.channel===c.channel&&p.second.to===c.to)o.selected=true;sel.appendChild(o)});
+  const a2=mk('span','dvc-step dvc-to');a2.append('then ',sel);row.appendChild(a2);
+  if(p.second){const a3=mk('span','dvc-step');a3.append(then,' min later');row.appendChild(a3)}
+  const wl=mk('label','dvc-warn');const w=mk('input');w.type='checkbox';w.checked=(p.levels||[]).indexOf('warning')>=0;
+  wl.append(w,' Warnings too');row.appendChild(wl);
+  el.appendChild(row);
+  if(!(d.choices||[]).length)el.appendChild(mk('p','mut dvc-hint','To call somebody else, let them in on your Telegram or WhatsApp first.'));
+  const save=async()=>{
+    if(DEVCALL.busy)return;DEVCALL.busy=true;
+    const [ch,to]=(sel.value||'|').split('|');
+    const body={on:on.checked,after_min:+after.value||10,then_min:+then.value||(p.then_min||15),
+      levels:w.checked?['alarm','warning']:['alarm'],second:ch?{channel:ch,to:to}:null};
+    try{const r=await fetch('/api/devices/escalation',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      const j=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(j.error||'could not be saved');
+      DEVCALL.d={...d,policy:j.policy,words:j.words};
+      toast((j.dropped||[]).length?'Saved. '+j.dropped.join('; '):'Saved. '+j.words,{kind:(j.dropped||[]).length?'warn':'ok'});
+    }catch(e){toast('Could not save who is called: '+(e.message||e),{kind:'err'})}
+    DEVCALL.busy=false;document.querySelectorAll('[data-dvcall]').forEach(devCallDraw);
+  };
+  [on,sel,w,after,then].forEach(x=>x.onchange=save);
 }
 // first paint: 01b ran before this file existed, so the scene starts itself (as 01c and 01g do)
 if(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on&&immersiveSceneNow()==='devices')setTimeout(devSceneStart,0);

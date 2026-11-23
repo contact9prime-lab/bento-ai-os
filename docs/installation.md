@@ -92,28 +92,39 @@ uv sync && uv run bento
 > Anything piwheels does not carry still compiles, and for the C ones it names and offers to install
 > the build toolchain: `build-essential python3-dev libffi-dev libssl-dev pkg-config`.
 >
-> **`cryptography` deserves its own note, and the real variable is glibc, not 32-bit.** It arrives
-> via `pyjwt[crypto]` (the MCP SDK needs it) and ships a prebuilt 32-bit ARM wheel. From 46.0.4 on
-> that wheel needs glibc 2.31, which Buster does not have, so on 32-bit ARM Bento locks
-> **cryptography 46.0.3**, the newest release with a wheel for glibc 2.28. Every other machine gets
-> the current release.
+> **32-bit Raspberry Pi OS is deprecated.** Bento runs on it today, but a future version may not.
+> The installer says so and asks "Continue on 32-bit?" before it installs anything. The reason is
+> `cryptography`, which arrives via `pyjwt[crypto]` (the MCP SDK needs it): its security fix, 50.0.2,
+> ships a 32-bit ARM wheel that needs glibc 2.31.
 >
-> | Raspberry Pi OS | Debian | glibc | 32-bit `cryptography` |
+> | Raspberry Pi OS | Debian | glibc | On 32-bit |
 > |---|---|---|---|
-> | **Buster** | 10 | 2.28 | ✅ prebuilt wheel (46.0.3), no compile, no Rust |
-> | **Bullseye** | 11 | 2.31 | ✅ prebuilt wheel (46.0.3), no compile, no Rust |
-> | **Bookworm** | 12 | 2.36 | ✅ prebuilt wheel (46.0.3), no compile, no Rust |
+> | **Buster** | 10 | 2.28 | ✗ too old for this version. The installer offers 0.99.0, the last one that runs there |
+> | **Bullseye** | 11 | 2.31 | ✅ the current version, deprecated |
+> | **Bookworm** | 12 | 2.36 | ✅ the current version, deprecated |
 >
-> So **32-bit is fine on Buster, Bullseye and Bookworm**. The wheel bundles its own OpenSSL, so the
-> system's OpenSSL version doesn't matter. Three small C packages (`cffi`, `pyyaml`, `dbus-fast`)
-> still compile on 32-bit ARM, which needs only gcc; the installer offers the build tools. This was
-> checked in an emulated armv7 Buster (glibc 2.28) container: the whole install finished, and the
-> vault and the linked-team certificate worked. An OS older than Buster is too old for the
-> wheel, and the installer says so.
+> On **Buster** the installer stops and asks whether to install 0.99.0 anyway. That version carries a
+> known vulnerability in cryptography 46.0.3, so `--yes` never answers this question: only a person at
+> the terminal can. It lands on a branch of its own (`buster-0.99.0`) that updates won't move, and
+> `bento update`, Settings → Version and `bento doctor` all say why. To keep getting updates, flash
+> **64-bit Raspberry Pi OS Bookworm** with Raspberry Pi Imager and run the install line again.
+>
+> The wheel bundles its own OpenSSL, so the system's OpenSSL version doesn't matter. Three small C
+> packages (`cffi`, `pyyaml`, `dbus-fast`) still compile on 32-bit ARM, which needs only gcc; the
+> installer offers the build tools. The check reads the userland, not the kernel: a 32-bit Pi OS on a
+> Pi 4 boots a 64-bit kernel, so `uname -m` says aarch64 while every package it needs is 32-bit.
 >
 > One exception still needs a compile (Rust via [rustup](https://rustup.rs) + ≥1 GB swap, on
 > Bookworm for its OpenSSL 3.0): an **armv6** Pi (Zero / 1), which has no ARM wheel at all. **64-bit Bookworm** remains the smoothest option of all —
 > prebuilt `aarch64` wheels for everything — if reflashing is on the table.
+
+On a 32-bit Pi, Settings → System → Version says so too, and `bento doctor` prints the same line:
+
+![Settings → System → Version on a 32-bit Pi running Bullseye: 32-bit is deprecated, 64-bit is recommended](screenshots/pi32-deprecated.png)
+
+![Settings → System → Version on a 32-bit Pi running Buster: 0.99.0 is the last version it can run](screenshots/pi32-too-old.png)
+
+![The 32-bit deprecation line in Settings on a 390px phone](screenshots/pi32-deprecated-phone.png)
 
 **Reaching it from another machine.** A Pi is usually headless, and the obvious move — binding
 the server to the network — is the wrong one: AgentOS has no authentication and the agent has a

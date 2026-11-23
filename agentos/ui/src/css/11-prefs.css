@@ -279,3 +279,12 @@ body.dev-touch .prefs label:has(> input[type=checkbox]:not(.psw input)){min-heig
 .tm-cell.inherited{opacity:.55;font-style:italic}
 .co-talk-off{padding:8px 16px}
 #co-talk .tm-legend{padding:6px 16px 12px}
+/* is a copy kept anywhere else (11g backupOffsite, offsite.py) */
+.bk-offsite{margin:10px 16px 4px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);
+  background:color-mix(in srgb,var(--bg2) 80%,transparent)}
+.bk-offsite[hidden]{display:none}
+.bk-offsite.ok b{color:var(--ok)}.bk-offsite.warn b{color:var(--warn,#d9a400)}
+.bk-offsite.bad{border-color:color-mix(in srgb,var(--err) 45%,var(--line))}.bk-offsite.bad b{color:var(--err)}
+.bk-off-line{display:flex;gap:8px;align-items:baseline;line-height:1.4}
+.bk-off-doors{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.bk-off-doors .endbtn{min-height:var(--tap,32px)}

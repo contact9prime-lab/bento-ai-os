@@ -78,7 +78,13 @@ def test_a_turn_whose_brain_is_out_goes_to_the_next(monkeypatch):
         cid = server.state["store"].create_conversation("t")
         try:
             cl.portal.call(server._run_chat, cid, {"text": "hello", "model": ""})
-            msgs = server.state["store"].get_messages(cid)
+
+            async def _read():
+                return server.state["store"].get_messages(cid)
+            # Read on the loop's own thread: the turn schedules knowledge extraction there,
+            # and it writes to the same SQLite connection. Read from this thread at the same
+            # moment, the rows came back empty, doubled or with a blank row.
+            msgs = cl.portal.call(_read)
         finally:
             for k in ("providers", "default_model", "engine", "usage", "pricing_skip", "brain_fallbacks"):
                 if k in before:
