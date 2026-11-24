@@ -103,3 +103,21 @@ def test_a_credential_pasted_into_a_chat_does_not_leave_either(tmp_path):
 
 def test_prose_is_left_alone():
     assert trace.scrub("the well-known-key value is fine, see ?author=bob") == "the well-known-key value is fine, see ?author=bob"
+
+
+def test_a_chat_without_runs_carries_only_its_own_ledger(tmp_path):
+    """Reported as "the json download in the chat is giving the complete history of all the
+    chats": with no runs the query read `run_id IN ('')`, which matched every row with no run."""
+    from agentos.memory import Store
+    store = Store(tmp_path / "a.db")
+    mine = store.create_conversation("mine")
+    other = store.create_conversation("other")
+    store.add_message(mine, "user", "hi")
+    store.add_message(other, "user", "something private")
+    store.audit_add("user", "main", "chat", "tool.use", "tool:recall", "allow", conversation_id=mine)
+    store.audit_add("user", "main", "chat", "tool.use", "tool:read_file", "allow", conversation_id=other)
+    store.audit_add("user", "main", "gui", "config.write", "config", "allow")
+    d = trace.conversation(store, {}, mine)
+    assert d["runs"] == []
+    assert [a["resource"] for a in d["ledger"]] == ["tool:recall"]
+    assert [m["content"] for m in d["conversation"]["messages"]] == ["hi"]

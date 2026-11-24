@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.99.6 — 2026-11-24
+
+**A chat's ⤓ JSON is that chat's, not every chat's.** A chat that had started no mission or department run
+was given every ledger row with no run in it: the tool steps of every other chat, and settings changes. The
+X-ray read the same list and drew those steps too. The file now carries only this chat's rows and its runs'.
+
 ## 0.99.5 — 2026-11-24
 
 **Bento's own upgrades no longer stop your agents.** 0.99.0 moved the vaults onto the service key at start
