@@ -480,6 +480,32 @@ def check_home() -> list[str]:
     return changed
 
 
+def pending_home() -> list[str]:
+    """Locked files that differ from what Bento last wrote, read only: nothing adopted, nothing
+    cached. For an update, which tells the person at that moment what is already waiting, rather
+    than leaving them to find a stopped machine afterwards. Files that were never seen don't count."""
+    files = _load_writes()
+    out = []
+    for p, kind in home_paths():
+        was = files.get(str(p))
+        if was is not None and was != _view_hash(p):
+            out.append(_rel_home(p))
+    return out
+
+
+def retired_key(rel: str) -> bool:
+    """A vault key file Bento itself removed when the vault moved to another key (the service key
+    or the account's seal). Gone, and its vault says it no longer uses one, so nothing it guarded
+    can be opened or replaced through it. Only this shape: a file vault whose key went missing is
+    still somebody's change."""
+    if not rel.startswith("~/") or Path(rel).name != "vault.key":
+        return False
+    p = _home() / rel[2:]
+    if p.exists() or (p.parent != _home() and p.parent.parent != _home() / "users"):
+        return False
+    return ((_read_json(p.parent / "vault.json") or {}).get("key") or "") in ("service", "sealed")
+
+
 def _rel_home(p: Path) -> str:
     try:
         return "~/" + p.relative_to(_home()).as_posix()

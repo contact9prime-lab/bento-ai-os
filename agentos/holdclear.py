@@ -69,7 +69,8 @@ def _changed_code(root: Path) -> tuple[list[str], dict]:
 def picture(root: Path | None = None) -> dict:
     """What the hold is about, in one of three words, with the files and a sentence.
 
-    settled: the code and the locked files are what was recorded again (a change that was undone).
+    settled: the code and the locked files are what was recorded again (a change that was undone),
+             or the only change is a vault key file Bento retired itself (integrity.retired_key).
     known:   the code is a clean checkout of a commit on a branch the remote has.
     unknown: anything git can't vouch for, a locked home file, or a record that doesn't check."""
     root = Path(root or integrity.code_root()).resolve()
@@ -89,6 +90,17 @@ def picture(root: Path | None = None) -> dict:
     if verdict["state"] in ("forged", "unsigned"):
         out["kind"] = UNKNOWN
         out["words"] = f"The integrity record itself can't be believed: {verdict.get('why') or verdict['state']}."
+        return out
+    # Vault key files Bento removed itself when the vault moved to another key. 0.99.0's two
+    # migrations did that without telling the watcher, and every machine that updated held with
+    # "Unknown change". A key nothing uses any more is not an identity replaced.
+    retired = [f for f in home if integrity.retired_key(f)]
+    home = [f for f in home if f not in retired]
+    out["retired"] = retired
+    if retired and not home and not changed:
+        out["kind"] = SETTLED
+        out["words"] = ("Bento's own upgrade removed " + ", ".join(retired[:3]) + ": the vault moved to "
+                        "another key and no longer uses that file. Nothing else changed.")
         return out
     if home:
         out["kind"] = UNKNOWN

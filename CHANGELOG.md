@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.99.5 — 2026-11-24
+
+**Bento's own upgrades no longer stop your agents.** 0.99.0 moved the vaults onto the service key at start
+and onto your password at your first sign-in, and deleted the old `vault.key` files without telling the
+security watcher, so machines held with "Unknown change" and asked for an authenticator code. Those
+migrations now tell the watcher. A hold that is only a vault key Bento retired reads Back to normal and is
+one tap. `bento update` and the Update button now say, while updating, whether agents are stopped or a
+locked file is waiting, and name anything the update changed without telling the watcher.
+
+docs/security.md now lists what the watcher checks and what it leaves alone: memory, conversations, files,
+credentials, the soul and apps are never watched, and a setting or MCP server you change through Bento
+never trips it.
+
 ## 0.99.4 — 2026-11-24
 
 No release notes were written for this one; the commits since 0.99.3 are what changed (`bento update` lists them).

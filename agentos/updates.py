@@ -686,6 +686,33 @@ def in_the_way(root: Path, ref: str) -> dict:
         (same if mine and mine == theirs else differ).append(rel)
     return {"same": same, "differ": differ}
 
+def security_words(waiting: list[str], during: list[str]) -> dict:
+    """What an update says about the security watcher: a hold already in place, locked files that
+    changed before it, and any its own migration changed without telling the watcher. Bento's own
+    migrations note what they change (integrity.noted), so `during` is a bug in a migration and is
+    said as one, with the way out. Lines are empty when there is nothing to say."""
+    from . import holdclear, integrity
+    held = integrity.held()
+    lines = []
+    if held:
+        lines.append("Security: agents are stopped (" + str(held.get("reason") or "a locked file changed")[:120]
+                     + "). Settings → Permissions → Security, or bento integrity accept.")
+    if waiting:
+        lines.append("Security: changed before this update and not yet looked at: " + ", ".join(waiting[:5]))
+    if during:
+        lines.append("Security: this update changed " + ", ".join(during[:5]) + " without telling the "
+                     "watcher. That's a bug in the update; accept it in Settings → Permissions → Security.")
+    retired = [f for f in list(waiting) + list(during) + list((held or {}).get("files") or [])
+               if integrity.retired_key(f)]
+    if retired:
+        lines.append("  " + ", ".join(dict.fromkeys(retired)) + ": Bento's own upgrade retired "
+                     "this key, so accepting it is one tap and needs no code.")
+    with contextlib.suppress(Exception):
+        if held and holdclear.picture().get("kind") == holdclear.SETTLED and not retired:
+            lines.append("  The files are back to normal, so accepting is one tap.")
+    return {"held": bool(held), "waiting": waiting, "during": during, "lines": lines}
+
+
 async def apply(cfg: dict, run_tests: bool = True, log=None, switch: bool = False,
                 need_verified: bool = False, allow_unsigned: bool = False) -> dict:
     """`_apply` on a worker thread. Every step is a blocking subprocess (git, uv, the
@@ -832,6 +859,11 @@ def _apply(cfg: dict, run_tests: bool = True, log=None, switch: bool = False,
     # new code NOW, in a fresh process: this one imported the old code, and the new
     # migrations are only in the files just pulled (agentos/migrate.py says why this
     # cannot be left to whichever request touches a person's database first).
+    # The security watcher, asked at the moment of updating rather than discovered afterwards as
+    # a stopped machine. What was already waiting is said; what the migration itself changed
+    # without telling the watcher is said too, and is not adopted: a window in which any locked
+    # file change is taken as the update's would be a window anybody could use.
+    waiting = integrity.pending_home()
     say("bringing every account up to date…")
     ok, out = _run([_python(root), "-m", "agentos", "migrate"], cwd=root, timeout=APPLY_TIMEOUT)
     for line in (out or "").strip().splitlines()[-12:]:
@@ -839,6 +871,9 @@ def _apply(cfg: dict, run_tests: bool = True, log=None, switch: bool = False,
             say("  " + line.strip())
     if not ok:
         return rollback(f"the new version could not update every account: {out[-300:]}")
+    security = security_words(waiting, [f for f in integrity.pending_home() if f not in waiting])
+    for line in security["lines"]:
+        say(line)
 
     if run_tests:
         # Code that cannot pass its own tests must not become the code answering
@@ -899,7 +934,7 @@ def _apply(cfg: dict, run_tests: bool = True, log=None, switch: bool = False,
             "version": _version_on_disk(root) or current(),
             "unchanged": after == before and not switched,
             "files": len(changed), "restored": restored, "switched": switched,
-            "release": release["state"],
+            "release": release["state"], "security": security,
             "source": f"{repo_of(cfg)} @ {branch}"}
 
 

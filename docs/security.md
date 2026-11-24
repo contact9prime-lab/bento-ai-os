@@ -313,6 +313,40 @@ hashes the code tree (`agentos/**`, `install.sh`, `pyproject.toml`) when the ser
 every 30 seconds. It also watches the locked files in every home: `session.key`, `vault.key`, `ledger.key`,
 the link CA, `users.json`, and the security settings in `config.json`.
 
+### What it watches, and what it leaves alone
+
+It watches what decides who you are and what may run. It doesn't watch what's yours to change.
+
+| Watched | Not watched |
+|---|---|
+| Bento's code | Memory, the knowledge graph, conversations |
+| The key files: `session.key`, `vault.key`, `ledger.key`, the link CA | Your files and the workspace |
+| `users.json` (who has an account) | Your passwords and tokens (`vault.json`) |
+| In `config.json`, and each account's: autonomy, sandbox, security, remote access, updates, MCP servers, policies | The rest of the settings, your soul, apps, missions, the Stage |
+
+A change Bento makes itself never stops the agents: adding an MCP server, a credential or a
+setting from Settings, a chat or a `bento` command is written down as Bento's own. Only a change
+made outside Bento counts. MCP servers stay on the watched side for that case: a server is a
+command Bento runs with your rights, so one written into `config.json` by another program is
+exactly what the watcher is for.
+
+### Upgrades
+
+Bento's own upgrades and migrations tell the watcher what they change, so they don't stop the
+agents. 0.99.0 broke that rule: moving the vaults to the service key (at start) and to your
+password (at your first sign-in) removed `vault.key` files without saying so, and machines held
+with "Unknown change". From 0.99.5:
+
+- Those migrations tell the watcher, and `tests/test_integrity_upgrades.py` checks it.
+- A hold that is only a `vault.key` Bento retired (the file is gone and its vault no longer uses a
+  key file) reads **Back to normal** and is one tap, with no authenticator code.
+- `bento update` and the Update button say, while updating, whether agents are stopped or a locked
+  file changed before the update, and name any locked file the update changed without telling the
+  watcher. Those aren't accepted for you: a window in which any change counts as the update's would
+  be a window anybody could use.
+
+![A hold that is only a retired vault key: Back to normal, your password and one tap](screenshots/security-hold-retired-key.png)
+
 When one changes without the OS having done it:
 
 1. The security record gets a line naming the file, and an alert reaches your screens and your Telegram or WhatsApp.
