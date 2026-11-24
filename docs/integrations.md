@@ -250,11 +250,19 @@ Servers app. Every entry was probed live before being added, and
 | Figma | Media & creative | read designs and components to build from |
 | Notion | Productivity | pages and databases |
 | Linear | Productivity | issues, projects, cycles |
+| Supermetrics | Marketing & analytics | social and ad numbers (Instagram, Facebook, Google Ads, GA4 and more), and posting to social accounts |
 
-All seven sign in with **OAuth in your browser** — there is no key to paste. Two rules keep
+![Supermetrics in the MCP Servers app](screenshots/mcp-supermetrics.png)
+![The same on a 390px phone](screenshots/mcp-supermetrics-phone.png)
+
+All eight sign in with **OAuth in your browser** — there is no key to paste. Two rules keep
 the list honest, and both are enforced by review rather than by hope:
 
 - **Nothing goes in unprobed.** The endpoint must answer an MCP `initialize`.
+- **A Claude connector is not one of these.** If you added Supermetrics (or Canva, Notion…) as a
+  connector in Claude, Claude Code can use it in a chat, but Bento's departments, missions and
+  schedules can't: they see only Bento's own tools, so every step goes through its permissions and
+  ledger. For scheduled work, connect the same service here too. The lead is told to offer that.
 - **Dynamic Client Registration is required.** That is what makes connecting one click. A
   server that needs a hand-made OAuth app cannot be one click, so it stays out —
   `mcp.stripe.com` is real, and deliberately absent for exactly this reason. (Stripe is
@@ -323,7 +331,7 @@ bento mcp disconnect canva     # forget the tokens and the registration
   config entry) — the catalog prompts you and stores them in `~/.agentos/config.json`.
 - **http servers** authenticate with **request headers**, typically
   `"headers": {"Authorization": "Bearer <token>"}`.
-- **Curated OAuth servers** (Canva, Higgsfield, Notion, Linear, Figma, Replicate, fal)
+- **Curated OAuth servers** (Canva, Higgsfield, Notion, Linear, Figma, Replicate, fal, Supermetrics)
   authenticate **natively** — AgentOS speaks OAuth 2.1 itself (`agentos/mcp_oauth.py`):
   it discovers the authorisation server from the `401`, registers itself dynamically,
   runs the code+PKCE exchange and refreshes the token when it expires. No Node, no
