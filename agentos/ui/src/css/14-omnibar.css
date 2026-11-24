@@ -512,6 +512,15 @@ body.deck-dragging .deck-tile,body.deck-dragging .deck-gname{cursor:grabbing}
 .sec-card .sec-show{margin-top:6px}
 .sec-card .sec-accept .endbtn:disabled{opacity:.45;cursor:not-allowed}
 .sec-card .sec-note{display:block;margin-top:6px}
+.sec-card .sec-steps{margin:8px 0 4px;padding-left:22px;display:grid;gap:4px;font-size:var(--fs-sm,13px);line-height:1.45}
+.sec-card .sec-setup{display:grid;gap:8px;margin-top:6px}
+.sec-card .sec-qr{width:min(220px,100%);height:auto;aspect-ratio:1;border-radius:8px;display:block}
+.sec-card .sec-key{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center}
+.sec-card .sec-key small{flex:1 1 100%}
+.sec-card .sec-key code{font-size:var(--fs-sm,13px);letter-spacing:.06em;user-select:all;flex:1 1 220px}
+.sec-card .sec-key .endbtn{min-height:var(--tap,40px);display:inline-flex;align-items:center;text-decoration:none}
+.sec-card .sec-warn{color:var(--warn,#e0a040)}
+.sec-card .sec-good{color:var(--ok,#3fc28a)}
 .sec-card .sec-err{display:block;margin-top:6px;color:var(--red,#e5484d)}
 
 /* Stop the voice: one pill while anything is being said, on every surface (speechPill).

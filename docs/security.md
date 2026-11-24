@@ -344,6 +344,24 @@ bento integrity accept     # after you've looked. It lists what it takes as corr
 bento integrity code       # set up the authenticator code that an unknown change needs
 ```
 
+### Setting up the authenticator code
+
+Do this once, before you need it. Settings → Permissions → Security → Details → *Authenticator code*:
+
+1. Install an authenticator app on your phone: Google Authenticator, Microsoft Authenticator, Authy or 1Password.
+2. Type the password you sign in to Bento with and press **Set up a code**.
+3. In the app, tap + and scan the square. No camera? Choose *Enter a setup key*, type the key shown under the
+   square and pick *Time based*. On a phone, *Open in my authenticator app* does it in one tap.
+4. Type the 6 digits the app shows and press **Check**. Checking doesn't use the code up.
+
+The square and the key are shown once. If the check fails, make sure the phone sets its clock automatically.
+`bento integrity code` does the same at a terminal and prints the square in the terminal.
+
+![Step one: the four steps and your password](screenshots/security-code-steps.png)
+![The square to scan, and the key for a phone without a camera](screenshots/security-code-scan.png)
+![The same on a 390px phone, with Open in my authenticator app](screenshots/security-code-scan-phone.png)
+![Checked: the app's codes are right](screenshots/security-code-works.png)
+
 ![A planted file: unknown, with what it says and the code to accept it](screenshots/security-hold-unknown.png)
 ![The same stopped-agents card on a 390px phone](screenshots/security-hold-unknown-phone.png)
 ![A change that was undone: back to normal, one tap](screenshots/security-hold-settled.png)

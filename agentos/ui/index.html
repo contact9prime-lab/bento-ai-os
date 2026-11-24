@@ -2448,6 +2448,15 @@ body.deck-dragging .deck-tile,body.deck-dragging .deck-gname{cursor:grabbing}
 .sec-card .sec-show{margin-top:6px}
 .sec-card .sec-accept .endbtn:disabled{opacity:.45;cursor:not-allowed}
 .sec-card .sec-note{display:block;margin-top:6px}
+.sec-card .sec-steps{margin:8px 0 4px;padding-left:22px;display:grid;gap:4px;font-size:var(--fs-sm,13px);line-height:1.45}
+.sec-card .sec-setup{display:grid;gap:8px;margin-top:6px}
+.sec-card .sec-qr{width:min(220px,100%);height:auto;aspect-ratio:1;border-radius:8px;display:block}
+.sec-card .sec-key{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center}
+.sec-card .sec-key small{flex:1 1 100%}
+.sec-card .sec-key code{font-size:var(--fs-sm,13px);letter-spacing:.06em;user-select:all;flex:1 1 220px}
+.sec-card .sec-key .endbtn{min-height:var(--tap,40px);display:inline-flex;align-items:center;text-decoration:none}
+.sec-card .sec-warn{color:var(--warn,#e0a040)}
+.sec-card .sec-good{color:var(--ok,#3fc28a)}
 .sec-card .sec-err{display:block;margin-top:6px;color:var(--red,#e5484d)}
 
 /* Stop the voice: one pill while anything is being said, on every surface (speechPill).
@@ -25442,8 +25451,17 @@ async function secCardPaint(){
 var SEC_HOLD={changes:false,msg:'',busy:false};
 const SEC_KIND={settled:'Back to normal',known:'Matches GitHub',unknown:'Unknown change'};
 function secField(type,ph,id){
-  const i=secEl('input','');i.type=type;i.placeholder=ph;i.id=id;i.autocomplete=type==='password'?'current-password':'one-time-code';
-  if(type!=='password'){i.inputMode='numeric';i.maxLength=6}
+  // Never a type=password box (unless the browser can't draw dots): that made the browser take
+  // Settings for a sign-in form and fill the saved username into the search box (11-settings.js
+  // secretField, tests/test_speech.py). Here the box holds the account's password.
+  const i=secEl('input','');i.placeholder=ph;i.id=id;
+  i.autocomplete=type==='password'?'new-password':'one-time-code';
+  if(type==='password'){
+    const dots=typeof CSS!=='undefined'&&CSS.supports&&CSS.supports('-webkit-text-security','disc');
+    i.type=dots?'text':'password';if(dots)i.className='secret-in';
+    i.spellcheck=false;i.setAttribute('autocapitalize','off');i.setAttribute('autocorrect','off');
+    i.setAttribute('data-1p-ignore','');i.setAttribute('data-lpignore','true');i.setAttribute('data-form-type','other');
+  }else{i.type='text';i.inputMode='numeric';i.maxLength=7}
   return i;
 }
 async function secPost(path,body){
@@ -25500,31 +25518,98 @@ async function secHeldBox(held){
   return box;
 }
 
-/* The authenticator code an unknown change needs. Its secret is shown once, as text. */
-var SEC_CODE={shown:null,msg:'',set:null};
+/* The authenticator code an unknown change needs, set up as four steps: an app, your password,
+   a scan, and a check that the app's digits are right. The secret is shown once (holdclear.new_code)
+   and drawn as a QR code (agentos/qr.py) with the key under it for a phone without a camera.
+   TUI: `bento integrity code` prints the same square in half blocks. */
+var SEC_CODE={shown:null,msg:'',ok:false,replace:false};
+function secSteps(items,from){
+  const ol=secEl('ol','sec-steps');ol.start=from||1;
+  items.forEach(t=>ol.appendChild(secEl('li','',t)));
+  return ol;
+}
+function secQR(q){
+  const NS='http://www.w3.org/2000/svg',svg=document.createElementNS(NS,'svg');
+  svg.setAttribute('viewBox','0 0 '+q.size+' '+q.size);svg.setAttribute('class','sec-qr');
+  svg.setAttribute('role','img');svg.setAttribute('aria-label','QR code for your authenticator app');
+  svg.setAttribute('shape-rendering','crispEdges');
+  const bg=document.createElementNS(NS,'rect');bg.setAttribute('width',q.size);bg.setAttribute('height',q.size);bg.setAttribute('fill','#fff');
+  const p=document.createElementNS(NS,'path');p.setAttribute('d',q.d);p.setAttribute('fill','#000');
+  svg.appendChild(bg);svg.appendChild(p);return svg;
+}
+function secCodeShown(st){
+  const s=SEC_CODE.shown,out=secEl('div','sec-setup');
+  out.appendChild(secEl('small','sec-warn','Shown once. If you leave before scanning it, set it up again.'));
+  out.appendChild(secSteps(['In the app, tap + and choose Scan a QR code, then point the camera at this square.'],3));
+  if(s.qr&&s.qr.d)out.appendChild(secQR(s.qr));
+  const alt=secEl('div','sec-key');
+  alt.appendChild(secEl('small','','No camera? Choose Enter a setup key, type this key and pick Time based.'));
+  const key=(s.secret||'').replace(/(.{4})/g,'$1 ').trim();
+  alt.appendChild(secEl('code','sec-file',key));
+  const copy=secEl('button','endbtn','Copy key');
+  copy.onclick=async()=>{try{await navigator.clipboard.writeText(s.secret);copy.textContent='Copied'}catch(e){copy.textContent='Select it and copy'}};
+  alt.appendChild(copy);
+  if(s.uri&&/^otpauth:\/\//.test(s.uri)&&window.matchMedia&&matchMedia('(pointer:coarse)').matches){
+    const a=secEl('a','endbtn','Open in my authenticator app');a.href=s.uri;alt.appendChild(a);
+  }
+  out.appendChild(alt);
+  out.appendChild(secSteps(['Type the 6 digits the app shows for Bento, to check it works.'],4));
+  const form=secEl('div','sec-accept');
+  form.appendChild(secField('text','6-digit code','s-sec-check'));
+  const b=secEl('button','endbtn primary','Check');
+  b.onclick=async()=>{
+    const c=document.getElementById('s-sec-check');
+    try{await secPost('/api/security/code/check',{code:c?c.value:''});SEC_CODE.ok=true;SEC_CODE.msg=''}
+    catch(e){SEC_CODE.msg=e.message||String(e)}
+    secCardPaint();
+  };
+  form.appendChild(b);out.appendChild(form);
+  return out;
+}
 function secCodeRow(st){
   const r=secEl('div','prow stack'),pl=secEl('div','pl');
   r.id='s-sec-coderow';
   pl.appendChild(secEl('b','','Authenticator code'));
-  pl.appendChild(secEl('small','',st.code_set?'Set up. It\'s needed to accept a change Bento can\'t vouch for, from your phone or here.'
-    :'Needed to accept a change Bento can\'t vouch for, from your phone or here.'));
-  if(SEC_CODE.shown){
-    pl.appendChild(secEl('small','','Add this to your authenticator app. It is shown once.'));
-    pl.appendChild(secEl('code','sec-file',SEC_CODE.shown.secret));
-    pl.appendChild(secEl('code','sec-file',SEC_CODE.shown.uri));
+  if(SEC_CODE.ok){
+    pl.appendChild(secEl('small','sec-good','✓ It works. Keep the app: Bento asks for its code before it accepts a change it can\'t vouch for.'));
+    if(st.held)pl.appendChild(secEl('small','','To let the agents run again, give your password and the app\'s next code in the box above.'));
+    const done=secEl('button','endbtn','Done');
+    done.onclick=()=>{SEC_CODE={shown:null,msg:'',ok:false,replace:false};secCardPaint()};
+    pl.appendChild(done);r.appendChild(pl);return r;
   }
+  if(SEC_CODE.shown){
+    pl.appendChild(secCodeShown(st));
+    if(SEC_CODE.msg)pl.appendChild(secEl('small','sec-err',SEC_CODE.msg));
+    r.appendChild(pl);return r;
+  }
+  pl.appendChild(secEl('small','',st.code_set
+    ?'Set up. Bento asks for it before it accepts a change it can\'t vouch for, here or from your phone.'
+    :'A 6-digit code from an app on your phone. Bento asks for it before it accepts a change it can\'t vouch for.'));
+  if(st.code_set&&!SEC_CODE.replace){
+    const rb=secEl('button','endbtn sec-show','Replace the code…');
+    rb.onclick=()=>{SEC_CODE.replace=true;secCardPaint()};
+    pl.appendChild(rb);r.appendChild(pl);return r;
+  }
+  pl.appendChild(secSteps([
+    'Install an authenticator app on your phone: Google Authenticator, Microsoft Authenticator, Authy or 1Password.',
+    st.needs_password?'Type the password you sign in to Bento with, then press '+(st.code_set?'Replace the code':'Set up a code')+'.'
+      :'Press '+(st.code_set?'Replace the code':'Set up a code')+'.',
+    'Scan the square that appears with the app.',
+    'Type the 6 digits the app shows, to check it works.']));
+  if(st.code_set)pl.appendChild(secEl('small','','Replacing it needs the current code from your app too.'));
   const form=secEl('div','sec-accept');
-  if(st.needs_password)form.appendChild(secField('password','Your password','s-sec-cpw'));
+  if(st.needs_password)form.appendChild(secField('password','Your Bento password','s-sec-cpw'));
   if(st.code_set)form.appendChild(secField('text','Current code','s-sec-ccode'));
-  const b=secEl('button','endbtn',st.code_set?'Replace the code':'Set up a code');
+  const b=secEl('button','endbtn primary',st.code_set?'Replace the code':'Set up a code');
   b.onclick=async()=>{
     const pw=document.getElementById('s-sec-cpw'),c=document.getElementById('s-sec-ccode');
-    try{SEC_CODE.shown=await secPost('/api/security/code',{password:pw?pw.value:'',code:c?c.value:''});SEC_CODE.msg=''}
+    try{SEC_CODE.shown=await secPost('/api/security/code',{password:pw?pw.value:'',code:c?c.value:''});SEC_CODE.msg='';SEC_CODE.ok=false}
     catch(e){SEC_CODE.msg=e.message||String(e)}
-    secCardPaint();
+    await secCardPaint();
+    const row=document.getElementById('s-sec-coderow');if(row&&SEC_CODE.shown)row.scrollIntoView({block:'start'});
   };
   form.appendChild(b);pl.appendChild(form);
-  if(SEC_CODE.msg)pl.appendChild(secEl('small','sec-err',SEC_CODE.msg));
+  if(SEC_CODE.msg)pl.appendChild(secEl('small','sec-err',SEC_CODE.msg+(/password/i.test(SEC_CODE.msg)?' It is the password you sign in to Bento with.':'')));
   r.appendChild(pl);return r;
 }
 /* ---------------- Settings → Companies ----------------

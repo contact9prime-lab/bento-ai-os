@@ -258,3 +258,32 @@ def test_the_route_answers_end_to_end(box, monkeypatch):
     assert integrity.held() is None
     rows = __import__("agentos.users", fromlist=["x"]).store_for("").audit_list(action="integrity.accept")
     assert rows and rows[0]["outcome"] == "ok"
+
+
+def test_setting_up_a_code_is_four_steps_with_a_square_to_scan(box, monkeypatch):
+    """Reported as "there needs to be further instructions to build the code". The setup shows a
+    QR code and the key, and its last step checks the app's digits without spending them, so the
+    same code still accepts the hold."""
+    from fastapi.testclient import TestClient
+    from agentos import server
+    tree, home, w, _ = box
+    _trip(w, tree, "GATE = 0  # planted\n")
+    monkeypatch.setattr(server, "_at_machine", lambda r: True)
+    with TestClient(server.app) as c:
+        got = c.post("/api/security/code", json={}).json()
+        assert got["qr"]["d"].startswith("M") and got["qr"]["size"] > 21
+        r = c.post("/api/security/code/check", json={"code": "000000" if _code_now() != "000000" else "111111"})
+        assert r.status_code == 403 and "clock" in r.json()["error"]
+        code = _code_now()
+        assert c.post("/api/security/code/check", json={"code": code}).json() == {"ok": True}
+        r = c.post("/api/security/accept", json={"code": code})
+        assert r.status_code == 200, r.text
+    assert integrity.held() is None
+    js = (ROOT / "agentos/ui/src/js/11j-security.js").read_text()
+    row = js[js.index("function secCodeRow"):]
+    for step in ("Install an authenticator app", "password you sign in to Bento with",
+                 "Scan the square", "6 digits the app shows"):
+        assert step in row
+    assert "createElementNS" in js and "innerHTML" not in js
+    field = js[js.index("function secField"):js.index("async function secPost")]
+    assert "new-password" in field and "data-1p-ignore" in field and "-webkit-text-security" in field
