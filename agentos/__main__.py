@@ -7373,6 +7373,43 @@ def _train_cli(args):
             need("PATH")
             d = slm.import_file(base, one, Path(one).expanduser().read_bytes(), args.name, None, args.task or "")
             print("✓ imported\n" + ds_line(d))
+        elif a == "devices":
+            # with the server down: the readings store, this machine's links and its diary
+            from . import devboard, devevents, slmiot, teamlink
+            from . import ties as tiesmod
+            from .memory import Store
+            from . import config as cfgmod
+            if usersmod.enabled() and not usersmod.is_admin(usersmod.current() or ""):
+                fail(ValueError("from a terminal, the machine's readings are an admin's. In the Train app you see your own."))
+            have = slmiot.machines()
+            names = {tiesmod.machine_of(lk): lk["label"] for lk in teamlink._load()["links"]}
+            names.setdefault("here", teamlink.machine_name(cfg))     # the hub's own boards, named as Devices names it
+            with usersmod.as_user(""):
+                lines = [e for e in devevents.gather([Store(cfgmod.DB_PATH)], limit=4000) if e.get("event") in ("alarm", "cleared")]
+            ended, still = devboard.episodes(lines)
+            if not one:
+                for k, items in have.items():
+                    lab = names.get(k, k)
+                    n = sum(1 for e in ended + still if str(e.get("machine") or "").lower() == lab.lower())
+                    print(f"  {lab:<24.24} {sum(i['n'] for i in items.values()):>8,} readings of {len(items)} things, {n} alarms on record")
+                if not have:
+                    print("no readings are kept on this machine yet (a Pi or an ESP32 node set up in Devices sends them)")
+                return
+            key = next((k for k in have if names.get(k, k).lower() == one.lower() or k == one), None)
+            if not key:
+                fail(ValueError(f"no machine called {one!r} has readings here: bento train devices"))
+            lab = names.get(key, key)
+            eps = [e for e in ended + still if str(e.get("machine") or "").lower() == lab.lower()]
+            things = [{"id": i, "name": " ".join(i.split(".")[-3::2]).replace("_", " ") if i.startswith("esp.") else
+                       i.split(".")[-1].replace("_", " "), "onoff": ".binary_sensor." in i or ".switch." in i}
+                      for i in have[key]]
+            rows, how = slmiot.build(key, lab, things, eps, None, args.rows or 7)
+            if not rows:
+                fail(ValueError(slmiot.words(how)))
+            kinds = [r["response"].split(": ", 1)[1] for r in rows if ": " in r["response"]]
+            d = slm.add_dataset(base, args.name or lab + " readings", rows, "devices", lab,
+                                args.task or slmiot.task_for(lab, kinds), how)
+            print("✓ " + slmiot.words(how) + "\n" + ds_line(d))
         elif a in ("write", "answer"):
             need('"THE TASK"' if a == "write" else "DATASET")
             who, why = desk.teacher_name("")
@@ -11720,7 +11757,7 @@ def main():
     p_ar.add_argument("--user", default="", help="whose arena, on a machine with users")
     p_tr = verb("train", help="make a small language model of your own: examples, a fine-tune, a check")
     p_tr.add_argument("action", nargs="?", default="status",
-                      choices=["status", "install", "make", "bases", "datasets", "data", "search", "import", "file", "write",
+                      choices=["status", "install", "make", "bases", "datasets", "data", "search", "import", "file", "devices", "write",
                                "answer", "start", "jobs", "log", "stop", "models", "examples", "try", "ollama"])
     p_tr.add_argument("rest", nargs="*", help='make "what it should do" · search WORDS · import OWNER/NAME · '
                                               'file PATH · write "the task" · answer DATASET · start DATASET · '
@@ -11728,7 +11765,7 @@ def main():
     p_tr.add_argument("--task", default="", help="the instruction the small model works under")
     p_tr.add_argument("--name", default="")
     p_tr.add_argument("--count", type=int, default=0, help="examples to write (make, write) or to show (examples)")
-    p_tr.add_argument("--rows", type=int, default=0, help="import: how many rows to take (default 2000)")
+    p_tr.add_argument("--rows", type=int, default=0, help="import: how many rows to take (default 2000) · devices: days back (default 7)")
     p_tr.add_argument("--base", default="", help="the student: owner/name on the Hugging Face Hub (bento train bases)")
     p_tr.add_argument("--epochs", type=float, default=0)
     p_tr.add_argument("--lr", type=float, default=0)

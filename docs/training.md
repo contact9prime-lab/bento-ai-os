@@ -28,9 +28,13 @@ examples and in about how many calls. Nothing is made until you press **Make it*
 Then it runs on its own. A teacher writes the examples, this machine trains, and the check
 runs. Each step is written down as it happens, and you can stop it.
 
+![A finished run: examples, training and the check, then the base model against yours](screenshots/train-run-done.png)
+
 ```
 bento train make "Sort support mail into billing, bug or other. Answer with one word."
 ```
+
+![Make on a phone: the question, then the runs made from a goal](screenshots/train-make-phone.png)
 
 ## Teacher and student
 
@@ -67,12 +71,13 @@ can type any other `owner/name`:
 
 ![Datasets: the Hub, a teacher, or a file](screenshots/train-datasets.png)
 
-Three ways in, all ending as prompt and answer pairs:
+Four ways in, all ending as prompt and answer pairs:
 
 - **The Hugging Face Hub.** Search public datasets and import the first rows of one. A
   class label arrives as its name (`pos`), not its number. Nothing from the dataset's
   repository runs here: rows are asked of the Hub's own rows service.
 - **A teacher writes them.** Describe the job and say how many.
+- **Your devices.** Sensor readings, with the alarms that followed as the answers. See below.
 - **A file.** CSV, TSV, JSON or JSONL. A file of prompts with no answers is fine: have the
   teacher answer them.
 
@@ -83,6 +88,45 @@ bento train file inbox.csv --task "Sort into billing, bug or other."
 bento train write "Sort support mail into billing, bug or other." --count 200
 bento train answer DATASET
 ```
+
+### From your devices
+
+If this machine is a hub with sensors, it already has labelled examples nobody had to write.
+It keeps what every sensor read, and the record of which alarms were raised and when they
+cleared. **Your devices** puts the two together: each example is 30 minutes of one machine's
+readings, and the answer is what was true at the end of it.
+
+```
+Readings from Cold room B. 30 minutes to Tue 14:20, one every 5 minutes, oldest first.
+Temperature (°C): 4.1 4.2 4.6 5.3 6.1 7.0. now 7, rising by 2.9
+Door (1 = on): 0 0 1 1 1 1. on now, on for 4 of 6
+                                              →  coming: Cold room B is too warm
+```
+
+![Your devices as a source of examples](screenshots/train-devices.png)
+
+![The examples made from a cold room's readings, each answered from the alarm record](screenshots/train-devices-examples.png)
+
+The answer is `normal`, `alarm: …` when an alarm was on, or `coming: …` when one was raised
+within the next 15 minutes. A model trained on them reads a window and says which.
+
+```
+bento train devices                  # machines with readings kept, and their alarms on record
+bento train devices "Cold room B" --rows 7       # examples from its last 7 days
+```
+
+Things to know:
+
+- **You see your own machines only**, the same ones Devices shows you.
+- **No alarm on record, no answers.** The windows are made without answers and a teacher can
+  fill them in from your instruction. Or add an alarm rule in Devices and come back when it
+  has fired a few times.
+- **The record is mostly quiet**, so quiet windows are thinned to match the others. A model
+  shown mostly "normal" learns to say "normal" to everything.
+- **It reads numbers as text.** That suits "have I seen this pattern before an alarm". It is
+  not a forecasting model, and the smallest students are weak at it: see the check's "By
+  answer" line, which shows when a model missed every alarm.
+- Per-minute readings are kept for 30 days, so that is as far back as it goes.
 
 Each dataset keeps the **instruction** the model is trained under. The same instruction is
 used when it is tried and when it goes into Ollama.
@@ -111,7 +155,10 @@ them before training and the tuned model answers them after. You see both, next 
 wanted.
 
 A model is marked **learned** only when the tuned model is closer to the wanted answers than
-the base model was. Otherwise it says **no better**, with the counts. Two numbers are given:
+the base model was. Otherwise it says **no better**, with the counts. For a sorting job the
+check also counts each answer on its own. A model that gives one answer to everything is
+marked **one answer** however many it matched, and one that never gives some answer is
+marked **partly** and names it. Two numbers are given:
 how many answers match exactly, and how much the words overlap. They are counts, not a
 judgement of quality. For a sorting job the exact count is the one to read.
 
@@ -134,6 +181,8 @@ bento train try MODEL "The dashboard shows a blank page since the update."
   with accounts this is an admin's, because every account can then choose the model.
 - **Publish** to the Hugging Face Hub, private by default. This needs your token, which is
   kept in your vault and never shown again.
+
+![The same model on a 390px phone, with its buttons at tap size](screenshots/train-model-phone.png)
 
 Putting a model into Ollama and publishing one are done by you, in the app or the terminal.
 No agent can do either.

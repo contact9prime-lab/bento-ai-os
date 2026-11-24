@@ -72,7 +72,7 @@
 .trn-run{border:1px solid var(--line);border-radius:var(--r-lg,16px);background:var(--trn-soft);padding:18px 20px;margin-bottom:12px}
 .trn-run.trn-running{border-color:color-mix(in srgb,var(--acc) 45%,var(--line))}
 .trn-run header{display:flex;align-items:center;gap:12px}
-.trn-run header .grow{min-width:0;display:flex;flex-direction:column;gap:2px}
+.trn-run header .grow{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .trn-run header .grow b{font-size:var(--fs-lg,16px)}
 .trn-run header .grow span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .trn-stages{list-style:none;padding:0;margin:18px 0 4px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0}
@@ -119,7 +119,8 @@
 .trn-word{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:var(--r-full);border:1px solid var(--line);font-size:var(--fs-xs);font-weight:700;color:var(--txt);white-space:nowrap;flex:none}
 .trn-word i{font-style:normal;font-weight:800}
 .trn-learned{border-color:color-mix(in srgb,var(--ok) 60%,var(--line));background:color-mix(in srgb,var(--ok) 10%,transparent)}.trn-learned i{color:var(--ok)}
-.trn-no-better{border-color:color-mix(in srgb,var(--warn) 60%,var(--line))}.trn-no-better i{color:var(--warn)}
+.trn-no-better,.trn-partly,.trn-one-answer{border-color:color-mix(in srgb,var(--warn) 60%,var(--line))}
+.trn-no-better i,.trn-partly i,.trn-one-answer i{color:var(--warn)}
 
 /* ---- shared pieces ---- */
 .trn-card{border:1px solid var(--line);border-radius:var(--r-lg,14px);background:var(--trn-soft);padding:16px 18px;margin-bottom:12px;min-width:0}
@@ -149,7 +150,8 @@
 .trn-open>*{margin-top:0}
 
 /* ---- datasets ---- */
-.trn-srcs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.trn-srcs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.trn-mono .trn-pairs td:first-child{white-space:pre-wrap;font-family:var(--mono,ui-monospace,monospace);font-size:var(--fs-xs)}
 .trn-src{display:flex;flex-direction:column;gap:4px;text-align:left;padding:14px;border:1px solid var(--line);border-radius:var(--r-lg,14px);background:var(--trn-soft);min-height:var(--tap,44px)}
 .trn-src .trn-ic{width:20px;height:20px;color:var(--dim);margin-bottom:4px}
 .trn-src b{font-size:var(--fs-md)}
@@ -226,6 +228,7 @@
   .trn-flow{grid-template-columns:minmax(0,1fr)}
   .trn-link{justify-content:center}.trn-link .trn-ic{transform:rotate(90deg)}
   .trn-how{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .trn-srcs{grid-template-columns:repeat(2,minmax(0,1fr))}
   .trn-split{grid-template-columns:minmax(0,1fr)}
   .trn-list{flex-direction:row;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:4px}
   .trn-li{flex:0 0 72%;scroll-snap-align:start}
@@ -245,7 +248,8 @@
   .trn-hero{padding-top:6px}
   .trn-askrow{flex-direction:column;align-items:stretch}
   .trn-ideas{flex-wrap:nowrap;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:2px}
-  .trn-ideas button{scroll-snap-align:start;min-height:var(--tap,40px)}
+  /* flex:none, or four chips shrink into each other and their words overlap (seen at 390px) */
+  .trn-ideas button{flex:none;scroll-snap-align:start;min-height:var(--tap,40px)}
   .trn .trn-go{justify-content:center}
   .trn-fields,.trn-srcs,.trn-how{grid-template-columns:minmax(0,1fr)}
   .trn-plan,.trn-run{padding:14px}

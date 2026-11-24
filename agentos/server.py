@@ -396,6 +396,7 @@ async def startup():
     # Each account's datasets and models are in that account's own home.
     from .slmdesk import Desk as TrainDesk
     toolbox.train = TrainDesk(lambda: state["cfg"], toolbox, broadcast_user)
+    toolbox.train_machines = _train_machines      # whose machines: this account's board, never the model's word
     toolbox.shell = shell_command  # the parity law: shell actions are tools too
     # A community of machines (pool.py). Machine-level: it reads the machine's config,
     # store and gate whoever is signed in, because a community is joined by the machine.
@@ -23035,6 +23036,60 @@ async def api_train_import_file(request: Request, filename: str = "data.csv", na
         return await asyncio.to_thread(slm.import_file, _train_base(), filename, bytes(raw), name, None, system)
     except Exception as e:
         return _train_err(e)
+
+
+def _train_machines() -> list[dict]:
+    """The machines whose readings this account may train on: its own board (the list Devices
+    draws for it), each with the items that have readings kept and its alarms on record."""
+    from . import devboard, slmiot
+    uid = usersmod.current() or ""
+    have = slmiot.machines()
+    whose = {uid} | ({""} if uid in _dev_here_owners() else set())
+    ended, still = devboard.episodes(_alarm_lines(whose, limit=4000, events=("alarm", "cleared")))
+    out = []
+    for m in _board_machines(uid):
+        kept = have.get(m.get("tkey") or "", {})
+        things = [t for t in m["things"] if t["id"] in kept]
+        if not things:
+            continue
+        eps = [e for e in ended + still if str(e.get("machine") or "").lower() == str(m["machine"]).lower()]
+        out.append({"key": m["key"], "tkey": m["tkey"], "machine": m["machine"], "things": things, "episodes": eps,
+                    "alarms": len(eps), "since": min(kept[t["id"]]["first"] for t in things),
+                    "readings": sum(kept[t["id"]]["n"] for t in things)})
+    return out
+
+
+@app.get("/api/train/devices")
+async def api_train_devices():
+    """Machines with readings this account can turn into examples. Never another account's."""
+    got = await asyncio.to_thread(_train_machines)
+    return {"machines": [{k: m[k] for k in ("key", "machine", "alarms", "since", "readings")}
+                         | {"things": [{"id": t["id"], "name": t["name"], "unit": t["unit"]} for t in m["things"]]}
+                         for m in got]}
+
+
+@app.post("/api/train/datasets/devices")
+async def api_train_from_devices(body: dict):
+    """A dataset from one machine's readings and the alarms that followed (slmiot.py)."""
+    from . import slm, slmiot
+    try:
+        m = next((x for x in await asyncio.to_thread(_train_machines) if x["key"] == str(body.get("machine") or "")), None)
+        if not m:
+            return JSONResponse({"error": "That machine has no readings you can use."}, status_code=404)
+        items = [str(i) for i in (body.get("items") or []) if isinstance(i, str)] or None
+        rows, how = await asyncio.to_thread(slmiot.build, m["tkey"], m["machine"], m["things"], m["episodes"], items,
+                                            float(body.get("days") or 7), int(body.get("width") or 0),
+                                            int(body.get("stride") or 0), int(body.get("horizon") or 0))
+        if not rows:
+            return JSONResponse({"error": slmiot.words(how)}, status_code=400)
+        kinds = [r["response"].split(": ", 1)[1] for r in rows if ": " in r["response"]]
+        ds = slm.add_dataset(_train_base(), str(body.get("name") or m["machine"] + " readings"), rows, "devices",
+                             m["machine"], slmiot.task_for(m["machine"], kinds), how)
+        ds = slm.update_dataset(_train_base(), ds["id"], note=how.get("note") or "")
+    except Exception as e:
+        return _train_err(e)
+    _ledger("train.import", f"device:{m['machine']}", f"made {ds['rows']} examples from {m['machine']}'s readings")
+    return {**ds, "words": slmiot.words(how)}
 
 
 @app.post("/api/train/datasets/synth")

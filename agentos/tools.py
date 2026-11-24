@@ -5103,11 +5103,28 @@ class Toolbox(usersmod.Scoped):
                                                       "train when state is ready."})
             if action == "answer":
                 return self._train_out(desk.label(dataset_id, task=task or None))
+            if action == "devices":
+                # which machines are this account's is the server's to say (its board), never the model's
+                mine = await asyncio.to_thread(self.train_machines) if getattr(self, "train_machines", None) else []
+                if not name:
+                    return self._train_out([{k: m[k] for k in ("machine", "alarms", "readings")} for m in mine])
+                m = next((x for x in mine if x["machine"].lower() == name.lower()), None)
+                if not m:
+                    return "[error] no machine of yours by that name has readings kept"
+                from . import slmiot
+                rows, how = await asyncio.to_thread(slmiot.build, m["tkey"], m["machine"], m["things"], m["episodes"],
+                                                    None, float(max_rows if 0 < max_rows <= 30 else 7))
+                if not rows:
+                    return "[error] " + slmiot.words(how)
+                kinds = [r["response"].split(": ", 1)[1] for r in rows if ": " in r["response"]]
+                ds = slm.add_dataset(base, m["machine"] + " readings", rows, "devices", m["machine"],
+                                     slmiot.task_for(m["machine"], kinds), how)
+                return self._train_out({**ds, "words": slmiot.words(how)})
         except KeyError:
             return "[error] no such dataset"
         except Exception as e:
             return f"[error] {e}"
-        return "[error] action must be list|search|import_hub|preview|write|answer"
+        return "[error] action must be list|search|import_hub|preview|write|answer|devices"
 
     async def train_job(self, action: str = "list", job_id: str = "", name: str = "",
                         dataset_id: str = "", base_model: str = "", hyperparams: dict | None = None) -> str:
@@ -7176,10 +7193,12 @@ TRAIN_TOOL_SCHEMAS = [
                        "Actions: list | search (public datasets on the Hugging Face Hub, query=) | "
                        "import_hub (repo_id=, max_rows=, task=) | preview (dataset_id=) | write (a "
                        "teacher writes count= examples of task=, optional examples=[{prompt,response}]) "
-                       "| answer (a teacher answers the prompts of dataset_id= that have no answer). "
-                       "task is the instruction the small model will work under.",
+                       "| answer (a teacher answers the prompts of dataset_id= that have no answer) | devices "
+                       "(no name: the person's machines with sensor readings kept; name= a machine: "
+                       "examples from its readings and the alarms that followed, max_rows= days back, up "
+                       "to 30). task is the instruction the small model will work under.",
         "parameters": {"type": "object", "properties": {
-            "action": {"type": "string", "enum": ["list", "search", "import_hub", "preview", "write", "answer"]},
+            "action": {"type": "string", "enum": ["list", "search", "import_hub", "preview", "write", "answer", "devices"]},
             "query": {"type": "string"}, "repo_id": {"type": "string"}, "name": {"type": "string"},
             "dataset_id": {"type": "string"}, "max_rows": {"type": "integer"},
             "task": {"type": "string"}, "count": {"type": "integer"},

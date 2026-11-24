@@ -8205,7 +8205,7 @@ body.mb-rail #ccpop,body.mb-rail #netpop,body.mb-rail #notifpanel,body.mb-rail #
 .trn-run{border:1px solid var(--line);border-radius:var(--r-lg,16px);background:var(--trn-soft);padding:18px 20px;margin-bottom:12px}
 .trn-run.trn-running{border-color:color-mix(in srgb,var(--acc) 45%,var(--line))}
 .trn-run header{display:flex;align-items:center;gap:12px}
-.trn-run header .grow{min-width:0;display:flex;flex-direction:column;gap:2px}
+.trn-run header .grow{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .trn-run header .grow b{font-size:var(--fs-lg,16px)}
 .trn-run header .grow span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .trn-stages{list-style:none;padding:0;margin:18px 0 4px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0}
@@ -8252,7 +8252,8 @@ body.mb-rail #ccpop,body.mb-rail #netpop,body.mb-rail #notifpanel,body.mb-rail #
 .trn-word{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:var(--r-full);border:1px solid var(--line);font-size:var(--fs-xs);font-weight:700;color:var(--txt);white-space:nowrap;flex:none}
 .trn-word i{font-style:normal;font-weight:800}
 .trn-learned{border-color:color-mix(in srgb,var(--ok) 60%,var(--line));background:color-mix(in srgb,var(--ok) 10%,transparent)}.trn-learned i{color:var(--ok)}
-.trn-no-better{border-color:color-mix(in srgb,var(--warn) 60%,var(--line))}.trn-no-better i{color:var(--warn)}
+.trn-no-better,.trn-partly,.trn-one-answer{border-color:color-mix(in srgb,var(--warn) 60%,var(--line))}
+.trn-no-better i,.trn-partly i,.trn-one-answer i{color:var(--warn)}
 
 /* ---- shared pieces ---- */
 .trn-card{border:1px solid var(--line);border-radius:var(--r-lg,14px);background:var(--trn-soft);padding:16px 18px;margin-bottom:12px;min-width:0}
@@ -8282,7 +8283,8 @@ body.mb-rail #ccpop,body.mb-rail #netpop,body.mb-rail #notifpanel,body.mb-rail #
 .trn-open>*{margin-top:0}
 
 /* ---- datasets ---- */
-.trn-srcs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.trn-srcs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.trn-mono .trn-pairs td:first-child{white-space:pre-wrap;font-family:var(--mono,ui-monospace,monospace);font-size:var(--fs-xs)}
 .trn-src{display:flex;flex-direction:column;gap:4px;text-align:left;padding:14px;border:1px solid var(--line);border-radius:var(--r-lg,14px);background:var(--trn-soft);min-height:var(--tap,44px)}
 .trn-src .trn-ic{width:20px;height:20px;color:var(--dim);margin-bottom:4px}
 .trn-src b{font-size:var(--fs-md)}
@@ -8359,6 +8361,7 @@ body.mb-rail #ccpop,body.mb-rail #netpop,body.mb-rail #notifpanel,body.mb-rail #
   .trn-flow{grid-template-columns:minmax(0,1fr)}
   .trn-link{justify-content:center}.trn-link .trn-ic{transform:rotate(90deg)}
   .trn-how{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .trn-srcs{grid-template-columns:repeat(2,minmax(0,1fr))}
   .trn-split{grid-template-columns:minmax(0,1fr)}
   .trn-list{flex-direction:row;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:4px}
   .trn-li{flex:0 0 72%;scroll-snap-align:start}
@@ -8378,7 +8381,8 @@ body.mb-rail #ccpop,body.mb-rail #netpop,body.mb-rail #notifpanel,body.mb-rail #
   .trn-hero{padding-top:6px}
   .trn-askrow{flex-direction:column;align-items:stretch}
   .trn-ideas{flex-wrap:nowrap;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:2px}
-  .trn-ideas button{scroll-snap-align:start;min-height:var(--tap,40px)}
+  /* flex:none, or four chips shrink into each other and their words overlap (seen at 390px) */
+  .trn-ideas button{flex:none;scroll-snap-align:start;min-height:var(--tap,40px)}
   .trn .trn-go{justify-content:center}
   .trn-fields,.trn-srcs,.trn-how{grid-template-columns:minmax(0,1fr)}
   .trn-plan,.trn-run{padding:14px}
@@ -50493,7 +50497,7 @@ function trainHw(d){const hw=d.hardware||{};
   return d.ready?(hw.device==='cuda'?(hw.name||'NVIDIA GPU'):hw.device==='mps'?'Apple GPU':'Processor only'):'Not installed'}
 function trainWord(v){                  /* never colour alone: an icon and the word */
   const w=(v&&v.word)||'unchecked';
-  const ic=w==='learned'?'✓':w==='no better'?'=':'?';
+  const ic=w==='learned'?'✓':w==='no better'?'=':w==='partly'?'~':w==='one answer'?'1':'?';
   return `<span class="trn-word trn-${w.replace(' ','-')}"><i>${ic}</i>${esc(w)}</span>`;
 }
 /* Before and after, as two bars on one scale with the counts written out. The same measure
@@ -50534,7 +50538,7 @@ function trainPaint(){
   const tabs=[['make','Make','make'],['datasets','Datasets','data',d.datasets],['runs','Runs','runs',d.jobs],['models','Models','models',d.models]];
   body.querySelector('.trn').innerHTML=`<div class="trn-g">
     <nav class="trn-rail" aria-label="Train">
-      <div class="trn-tabs">${tabs.map(([id,l,ic,n])=>`<button class="${TRAIN.tab===id?'on':''}" ${TRAIN.tab===id?'aria-current="page"':''} onclick="trainTab('${id}')">${trnIc(ic)}<span>${l}</span>${n?`<small>${n}</small>`:''}</button>`).join('')}</div>
+      <div class="trn-tabs">${tabs.map(([id,l,ic,n])=>`<button class="${TRAIN.tab===id?'on':''}" ${TRAIN.tab===id?'aria-current="page"':''} onclick="trainTab('${jsq(id)}')">${trnIc(ic)}<span>${l}</span>${n?`<small>${n}</small>`:''}</button>`).join('')}</div>
       <div class="trn-rig" title="${esc((d.hardware||{}).words||'')}">
         <div><span>Teacher</span><b>${esc(d.teacher||'none yet')}</b></div>
         <div><span>This machine</span><b>${esc(trainHw(d))}</b></div>
@@ -50643,7 +50647,7 @@ function trainRunHTML(r,d){
   return `<article class="trn-run trn-${esc(r.state)}">
     <header><div class="grow"><b>${esc((r.plan||{}).name||'run')}</b><span class="mut">${esc((r.plan||{}).task||'')}</span></div>
       <span class="mut">${esc(trainAgo(r.created))}</span>
-      ${r.state==='running'?`<button class="endbtn" onclick="trainDo('stop',()=>trainApi('/api/train/runs/${r.id}/stop','POST',{}))">Stop</button>`:''}</header>
+      ${r.state==='running'?`<button class="endbtn" onclick="trainDo('stop',()=>trainApi('/api/train/runs/${jsq(r.id)}/stop','POST',{}))">Stop</button>`:''}</header>
     <ol class="trn-stages">${st.map(([name,done,now,sub,frac],i)=>`
       <li class="${done?'done':now&&r.state==='running'?'now':''}">
         <div class="top"><span class="dot">${done?trnIc('check'):i+1}</span><i class="ln"></i></div>
@@ -50652,7 +50656,7 @@ function trainRunHTML(r,d){
     ${bad?`<div class="${r.state==='failed'?'errmsg':'mut'}">${esc(last.detail||last.title||'')}</div>`:''}
     ${m?`<div class="trn-result">${trainScore(m.eval,true)}
       <div class="trn-rside">${trainWord(m.verdict)}
-        <button class="pact" onclick="trainOpenModel('${m.id}')">Open the model</button></div></div>`:''}
+        <button class="pact" onclick="trainOpenModel('${jsq(m.id)}')">Open the model</button></div></div>`:''}
     <details class="trn-said"><summary>What happened, step by step</summary>
       <ol class="trn-steps">${steps.map(s=>`<li><b>${esc(s.title)}</b> <span>${esc(s.detail)}</span></li>`).join('')}</ol></details>
   </article>`;
@@ -50669,13 +50673,19 @@ async function trainRun(){
 }
 
 /* ---- Datasets ---- */
-function trainSrc(s){TRAIN.src=s;trainPaint()}
+async function trainSrc(s){TRAIN.src=s;trainPaint();
+  if(s==='devices'){try{TRAIN.devs=(await trainApi('/api/train/devices')).machines||[]}catch(e){TRAIN.devs=[]}trainPaint()}}
+async function trainFromDevice(key){
+  const days=+(($('#trn-dv-days')||{}).value)||7;
+  await trainDo('devices',async()=>{const ds=await trainApi('/api/train/datasets/devices','POST',{machine:key,days});toast(ds.words)});
+}
 function trainDatasets(d){
   const lim=d.limits||{},src=TRAIN.src;
-  const tile=(id,ic,t,sub)=>`<button class="trn-src ${src===id?'on':''}" aria-pressed="${src===id}" onclick="trainSrc('${id}')">${trnIc(ic)}<b>${t}</b><span>${sub}</span></button>`;
+  const tile=(id,ic,t,sub)=>`<button class="trn-src ${src===id?'on':''}" aria-pressed="${src===id}" onclick="trainSrc('${jsq(id)}')">${trnIc(ic)}<b>${t}</b><span>${sub}</span></button>`;
   let h=`<h2 class="trn-sec first">Add examples</h2>
     <div class="trn-srcs">${tile('teacher','teacher','A teacher writes them','Describe the job. '+esc(d.teacher||'Your machine\'s brain')+' does the writing.')}
       ${tile('hub','hub','Hugging Face Hub','Search public datasets and take the first rows of one.')}
+      ${tile('devices','chip','Your devices','Sensor readings, with the alarms that followed as the answers.')}
       ${tile('file','file','A file','CSV, TSV, JSON or JSONL of your own.')}</div>
     <div class="trn-card trn-srcbody">`;
   if(src==='teacher')h+=`<label class="trn-l" for="trn-task">The job, as you would tell a person</label>
@@ -50689,6 +50699,17 @@ function trainDatasets(d){
           <div class="sub">${(r.downloads||0).toLocaleString()} downloads · ${esc(r.licence||'licence not stated')}${r.gated?' · gated':''}</div>
           ${r.about?`<div class="sub">${esc(r.about)}</div>`:''}</div>
           <button class="endbtn" ${r.gated&&!d.token?'disabled title="A gated dataset needs your Hugging Face token (Models)"':''} onclick="trainImport('${jsq(r.repo)}')">Import</button></div>`).join('')}`;
+  else if(src==='devices'){
+    const ms=TRAIN.devs;
+    h+=!ms?'<div class="mut">loading…</div>':!ms.length?`<div class="trn-row"><div class="grow mut">No machine of yours has readings kept yet. They are kept once a Pi or an ESP32 node is set up in Devices.</div>
+        <button class="endbtn" onclick="openApp('devices')">Open Devices</button></div>`
+      :`<div class="trn-row"><label class="trn-l trn-inl">How far back<select id="trn-dv-days" data-keep><option value="1">1 day</option><option value="7" selected>7 days</option><option value="30">30 days</option></select></label>
+          <span class="mut">Each example is 30 minutes of readings. The answer is the alarm that was on, the one that came next, or normal.${pInfo('The answers come from your own alarm record, so nobody writes them. A machine with no alarm on record gives windows without answers, which a teacher can fill in from your instruction.')}</span></div>`
+        +ms.map(m=>`<div class="trn-hub"><span class="trn-badge">${trnIc('chip')}</span><div class="grow"><b>${esc(m.machine)}</b>
+          <div class="sub">${(m.readings||0).toLocaleString()} readings since ${esc(new Date(m.since*1000).toLocaleDateString())} · ${m.alarms} ${m.alarms===1?'alarm':'alarms'} on record</div>
+          <div class="sub">${esc(m.things.slice(0,6).map(t=>t.name).join(', '))}${m.things.length>6?' and '+(m.things.length-6)+' more':''}</div></div>
+          <button class="pact" ${TRAIN.busy?'disabled':''} onclick="trainFromDevice('${jsq(m.key)}')">Make examples</button></div>`).join('');
+  }
   else h+=`<div class="mut">A prompt column and an answer column. A file with prompts only is fine: a teacher can answer them.</div>
       <div class="trn-row"><input type="file" id="trn-file" accept=".csv,.tsv,.json,.jsonl,.txt" onchange="trainFile(this)"></div>`;
   h+='</div>';
@@ -50697,16 +50718,16 @@ function trainDatasets(d){
   if(!list.length)h+='<div class="trn-empty">'+trnIc('data')+'<span>None yet.</span></div>';
   h+=list.map(x=>{
     const left=x.rows-(x.answers||0),pr=x.progress||{},open=TRAIN.ds&&TRAIN.ds.id===x.id;
-    const working=x.state!=='ready',ic=x.source==='hub'?'hub':x.source==='synthetic'?'teacher':'file';
-    const from=x.source==='synthetic'?'written by '+(x.ref||'a teacher'):x.source==='hub'?x.ref:'from '+(x.ref||'a file');
+    const working=x.state!=='ready',ic=x.source==='hub'?'hub':x.source==='synthetic'?'teacher':x.source==='devices'?'chip':'file';
+    const from=x.source==='synthetic'?'written by '+(x.ref||'a teacher'):x.source==='hub'?x.ref:x.source==='devices'?'readings of '+(x.ref||'a machine'):'from '+(x.ref||'a file');
     return `<article class="trn-card trn-ds">
       <div class="trn-row"><span class="trn-badge">${trnIc(ic)}</span>
-        <div class="grow"><button class="trn-name" onclick="trainOpenDs('${x.id}')" aria-expanded="${open?'true':'false'}">${esc(x.name)}</button>
+        <div class="grow"><button class="trn-name" onclick="trainOpenDs('${jsq(x.id)}')" aria-expanded="${open?'true':'false'}">${esc(x.name)}</button>
           <div class="mut">${x.rows} examples${left?`, ${left} without an answer`:''} · ${esc(from)}</div></div>
-        ${working?`<button class="endbtn" onclick="trainDo('stop',()=>trainApi('/api/train/datasets/${x.id}/stop','POST',{}))">Stop</button>`:`
-          ${left?`<button class="endbtn" ${d.teacher_missing?'disabled':''} onclick="trainLabel('${x.id}',${left})">Have the teacher answer</button>`:''}
-          <button class="pact" ${(!d.ready||x.answers<(lim.min_rows||9))?'disabled':''} onclick="trainStartOn('${x.id}')">Train on it</button>
-          <button class="endbtn trn-x" title="Delete this dataset" aria-label="Delete ${esc(x.name)}" onclick="trainDelDs('${x.id}')">✕</button>`}</div>
+        ${working?`<button class="endbtn" onclick="trainDo('stop',()=>trainApi('/api/train/datasets/${jsq(x.id)}/stop','POST',{}))">Stop</button>`:`
+          ${left?`<button class="endbtn" ${d.teacher_missing?'disabled':''} onclick="trainLabel('${jsq(x.id)}',${left})">Have the teacher answer</button>`:''}
+          <button class="pact" ${(!d.ready||x.answers<(lim.min_rows||9))?'disabled':''} onclick="trainStartOn('${jsq(x.id)}')">Train on it</button>
+          <button class="endbtn trn-x" title="Delete this dataset" aria-label="Delete ${esc(x.name)}" onclick="trainDelDs('${jsq(x.id)}')">✕</button>`}</div>
       ${working?`<div class="trn-prog"><div class="bar"><i style="width:${pr.want?Math.round(100*pr.done/pr.want):3}%"></i></div>
         <span class="mut">${esc(x.teacher||'The teacher')} is ${x.state==='writing'?'writing':'answering'}: ${pr.done|0} of ${pr.want|0}</span></div>`:''}
       ${x.note?`<div class="mut">${esc(x.note)}</div>`:''}
@@ -50715,10 +50736,10 @@ function trainDatasets(d){
   return h;
 }
 function trainDsOpen(x){
-  return `<div class="trn-open">
+  return `<div class="trn-open${x.source==='devices'?' trn-mono':''}">
     <label class="trn-l" for="trn-ds-task">The instruction the model is trained under</label>
     <div class="trn-row"><textarea id="trn-ds-task" data-keep rows="2">${esc(x.system||'')}</textarea>
-      <button class="endbtn" onclick="trainDo('save',()=>trainApi('/api/train/datasets/${x.id}','PUT',{system:$('#trn-ds-task').value}))">Save</button></div>
+      <button class="endbtn" onclick="trainDo('save',()=>trainApi('/api/train/datasets/${jsq(x.id)}','PUT',{system:$('#trn-ds-task').value}))">Save</button></div>
     <div class="trn-tw"><table class="trn-t trn-pairs"><thead><tr><th>Prompt</th><th>Answer</th></tr></thead><tbody>
       ${(x.sample||[]).map(r=>`<tr><td data-l="Prompt">${esc(r.prompt)}</td><td data-l="Answer">${r.response?esc(r.response):'<span class="mut">no answer yet</span>'}</td></tr>`).join('')}
     </tbody></table></div>
@@ -50776,7 +50797,7 @@ function trainRuns(d){
   const j=TRAIN.jobd&&TRAIN.jobd.id===TRAIN.job?TRAIN.jobd:null;
   const mark=x=>x.state==='running'?'<i class="trn-live"></i>':x.state==='done'?'✓':x.state==='failed'?'!':'·';
   return `<div class="trn-split"><div class="trn-list">${list.map(x=>`
-      <button class="trn-li ${x.id===TRAIN.job?'on':''}" onclick="trainPickJob('${x.id}')"><b><span class="trn-mk" aria-hidden="true">${mark(x)}</span>${esc(x.name)}</b>
+      <button class="trn-li ${x.id===TRAIN.job?'on':''}" onclick="trainPickJob('${jsq(x.id)}')"><b><span class="trn-mk" aria-hidden="true">${mark(x)}</span>${esc(x.name)}</b>
         <span class="mut">${esc(x.state==='running'?x.phase:x.state)} · ${esc(trainShort(x.base))}</span></button>`).join('')}</div>
     <div class="trn-detail">${j?trainJobHTML(j):'<div class="mut">loading…</div>'}</div></div>`;
 }
@@ -50787,9 +50808,9 @@ function trainJobHTML(j){
   const on=j.device==='cpu'?'the processor':j.device==='mps'?'the Apple GPU':'the GPU';
   return `<div class="trn-row"><div class="grow"><h2 class="trn-jt">${esc(j.name)}</h2>
       <div class="mut">${esc(j.base)}${j.device?' · on '+on:''}</div></div>
-      ${j.state==='running'?`<button class="endbtn" onclick="trainDo('stop',()=>trainApi('/api/train/jobs/${j.id}/stop','POST',{}))">Stop</button>`
-        :`${j.state==='done'?`<button class="pact" onclick="trainOpenModel('${j.id}')">Open the model</button>`:''}
-          <button class="endbtn" onclick="trainDelJob('${j.id}')">Remove</button>`}</div>
+      ${j.state==='running'?`<button class="endbtn" onclick="trainDo('stop',()=>trainApi('/api/train/jobs/${jsq(j.id)}/stop','POST',{}))">Stop</button>`
+        :`${j.state==='done'?`<button class="pact" onclick="trainOpenModel('${jsq(j.id)}')">Open the model</button>`:''}
+          <button class="endbtn" onclick="trainDelJob('${jsq(j.id)}')">Remove</button>`}</div>
     ${j.state==='running'?`<div class="trn-prog"><div class="bar"><i style="width:${pct||3}%"></i></div><span class="mut">${esc(j.phase)}${j.total?` · ${j.step} of ${j.total}`:''}</span></div>`:''}
     ${j.state==='failed'?`<div class="errmsg">${esc(j.error||'It failed. The log says why.')}</div>`:''}
     ${j.state==='stopped'?'<div class="mut">Stopped.</div>':''}
@@ -50876,12 +50897,12 @@ function trainModels(d){
   h+=`<div class="trn-mgrid">`+list.map(m=>{
     const open=TRAIN.model&&TRAIN.model.id===m.id;
     return `<article class="trn-card trn-model${open?' open':''}">
-      <header><div class="grow"><button class="trn-name" onclick="trainOpenModel('${m.id}')" aria-expanded="${open?'true':'false'}">${esc(m.name)}</button>
+      <header><div class="grow"><button class="trn-name" onclick="trainOpenModel('${jsq(m.id)}')" aria-expanded="${open?'true':'false'}">${esc(m.name)}</button>
         <div class="mut">${esc(trainShort(m.base))} · ${trainMB(m.bytes)} · ${esc(trainAgo(m.created))}</div></div>${trainWord(m.verdict)}</header>
       ${trainScore(m.eval)}
       ${m.ollama?`<div class="trn-where">${trnIc('check')}In Ollama as <b>${esc(m.ollama)}</b></div>`:''}
       ${m.published?`<div class="trn-where">${trnIc('check')}Published as <b>${esc(m.published)}</b></div>`:''}
-      ${open?trainModelOpen(TRAIN.model,d):`<button class="endbtn trn-openbtn" onclick="trainOpenModel('${m.id}')">Try it, use it</button>`}</article>`}).join('')+'</div>';
+      ${open?trainModelOpen(TRAIN.model,d):`<button class="endbtn trn-openbtn" onclick="trainOpenModel('${jsq(m.id)}')">Try it, use it</button>`}</article>`}).join('')+'</div>';
   h+=`<div class="trn-card trn-token"><h2 class="trn-h">Hugging Face token</h2>
     <div class="mut">${d.token?'A token is saved in your vault.':'Only needed to publish a model, or to import a private or gated dataset.'}${pInfo('Kept in your vault on this machine. It is handed to the one upload that needs it and never shown again.')}</div>
     <div class="trn-row">${secretField('trn-tok',d.token?'Replace it':'hf_…')}<button class="endbtn" onclick="trainToken()">Save</button>
@@ -50896,12 +50917,12 @@ function trainModelOpen(m,d){
     ${m.system?`<div class="trn-sys"><span>It works under</span>${esc(m.system)}</div>`:''}
     <div class="trn-try"><label class="trn-vh" for="trn-try">Try it</label>
       <textarea id="trn-try" data-keep rows="2" placeholder="Give it something to answer"></textarea>
-      <button class="pact" ${TRAIN.busy?'disabled':''} onclick="trainTry('${m.id}')">${TRAIN.busy==='try'?'Thinking…':'Ask'}</button></div>
+      <button class="pact" ${TRAIN.busy?'disabled':''} onclick="trainTry('${jsq(m.id)}')">${TRAIN.busy==='try'?'Thinking…':'Ask'}</button></div>
     ${t?`<div class="trn-ans"><div class="mut">${esc(t.prompt)}</div><div>${esc(t.answer)}</div><div class="mut">${t.seconds} s on ${esc(t.device==='cpu'?'the processor':t.device)}, after loading.</div></div>`:''}
     <div class="trn-row trn-acts">
-      <button class="pact" ${noOllama||TRAIN.busy?'disabled':''} onclick="trainOllama('${m.id}','${jsq(m.ollama_name||'')}')">${m.ollama?'Add to Ollama again':'Add to Ollama'}</button>
-      <button class="endbtn" ${d.token&&!TRAIN.busy?'':'disabled'} onclick="trainPublish('${m.id}','${jsq(m.name)}')">Publish…</button>
-      <span class="sp"></span><button class="endbtn" onclick="trainDelModel('${m.id}')">Delete</button></div>
+      <button class="pact" ${noOllama||TRAIN.busy?'disabled':''} onclick="trainOllama('${jsq(m.id)}','${jsq(m.ollama_name||'')}')">${m.ollama?'Add to Ollama again':'Add to Ollama'}</button>
+      <button class="endbtn" ${d.token&&!TRAIN.busy?'':'disabled'} onclick="trainPublish('${jsq(m.id)}','${jsq(m.name)}')">Publish…</button>
+      <span class="sp"></span><button class="endbtn" onclick="trainDelModel('${jsq(m.id)}')">Delete</button></div>
     ${noOllama?`<div class="mut">${esc(noOllama)}</div>`:`<div class="mut">Then it can be this machine's brain, or one agent's.${pInfo('Ollama converts the weights itself. It imports the common small architectures; when it can\'t take one, it says so and you see what it said.')}</div>`}
     ${!d.token?'<div class="mut">Publishing needs your Hugging Face token, below.</div>':''}
     ${(m.examples||[]).length?trainExamples(m.examples.slice(0,12)):''}</div>`;

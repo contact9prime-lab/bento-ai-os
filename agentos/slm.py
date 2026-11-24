@@ -842,6 +842,10 @@ def start_job(base: Path, name: str, dataset_id: str, base_model: str = "", hp: 
                 fh.write(json.dumps(r, ensure_ascii=False) + "\n")
     sys_text = ds.get("system", "") if system is None else plain(system, 4000)
     settings = clean_hp(hp)
+    if not (hp or {}).get("epochs"):
+        # Few examples need more passes. Three passes over 90 device windows was 60 updates and
+        # the model fitted nothing; ten was 220 and it found every alarm.
+        settings["epochs"] = 10.0 if len(train_rows) < 150 else 5.0 if len(train_rows) < 400 else 3.0
     if not (hp or {}).get("max_new_tokens"):
         # Long enough for the longest reference answer and no longer. The base model, before
         # training, rambles to the limit on every held-back example: at 96 tokens a one-word
@@ -953,18 +957,48 @@ def evaluation(base: Path, ident: str) -> dict:
     return _read(_dir(base, "jobs", ident) / "eval.json", {}) or {}
 
 
+def breakdown(items: list[dict]) -> list[dict]:
+    """The held-back examples grouped by the answer that was wanted, when there are only a
+    few different answers (a sorting job): [{want, n, right}], most common first. [] for a
+    job whose answers are all different."""
+    groups: dict = {}
+    for i in items or []:
+        g = groups.setdefault(str(i.get("want") or ""), {"want": str(i.get("want") or ""), "n": 0, "right": 0})
+        g["n"] += 1
+        g["right"] += 1 if i.get("exact_after") else 0
+    if not (1 < len(groups) <= 12) or len(items or []) < 2 * len(groups):
+        return []
+    return sorted(groups.values(), key=lambda g: -g["n"])
+
+
 def verdict(ev: dict) -> dict:
     """What the held-back examples say, in a word and a sentence. Counted, never judged:
-    `learned` only when the tuned model is closer to the references than the base was."""
+    `learned` only when the tuned model is closer to the references than the base was, and
+    never when it gives one answer to everything. A model that says "normal" to every window
+    matches most of a quiet record and has learned nothing: found on the first device run,
+    16 of 20 right and none of the four alarms."""
     n = int((ev or {}).get("n") or 0)
     if not n:
         return {"word": "unchecked", "words": "No examples were held back, so nothing says whether it learned the job."}
     b, a = float(ev.get("overlap_before") or 0), float(ev.get("overlap_after") or 0)
     eb, ea = int(ev.get("exact_before") or 0), int(ev.get("exact_after") or 0)
+    by = breakdown(ev.get("items") or [])
+    said = {str(i.get("after") or "").strip().lower() for i in ev.get("items") or []}
     tail = f" On {n} held-back examples it matched {ea} exactly (the base model: {eb}), and its words overlap the reference {round(a * 100)}% (before: {round(b * 100)}%)."
+    if by:
+        tail += " By answer: " + ", ".join(f"{g['right']} of {g['n']} '{g['want'][:40]}'" for g in by[:6]) + "."
+    if by and len(said) == 1:
+        only = next(iter(said))[:40]
+        return {"word": "one answer", "by": by,
+                "words": f"It gives the same answer to everything ('{only}'), so it has not learned to tell them apart." + tail}
+    missed = [g for g in by if not g["right"]]
     if a > b + 0.02 or ea > eb:
-        return {"word": "learned", "words": "It answers closer to the examples than the base model did." + tail}
-    return {"word": "no better", "words": "It is no closer to the examples than the base model was." + tail}
+        if missed:
+            return {"word": "partly", "by": by,
+                    "words": "It learned some answers and never gives others: " +
+                             ", ".join(f"'{g['want'][:40]}'" for g in missed[:4]) + "." + tail}
+        return {"word": "learned", "by": by, "words": "It answers closer to the examples than the base model did." + tail}
+    return {"word": "no better", "by": by, "words": "It is no closer to the examples than the base model was." + tail}
 
 
 # ---- models --------------------------------------------------------------------------
@@ -972,11 +1006,12 @@ def verdict(ev: dict) -> dict:
 def _register(base: Path, spec: dict, st: dict) -> None:
     ev = (st.get("metrics") or {}).get("eval") or {}
     out = base / MODELS / spec["id"]
+    full = evaluation(base, spec["id"]) or ev          # with every example, so the verdict can break it down
     size = sum(p.stat().st_size for p in out.rglob("*") if p.is_file()) if out.exists() else 0
     _write(out / "model.json", {"id": spec["id"], "name": spec["name"], "base": spec["base"],
                                 "dataset": spec.get("dataset"), "dataset_name": spec.get("dataset_name"),
                                 "system": spec.get("system") or "", "metrics": st.get("metrics") or {},
-                                "eval": ev, "verdict": verdict(ev), "created": time.time(),
+                                "eval": ev, "verdict": verdict(full), "created": time.time(),
                                 "bytes": size, "ollama": "", "published": ""})
 
 

@@ -585,3 +585,105 @@ def test_every_page_string_from_somebody_else_is_escaped():
             if any(tok in expr for tok in ("pr.", "esc(", "jsq(")):
                 continue
             raise AssertionError("unescaped in the Train page: ${" + expr + "}")
+
+
+# ---- a verdict that can't be fooled by one answer ------------------------------------------
+
+def _items(pairs_):
+    return [{"prompt": f"p{i}", "want": w, "after": a, "before": "?", "exact_after": int(w == a), "exact_before": 0}
+            for i, (w, a) in enumerate(pairs_)]
+
+
+def test_a_model_that_gives_one_answer_to_everything_has_not_learned():
+    """Found on the first device run: 16 of 20 'right' by saying normal every time."""
+    items = _items([("normal", "normal")] * 16 + [("alarm: warm", "normal")] * 3 + [("coming: warm", "normal")])
+    v = slm.verdict({"n": 20, "exact_before": 0, "exact_after": 16, "overlap_before": 0, "overlap_after": .8, "items": items})
+    assert v["word"] == "one answer" and "same answer to everything" in v["words"]
+    assert "16 of 16 'normal'" in v["words"] and "0 of 3 'alarm: warm'" in v["words"]
+
+
+def test_a_model_that_never_gives_one_of_the_answers_learned_only_partly():
+    items = _items([("billing", "billing")] * 5 + [("bug", "bug")] * 5 + [("other", "bug")] * 4)
+    v = slm.verdict({"n": 14, "exact_before": 0, "exact_after": 10, "overlap_before": 0, "overlap_after": .7, "items": items})
+    assert v["word"] == "partly" and "'other'" in v["words"]
+    good = slm.verdict({"n": 6, "exact_before": 0, "exact_after": 6, "overlap_before": 0, "overlap_after": 1,
+                        "items": _items([("a", "a")] * 3 + [("b", "b")] * 3)})
+    assert good["word"] == "learned"
+    assert slm.breakdown(_items([(f"answer {i}", "x") for i in range(30)])) == [], "free answers are not sorted into groups"
+
+
+# ---- your devices: readings and the alarms that followed -----------------------------------
+
+@pytest.fixture()
+def coldroom(tmp_path, monkeypatch):
+    """A day of a cold room on a throwaway hub: a door left open now and then warms it past 8."""
+    from agentos import slmiot, teamlink, telemetry
+    monkeypatch.setattr(teamlink, "home", lambda: tmp_path)
+    telemetry._DBS.clear()
+    telemetry._KEPT.clear()
+    now = time.time()
+    start = now - 86400 + 300
+    rows, eps, temp, seq, raised = [], [], 4.0, 0, None
+    for k in range(1430):
+        ts = start + k * 60
+        door = 1 if (k % 400) in range(100, 130) else 0
+        temp += 0.26 if door else (4.0 - temp) * 0.12
+        for item, v in (("esp.cold.sensor.temp", round(temp, 2)), ("esp.cold.binary_sensor.door", door)):
+            seq += 1
+            rows.append([seq, ts, item, v])
+        if temp > 8 and raised is None:
+            raised = ts
+        elif temp <= 8 and raised is not None:
+            eps.append({"id": "warm", "machine": "Hub", "text": "Cold room is too warm", "since": raised, "ended": ts})
+            raised = None
+    for i in range(0, len(rows), 1000):
+        telemetry.store("here", {"rows": rows[i:i + 1000], "now": time.time(), "boot": "t", "seq": rows[min(i + 999, len(rows) - 1)][0]})
+    things = [{"id": "esp.cold.sensor.temp", "name": "Temperature", "unit": "°C"},
+              {"id": "esp.cold.binary_sensor.door", "name": "Door", "onoff": True}]
+    yield slmiot, things, eps, now
+    telemetry._DBS.clear()
+    telemetry._KEPT.clear()
+
+
+def test_device_readings_become_windows_answered_by_the_alarm_record(coldroom):
+    iot, things, eps, now = coldroom
+    assert len(eps) >= 3
+    rows, how = iot.build("here", "Hub", things, eps, days=1, now=now)
+    kinds = {r["response"] for r in rows}
+    assert kinds == {"normal", "alarm: Cold room is too warm", "coming: Cold room is too warm"}
+    assert how["alarms"] and how["coming"] and how["kept"] == len(rows) <= how["windows"]
+    hot = next(r for r in rows if r["response"].startswith("alarm"))
+    head, temp, door = hot["prompt"].split("\n")
+    assert head.startswith("Readings from Hub. 30 minutes to ") and "one every 5 minutes" in head
+    assert temp.startswith("Temperature (°C): ") and "rising" in temp or "falling" in temp or "steady" in temp
+    assert door.startswith("Door (1 = on): ") and " now, on for " in door
+    assert float(temp.split("now ")[1].split(",")[0]) > 8, "an alarm window ends above the line that raised it"
+    quiet = sum(1 for r in rows if r["response"] == "normal")
+    assert quiet <= max(20, len(rows) - quiet), "the record is mostly quiet; the examples must not be"
+    assert "examples from Hub" in iot.words(how) and "within 15 minutes" in iot.words(how)
+
+
+def test_a_coming_window_ends_before_its_alarm_and_within_the_horizon(coldroom):
+    iot, things, eps, now = coldroom
+    assert iot.answer(eps[0]["since"] - 60, eps, 900) == "coming: Cold room is too warm"
+    assert iot.answer(eps[0]["since"] - 1000, eps, 900) == "normal"
+    assert iot.answer(eps[0]["since"] + 5, eps, 900).startswith("alarm: ")
+    assert iot.answer(eps[0]["ended"] + 5, eps, 900) == "normal"
+
+
+def test_a_machine_with_no_alarm_on_record_gives_windows_without_answers_and_says_why(coldroom):
+    iot, things, _eps, now = coldroom
+    rows, how = iot.build("here", "Hub", things, [], days=1, now=now)
+    assert rows and all(r["response"] == "" for r in rows)
+    assert "No alarm was raised" in how["note"] and "teacher" in iot.words(how)
+    none, how2 = iot.build("nowhere", "Other", things, [], days=1, now=now)
+    assert none == [] and "no readings" in iot.words(how2)
+
+
+def test_which_machines_are_yours_is_the_servers_answer_never_the_models():
+    src = (ROOT / "agentos" / "tools.py").read_text()
+    body = src[src.index('            if action == "devices":'):src.index("        except KeyError:\n            return \"[error] no such dataset\"")]
+    assert "self.train_machines" in body and "slmiot.machines()" not in body
+    srv = (ROOT / "agentos" / "server.py").read_text()
+    fn = srv[srv.index("def _train_machines()"):srv.index('@app.get("/api/train/devices")')]
+    assert "_board_machines(uid)" in fn and "_alarm_lines(whose" in fn

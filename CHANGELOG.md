@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.100.0 — 2026-11-24
+## 0.100.0 — 2026-11-25
 
 **Train makes a small language model of your own.** Say what one narrow job it should do ("sort support
 mail into billing, bug or other") and Bento plans it, has a teacher write the examples, fine-tunes a small
@@ -14,6 +14,15 @@ service on its own port, drawn in a frame, which a phone could not open and no p
 also never downloadable: its address was a placeholder. Now each account's datasets and models are in that
 account's own home, starting a training is its own permission (`model.train`), and no agent can put a
 model into Ollama or publish one. The old `trainforge` setting and the `trainforge_service` tool are gone.
+
+**It trains on your devices' readings too.** A hub already keeps what every sensor read and which alarms
+were raised. Datasets → Your devices turns one machine's record into examples: 30 minutes of readings, and
+whether an alarm was on, was coming within 15 minutes, or nothing was wrong. Measured on two days of a
+cold room with 15 alarms: the smallest model found all 3 alarm windows and both "coming" windows it had
+never seen, of 9 held back. `bento train devices`.
+
+The check counts each answer on its own. A model that says "normal" to everything is marked "one answer"
+however many it matched: the first device model scored 16 of 20 that way and had missed every alarm.
 
 Training needs PyTorch, which is not part of Bento: install it from the Train app or with
 `bento train install` (about 1 GB on a Mac, 5 GB or more on Linux). Measured on a 4-core machine with no

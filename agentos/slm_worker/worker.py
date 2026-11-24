@@ -263,9 +263,11 @@ def train(job: Job) -> None:
         output_dir=str(job.dir / "checkpoints"), num_train_epochs=float(hp["epochs"]),
         learning_rate=float(hp["learning_rate"]), per_device_train_batch_size=int(hp["batch_size"]),
         gradient_accumulation_steps=int(hp["gradient_accumulation"]),
-        gradient_checkpointing=(dev == "cuda"), save_strategy="no", disable_tqdm=True, logging_steps=int(hp.get("logging_steps") or 5),
+        save_strategy="no", disable_tqdm=True, logging_steps=int(hp.get("logging_steps") or 5),
         seed=int(hp.get("seed") or 42), bf16=(dtype == torch.bfloat16), report_to=[],
         use_cpu=(dev == "cpu"), dataloader_pin_memory=(dev == "cuda"))
+    if dev == "cuda":
+        model.gradient_checkpointing_enable()         # trade compute for GPU memory
     trainer = Trainer(model=model, args=args, train_dataset=data,
                       data_collator=collate, callbacks=[Tell()])
     result = trainer.train()
