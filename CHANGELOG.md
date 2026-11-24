@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.99.6 — 2026-11-24
+
+**A chat is in the list the moment you write in it.** Chat, Telegram and WhatsApp moved a conversation up
+the list only once the reply was saved, and the list shows the newest 100, so a turn that got stuck in an
+older chat was nowhere to be found. A person's message now puts its chat at the top straight away, and a
+desktop turn does so before the price card and the history rebuild, either of which can wait for minutes.
+
+**The conversation list is open beside the chat.** With the immersive look on, the list was a drawer that
+started closed. It now sits beside the chat and ☰ hides it; your choice is kept for this browser. On a phone
+or a window narrower than 640 pixels it stays the drawer. The row of controls above the chat now wraps
+instead of running off the window.
+
 ## 0.99.5 — 2026-11-24
 
 **Bento's own upgrades no longer stop your agents.** 0.99.0 moved the vaults onto the service key at start

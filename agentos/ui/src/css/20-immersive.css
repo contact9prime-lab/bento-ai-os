@@ -540,6 +540,18 @@ body.immersive .cside{position:absolute;left:0;top:0;bottom:0;width:280px;z-inde
   border-right:1px solid color-mix(in srgb,var(--txt) 10%,transparent);box-shadow:0 20px 60px rgba(0,0,0,.45);
   transition:transform var(--d-slow) var(--ease-out)}
 body.immersive .chatwrap.drawer .cside{transform:none}
+/* open beside the chat by default (10-chat.js chatSideWanted): a pane, not an overlay. A window narrower
+   than CHAT_SIDE_MIN keeps the drawer, because a 280px pane leaves a phone-width chat no room. */
+body.immersive .chatwrap{container-type:inline-size}
+body.immersive .chatwrap.side .cside{position:relative;transform:none;flex:none;padding-top:8px;box-shadow:none}
+/* with the list beside it the chat's row of controls has less room: the two pickers give way first and the
+   buttons wrap to a second line, rather than running off the window where nobody can reach them */
+body.immersive #topbar{flex-wrap:wrap}
+body.immersive #topbar>select.modelchip{flex:1 1 150px;min-width:0;max-width:300px}
+@container (max-width:639px){
+  body.immersive .chatwrap.side .cside{position:absolute;transform:translateX(-104%);padding-top:52px;box-shadow:0 20px 60px rgba(0,0,0,.45)}
+  body.immersive .chatwrap.side.drawer .cside{transform:none}
+}
 body.immersive .cmain{min-width:0}
 body.immersive #chat{padding:24px 0 12px}
 body.immersive .inner{max-width:760px}

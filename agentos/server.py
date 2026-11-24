@@ -21914,6 +21914,10 @@ async def _run_chat(cid: str, data: dict):
     owner = str(data.get("uid", "") or "")
 
     turn_errors: list[str] = []      # what the turn said went wrong (fallback.unavailable reads it)
+    # Listed at the top from the first second: the message is saved only after the price card and the
+    # history rebuild, either of which can wait for minutes, and a stuck turn was in no list.
+    with contextlib.suppress(Exception):
+        store.touch_conversation(cid)
 
     async def evsend(ev: dict):
         if ev.get("type") == "error":

@@ -1,8 +1,22 @@
 /* ================= chat app ================= */
 const PLACEHOLDER_IDLE='Ask or tell it anything. @name a teammate to ask them';
 const PLACEHOLDER_BUSY='Say what comes next. It joins this run or waits its turn';
+/* The conversation list is open beside the chat by default and ☰ hides it; the choice is kept per
+   browser (chat.side). Asked for as "the left panel should be open by default in the chat but can be
+   hidden". A phone or a narrow window has no room for it beside the chat, so there it stays the
+   drawer ☰ opens over the chat, and picking a conversation closes it again. */
+function chatSideWanted(){try{return localStorage.getItem('chat.side')!=='0'}catch(e){return true}}
+function chatSideNarrow(w){return document.body.classList.contains('dev-mobile')||w.clientWidth<CHAT_SIDE_MIN}
+var CHAT_SIDE_MIN=640;
+function chatSideToggle(btn){
+  const w=btn.closest('.chatwrap');if(!w)return;
+  if(chatSideNarrow(w)){w.classList.toggle('drawer');return}
+  w.classList.remove('drawer');
+  const on=w.classList.toggle('side');
+  try{localStorage.setItem('chat.side',on?'1':'0')}catch(e){}
+}
 function renderChat(body){
-  body.innerHTML=`<div class="chatwrap">
+  body.innerHTML=`<div class="chatwrap${chatSideWanted()?' side':''}">
     <div class="cside">
       <button id="newchat"><span data-ic="plus">＋</span> New chat</button>
       <input id="conv-q" type="search" placeholder="Search chats" aria-label="Search chats">
@@ -15,7 +29,7 @@ function renderChat(body){
               Rendered always, shown only by that look (CSS) — the standard
               desktop keeps its permanent sidebar. */''}
         <button id="cs-toggle" class="endbtn" data-ic="layers" title="Conversations"
-          onclick="this.closest('.chatwrap').classList.toggle('drawer')">☰</button>
+          onclick="chatSideToggle(this)">☰</button>
         ${/* Two selects, coupled: WHO answers, then WHAT it runs on. One select
               holding both — engines in an optgroup above the models — could show
               Claude Code chosen and a Gemini model selected underneath it, which
@@ -164,6 +178,7 @@ function send(){
   // as the next turn. Either way the queue strip is the receipt, so no bubble yet.
   if(!wasRunning)userBubble(text,imgs);
   ws.send(JSON.stringify({type:'chat',text,images:imgs,conversation_id:currentConv,model:''}));
+  setTimeout(loadConvs,400);   // the server lists it at once; turn_start can be minutes away (a price card, a long history)
   if(!wasRunning)officeChatMirror(currentConv,text);   // the Office shows this conversation too
   draftClear(currentConv);
   input.value='';input.style.height='auto';renderAttach();
