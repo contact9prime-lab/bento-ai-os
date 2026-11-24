@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.99.9 — 2026-11-25
+
+- The shared browser starts again on a profile a crashed Chrome left lock links in. Signing in to a site (Instagram, Suno) failed with `[Errno 2] … SingletonLock` before.
+
 ## 0.99.8 — 2026-11-25
 
 - `bento integrity undo` takes a change to Bento's code back in one step: the watched files go back to
