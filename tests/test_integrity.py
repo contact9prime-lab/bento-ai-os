@@ -980,7 +980,7 @@ def test_the_status_route_is_admin_only_and_read_only():
     assert "_require_admin()" in h
     posts = sorted(ln for ln in srv.splitlines() if "/api/security" in ln and ".post(" in ln)
     assert posts == ['@app.post("/api/security/accept")', '@app.post("/api/security/code")',
-                     '@app.post("/api/security/code/check")'], \
+                     '@app.post("/api/security/code/check")', '@app.post("/api/security/undo")'], \
         "the only doors are holdclear's, which ask for proof"
     # the setup's check changes nothing: an admin's, never spends a code, and a wrong one counts
     c = srv[srv.index("async def api_security_code_check"):srv.index('@app.get("/api/security/events")')]
