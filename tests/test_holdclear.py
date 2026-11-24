@@ -287,3 +287,78 @@ def test_setting_up_a_code_is_four_steps_with_a_square_to_scan(box, monkeypatch)
     assert "createElementNS" in js and "innerHTML" not in js
     field = js[js.index("function secField"):js.index("async function secPost")]
     assert "new-password" in field and "data-1p-ignore" in field and "-webkit-text-security" in field
+
+
+# ------------------------------------------------------------------------------ undo
+
+def test_undo_puts_an_agents_edit_back_and_lets_the_agents_run(box):
+    """Reported as "we need a simpler command to reset it": an agent rewrote a file in the served
+    code, the watcher held, and taking it back was a git checkout, a rm and an accept. Undo is one."""
+    tree, home, w, _ = box
+    _trip(w, tree, "GATE = 0  # an agent's edit\n")
+    (tree / "agentos" / "planted.py").write_text("X = 1\n")
+    (tree / "notes.txt").write_text("not watched\n")
+    w.tick()
+    plan = holdclear.undo_plan(tree)
+    assert plan["why"] == ""
+    assert plan["restore"] == ["agentos/policy.py"] and plan["set_aside"] == ["agentos/planted.py"]
+    assert plan["left"] == ["notes.txt"], "a file the watcher doesn't watch is named and left alone"
+    got = holdclear.undo("t", "test", tree)
+    assert got["done"] and got["released"], got
+    assert integrity.held() is None
+    assert (tree / "agentos" / "policy.py").read_text() == "GATE = 1\n"
+    assert not (tree / "agentos" / "planted.py").exists()
+    aside = Path(got["aside"])
+    assert (aside / "agentos" / "policy.py").read_text() == "GATE = 0  # an agent's edit\n", "nothing is lost"
+    assert (aside / "agentos" / "planted.py").read_text() == "X = 1\n"
+    assert oct(aside.stat().st_mode & 0o777) == "0o700"
+    assert (tree / "notes.txt").exists()
+    kinds = [e.get("kind") for e in secevents.recent(20)]
+    assert "integrity.undone" in kinds and "integrity.accepted" not in kinds, "one act, one alert"
+    assert secevents.KINDS["integrity.undone"][0].startswith("An admin took")
+
+
+def test_undo_never_answers_for_a_home_file_or_a_moved_commit(box):
+    tree, home, w, _ = box
+    _trip(w, tree)
+    integrity.hold("test", ["~/config.json"])
+    assert "locked file" in holdclear.undo_plan(tree)["why"]
+    assert not holdclear.undo("t", "test", tree)["done"]
+    integrity._release()
+    # a commit made after the record: every file matches its commit, none matches the record
+    _git(tree, "commit", "-qam", "an agent committed it")
+    integrity.hold("test", ["agentos/policy.py"])
+    plan = holdclear.undo_plan(tree)
+    assert "commit itself moved" in plan["why"] and not plan["restore"]
+
+
+def test_nothing_held_is_nothing_to_undo(box):
+    tree, *_ = box
+    assert holdclear.undo_plan(tree)["why"] == "Nothing is held."
+
+
+def test_the_undo_route_takes_proof_and_writes_a_ledger_row(box, monkeypatch):
+    from fastapi.testclient import TestClient
+    from agentos import server
+    tree, home, w, _ = box
+    _trip(w, tree, "GATE = 0  # planted\n")
+    monkeypatch.setattr(server, "_at_machine", lambda r: True)
+    with TestClient(server.app) as c:
+        r = c.post("/api/security/undo", json={})
+        assert r.status_code == 200, r.text
+        assert r.json()["released"] is True
+    assert integrity.held() is None
+    assert (tree / "agentos" / "policy.py").read_text() == "GATE = 1\n"
+    rows = __import__("agentos.users", fromlist=["x"]).store_for("").audit_list(action="integrity.undo")
+    assert rows and rows[0]["outcome"] == "ok"
+    srv = (ROOT / "agentos/server.py").read_text()
+    u = srv[srv.index("async def api_security_undo"):srv.index("async def api_security_code")]
+    assert "_accept_proof(" in u, "the same proof as accept"
+
+
+def test_the_terminal_verb_and_the_status_line_name_undo():
+    main = (ROOT / "agentos/__main__.py").read_text()
+    assert '"undo", "reset"' in main
+    h = main[main.index('if act in ("undo", "reset")'):main.index('if act == "code"')]
+    assert '_integrity_person(args, "undo"' in h and "holdclear.undo(" in h
+    assert "bento integrity undo" in integrity.line({"held": {"files": ["agentos/x.py"]}})

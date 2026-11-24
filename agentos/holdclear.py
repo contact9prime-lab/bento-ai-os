@@ -283,7 +283,7 @@ def why_not(pic: dict, code: str = "") -> str:
     return ""
 
 
-def accept(by: str, via: str, pic: dict | None = None, root: Path | None = None) -> dict:
+def accept(by: str, via: str, pic: dict | None = None, root: Path | None = None, say: bool = True) -> dict:
     """Take the code and the locked files as they are now, and let the agents run again.
     The caller has checked who is asking and `why_not`."""
     root = Path(root or integrity.code_root()).resolve()
@@ -293,9 +293,90 @@ def accept(by: str, via: str, pic: dict | None = None, root: Path | None = None)
     if w is not None and w.root == root:
         with contextlib.suppress(Exception):
             w._try_release()
-    secevents.flag("integrity.accepted", f"{pic.get('kind') or 'held'} change accepted by {by} via {via}")
+    if say:   # an undo says its own words: one act, one alert
+        secevents.flag("integrity.accepted", f"{pic.get('kind') or 'held'} change accepted by {by} via {via}")
     return {"ok": True, "kind": pic.get("kind"), "files": pic.get("files") or [],
             "released": integrity.held() is None, "at": entry.get("at")}
+
+
+# ------------------------------------------------------------------------------ undoing
+
+ASIDE = "integrity-undone"           # <home>/integrity-undone/<time>/<path>: what an undo set aside
+
+
+def undo_plan(root: Path | None = None, pic: dict | None = None) -> dict:
+    """What `undo` would do, and why it can't, worked out without touching anything.
+
+    It puts the watched code back to the commit the checkout is on: a changed file is checked out
+    again, a new file is moved aside. Nothing is deleted: both are copied to `ASIDE` first. It only
+    goes in the safe direction (towards a commit), so it needs no authenticator code. A locked home
+    file can't be undone by git, and a checkout whose commit moved (somebody committed) isn't put
+    back to an older one: those stay for accept, in words."""
+    root = Path(root or integrity.code_root()).resolve()
+    pic = pic or picture(root)
+    out = {"root": str(root), "restore": [], "set_aside": [], "left": [], "why": ""}
+    if not pic.get("held"):
+        out["why"] = "Nothing is held."
+        return out
+    if pic.get("home"):
+        out["why"] = ("A locked file in Bento's home changed (" + ", ".join(pic["home"][:3])
+                      + "). Undo only puts code back, so check it and accept it instead.")
+        return out
+    ok, _ = integrity._git(root, "rev-parse", "--verify", "HEAD")
+    if not ok:
+        out["why"] = "This copy of the code isn't a git checkout, so there's no commit to go back to."
+        return out
+    dirty = [d for d in integrity.dirty_in_scope(root) if d != "(git could not say)"]
+    new = set(_untracked(root, dirty))
+    out["restore"] = sorted(d for d in dirty if d not in new)
+    out["set_aside"] = sorted(new)
+    ok, other = integrity._git(root, "status", "--porcelain", "--no-renames")
+    watched = set(dirty)
+    out["left"] = sorted({ln[3:].strip().strip('"') for ln in other.splitlines() if len(ln) > 3} - watched) if ok else []
+    if not dirty and pic.get("kind") != SETTLED:
+        out["why"] = ("Every file matches its commit already, but not the record: the commit itself moved. "
+                      "Check it with bento integrity changes, then accept it.")
+    return out
+
+
+def undo(by: str, via: str, root: Path | None = None) -> dict:
+    """Put the watched code back to its commit (`undo_plan`), then let the agents run if that left
+    the files as recorded. The caller has checked who is asking. Returns the plan with `done`,
+    `aside` (the folder) and `released`."""
+    root = Path(root or integrity.code_root()).resolve()
+    plan = undo_plan(root)
+    if plan["why"]:
+        return {**plan, "done": False, "released": False}
+    aside = integrity._home() / ASIDE / time.strftime("%Y%m%d-%H%M%S")
+    import shutil
+    aside.mkdir(parents=True, exist_ok=True)
+    os.chmod(aside, 0o700)
+    for rel in plan["restore"] + plan["set_aside"]:
+        src = root / rel
+        if src.is_file() and not src.is_symlink():
+            dest = aside / rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dest)
+    if plan["restore"]:
+        ok, err = integrity._git(root, "checkout", "HEAD", "--", *plan["restore"])
+        if not ok:
+            return {**plan, "done": False, "released": False, "aside": str(aside),
+                    "why": "git couldn't put the files back: " + secevents.plain(err, 300)}
+    for rel in plan["set_aside"]:
+        with contextlib.suppress(OSError):
+            (root / rel).unlink()
+    pic = picture(root)
+    released = False
+    if pic.get("kind") == SETTLED and not integrity.needs_key():
+        accept(by, via, pic, root, say=False)
+        released = integrity.held() is None
+    secevents.flag("integrity.undone", f"{len(plan['restore']) + len(plan['set_aside'])} file(s) put back by {by} via {via}")
+    out = {**plan, "done": True, "released": released, "aside": str(aside), "kind": pic.get("kind")}
+    if not released:
+        out["why"] = ("The files are back, and this machine signs its record, so accept it with your key: "
+                      "bento integrity accept --key <path>" if integrity.needs_key() else
+                      "The files are back but something else still differs: " + pic.get("words", ""))
+    return out
 
 
 # ------------------------------------------------------------------------------ a phone

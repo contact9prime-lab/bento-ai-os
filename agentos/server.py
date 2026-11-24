@@ -13532,6 +13532,33 @@ async def api_security_accept(request: Request, body: dict):
     return got
 
 
+@app.post("/api/security/undo")
+async def api_security_undo(request: Request, body: dict):
+    """An admin takes the change back: the watched code returns to its commit (holdclear.undo),
+    changed and new files copied aside first. Towards a commit only, so the password is the
+    proof and no authenticator code is asked for. Agents are stopped while held, so none can press it."""
+    from . import holdclear
+    refused = _accept_proof(request, body)
+    if refused:
+        return refused
+    plan = await asyncio.to_thread(holdclear.undo_plan)
+    if plan["why"]:
+        return JSONResponse({"error": plan["why"]}, status_code=409)
+    who = _accept_who()
+    got = await asyncio.to_thread(holdclear.undo, who, "settings")
+    with contextlib.suppress(Exception):
+        usersmod.store_for("").audit_add(
+            principal_kind="user", principal_id=who[:60], surface="gui", action="integrity.undo",
+            resource="code:" + str(got.get("root") or ""), effect="allow", rule="person",
+            outcome="ok" if got.get("done") else "error",
+            detail=", ".join((got.get("restore") or []) + (got.get("set_aside") or []))[:500])
+    if not got.get("done"):
+        return JSONResponse({"error": got.get("why") or "It couldn't be put back."}, status_code=500)
+    if got.get("released"):
+        await _tell_admins({"type": "security_hold", "released": True, "at": time.time(), "files": []})
+    return got
+
+
 @app.post("/api/security/code")
 async def api_security_code(request: Request, body: dict):
     """Set up the authenticator code that an unknown change needs. Shown once. Replacing one

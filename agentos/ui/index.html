@@ -25530,10 +25530,28 @@ async function secHeldBox(held){
     SEC_HOLD.busy=false;secCardPaint();
   };
   form.appendChild(go);
+  // Take it back: the code returns to its commit, copies kept aside (holdclear.undo). No code
+  // needed, because it only goes towards a commit. Not offered for a locked home file, which git
+  // can't put back, nor once it's settled. TUI: bento integrity undo.
+  if(pic.kind!=='settled'&&!(pic.home&&pic.home.length)){
+    const back=secEl('button','endbtn','Undo the change');
+    back.disabled=SEC_HOLD.busy||pic.paused;
+    back.onclick=async()=>{
+      const pw=document.getElementById('s-sec-pw');
+      SEC_HOLD.busy=true;SEC_HOLD.msg='';
+      try{
+        const got=await secPost('/api/security/undo',{password:pw?pw.value:''});
+        SEC_HOLD.changes=false;
+        toast(got.released?'Put back. Agents can run again.':(got.why||'Put back.'));
+      }catch(e){SEC_HOLD.msg=e.message||String(e)}
+      SEC_HOLD.busy=false;secCardPaint();
+    };
+    form.appendChild(back);
+  }
   inner.appendChild(form);
-  const note=unknown&&!pic.code_set?'Bento can\'t vouch for this change, so accepting it here needs an authenticator code. Set one up under Details, or accept at the terminal: bento integrity accept'
+  const note=unknown&&!pic.code_set?'Bento can\'t vouch for this change, so accepting it here needs an authenticator code. Undo needs only your password.'
     :pic.paused?'Too many wrong answers. Try again in 15 minutes.'
-    :'Check what changed first. You can also answer from your paired phone, or run bento integrity accept.';
+    :'Check what changed first. Undo puts the code back as it was committed and keeps a copy of the change.';
   inner.appendChild(secEl('small','sec-note',note));
   if(unknown&&!pic.code_set){
     const setup=secEl('button','endbtn sec-show','Set up a code');
