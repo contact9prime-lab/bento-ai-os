@@ -30,7 +30,7 @@ var SETSUBS={
   accounts:[['Sign in','Sign in'],['Mail & calendar','Mail'],['Websites','Websites'],['Your secrets','Your secrets'],['App registration','App registration'],['Vault','Vault'],['GitHub','GitHub']],
   voice:[['Speech','Speech'],['Listening','Listening']],
   look:[['Look','Look'],['Characters','Characters'],['Office','Office'],['This screen','On this screen']],
-  system:[['Version','Version'],['People','People'],['Setup','Footprint'],['Backup & cloud','Backup'],['Machine','Machine']],
+  system:[['Version','Version'],['People','People'],['Setup','Footprint'],['Backup & cloud','Backup'],['Encryption','Encrypted at rest'],['Machine','Machine']],
 };
 function setSubKey(tab){return 'setsub.'+tab}
 function setSubGet(tab){try{return localStorage.getItem(setSubKey(tab))||''}catch(e){return ''}}

@@ -24,6 +24,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from agentos import provision, remoteinstall, teamlink        # noqa: E402
+from agentos import dbcrypt  # noqa: E402
 
 ROOT = Path(__file__).parent.parent
 
@@ -135,7 +136,7 @@ def test_bento_network_installs_on_a_listed_machine_with_its_ssh_port(pi, tmp_pa
     assert "right-one" not in json.dumps(calls)
     assert any(e.get("state") == "installed" for e in provision.load()["devices"].values())
     import sqlite3
-    acts = [a for (a,) in sqlite3.connect(home / "agentos.db").execute("SELECT action FROM audit")]
+    acts = [a for (a,) in dbcrypt.connect(home / "agentos.db").execute("SELECT action FROM audit")]
     assert "device.install" in acts and "device.installed" in acts
 
 

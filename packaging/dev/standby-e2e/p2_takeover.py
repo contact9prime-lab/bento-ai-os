@@ -2,6 +2,14 @@
 """Phase 2: the laptop dies; the cloud takes over and must BE the laptop."""
 import json
 from h import *
+import os as _os
+import sys as _sys
+try:  # Bento's databases are encrypted with their home's key (agentos/dbcrypt.py)
+    _sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..", "..", "..")))
+    from agentos.dbcrypt import connect as _db_connect
+except Exception:
+    import sqlite3 as _sqlite3
+    _db_connect = _sqlite3.connect
 c = Cloud()
 say("grace:", c.post("/api/standby/settings", json={"grace": 90}).json().get("grace"))
 lpost("/api/standby/copy")                     # the newest state goes over first
@@ -24,4 +32,4 @@ say("tables that differ (not counting diaries):", real or "none")
 say("diary tables that differ:", noisy)
 say("vault on the cloud:", cpy("from agentos import vault; print(vault.get('mail.password','e2e'))").strip())
 say("workspace on the cloud:", cexec("sh", "-c", "ls /root/AgentOS; cat /root/AgentOS/laptop-deck.md").strip().replace("\n", " | "))
-say("mission folder on the cloud:", cpy("import sqlite3;print(sqlite3.connect('file:/data/agentos.db?mode=ro',uri=True).execute(\"select resource from grants where resource like 'fs:%'\").fetchall())").strip())
+say("mission folder on the cloud:", cpy("import sqlite3;print(_db_connect('file:/data/agentos.db?mode=ro',uri=True).execute(\"select resource from grants where resource like 'fs:%'\").fetchall())").strip())

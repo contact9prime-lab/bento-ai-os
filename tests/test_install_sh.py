@@ -410,7 +410,9 @@ def test_32bit_arm_gets_the_fixed_cryptography_too():
     Bullseye and Bookworm take the fix; only Buster (2.28) can't, and oldpi.py says so.
     One cryptography for every machine, with a 32-bit wheel in it."""
     assert '"cryptography>=50",' in PYPROJECT.read_text()
-    assert "armv7l'" not in PYPROJECT.read_text().split("[project.scripts]")[0], "no 32-bit pin any more"
+    deps = PYPROJECT.read_text().split("[project.scripts]")[0]
+    assert not [ln for ln in deps.splitlines() if "cryptography" in ln and "armv7l" in ln], \
+        "no 32-bit pin any more"
     blocks = _lock_packages("cryptography")
     assert len(blocks) == 1, "the lock no longer forks cryptography on armv7"
     assert int(re.search(r'version = "(\d+)\.', blocks[0]).group(1)) >= 50
@@ -634,3 +636,13 @@ def test_buster_is_offered_the_last_version_that_runs_there_and_never_by_yes(tmp
     from agentos import oldpi
     assert f'OLDPI_COMMIT="{oldpi.LAST_OLD["commit"]}"' in block
     assert 'checkout -q -B buster-0.99.0 "$OLDPI_COMMIT"' in SRC
+
+
+def test_a_32bit_pi_skips_sqlcipher_rather_than_compiling_it():
+    """SQLCipher has no 32-bit ARM wheel and its Python can say aarch64, so the marker alone
+    doesn't skip it: the installer and the updater name it (agentos/dbcrypt.py says the rest)."""
+    assert "--no-install-package sqlcipher3" in SRC
+    deps = PYPROJECT.read_text().split("[project.scripts]")[0]
+    assert "sqlcipher3>=" in deps and "platform_machine != 'armv7l'" in deps
+    upd = (REPO / "agentos" / "updates.py").read_text()
+    assert '["--no-install-package", "sqlcipher3"]' in upd and 'oldpi.facts()["arm32"]' in upd

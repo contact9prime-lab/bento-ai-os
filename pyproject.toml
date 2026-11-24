@@ -1,6 +1,6 @@
 [project]
 name = "agentos"
-version = "0.99.2"
+version = "0.99.3"
 description = "Bento Box AI — a local-first agentic OS: one interface, any AI (local or cloud), real actions on your machine."
 readme = "README.md"
 license = "MIT"
@@ -22,6 +22,11 @@ dependencies = [
     # wheel needs glibc 2.31 (Bullseye): a Pi on Buster can't take it, and agentos/oldpi.py
     # says so. The old armv7 pin (46.0.3, for Buster) is gone with the advisory it carried.
     "cryptography>=50",
+    # Every Bento database is encrypted at rest with this machine's key (agentos/dbcrypt.py).
+    # SQLCipher in a wheel (zlib licence; SQLCipher itself is BSD-style). There is no 32-bit
+    # ARM wheel, so a 32-bit Pi (deprecated, oldpi.py) keeps plain databases and says so, and
+    # install.sh/updates skip the package there rather than compile it.
+    "sqlcipher3>=0.6.5; platform_machine != 'armv7l' and platform_machine != 'armv6l'",
 ]
 
 [project.scripts]

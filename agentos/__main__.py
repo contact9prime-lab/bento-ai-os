@@ -1267,7 +1267,7 @@ def doctor(fix: bool = False, session: bool = False):
     import json as _json
     import shutil
     import socket
-    import sqlite3
+    from . import dbcrypt
     import subprocess
     import urllib.request
     from . import config as cfgmod
@@ -1423,7 +1423,7 @@ def doctor(fix: bool = False, session: bool = False):
 
     # 4. DB
     try:
-        db = sqlite3.connect(str(cfgmod.DB_PATH), timeout=3)
+        db = dbcrypt.connect(str(cfgmod.DB_PATH), timeout=3)
         mode = db.execute("PRAGMA journal_mode").fetchone()[0]
         if mode != "wal" and fix:
             new = db.execute("PRAGMA journal_mode=WAL").fetchone()[0]
@@ -1474,6 +1474,18 @@ def doctor(fix: bool = False, session: bool = False):
             todo("bento standby pair URL CODE   # a second Bento keeps a sealed copy; or `bento backup DIR` to another disk")
     except Exception as e:  # noqa: BLE001 - a doctor keeps going
         warn(f"copy elsewhere: could not check ({type(e).__name__})")
+    # the databases and the disk, encrypted at rest or not (dbcrypt.py, diskcrypt.py)
+    try:
+        from . import dbcrypt as _dbc
+        from . import diskcrypt as _dkc
+        _st = _dbc.status()
+        (ok if _st["state"] == "encrypted" else warn)(f"databases: {_st['line']}")
+        if _st["state"] in ("plain", "partly"):
+            todo("bento restart   # the databases are encrypted at Bento's next start")
+        _dk = _dkc.state()
+        {"on": ok, "off": warn, "unknown": warn}[_dk["state"]](f"disk: {_dk['line']}")
+    except Exception as e:  # noqa: BLE001 - a doctor keeps going
+        warn(f"encryption at rest: could not check ({type(e).__name__})")
     # a 32-bit Pi: deprecated, or too old for anything newer (oldpi.py)
     try:
         from . import oldpi as _oldpi
@@ -3954,6 +3966,12 @@ def _vault_cli(args):
         if args.action == "away":
             _vault_away(args, uid)
             return
+        if args.action == "code":
+            _vault_code(uid)
+            return
+        if args.action == "at-rest":
+            _at_rest_cli()
+            return
         print(f"vault: {st['detail']}")
         if st.get("path"):
             print(f"  file: {st['path']}")
@@ -3968,6 +3986,55 @@ def _vault_cli(args):
             print("  (nothing stored yet)")
         if away:
             print("  change one: bento vault away <name> off|always|once|until --days N")
+
+
+def _vault_code(uid: str):
+    """`bento vault code`: a new recovery code, shown once, the old one stops working. The
+    terminal face of Settings → Accounts → Your secrets → New code. The password is typed,
+    never on the command line, and the code is printed here and kept nowhere."""
+    import getpass
+    from . import seal
+    from . import users as usersmod
+    if not uid or not seal.exists(uid):
+        print("✗ this account has no sealed secrets yet: a recovery code exists only on a machine "
+              "with accounts, once the account has signed in")
+        sys.exit(1)
+    pw = getpass.getpass("Your Bento password (to make a new recovery code): ")
+    priv = None
+    try:
+        priv = seal.open_with_password(uid, pw)
+        code = seal.new_recovery(uid, priv)
+    except seal.Sealed as e:
+        print(f"✗ {e}")
+        sys.exit(1)
+    finally:
+        priv = None
+    print("\n  Your new recovery code (the old one no longer works):\n")
+    print(f"    {code}\n")
+    print("  Write it down or keep it in a password manager, away from this computer. If you forget\n"
+          "  your password, or an admin resets it, this code is the only way back to your saved\n"
+          "  passwords and website sign-ins. Bento keeps no copy and won't show it again.")
+    try:
+        usersmod.store_for(uid).audit_add(
+            uid=uid, principal_kind="user", principal_id="", surface="cli", action="seal.code",
+            resource=f"user:{uid}", effect="allow", rule="person",
+            reason="a new recovery code shown once", outcome="ok")
+    except Exception:
+        pass
+
+
+def _at_rest_cli():
+    """`bento vault at-rest`: are the databases and the disk encrypted (dbcrypt, diskcrypt)."""
+    from . import dbcrypt, diskcrypt
+    st, disk = dbcrypt.status(), diskcrypt.state()
+    mark = {"encrypted": "✓", "partly": "!", "plain": "!", "unavailable": "!"}.get(st["state"], "!")
+    print(f"  {mark} databases: {st['line']}")
+    if st["detail"]:
+        print(f"    {st['detail']}")
+    for f in st.get("plain_files") or []:
+        print(f"    not yet: {f}")
+    dm = {"on": "✓", "off": "!", "unknown": "?"}[disk["state"]]
+    print(f"  {dm} disk: {disk['line']}")
 
 
 def _vault_away(args, uid: str):
@@ -11448,7 +11515,8 @@ def main():
     p_voice.add_argument("-o", "--out", default="", help="try: where to write the audio")
     p_vault = verb("vault", help="the secrets this machine keeps for you — where, how protected, "
                                   "and which; never their values")
-    p_vault.add_argument("action", nargs="?", default="status", choices=["status", "list", "forget", "away"])
+    p_vault.add_argument("action", nargs="?", default="status",
+                         choices=["status", "list", "forget", "away", "code", "at-rest"])
     p_vault.add_argument("name", nargs="?", default="", help="forget/away: the secret's name")
     p_vault.add_argument("mode", nargs="?", default="",
                          help="away: off (only while signed in) | always (until revoked) | until | once")

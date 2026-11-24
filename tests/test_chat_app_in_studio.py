@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 os.environ.setdefault("AGENTOS_HOME", tempfile.mkdtemp(prefix="agentos-test-home-"))
 
 from agentos import executors as execmod                           # noqa: E402
+from agentos import dbcrypt  # noqa: E402
 from agentos.memory import Store                                   # noqa: E402
 
 ROOT = Path(__file__).parent.parent
@@ -50,7 +51,7 @@ def test_a_version_records_the_conversation_and_the_app_lists_it(tmp_path):
 
 def test_an_old_database_gets_the_column(tmp_path):
     db = tmp_path / "old.db"
-    con = sqlite3.connect(db)
+    con = dbcrypt.connect(db)
     con.execute("CREATE TABLE app_versions (id TEXT PRIMARY KEY, app_id TEXT, version INTEGER, "
                 "html TEXT, note TEXT DEFAULT '', created_at REAL)")
     con.execute("INSERT INTO app_versions VALUES ('v','a',1,'<h1>x</h1>','old',0)")

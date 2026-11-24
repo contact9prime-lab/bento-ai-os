@@ -28,6 +28,7 @@ os.environ.setdefault("AGENTOS_HOME", tempfile.mkdtemp(prefix="agentos-test-home
 os.environ.setdefault("AGENTOS_VAULT_KEYRING", "0")
 
 from agentos import agent as agentmod                                   # noqa: E402
+from agentos import dbcrypt  # noqa: E402
 from agentos import config as cfgmod                                    # noqa: E402
 from agentos import policy                                              # noqa: E402
 from agentos.memory import Store                                        # noqa: E402
@@ -291,7 +292,7 @@ def test_grants_and_the_ledger_from_a_terminal(tmp_path):
     assert run("grants", "revoke", gid).returncode == 0
     r = run("audit", "--verify")
     assert r.returncode == 0 and "intact" in r.stdout
-    db = sqlite3.connect(tmp_path / "agentos.db")
+    db = dbcrypt.connect(tmp_path / "agentos.db")
     db.execute("UPDATE audit SET resource='edited' WHERE seq=1")
     db.commit()
     r = run("audit", "--verify")

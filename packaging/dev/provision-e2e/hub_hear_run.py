@@ -20,6 +20,14 @@ import tempfile
 import time
 import urllib.request
 from pathlib import Path
+import os as _os
+import sys as _sys
+try:  # Bento's databases are encrypted with their home's key (agentos/dbcrypt.py)
+    _sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..", "..", "..")))
+    from agentos.dbcrypt import connect as _db_connect
+except Exception:
+    import sqlite3 as _sqlite3
+    _db_connect = _sqlite3.connect
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[2]
@@ -116,7 +124,7 @@ def step(title, **facts):
 
 
 def ledger(name, action):
-    con = sqlite3.connect(home(name) / "agentos.db")
+    con = _db_connect(home(name) / "agentos.db")
     rows = con.execute("select coalesce(reason,'') || coalesce(detail,'') from audit where action = ? order by rowid",
                        (action,)).fetchall()
     con.close()
@@ -124,7 +132,7 @@ def ledger(name, action):
 
 
 def grants(name, action):
-    con = sqlite3.connect(home(name) / "agentos.db")
+    con = _db_connect(home(name) / "agentos.db")
     rows = con.execute("select id, principal_kind, principal_id, resource, source from grants "
                        "where action = ? and revoked_at is null", (action,)).fetchall()
     con.close()

@@ -60,6 +60,7 @@ import platform
 import re
 import shutil
 import sqlite3
+from . import dbcrypt
 import tarfile
 import tempfile
 import time
@@ -322,14 +323,10 @@ class _Exact(io.RawIOBase):
 
 def _copy_db(src: Path, dst: Path) -> None:
     """A consistent copy of a live database, through SQLite's own backup API: a plain
-    file copy of a WAL database taken mid-write restores as a corrupt one."""
-    s = sqlite3.connect(str(src), timeout=30)
-    d = sqlite3.connect(str(dst))
-    try:
-        s.backup(d)
-    finally:
-        d.close()
-        s.close()
+    file copy of a WAL database taken mid-write restores as a corrupt one. The copy is PLAIN
+    (dbcrypt.plain_copy): the backup file is sealed with its passphrase, and a plain database
+    restores on any machine, which encrypts it with its own key at its next start."""
+    dbcrypt.plain_copy(src, dst)
 
 
 def _walk(home: Path):
@@ -477,7 +474,7 @@ def create(dest, passphrase: str, *, home=None, workspace: bool = True, version:
                     copy = Path(tmp) / f"{len(items)}.db"
                     try:
                         _copy_db(p, copy)
-                    except sqlite3.Error:
+                    except dbcrypt.Error:
                         continue            # not a database after all; the file itself is kept below
                     manifest["databases"].append(rel)
                     items.append(("home/" + rel, copy))
@@ -734,6 +731,17 @@ def apply(staging, *, home=None, keyring: bool = True) -> dict:
         report["attention"].append(f"What was here before is kept in {report['previous']}. "
                                    "Delete it once you are happy.")
     shutil.rmtree(staging, ignore_errors=True)
+    # a backup's databases are plain inside its sealed file (dbcrypt.plain_copy): encrypted with
+    # this machine's key now, rather than left plain on disk until Bento next starts. Nothing here
+    # holds them (apply runs with the server down, or before it opens its home); one another
+    # process holds is left for the server's start, and said.
+    try:
+        for r in dbcrypt.encrypt_home(home):
+            if not r["ok"]:
+                report["attention"].append(f"{Path(r['path']).name} is encrypted when Bento next "
+                                           f"starts ({r['why']}).")
+    except Exception:
+        pass
     try:
         (home / LAST).write_text(json.dumps(report, indent=1))
     except OSError:
@@ -924,7 +932,7 @@ def _remap_databases(con, manifest: dict, home: Path, count: list) -> None:
     for table, col in DB_PATH_COLUMNS:
         try:
             rows = con.execute(f'SELECT rowid, "{col}" FROM "{table}"').fetchall()
-        except sqlite3.Error:
+        except dbcrypt.Error:
             continue
         for rid, val in rows:
             nv = _remap_text(val, manifest, home)
@@ -950,10 +958,10 @@ def _remap_everywhere(home: Path, manifest: dict) -> int:
         db = h / "agentos.db"
         if db.is_file():
             try:
-                con = sqlite3.connect(str(db))
+                con = dbcrypt.connect(str(db))
                 try:
                     rows = con.execute("SELECT name, spec FROM executor_profiles").fetchall()
-                except sqlite3.Error:
+                except dbcrypt.Error:
                     rows = []
                 for name, spec in rows:
                     try:
@@ -967,7 +975,7 @@ def _remap_everywhere(home: Path, manifest: dict) -> int:
                 _remap_databases(con, manifest, home, count)
                 con.commit()
                 con.close()
-            except sqlite3.Error:
+            except dbcrypt.Error:
                 pass
     return count[0]
 

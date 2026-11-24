@@ -61,6 +61,7 @@ import os
 import re
 import secrets
 import sqlite3
+from . import dbcrypt
 import time
 from pathlib import Path
 
@@ -504,8 +505,8 @@ def note() -> str:
 def _db() -> sqlite3.Connection:
     p = db_path()
     p.parent.mkdir(parents=True, exist_ok=True)
-    con = sqlite3.connect(p, timeout=10)
-    con.row_factory = sqlite3.Row
+    con = dbcrypt.connect(p, timeout=10)
+    con.row_factory = dbcrypt.Row
     con.execute("CREATE TABLE IF NOT EXISTS notes (id TEXT PRIMARY KEY, seq INTEGER, content TEXT, "
                 "machine TEXT DEFAULT '', agent TEXT DEFAULT '', created REAL, "
                 "deleted INTEGER DEFAULT 0, pending INTEGER DEFAULT 0)")

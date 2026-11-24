@@ -17,6 +17,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from agentos import remoteinstall, screen, sdcard   # noqa: E402
+from agentos import dbcrypt  # noqa: E402
 
 ROOT = Path(__file__).parent.parent
 
@@ -235,10 +236,10 @@ def test_a_screen_that_is_showing_never_holds_up_a_start(tmp_path):
     from agentos import backup, standbysync
     home = tmp_path / "home"
     (home / screen.PROFILE_NAME / "Default").mkdir(parents=True)
-    sqlite3.connect(home / "agentos.db").execute("CREATE TABLE t (x)")
+    dbcrypt.connect(home / "agentos.db").execute("CREATE TABLE t (x)")
     held = []
     for rel in ("first_party_sets.db", "Default/heavy_ad_intervention_opt_out.db"):
-        c = sqlite3.connect(home / screen.PROFILE_NAME / rel, isolation_level=None)
+        c = dbcrypt.connect(home / screen.PROFILE_NAME / rel, isolation_level=None)
         c.execute("PRAGMA locking_mode=EXCLUSIVE")
         c.execute("CREATE TABLE IF NOT EXISTS s (x)")
         c.execute("BEGIN EXCLUSIVE")          # what a running Chromium does to its own files

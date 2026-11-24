@@ -16,6 +16,7 @@ in the per-user database, where the rest of somebody's data already is.
 """
 
 import sqlite3
+from agentos import dbcrypt  # noqa: E402
 import sys
 from pathlib import Path
 
@@ -73,7 +74,7 @@ def test_an_existing_database_migrates(tmp_path):
     """Every install already has a conversations table without this column, and a
     migration that only runs on a fresh file is not a migration."""
     db = tmp_path / "old.db"
-    con = sqlite3.connect(db)
+    con = dbcrypt.connect(db)
     con.execute("CREATE TABLE conversations (id TEXT PRIMARY KEY, title TEXT, "
                 "created_at REAL, updated_at REAL)")
     con.execute("INSERT INTO conversations VALUES ('c1','old chat',0,0)")

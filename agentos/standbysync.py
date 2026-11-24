@@ -48,6 +48,7 @@ import os
 import re
 import shutil
 import sqlite3
+from . import dbcrypt
 import tarfile
 import threading
 import time
@@ -123,7 +124,7 @@ def _con(path: Path) -> sqlite3.Connection:
     with _LOCK:
         c = _CONS.get(key)
         if c is None:
-            c = sqlite3.connect(key, timeout=30, check_same_thread=False, isolation_level=None)
+            c = dbcrypt.connect(key, timeout=30, check_same_thread=False, isolation_level=None)
             _CONS[key] = c
         return c
 
@@ -222,7 +223,7 @@ def ensure(home=None, on: bool = False) -> dict:
                     out["covered"].append(f"{rel}:{t}")
             elif remove(p):
                 out["removed"] += 1
-        except sqlite3.Error:
+        except dbcrypt.Error:
             continue
     return out
 
@@ -230,7 +231,7 @@ def ensure(home=None, on: bool = False) -> dict:
 def high_water(con) -> int:
     try:
         r = con.execute("SELECT seq FROM sqlite_sequence WHERE name=?", (JOURNAL,)).fetchone()
-    except sqlite3.Error:
+    except dbcrypt.Error:
         return 0
     return int(r[0]) if r and r[0] is not None else 0
 
@@ -241,7 +242,7 @@ def marks(home=None) -> dict[str, int]:
     for rel, p in databases(home):
         try:
             out[rel] = high_water(_con(p))
-        except sqlite3.Error:
+        except dbcrypt.Error:
             out[rel] = 0
     return out
 
@@ -254,7 +255,7 @@ def prune(home, upto: dict[str, int]) -> None:
             continue
         try:
             _con(p).execute(f"DELETE FROM {JOURNAL} WHERE seq <= ?", (n,))
-        except sqlite3.Error:
+        except dbcrypt.Error:
             continue
 
 
@@ -387,7 +388,7 @@ def _db_changes(con, since: int) -> tuple[dict, int, int]:
     high-water, row count)."""
     try:
         con.execute("BEGIN")
-    except sqlite3.OperationalError:
+    except dbcrypt.OperationalError:
         pass
     try:
         if not con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (JOURNAL,)).fetchone():
@@ -450,7 +451,7 @@ def _db_changes(con, since: int) -> tuple[dict, int, int]:
     finally:
         try:
             con.execute("COMMIT")
-        except sqlite3.OperationalError:
+        except dbcrypt.OperationalError:
             pass
 
 
@@ -464,7 +465,7 @@ def pending(home, base: dict, files_known: dict | None, check_files: bool, ws: b
             if high_water(_con(p)) > int(hw.get(rel, 0) or 0):
                 out["rows"] = True
                 break
-        except sqlite3.Error:
+        except dbcrypt.Error:
             continue
     if check_files and files_known is not None:
         now = file_state(home, ws)
@@ -484,7 +485,7 @@ def build(dest: Path, secret: str, *, home=None, base: dict, files_known: dict,
     for rel, p in databases(home):
         try:
             ch, top, count = _db_changes(_con(p), int(hw0.get(rel, 0) or 0))
-        except sqlite3.Error:
+        except dbcrypt.Error:
             continue
         if not ch:
             continue
@@ -615,7 +616,7 @@ def _apply_db(path: Path, ch: dict, skip_upto: int) -> int:
     """Apply one database's part of an update inside one transaction. Entries at or
     below `skip_upto` are already in the copy."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    con = sqlite3.connect(str(path), timeout=30, isolation_level=None)
+    con = dbcrypt.connect(str(path), timeout=30, isolation_level=None)
     applied = 0
     try:
         con.execute("BEGIN IMMEDIATE")
@@ -670,13 +671,13 @@ def replay(staging, updates: list[Path], secret: str) -> dict:
     for p in sorted(root.rglob("*.db")):
         rel = p.relative_to(root).as_posix()
         try:
-            c = sqlite3.connect(str(p), timeout=30, isolation_level=None)
+            c = dbcrypt.connect(str(p), timeout=30, isolation_level=None)
             try:
                 skip[rel] = high_water(c)
                 remove(p, c)
             finally:
                 c.close()
-        except sqlite3.Error:
+        except dbcrypt.Error:
             skip[rel] = 0
     report = {"applied": 0, "rows": 0, "last_at": 0.0, "error": "", "workspace": ""}
     for path in updates:

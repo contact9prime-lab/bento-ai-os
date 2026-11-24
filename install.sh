@@ -645,7 +645,10 @@ MACH="$(uname -m)"
 [ "$MACH" = aarch64 ] && [ "$(getconf LONG_BIT 2>/dev/null)" = 32 ] && MACH=armv7l
 case "$MACH" in
   armv6l|armv7l)
-    UV_PI_ARGS="--extra-index-url https://www.piwheels.org/simple --index-strategy unsafe-best-match" ;;
+    # SQLCipher (the encrypted databases, agentos/dbcrypt.py) has no 32-bit ARM wheel, and its
+    # source needs OpenSSL headers and minutes of compiling: a 32-bit Pi keeps plain databases
+    # and says so. Its Python can report aarch64, so the marker alone doesn't skip it.
+    UV_PI_ARGS="--extra-index-url https://www.piwheels.org/simple --index-strategy unsafe-best-match --no-install-package sqlcipher3" ;;
 esac
 
 # `uv sync`, backgrounded with a heartbeat. On a Pi a source build is minutes of

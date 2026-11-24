@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from agentos import keep                                           # noqa: E402
+from agentos import dbcrypt  # noqa: E402
 
 PW = "indigo-tundra-harbor-saffron-46"
 
@@ -47,7 +48,7 @@ def _home(tmp_path, name, memory=""):
     h.mkdir()
     (h / "config.json").write_text(json.dumps({"agent_name": "Aria", "setup_complete": True}))
     if memory:
-        con = sqlite3.connect(h / "agentos.db")
+        con = dbcrypt.connect(h / "agentos.db")
         con.execute("create table memories (content text)")
         con.execute("insert into memories values (?)", (memory,))
         con.commit()
@@ -56,7 +57,7 @@ def _home(tmp_path, name, memory=""):
 
 
 def _memories(h):
-    con = sqlite3.connect(h / "agentos.db")
+    con = dbcrypt.connect(h / "agentos.db")
     try:
         return [r[0] for r in con.execute("select content from memories")]
     finally:
@@ -97,7 +98,7 @@ def test_a_save_writes_the_other_slot_so_the_copy_before_stays_whole(tmp_path, s
     keep.save(h)
     assert keep.save(h) == {"saved": False, "why": "nothing changed"}
     before = s3.BUCKETS["bento-test"]["bento-home/a.bento"]
-    con = sqlite3.connect(h / "agentos.db")
+    con = dbcrypt.connect(h / "agentos.db")
     con.execute("insert into memories values ('two')")
     con.commit()
     con.close()
