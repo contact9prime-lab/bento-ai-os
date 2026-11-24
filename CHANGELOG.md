@@ -11,6 +11,9 @@ desktop turn does so before the price card and the history rebuild, either of wh
 started closed. It now sits beside the chat and ☰ hides it; your choice is kept for this browser. On a phone
 or a window narrower than 640 pixels it stays the drawer. The row of controls above the chat now wraps
 instead of running off the window.
+**A chat's ⤓ JSON is that chat's, not every chat's.** A chat that had started no mission or department run
+was given every ledger row with no run in it: the tool steps of every other chat, and settings changes. The
+X-ray read the same list and drew those steps too. The file now carries only this chat's rows and its runs'.
 
 ## 0.99.5 — 2026-11-24
 
