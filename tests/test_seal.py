@@ -504,3 +504,29 @@ def test_a_new_recovery_code_from_a_terminal(home, monkeypatch, capsys):
         seal.open_with_code(u, old)
     rows = usersmod.store_for(u).db.execute("SELECT action FROM audit WHERE action='seal.code'").fetchall()
     assert rows, "a ledger row in the account's own store"
+
+
+def test_an_old_profile_with_a_dead_chromes_locks_moves_in(tmp_path, monkeypatch):
+    """Reported as "login to instagram" failing at browser_sign_in with [Errno 2] on SingletonLock:
+    the clear profile kept links to nothing from a Chrome that died, and copytree raised on them,
+    so the shared browser never started. The first start skips links and Chrome's caches, as the
+    seal does, and the profile is sealed."""
+    from agentos import cdpbrowser as cb
+    home = tmp_path / "acct"
+    plain = home / "browser" / "profile"
+    (plain / "Default" / "Cache").mkdir(parents=True)
+    (plain / "Default" / "Cookies").write_bytes(b"cookie-db")
+    (plain / "Default" / "Cache" / "big").write_bytes(b"x" * 1000)
+    for name, to in (("SingletonLock", "host-104637"), ("SingletonCookie", "1771"),
+                     ("SingletonSocket", str(tmp_path / "gone" / "SingletonSocket"))):
+        os.symlink(to, plain / name)
+    monkeypatch.setattr(cb, "_ram_dir", lambda: str(tmp_path))
+    b = cb.Browser("u1", {}, home)
+    monkeypatch.setattr(b, "_sealed", lambda: True)
+    sealed = []
+    monkeypatch.setattr(b, "_seal_profile", lambda: sealed.append(sorted(p.name for p in b.run_dir.iterdir())))
+    run = asyncio.run(b._open_profile())
+    assert (run / "Default" / "Cookies").read_bytes() == b"cookie-db"
+    assert not (run / "Default" / "Cache").exists()
+    assert not any(os.path.lexists(run / n) for n in ("SingletonLock", "SingletonCookie", "SingletonSocket"))
+    assert sealed == [["Default"]] and not plain.exists(), "sealed, and the clear copy removed"
