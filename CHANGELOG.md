@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.99.7 — 2026-11-24
+
+No release notes were written for this one; the commits since 0.99.6 are what changed (`bento update` lists them).
+
 ## 0.99.6 — 2026-11-24
 
 **A chat is in the list the moment you write in it.** Chat, Telegram and WhatsApp moved a conversation up
