@@ -184,9 +184,11 @@ def conversation(store, cfg: dict, cid: str) -> dict:
                                            "AND (parent_run IS NULL OR parent_run='')", (cid,))]
     runs = _run_tree(store, roots)
     run_ids = [r["id"] for r in runs]
-    marks = ",".join("?" * len(run_ids)) or "''"
-    ledger = _rows(store, f"SELECT * FROM audit WHERE conversation_id=? OR run_id IN ({marks}) "
-                          f"ORDER BY ts LIMIT ?", (cid, *run_ids, MAX_AUDIT)) if "audit" in tables else []
+    # With no runs the list must be left out, never written as IN (''): that matched every
+    # ledger row with no run, so a chat's file carried every other chat's steps.
+    by_run = f" OR run_id IN ({','.join('?' * len(run_ids))})" if run_ids else ""
+    ledger = _rows(store, f"SELECT * FROM audit WHERE conversation_id=?{by_run} ORDER BY ts LIMIT ?",
+                   (cid, *run_ids, MAX_AUDIT)) if "audit" in tables else []
     logs = _rows(store, "SELECT * FROM logs WHERE conversation_id=? ORDER BY rowid LIMIT ?",
                  (cid, MAX_LOGS)) if "logs" in tables else []
     out = {**_meta("conversation", cid), "conversation": {**conv, "messages": msgs},
