@@ -249,12 +249,17 @@ def test_the_agents_browser_cannot_be_sent_to_this_machine(box):
         assert run(box.browser_open(url)).startswith("[denied]"), url
 
 
-def test_a_model_supplied_dataset_address_is_guarded(box):
-    class TF:
-        async def api(self, *a, **k):
-            raise AssertionError("the address reached the training service")
-    box.trainforge = TF()
-    assert run(box.train_datasets(action="import_url", url="http://127.0.0.1:5000/x.csv")).startswith("[denied]")
+def test_a_dataset_comes_only_from_the_hub_by_name(box):
+    """Train took a dataset from any URL once. It takes a Hub repository's name now, and the
+    address is this module's own, so there is no address for a model to supply."""
+    from agentos import slm
+    from agentos.tools import TOOL_SCHEMAS
+    sch = next(t for t in TOOL_SCHEMAS if t["name"] == "train_datasets")
+    assert "url" not in sch["parameters"]["properties"]
+    assert "import_url" not in sch["parameters"]["properties"]["action"]["enum"]
+    for bad in ("http://127.0.0.1:5000/x", "../../etc/passwd", "a/b/c", "a b/c", ""):
+        with pytest.raises(slm.HubError):
+            slm.hub_splits(bad)
 
 
 def test_a_big_image_is_refused_while_it_downloads(listener, monkeypatch):

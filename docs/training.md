@@ -1,54 +1,195 @@
-# Train — fine-tune your own models (TrainForge)
+# Train: make a small language model of your own
 
-AgentOS's Train pillar is **TrainForge**: a self-hosted training platform that AgentOS manages
-as a local service and embeds as the **Train** desktop app. Everything happens on your
-machine — datasets, training, evaluation, weights. Nothing leaves unless *you* publish it.
+A small language model does one narrow job: sorting mail, tagging notes, pulling fields out
+of a message, answering in a fixed format. It runs on this machine for nothing, and for that
+one job it can be as good as the big model you would otherwise pay for on every call.
 
-## Starting it
+Train makes one in four steps, and you can stop after any of them:
 
-Three ways, pick any:
+1. **Examples.** Pairs of a prompt and the answer you want.
+2. **A fine-tune.** A small open model learns from them, on this machine.
+3. **A check.** Examples it never saw say whether it learned the job.
+4. **Use.** Try it, put it in Ollama so an agent can run on it, or publish it.
 
-- Open the **Train** app and click **Start TrainForge**.
-- Ask the agent: *"start the training service"* (the `trainforge_service` tool).
-- It starts implicitly when you ask for training work: *"fine-tune a model on my notes"*.
+It is in the **Train** app, in `bento train`, and your agent can do it when you ask.
 
-AgentOS always binds TrainForge to `127.0.0.1` (it has no auth of its own) on port `8377`.
-Configure the checkout location and port in `config.json` under `trainforge`
-(auto-detected when the `doneitrightai` project sits in a known location).
+![The plan for a small model, before anything is spent](screenshots/train-plan.png)
 
-## What you can do
+## The short way: say what you want
 
-| Capability | In the Train app | By asking the agent |
-|---|---|---|
-| Find & import datasets | Datasets tab (HF Hub search, URL, upload) | `train_datasets` — *"import the imdb dataset, cap 2000 rows"* |
-| Train / fine-tune | New Job form (hyperparameters auto-tuned) | `train_job` — *"train a text classifier on dataset 3"* |
-| **LoRA fine-tune an LLM** | task `causal-lm` | *"LoRA-fine-tune qwen-0.5b on my Q&A pairs"* |
-| Watch progress | live loss charts + streaming logs | `train_job action=logs/metrics` |
-| Evaluate | built-in playground; every model is a live endpoint | `train_model action=predict` |
-| Publish | one click → Hugging Face Hub | `train_model action=publish` |
-| Full auto | **Autopilot**: goal → dataset → train → register | `train_autopilot` — *"train a sentiment model for movie reviews"* |
+Open **Train**, write what the model should do, and press **Plan it**:
 
-Training jobs are isolated OS processes: stoppable, crash-safe, one at a time on a single GPU.
-TrainForge coordinates VRAM with Ollama automatically — it pauses resident chat models before
-a run and reloads them after, so training and your agent share one GPU politely.
+> Sort support mail into billing, bug or other. Answer with one word.
 
-## The loop that matters
+You get a plan you can edit: a name, the instruction the model works under, how many
+examples, which small model learns (the student), and how many passes. It says who writes the
+examples and in about how many calls. Nothing is made until you press **Make it**.
 
-The differentiating story of an agentic OS that trains: **teach your agent in weights, not
-just memory.**
+Then it runs on its own. A teacher writes the examples, this machine trains, and the check
+runs. Each step is written down as it happens, and you can stop it.
 
-1. Collect examples — conversations, corrections, domain documents — into a dataset
-   (CSV/JSONL import, or exported from your workspace by the agent).
-2. `causal-lm` LoRA fine-tune on a small base model (a 0.5–8B model trains comfortably on a
-   16 GB consumer GPU).
-3. Evaluate against the live endpoint (`train_model action=predict`) until it behaves.
-4. Export to Ollama (GGUF) and select it in **Settings → default model** — your agent now
-   *runs on the model you trained*.
-5. Memory keeps handling facts; the fine-tune handles tone, format, and domain reflexes.
+```
+bento train make "Sort support mail into billing, bug or other. Answer with one word."
+```
 
-## Approval & safety
+## Teacher and student
 
-- Starting/checking the service, listing, and predicting are **safe** (no prompt).
-- Importing external datasets, launching training runs, and Autopilot are **approval-gated**
-  (they download data / occupy the GPU for a long time).
-- Publishing to the Hub is **approval-gated** (it leaves the machine).
+The **teacher** is this machine's brain: Claude Code, a cloud model, or a bigger local model,
+whichever you chose under Settings, AI providers. It does two things.
+
+- **It writes examples** for a job you describe. This is synthetic data. It is good for
+  teaching a format or a sorting rule, and it is only as right as the teacher, so read some
+  before you train on them.
+- **It answers prompts** that came without answers. Import a column of real messages and
+  the teacher fills in what the small model should say.
+
+The teacher has none of its tools while it does this. A dataset from the internet is other
+people's words, and they reach a model that can only write an answer. Its calls are counted
+in Usage like any other.
+
+The **student** is a small open model from the Hugging Face Hub. These are offered, and you
+can type any other `owner/name`:
+
+| Model | Size | Licence | Trains on |
+|---|---|---|---|
+| HuggingFaceTB/SmolLM2-135M-Instruct | 135M | Apache-2.0 | any machine, even without a GPU |
+| HuggingFaceTB/SmolLM2-360M-Instruct | 360M | Apache-2.0 | any machine, slowly without a GPU |
+| Qwen/Qwen2.5-0.5B-Instruct | 0.5B | Apache-2.0 | 4 GB GPU or Apple Silicon |
+| Qwen/Qwen3-0.6B | 0.6B | Apache-2.0 | 4 GB GPU or Apple Silicon |
+| TinyLlama/TinyLlama-1.1B-Chat-v1.0 | 1.1B | Apache-2.0 | 6 GB GPU |
+| Qwen/Qwen2.5-1.5B-Instruct | 1.5B | Apache-2.0 | 8 GB GPU |
+| HuggingFaceTB/SmolLM2-1.7B-Instruct | 1.7B | Apache-2.0 | 8 GB GPU |
+| microsoft/Phi-3.5-mini-instruct | 3.8B | MIT | 16 GB GPU |
+
+`bento train bases` prints the list. On a machine with no GPU the plan picks the smallest.
+
+## Datasets
+
+![Datasets: the Hub, a teacher, or a file](screenshots/train-datasets.png)
+
+Three ways in, all ending as prompt and answer pairs:
+
+- **The Hugging Face Hub.** Search public datasets and import the first rows of one. A
+  class label arrives as its name (`pos`), not its number. Nothing from the dataset's
+  repository runs here: rows are asked of the Hub's own rows service.
+- **A teacher writes them.** Describe the job and say how many.
+- **A file.** CSV, TSV, JSON or JSONL. A file of prompts with no answers is fine: have the
+  teacher answer them.
+
+```
+bento train search sms spam
+bento train import ucirvine/sms_spam --rows 1000 --task "Say spam or ham."
+bento train file inbox.csv --task "Sort into billing, bug or other."
+bento train write "Sort support mail into billing, bug or other." --count 200
+bento train answer DATASET
+```
+
+Each dataset keeps the **instruction** the model is trained under. The same instruction is
+used when it is tried and when it goes into Ollama.
+
+## Training
+
+```
+bento train start DATASET
+bento train start DATASET --base Qwen/Qwen2.5-0.5B-Instruct --epochs 3
+bento train jobs
+bento train log JOB
+bento train stop JOB
+```
+
+![A finished run: the loss, the check and the held-back examples](screenshots/train-job-done.png)
+
+It is a LoRA fine-tune: small adapter weights are trained and merged into the model, which is
+what makes this possible on one consumer GPU, or on a processor for the smallest models.
+One training runs at a time on a machine. It is a process of its own, so it carries on if
+Bento restarts, and you can stop it.
+
+## The check
+
+One example in ten (40 at most) is held back and never trained on. The base model answers
+them before training and the tuned model answers them after. You see both, next to what was
+wanted.
+
+A model is marked **learned** only when the tuned model is closer to the wanted answers than
+the base model was. Otherwise it says **no better**, with the counts. Two numbers are given:
+how many answers match exactly, and how much the words overlap. They are counts, not a
+judgement of quality. For a sorting job the exact count is the one to read.
+
+```
+bento train models
+bento train examples MODEL
+bento train try MODEL "The dashboard shows a blank page since the update."
+```
+
+## Using it
+
+![A model: what it learned, and trying it](screenshots/train-model.png)
+
+- **Try it** in the app or with `bento train try`. It loads the model each time, so the
+  first answer takes a few seconds.
+- **Add to Ollama.** Bento hands the weights to this machine's Ollama as `bento-<name>`,
+  with the instruction as its system prompt. Then choose it under Settings, AI providers, as
+  the machine's brain or as one agent's. Ollama converts the weights itself and imports the
+  common small architectures. When it can't take one, you see what it said. On a machine
+  with accounts this is an admin's, because every account can then choose the model.
+- **Publish** to the Hugging Face Hub, private by default. This needs your token, which is
+  kept in your vault and never shown again.
+
+Putting a model into Ollama and publishing one are done by you, in the app or the terminal.
+No agent can do either.
+
+## Installing it
+
+Training needs PyTorch and the Hugging Face libraries. They are not part of Bento. Install
+them from the Train app, or with:
+
+```
+bento train install
+```
+
+They go into a folder of their own in your home (`~/.local/share/bento/train`): about 1 GB on
+a Mac, 5 GB or more on Linux, where PyTorch brings NVIDIA's libraries. Base models are
+downloaded from the Hub the first time each is used. You can collect and read datasets before
+any of this is installed.
+
+Hardware: an NVIDIA GPU, or Apple Silicon. Without either, the processor trains the two
+smallest models. A Raspberry Pi can run a small model but should not train one: train on a
+bigger machine and put the model in the Pi's Ollama.
+
+## Asking your agent
+
+> Make a small model that sorts my support mail into billing, bug or other.
+
+| The agent | Is asked first? |
+|---|---|
+| lists datasets, runs and models, searches the Hub, reads examples, tries a model | no |
+| imports a Hub dataset | yes |
+| has a teacher write or answer examples | yes |
+| starts a training, or a whole run from a goal | yes |
+
+Starting a training and teaching are their own permission (`model.train`), so "may read my
+datasets" and "may start a training" can be granted apart. Apps, linked teams and other
+machines can never start one.
+
+## What to know
+
+- **Where it lives.** Each account's datasets, runs and models are in that account's own
+  home, under `train/`. Another account can't see them.
+- **Backups** carry your datasets and records, not the trained weights. A model is hundreds
+  of megabytes and can be trained again from its dataset.
+- **A model can repeat what it was trained on.** Think about that before publishing one
+  trained on your own mail or notes.
+- **Synthetic examples are a teacher's opinion.** The check tells you the student learned
+  what the teacher wrote, not that the teacher was right. Try the model on real cases.
+- **Not measured yet.** Adding a model to a real Ollama and publishing to the real Hub are
+  tested against stand-ins only. Training has been run on a processor, not yet on an NVIDIA
+  or Apple GPU.
+
+## Where it came from
+
+Train is the port of [doneitrightai](https://github.com/contact9prime-lab/doneitrightai)
+(TrainForge, MIT) into Bento. It used to run beside Bento as a separate service on its own
+port. Its LoRA recipe, Hub search, column detection, job runner and Autopilot are here, with
+a teacher where it had keyword rules. Its scikit-learn tabular tasks and BERT-style
+classifier were not brought over: they are not language models, and a small language model
+does the classifying here.

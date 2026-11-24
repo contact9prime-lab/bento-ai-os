@@ -244,6 +244,23 @@ CATALOG: dict[str, dict] = {
         "detect": lambda: _voiceprint_ready(),
         "why_unavailable": lambda: _voiceprint_missing(),
     },
+    # Training a small language model (slm.py): PyTorch and the Hugging Face libraries, in a
+    # Python environment of their own. Asked for, never shipped: it is gigabytes, and Bento's
+    # own environment is emptied of anything extra by every `uv sync`.
+    "train-stack": {
+        "packages": {}, "method": "script",
+        "licence": "BSD-3-Clause (PyTorch), Apache-2.0 (transformers, peft, accelerate, safetensors, sentencepiece)",
+        "group": "optional", "for_session": False, "needs_root": False,
+        "title": "Training your own small models (PyTorch and LoRA)",
+        "unlocks": "Lets the Train app and bento train fine-tune a small open language model on "
+                   "this machine. Installs PyTorch and the Hugging Face libraries in a folder of "
+                   "their own in your home: about 1 GB on a Mac, 5 GB or more on Linux, where "
+                   "PyTorch brings NVIDIA's libraries. Base models are downloaded from the "
+                   "Hugging Face Hub the first time each is used.",
+        "argv": lambda: [] if _train_missing() else ["sh", "-c", _train_script()],
+        "detect": lambda: _train_ready(),
+        "why_unavailable": lambda: _train_missing(),
+    },
     # The screen of a machine with no desktop (Raspberry Pi OS Lite): cage runs one
     # full-screen app, Chromium on the kiosk, from `bento screen on` (screen.py).
     "cage": {
@@ -516,6 +533,56 @@ if [ ! -s "$D/model.onnx" ]; then
 fi
 echo "voice prints are ready"
 """
+
+
+TRAIN_SCRIPT = r"""set -e
+D="__DIR__"
+mkdir -p "$D"
+PKGS="torch transformers peft accelerate safetensors sentencepiece"
+if command -v uv >/dev/null 2>&1; then
+  [ -x "$D/venv/bin/python" ] || uv venv --quiet "$D/venv"
+  uv pip install --quiet --python "$D/venv/bin/python" $PKGS
+else
+  [ -x "$D/venv/bin/python" ] || "__PY__" -m venv "$D/venv"
+  "$D/venv/bin/python" -m pip install --quiet --upgrade pip
+  "$D/venv/bin/python" -m pip install --quiet $PKGS
+fi
+"$D/venv/bin/python" -I -c "import torch, transformers, peft; print('training is ready: torch', torch.__version__)"
+"""
+
+
+def _train_script() -> str:
+    import sys
+    from . import slm
+    return (TRAIN_SCRIPT.replace("__DIR__", str(slm.stack_dir()).replace('"', ""))
+            .replace("__PY__", sys.executable.replace('"', "")))
+
+
+def _train_ready() -> bool:
+    try:
+        from . import slm
+        return slm.ready()
+    except Exception:
+        return False
+
+
+def _train_missing() -> str:
+    """'' when this machine can install the training stack, else what it needs first."""
+    import platform
+    import struct
+    if struct.calcsize("P") * 8 == 32:
+        return "PyTorch has no build for a 32-bit system."
+    if shutil.which("uv"):
+        return ""
+    try:
+        import importlib.util
+        if importlib.util.find_spec("venv") is None or importlib.util.find_spec("ensurepip") is None:
+            return ("Making a Python environment needs uv, or Python's venv module "
+                    "(on Debian: sudo apt install python3-venv).")
+    except Exception:
+        return "Making a Python environment needs uv or Python's venv module."
+    del platform
+    return ""
 
 
 def _voiceprint_script() -> str:

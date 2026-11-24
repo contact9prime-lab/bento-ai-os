@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.100.0 — 2026-11-24
+
+**Train makes a small language model of your own.** Say what one narrow job it should do ("sort support
+mail into billing, bug or other") and Bento plans it, has a teacher write the examples, fine-tunes a small
+open model on them on this machine, and checks it on examples it never saw. The teacher is this machine's
+brain. Examples can also come from the Hugging Face Hub or a file, and a teacher can answer prompts that
+came without answers. A finished model can be tried, put into Ollama so an agent runs on it, or published.
+It is in the Train app, in `bento train`, and your agent can do it when you ask. docs/training.md.
+
+This is the port of doneitrightai (TrainForge) into Bento. It used to run beside Bento as a separate
+service on its own port, drawn in a frame, which a phone could not open and no permission reached. It was
+also never downloadable: its address was a placeholder. Now each account's datasets and models are in that
+account's own home, starting a training is its own permission (`model.train`), and no agent can put a
+model into Ollama or publish one. The old `trainforge` setting and the `trainforge_service` tool are gone.
+
+Training needs PyTorch, which is not part of Bento: install it from the Train app or with
+`bento train install` (about 1 GB on a Mac, 5 GB or more on Linux). Measured on a 4-core machine with no
+GPU: a 135M model learned a three-way sorting job from 216 written examples in a few minutes.
+
+Not measured yet: adding a model to a real Ollama, publishing to the real Hub, and training on an NVIDIA
+or Apple GPU. The tabular and BERT-style tasks of doneitrightai were not brought over.
+
 ## 0.99.5 — 2026-11-24
 
 **Bento's own upgrades no longer stop your agents.** 0.99.0 moved the vaults onto the service key at start

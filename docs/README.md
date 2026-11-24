@@ -70,7 +70,7 @@ Code, Gemini CLI or Codex, and each specialist can run on a different one. The
 | [Missions](missions.md) | What this machine does for you every day: the catalogue by persona (founder, coder, consultant), what a mission may read, what it did, and `bento job` |
 | [Spaces, Gallery, Timeline, Audit](spaces.md) | Scoping memory and facts to a project, keeping what media servers return, the milestone timeline, and the structured access ledger |
 | [Building Apps](building-apps.md) | App Studio, the Store, app data stores, letting apps call the OS |
-| [Training Models](training.md) | The Train app (TrainForge): datasets, LoRA fine-tuning, evaluation, publishing |
+| [Training Models](training.md) | Make a small language model of your own: examples from the Hub or a teacher, a LoRA fine-tune, a check, Ollama |
 | [Git & Shipping](git.md) | The git toolset, GitHub setup, exporting apps to repos |
 | [The TUI](tui.md) | AgentOS in a terminal — over SSH or without a browser |
 | [WhatsApp](whatsapp.md) | Your agent on WhatsApp — the Cloud API setup, the webhook, and Meta's 24-hour window |

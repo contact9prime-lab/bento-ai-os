@@ -22,7 +22,7 @@ AgentOS is built to be the opposite of that story.
 | Shell | risk-classified | read-only commands run free; mutating commands ask; destructive patterns are hard-blocked and non-overridable. `git push`, config writes, and remote changes ask |
 | Secrets | masked & env-injected | API keys and the GitHub token are masked in the API; git auth goes through an askpass helper — tokens never enter command lines, remotes, or logs |
 | Self-modification | snapshot + AST + **test gate** | the OS snapshots itself before any source write, refuses syntax errors, and refuses to restart if the test suite fails |
-| Managed services | loopback-only | TrainForge (no auth of its own) is always started on `127.0.0.1` |
+| Training | a process of its own, per account | Each account's datasets and models are in its own home. The training process gets an allow-listed environment with none of Bento's keys, and never runs code from a model's repository. Putting a model into Ollama and publishing one are a person's: no agent tool does either |
 
 ## How a request is decided
 

@@ -83,7 +83,10 @@ SKIP_TOP = {"snapshots", "speech-cache", "mcp_index.json", "logs", "boot.html",
             # locked while the screen shows. Walked, every start of a Pi with its screen on
             # waited 30 s on each of them (standbysync), about 90 s in all.
             "screen-profile"}
-SKIP_NAMES = {"__pycache__", "node_modules", ".DS_Store"}
+SKIP_NAMES = {"__pycache__", "node_modules", ".DS_Store",
+              # a trained model's weights (slm.MODELS): hundreds of megabytes each, and made
+              # again from the dataset, which is carried
+              "trained-models"}
 # the ledger's anchor names its newest row, and a copy taken mid-write would name one the copied
 # database doesn't have. A restored home starts without one (the key does travel: it verifies the
 # rows). The integrity files are this machine's own and are never moved: see PRIVATE.

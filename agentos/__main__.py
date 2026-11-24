@@ -1522,14 +1522,11 @@ def doctor(fix: bool = False, session: bool = False):
             ok(f"safe folder {sh['mode']}: {sh['path']}  ({who})")
     for entry, why in folder_problems(cfg):
         warn(f"safe folder not in use — {entry}: {why}")
-    from . import trainforge as tfmod
-    tf = tfmod.conf(cfg)
-    if tf["path"]:
-        ok(f"TrainForge found at {tf['path']} (Train pillar)")
-    elif tf.get("repo") and "YOUR_ORG" not in tf["repo"]:
-        warn("TrainForge not installed — the Train app will fetch it on first Start")
+    from . import slm
+    if slm.ready():
+        ok(f"training stack installed: {slm.hardware().get('words')}  (bento train)")
     else:
-        warn("TrainForge not found — set trainforge.path or trainforge.repo to enable the Train pillar")
+        warn("training your own small models is not installed: bento train install")
 
     # 6. the desktop (AgentOS-as-the-DE)
     if sys.platform == "linux":
@@ -7251,6 +7248,253 @@ def _timetravel_cli(args):
         print("rewound." + (f" What it replaced is in {got['aside']}" if got["aside"] else ""))
 
 
+def _train_cli(args):
+    """`bento train` — the Train app from a terminal: datasets from the Hugging Face Hub, a
+    file or a teacher, a LoRA fine-tune of a small open model on this machine, the check
+    on held-back examples, and the model in Ollama. It reads and runs the same files as the
+    app (agentos/slm.py), with the server down. A teacher here is this machine's brain,
+    asked directly."""
+    import asyncio
+    from . import executors, slm
+    from . import users as usersmod
+    from .slmdesk import Desk
+    cfg, _store = _open_store(getattr(args, "user", ""))
+    base = slm.root(usersmod.home_for(usersmod.current() or ""))
+    a, rest = args.action, list(args.rest or [])
+    one = rest[0] if rest else ""
+
+    async def ask(system, prompt):
+        text, _who, why = await executors.ask_brain(cfg, system, prompt, timeout=300)
+        return text, why
+    desk = Desk(lambda: cfg, None, ask=ask)
+
+    def need(what):
+        if not one:
+            print(f"say which: bento train {a} {what}")
+            sys.exit(2)
+
+    def fail(e):
+        print(f"✗ {e.args[0] if isinstance(e, KeyError) and e.args else e}")
+        sys.exit(1)
+
+    def ds_line(d):
+        left = d["rows"] - d.get("answers", 0)
+        extra = f", {left} without an answer" if left else ""
+        state = "" if d.get("state") == "ready" else f"  [{d.get('state')}]"
+        return f"  {d['id']}  {d['name']:<28.28} {d['rows']:>6} examples{extra}  ({d['source']}){state}"
+
+    def follow(jid):
+        """Print a job's log as it grows, then its result."""
+        off, last = 0, ""
+        while True:
+            j = slm.job(base, jid)
+            chunk = slm.log(base, jid, off)
+            off = chunk["offset"]
+            for line in chunk["content"].splitlines():
+                if line.strip():
+                    print("    " + line[:200])
+            where = j["phase"] + (f" {j['step']}/{j['total']}" if j["total"] and j["state"] == "running" else "")
+            if j["state"] == "running" and where != last:
+                print(f"  … {where}")
+                last = where
+            if j["state"] != "running":
+                break
+            time.sleep(2)
+        if j["state"] != "done":
+            print(f"✗ {j['state']}" + (f": {j['error']}" if j["error"] else ""))
+            sys.exit(1)
+        m = slm.model(base, jid)
+        print(f"✓ {m['name']}  ({m['id']}, {m['bytes'] // 2**20} MB, from {m['base']})")
+        print("  " + m["verdict"]["words"])
+        print(f"  try it: bento train try {m['id']} \"...\"    use it: bento train ollama {m['id']}")
+
+    try:
+        if a == "status":
+            st = slm.status(base)
+            if not st["ready"]:
+                print("Training is not installed on this machine.\n  bento train install    (PyTorch and "
+                      "the Hugging Face libraries, in a folder of their own)")
+            else:
+                print(f"Training is ready. {st['hardware'].get('words')}")
+                print(f"  the student this machine can train: {st['suggested_base']}")
+            who, why = desk.teacher_name("")
+            print(f"  teacher: {who}" if who else f"  no teacher: {why}")
+            if st["busy"]:
+                print(f"  training now: {st['busy'].get('name')}")
+            print(f"  {st['datasets']} datasets, {st['jobs']} runs, {st['models']} models"
+                  + ("" if st["ollama"] else "   (Ollama is not installed, so a model can be tried but not chosen as a brain)"))
+            if st["ready"] and not st["models"]:
+                print('\n  start with:  bento train make "sort support mail into billing, bug or other"')
+        elif a == "install":
+            from . import components
+            comp = next((c for c in components.catalog() if c["id"] == slm.COMPONENT), None)
+            if slm.ready():
+                print(f"Training is already installed. {slm.hardware(fresh=True).get('words')}")
+                return
+            if not comp or not comp.get("available"):
+                fail(ValueError((comp or {}).get("reason") or "this machine has no way to install it"))
+            print(f"{comp['title']}\n  {comp['unlocks']}\n  licence: {comp['licence']}\n  into: {slm.stack_dir()}")
+            if not args.yes and (not sys.stdin.isatty() or input("Install? [y/N] ").strip().lower() not in ("y", "yes")):
+                print("nothing was installed (add --yes to skip the question)")
+                return
+            print("installing… this downloads a few gigabytes and can take several minutes")
+            got = asyncio.run(components.install(slm.COMPONENT))
+            if not got.get("ok"):
+                fail(ValueError(got.get("message") or got.get("error") or "the install failed"))
+            print(f"✓ {slm.hardware(fresh=True).get('words')}")
+        elif a == "bases":
+            for b in slm.BASES:
+                print(f"  {b['id']:<40} {b['params']:>5}  {b['licence']:<10} {b['fits']}\n      {b['note']}")
+        elif a == "datasets":
+            rows = desk.datasets()
+            print("\n".join(ds_line(d) for d in rows) if rows else
+                  "no datasets yet: bento train search WORDS, bento train file PATH, or bento train write \"the task\"")
+        elif a == "data":
+            need("DATASET")
+            d = slm.dataset(base, one)
+            print(ds_line(d).strip())
+            if d.get("system"):
+                print(f"  the task: {d['system']}")
+            if d.get("note"):
+                print(f"  note: {d['note']}")
+            for r in slm.rows(base, one, 8):
+                print(f"  - {r['prompt'][:110]!r}\n      → {(r.get('response') or '(no answer yet)')[:110]!r}")
+        elif a == "search":
+            need("WORDS")
+            for r in slm.hub_search(" ".join(rest)):
+                print(f"  {r['repo']:<44.44} {r['downloads']:>9,} downloads  {r['licence'] or 'licence not stated'}"
+                      + ("  [gated]" if r["gated"] else "") + (f"\n      {r['about'][:120]}" if r["about"] else ""))
+        elif a == "import":
+            need("OWNER/NAME")
+            d = slm.import_hub(base, one, args.name, "", "", args.rows or 2000, None, args.task or "")
+            print("✓ imported\n" + ds_line(d))
+            print(f"  read as: prompt = {d['how'].get('prompt')!r}, answer = {d['how'].get('response') or 'none'!r}")
+        elif a == "file":
+            need("PATH")
+            d = slm.import_file(base, one, Path(one).expanduser().read_bytes(), args.name, None, args.task or "")
+            print("✓ imported\n" + ds_line(d))
+        elif a in ("write", "answer"):
+            need('"THE TASK"' if a == "write" else "DATASET")
+            who, why = desk.teacher_name("")
+            if why:
+                fail(ValueError("no teacher can answer: " + why))
+
+            async def go():
+                if a == "write":
+                    n = args.count or 100
+                    print(f"{who} writes {n} examples, ten to a call ({(n + 9) // 10} calls)…")
+                    d = desk.synth(args.name or "written examples", one, n)
+                else:
+                    d = desk.label(one, task=args.task or None)
+                    print(f"{who} answers {d['progress']['want']} prompts, one call each…")
+                task = desk.tasks[desk._key(d["id"])]
+                seen = -1
+                while not task.done():
+                    await asyncio.sleep(1)
+                    done = (slm.dataset(base, d["id"]).get("progress") or {}).get("done", 0)
+                    if done != seen:
+                        seen = done
+                        print(f"  … {done}")
+                return await task
+            d = asyncio.run(go())
+            print(("✓ " if not d.get("note") else "• ") + ds_line(d).strip() + (f"\n  {d['note']}" if d.get("note") else ""))
+        elif a == "start":
+            need("DATASET")
+            hp = {k: v for k, v in (("epochs", args.epochs), ("learning_rate", args.lr), ("max_length", args.max_length)) if v}
+            j = slm.start_job(base, args.name, one, args.base or "", hp, args.task or None)
+            print(f"training {j['name']} ({j['id']}): {j['rows']} examples to learn from, {j['held']} held back, base {j['base']}")
+            if not args.no_wait:
+                follow(j["id"])
+        elif a == "jobs":
+            js = slm.jobs(base)
+            for j in js:
+                where = f"{j['phase']} {j['step']}/{j['total']}" if j["state"] == "running" else j["state"]
+                print(f"  {j['id']}  {j['name']:<26.26} {where:<22} {j['base']}")
+            if not js:
+                print("no runs yet")
+        elif a == "log":
+            need("JOB")
+            follow(one)
+        elif a == "stop":
+            need("JOB")
+            print(f"{slm.stop_job(base, one)['state']}")
+        elif a == "models":
+            ms = slm.models(base)
+            for m in ms:
+                tag = f"  in Ollama as {m['ollama']}" if m.get("ollama") else ""
+                print(f"  {m['id']}  {m['name']:<26.26} {m['verdict']['word']:<10} {m['bytes'] // 2**20:>5} MB  {m['base']}{tag}")
+            if not ms:
+                print("no models yet: bento train make \"what it should do\"")
+        elif a == "examples":
+            need("MODEL")
+            m = slm.model(base, one)
+            print(m["verdict"]["words"])
+            for it in (slm.evaluation(base, one).get("items") or [])[:args.count or 10]:
+                mark = "✓" if it["exact_after"] else "·"
+                print(f"\n  {it['prompt'][:140]!r}\n    wanted  {it['want'][:120]!r}\n    before  {it['before'][:120]!r}\n  {mark} after   {it['after'][:120]!r}")
+        elif a == "try":
+            need("MODEL")
+            if len(rest) < 2:
+                print('say what to ask it: bento train try MODEL "a prompt"')
+                sys.exit(2)
+            got = slm.try_model(base, one, rest[1:])
+            for x in got["answers"]:
+                print(f"  {x['prompt'][:100]!r}\n    → {x['answer']!r}")
+            print(f"  ({got['seconds']} s on {got['device']}, after loading)")
+        elif a == "ollama":
+            need("MODEL")
+            if usersmod.enabled() and not usersmod.is_admin(usersmod.current() or ""):
+                fail(ValueError("adding a model to this machine's Ollama is an admin's"))
+            print("handing the weights to Ollama (it converts them, which can take minutes)…")
+            m = slm.ollama_add(base, one)
+            print(f"✓ in Ollama as {m['ollama']}. Choose it under Settings, AI providers, or: ollama run {m['ollama']}")
+        elif a == "make":
+            need('"WHAT IT SHOULD DO"')
+            goal = " ".join(rest)
+
+            async def go():
+                plan = await desk.plan(goal)
+                if args.count:
+                    plan["examples"] = args.count
+                if args.base:
+                    plan["base"] = args.base
+                if args.epochs:
+                    plan["epochs"] = args.epochs
+                print(f"The plan ({plan['how']}):\n  name      {plan['name']}\n  the task  {plan['task']}")
+                print(f"  examples  {plan['examples']}, " + (f"from the Hub (search: {plan['hub_query']})" if plan["source"] == "hub"
+                      else f"written by {plan['teacher'] or 'a teacher'} in about {plan['calls']} calls"))
+                print(f"  student   {plan['base']}   ({slm.hardware().get('words')})")
+                if plan.get("teacher_missing"):
+                    fail(ValueError("no teacher can answer: " + plan["teacher_missing"]))
+                if not args.yes:
+                    if not sys.stdin.isatty() or input("Go? [y/N] ").strip().lower() not in ("y", "yes"):
+                        print("nothing was started (add --yes to skip the question)")
+                        return None
+                r = desk.run(goal, plan)
+                task = desk.tasks[desk._key(r["id"])]
+                shown = ""
+                while True:
+                    cur = slm.run_get(base, r["id"])
+                    if cur["steps"]:
+                        line = f"{cur['steps'][-1]['title']}: {cur['steps'][-1]['detail']}"
+                        if line != shown:
+                            shown = line
+                            print("  " + line[:230])
+                    if task.done():
+                        break
+                    await asyncio.sleep(1)
+                return slm.run_get(base, r["id"])
+            r = asyncio.run(go())
+            if r is None:
+                return
+            if r["state"] != "done":
+                sys.exit(1)
+            m = slm.model(base, r["model"])
+            print(f"✓ {m['name']} ({m['id']})\n  try it: bento train try {m['id']} \"...\"    use it: bento train ollama {m['id']}")
+    except (KeyError, ValueError, OSError, slm.HubError) as e:
+        fail(e)
+
+
 def _arena_cli(args):
     """`bento arena` — the Arena from a terminal: the same task to two to four brains at
     once, run by the server (the gate, the ledger and the folders are its), shown here as
@@ -11443,6 +11687,24 @@ def main():
     p_ar.add_argument("--vs", action="append", help="a brain: its number from `bento arena brains`, "
                                                     "or EXECUTOR:MODEL (repeat 2 to 4 times)")
     p_ar.add_argument("--user", default="", help="whose arena, on a machine with users")
+    p_tr = verb("train", help="make a small language model of your own: examples, a fine-tune, a check")
+    p_tr.add_argument("action", nargs="?", default="status",
+                      choices=["status", "install", "make", "bases", "datasets", "data", "search", "import", "file", "write",
+                               "answer", "start", "jobs", "log", "stop", "models", "examples", "try", "ollama"])
+    p_tr.add_argument("rest", nargs="*", help='make "what it should do" · search WORDS · import OWNER/NAME · '
+                                              'file PATH · write "the task" · answer DATASET · start DATASET · '
+                                              'log/stop JOB · examples/try/ollama MODEL')
+    p_tr.add_argument("--task", default="", help="the instruction the small model works under")
+    p_tr.add_argument("--name", default="")
+    p_tr.add_argument("--count", type=int, default=0, help="examples to write (make, write) or to show (examples)")
+    p_tr.add_argument("--rows", type=int, default=0, help="import: how many rows to take (default 2000)")
+    p_tr.add_argument("--base", default="", help="the student: owner/name on the Hugging Face Hub (bento train bases)")
+    p_tr.add_argument("--epochs", type=float, default=0)
+    p_tr.add_argument("--lr", type=float, default=0)
+    p_tr.add_argument("--max-length", type=int, default=0, dest="max_length")
+    p_tr.add_argument("--no-wait", action="store_true", help="start: return at once")
+    p_tr.add_argument("--yes", action="store_true", help="make, install: don't ask first")
+    p_tr.add_argument("--user", default="", help="whose, on a machine with users")
     p_demo = verb("demo", help="a warehouse to play with: a hub, three zone Pis and six ESP32s, simulated")
     p_demo.add_argument("name", nargs="?", default="", help="the demo: warehouse")
     p_demo.add_argument("action", nargs="?", default="start", choices=["start", "stop", "status", "floor", "poke"])
@@ -11843,6 +12105,8 @@ def main():
         sys.exit(windows_cli(args))
     elif args.cmd == "arena":
         _arena_cli(args)
+    elif args.cmd == "train":
+        _train_cli(args)
     elif args.cmd == "drama":
         _drama_cli(args)
     elif args.cmd == "demo":
