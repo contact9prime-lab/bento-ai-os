@@ -288,3 +288,12 @@ body.dev-touch .prefs label:has(> input[type=checkbox]:not(.psw input)){min-heig
 .bk-off-line{display:flex;gap:8px;align-items:baseline;line-height:1.4}
 .bk-off-doors{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 .bk-off-doors .endbtn{min-height:var(--tap,32px)}
+/* encrypted at rest: the databases and the disk (11g paintAtRest, dbcrypt.py, diskcrypt.py) */
+.ar-box{display:flex;flex-direction:column;gap:8px;padding:10px 16px 14px}
+/* a grid, not a flex row: a wider rule set flex-wrap on it, and a long line dropped the text under its icon */
+.ar-box .ar-row{display:grid;grid-template-columns:1.4em minmax(0,1fr);gap:10px;align-items:start;
+  padding:10px 12px;border-radius:10px;border:1px solid var(--line);
+  background:color-mix(in srgb,var(--bg2) 80%,transparent);line-height:1.4}
+.ar-box .ar-row .ar-i{display:block;text-align:center;line-height:1.4}
+.ar-row.ok .ar-i{color:var(--ok)}.ar-row.warn .ar-i{color:var(--warn,#d9a400)}
+.ar-t{min-width:0;flex:1 1 auto}.ar-h{font-weight:600}.ar-d{margin-top:4px;font-size:.92em}

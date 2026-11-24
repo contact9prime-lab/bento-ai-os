@@ -12,6 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from agentos import spaces as spacemod                             # noqa: E402
+from agentos import dbcrypt  # noqa: E402
 from agentos.memory import Store                                   # noqa: E402
 
 # The schema as it stood before spaces existed. Kept verbatim rather than derived
@@ -46,7 +47,7 @@ INSERT INTO kg_edges VALUES ('e1','n1','n2','works at',1.0);
 
 def _legacy_db(tmp_path) -> Path:
     p = tmp_path / "legacy.db"
-    con = sqlite3.connect(str(p))
+    con = dbcrypt.connect(str(p))
     con.executescript(PRE_SPACES)
     con.commit()
     con.close()

@@ -140,7 +140,7 @@ def test_the_dependency_sync_does_not_rewrite_the_lockfile():
     # the sync itself lives in install_deps (uv found where it installs itself, then
     # pip); --frozen is tried first so the lock is installed, not re-resolved
     deps = src[src.index("def install_deps("):]
-    assert '[uv, "sync", "--frozen"]' in deps
+    assert '[uv, "sync", "--frozen", *skip]' in deps, "--frozen first (skip names a 32-bit Pi's missing wheel)"
     assert body.index("install_deps(root)") < body.index("restore_derived(root)          #")
     assert body.index("restore_derived(root)") < body.index('"git", "fetch"'), \
         "derived files are restored before the pull, or the pull refuses over them"

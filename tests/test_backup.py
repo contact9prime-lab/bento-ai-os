@@ -25,6 +25,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from agentos import backup  # noqa: E402
+from agentos import dbcrypt  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 PW = "correct horse battery"
@@ -48,12 +49,12 @@ def _machine(tmp_path, name="old"):
     (ws / "deck.md").write_text("# the deck")
     (home / "config.json").write_text(json.dumps({"workspace": str(ws), "engine": "aria"}))
     (home / "users.json").write_text(json.dumps({"users": [{"id": "u1", "name": "ada", "admin": True}]}))
-    con = sqlite3.connect(home / "agentos.db")
+    con = dbcrypt.connect(home / "agentos.db")
     con.execute("pragma journal_mode=wal")
     con.execute("create table t(x)")
     con.execute("insert into t values (42)")
     con.commit()                       # left open: the WAL holds the row, not the file
-    ucon = sqlite3.connect(home / "users" / "u1" / "agentos.db")
+    ucon = dbcrypt.connect(home / "users" / "u1" / "agentos.db")
     ucon.execute("create table executor_profiles(name text primary key, spec text)")
     ucon.execute("insert into executor_profiles values ('ro', ?)",
                  (json.dumps({"folders": [{"path": str(ws / "notes"), "mode": "ro"}]}),))
@@ -81,7 +82,7 @@ def test_everything_that_is_yours_travels_and_caches_do_not(tmp_path):
     r = backup.restore(tmp_path / "b.bento", PW, home=new)
     assert not list(new.glob("*.db-wal")), "the copy is whole, no WAL rides along"
     # the row that was only in the WAL made it: a consistent copy, not a file copy
-    assert sqlite3.connect(new / "agentos.db").execute("select x from t").fetchall() == [(42,)]
+    assert dbcrypt.connect(new / "agentos.db").execute("select x from t").fetchall() == [(42,)]
     assert json.loads((new / "users" / "u1" / "config.json").read_text())["persona"] == "founder"
     for skipped in ("snapshots", "speech-cache", "mcp_index.json"):
         assert not (new / skipped).exists(), skipped
@@ -173,9 +174,11 @@ def test_a_keyring_key_travels_and_lands_where_this_machine_can_keep_it(tmp_path
     monkeypatch.setattr(vault, "_keyring_tool", lambda: "secret-tool")
     monkeypatch.setattr(vault, "_keyring_get", lambda scope: ring.get(scope, ""))
     monkeypatch.setattr(vault, "_keyring_set", lambda scope, k: ring.__setitem__(scope, k) or True)
+    # this machine's home is set first, as on a real one: its databases' key is then the same
+    # service key the vault uses, in the keyring (dbcrypt.py)
+    monkeypatch.setattr(cfgmod, "AGENTOS_HOME", tmp_path / "old" / ".agentos")
     home, _, con = _machine(tmp_path)
     con.close()
-    monkeypatch.setattr(cfgmod, "AGENTOS_HOME", home)
     vault.put("mail.password", "hunter2-app-password")
     # the machine's vault is locked with the service key (away.py), and that key is in the keyring
     assert json.loads((home / "vault.json").read_text())["key"] == "service"
@@ -224,7 +227,7 @@ def test_paths_are_rewritten_in_configs_and_agent_folders(tmp_path, monkeypatch)
     r = backup.restore(tmp_path / "b.bento", PW, home=new)
     assert r["paths_rewritten"] >= 2
     assert json.loads((new / "config.json").read_text())["workspace"] == str(new_user / "AgentOS")
-    spec = sqlite3.connect(new / "users" / "u1" / "agentos.db").execute(
+    spec = dbcrypt.connect(new / "users" / "u1" / "agentos.db").execute(
         "select spec from executor_profiles").fetchone()[0]
     assert json.loads(spec)["folders"][0]["path"] == str(new_user / "AgentOS" / "notes")
 
@@ -277,7 +280,7 @@ def test_a_mission_keeps_watching_its_folder_on_the_new_machine(tmp_path, monkey
     new = new_user / ".agentos"
     backup.restore(tmp_path / "b.bento", PW, home=new)
     now = str(new_user / "AgentOS" / "inbox")
-    db = sqlite3.connect(new / "agentos.db")
+    db = dbcrypt.connect(new / "agentos.db")
     assert db.execute("select mission from flows").fetchone()[0] == f"Something new appeared in {now}. Work out what it is."
     assert json.loads(db.execute("select permissions from flows").fetchone()[0]) == {"folders": [now]}
     assert json.loads(db.execute("select config from flow_triggers").fetchone()[0])["path"] == now

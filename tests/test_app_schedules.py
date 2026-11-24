@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 os.environ.setdefault("AGENTOS_HOME", tempfile.mkdtemp(prefix="agentos-test-home-"))
 
 from agentos import executors as execmod                           # noqa: E402
+from agentos import dbcrypt  # noqa: E402
 from agentos import mcpbridge, runlog                              # noqa: E402
 from agentos.memory import Store                                   # noqa: E402
 from agentos.policy import PDP                                     # noqa: E402
@@ -53,7 +54,7 @@ def _world(tmp_path):
 
 def test_an_old_database_gets_the_column(tmp_path):
     db = tmp_path / "old.db"
-    con = sqlite3.connect(db)
+    con = dbcrypt.connect(db)
     con.execute("CREATE TABLE tasks (id TEXT PRIMARY KEY, prompt TEXT, schedule_type TEXT, "
                 "interval_seconds INTEGER, at_time TEXT, next_run REAL, last_run REAL, "
                 "last_result TEXT, enabled INTEGER DEFAULT 1, created_at REAL)")

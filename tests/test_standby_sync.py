@@ -33,6 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from agentos import standby, standbysync as ss  # noqa: E402
+from agentos import dbcrypt  # noqa: E402
 import test_standby as ts  # noqa: E402
 
 # the two homes and the in-process transport of tests/test_standby.py
@@ -66,7 +67,7 @@ def _take_over(cloud):
 
 
 def _rows(h, table):
-    con = sqlite3.connect(h / "agentos.db")
+    con = dbcrypt.connect(h / "agentos.db")
     try:
         return con.execute(f"select * from {table} order by 1").fetchall()
     finally:
@@ -78,7 +79,7 @@ def test_every_change_reaches_the_cloud_and_a_takeover_starts_from_the_last_one(
     _say(laptop, "before the copy")
     _active(laptop)
     # the journal is there, and only on the working main machine
-    con = sqlite3.connect(laptop / "agentos.db")
+    con = dbcrypt.connect(laptop / "agentos.db")
     trig = {r[0] for r in con.execute("select name from sqlite_master where type='trigger'")}
     con.close()
     assert {"_bento_sync_i_messages", "_bento_sync_u_messages", "_bento_sync_d_messages"} <= trig
@@ -104,7 +105,7 @@ def test_every_change_reaches_the_cloud_and_a_takeover_starts_from_the_last_one(
     assert json.loads((cloud.home / "config.json").read_text())["agent_name"] == "renamed"
     assert (cloud.home / "workspace" / "notes.md").read_text() == "from the laptop"
     # the cloud works: it keeps no journal
-    con = sqlite3.connect(cloud.home / "agentos.db")
+    con = dbcrypt.connect(cloud.home / "agentos.db")
     names = {r[0] for r in con.execute("select name from sqlite_master")}
     con.close()
     assert not any(n.startswith("_bento_sync") for n in names)
@@ -113,7 +114,7 @@ def test_every_change_reaches_the_cloud_and_a_takeover_starts_from_the_last_one(
 def test_updates_carry_current_values_deletes_and_skip_what_the_copy_holds(pair):
     laptop, cloud = pair
     _active(laptop)
-    con = sqlite3.connect(laptop / "agentos.db")
+    con = dbcrypt.connect(laptop / "agentos.db")
     con.execute("insert into conversations values ('a','first',1,1)")
     con.execute("insert into conversations values ('b','doomed',1,1)")
     con.commit()
@@ -126,7 +127,7 @@ def test_updates_carry_current_values_deletes_and_skip_what_the_copy_holds(pair)
     r = standby.sync(laptop)
     assert r["n"] == 2 and r["changes"] == ["2 chats"], r
     # the journal is pruned once the cloud has it
-    con = sqlite3.connect(laptop / "agentos.db")
+    con = dbcrypt.connect(laptop / "agentos.db")
     assert con.execute("select count(*) from _bento_sync").fetchone()[0] == 0
     con.close()
     # replaying the same update twice changes nothing (applied in the takeover below,
@@ -139,7 +140,7 @@ def test_updates_carry_current_values_deletes_and_skip_what_the_copy_holds(pair)
 def test_a_new_table_a_new_column_and_a_new_account_database_arrive(pair):
     laptop, cloud = pair
     _active(laptop)
-    con = sqlite3.connect(laptop / "agentos.db")
+    con = dbcrypt.connect(laptop / "agentos.db")
     con.execute("create table later(id integer primary key, v text)")
     con.execute("insert into later(v) values ('made after the copy')")
     con.execute("alter table conversations add column pinned integer")
@@ -148,7 +149,7 @@ def test_a_new_table_a_new_column_and_a_new_account_database_arrive(pair):
     con.close()
     acct = laptop / "users" / "ada"
     acct.mkdir(parents=True)
-    c2 = sqlite3.connect(acct / "agentos.db")
+    c2 = dbcrypt.connect(acct / "agentos.db")
     c2.execute("create table memories(id integer primary key, text text)")
     c2.execute("insert into memories(text) values ('ada likes tea')")
     c2.commit()
@@ -159,7 +160,7 @@ def test_a_new_table_a_new_column_and_a_new_account_database_arrive(pair):
     _take_over(cloud)
     assert _rows(cloud.home, "later") == [(1, "made after the copy")]
     assert ("p", "pinned one", 1, 1, 1) in _rows(cloud.home, "conversations")
-    c3 = sqlite3.connect(cloud.home / "users" / "ada" / "agentos.db")
+    c3 = dbcrypt.connect(cloud.home / "users" / "ada" / "agentos.db")
     assert c3.execute("select text from memories").fetchall() == [("ada likes tea",)]
     c3.close()
 
@@ -224,7 +225,7 @@ def test_off_means_no_journal_anywhere_and_a_new_vault_goes_in_a_full_copy(pair)
     assert r["kind"] == "copy" and "vault" in r["why"], r
     standby.settings({"sync": "copies"}, laptop)
     ss.ensure(laptop, on=False)
-    con = sqlite3.connect(laptop / "agentos.db")
+    con = dbcrypt.connect(laptop / "agentos.db")
     names = {r[0] for r in con.execute("select name from sqlite_master")}
     con.close()
     assert not any(n.startswith("_bento_sync") for n in names)

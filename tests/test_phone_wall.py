@@ -27,6 +27,7 @@ os.environ.setdefault("AGENTOS_HOME", tempfile.mkdtemp(prefix="agentos-test-home
 os.environ.setdefault("AGENTOS_VAULT_KEYRING", "0")
 
 from agentos import cdpbrowser   # noqa: E402
+from agentos import dbcrypt  # noqa: E402
 
 
 class _FakeBrowser:
@@ -161,7 +162,7 @@ def _telegram(tmp_path):
 
 def _code_kept_nowhere(store, code):
     import sqlite3
-    db = sqlite3.connect(store.path)
+    db = dbcrypt.connect(store.path)
     try:
         rows = db.execute("SELECT * FROM messages").fetchall() + db.execute("SELECT * FROM logs").fetchall()
     finally:

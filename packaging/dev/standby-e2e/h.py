@@ -8,6 +8,14 @@ OpenAI-compatible provider and a fake Telegram (fakes.py) on this host's address
 import json, os, signal, sqlite3, subprocess, sys, time, glob
 from pathlib import Path
 import httpx
+import os as _os
+import sys as _sys
+try:  # Bento's databases are encrypted with their home's key (agentos/dbcrypt.py)
+    _sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..", "..", "..")))
+    from agentos.dbcrypt import connect as _db_connect
+except Exception:
+    import sqlite3 as _sqlite3
+    _db_connect = _sqlite3.connect
 os.environ["NO_PROXY"] = os.environ.get("NO_PROXY", "") + "," + (os.environ.get("STANDBY_E2E_HOSTIP") or subprocess.run(["hostname", "-I"], capture_output=True, text=True).stdout.split()[0]); os.environ["no_proxy"] = os.environ["NO_PROXY"]
 
 REPO = str(Path(__file__).resolve().parents[3])
@@ -129,7 +137,7 @@ def counts_local(home: Path):
     for db in [home / "agentos.db", *sorted((home / "users").glob("*/agentos.db"))]:
         if not db.exists():
             continue
-        con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+        con = _db_connect(f"file:{db}?mode=ro", uri=True)
         rel = str(db.relative_to(home))
         out[rel] = {t: con.execute(f'select count(*) from "{t}"').fetchone()[0]
                     for (t,) in con.execute("select name from sqlite_master where type='table' and name not like 'sqlite_%'")}
@@ -142,7 +150,7 @@ from pathlib import Path
 home=Path("/data");out={}
 for db in [home/"agentos.db",*sorted((home/"users").glob("*/agentos.db"))]:
     if not db.exists(): continue
-    con=sqlite3.connect(f"file:{db}?mode=ro",uri=True)
+    con=_db_connect(f"file:{db}?mode=ro",uri=True)
     out[str(db.relative_to(home))]={t:con.execute(f'select count(*) from "{t}"').fetchone()[0] for (t,) in con.execute("select name from sqlite_master where type='table' and name not like 'sqlite_%'")}
 print(json.dumps(out))
 '''
@@ -214,14 +222,14 @@ def polls_since(seconds):
     return {s: v for s, v in lg["polls"].items() if v["last_ago"] <= seconds}
 
 def conv_titles_local(home=LAG):
-    con = sqlite3.connect(f"file:{home/'agentos.db'}?mode=ro", uri=True)
+    con = _db_connect(f"file:{home/'agentos.db'}?mode=ro", uri=True)
     try:
         return [r[0] for r in con.execute("select title from conversations order by created_at")]
     finally:
         con.close()
 
 def conv_titles_cloud():
-    return json.loads(cpy("import sqlite3,json;print(json.dumps([r[0] for r in sqlite3.connect('file:/data/agentos.db?mode=ro',uri=True).execute('select title from conversations order by created_at')]))"))
+    return json.loads(cpy("import sqlite3,json;print(json.dumps([r[0] for r in _db_connect('file:/data/agentos.db?mode=ro',uri=True).execute('select title from conversations order by created_at')]))"))
 
 def wait_for(fn, timeout, every=3, label=""):
     t = time.time()

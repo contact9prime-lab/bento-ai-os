@@ -8,6 +8,7 @@ import json
 import os
 import secrets
 import sqlite3
+from . import dbcrypt
 import threading
 import time
 import uuid
@@ -924,8 +925,8 @@ class Store:
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self.path = db_path          # kept: retention reports on the file, not the rows
         self._audit_lock = threading.Lock()   # the head and the row after it are one step
-        self.db = sqlite3.connect(str(db_path), check_same_thread=False)
-        self.db.row_factory = sqlite3.Row
+        self.db = dbcrypt.connect(str(db_path), check_same_thread=False)
+        self.db.row_factory = dbcrypt.Row
         # WAL + busy timeout: readers never block the writer, and a second process
         # (installer, doctor, a stray instance) can't turn writes into hard
         # "database is locked" errors that kill a turn mid-flight.
@@ -938,7 +939,7 @@ class Store:
         # time travel's undo journal: triggers rebuilt from the live columns, so a column
         # a migration just added is journalled too (agentos/timetravel.py)
         from . import timetravel
-        with contextlib.suppress(sqlite3.Error):
+        with contextlib.suppress(dbcrypt.Error):
             timetravel.install(self.db)
         self.grants_version = 0  # bumped on every grant write so the PDP cache invalidates
         self.quarantine_version = 0  # ditto for holds — consulted on every capability call
@@ -1640,7 +1641,7 @@ class Store:
                         break
                     self._audit_head_cache = None   # somebody took that seq: read the head again
                 else:
-                    raise sqlite3.OperationalError("could not find the ledger's head")
+                    raise dbcrypt.OperationalError("could not find the ledger's head")
                 self._audit_head_cache = (seq, row_hash)   # only after the row is committed
                 self._write_anchor(seq, row_hash)
         except Exception as e:  # pragma: no cover - defensive

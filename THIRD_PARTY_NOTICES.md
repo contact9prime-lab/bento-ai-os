@@ -93,6 +93,7 @@ permissive licenses:
 | BSD (2/3-Clause) | uvicorn, httpx, httpcore, httpx2, httpcore2, httpx2-jsfetch, websockets, starlette, sse-starlette, click, idna, pycparser, Pygments |
 | Apache-2.0 | python-multipart, opentelemetry-api, cryptography (Apache-2.0 OR BSD-3-Clause) |
 | PSF-2.0 | typing_extensions |
+| zlib | sqlcipher3, which bundles SQLCipher Community Edition (BSD-3-Clause, Zetetic LLC) and OpenSSL 3 (Apache-2.0). Not installed on 32-bit ARM, where no wheel exists. |
 
 Each package's full license text is included in its `*.dist-info` directory
 in the installed environment.

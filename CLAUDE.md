@@ -1288,6 +1288,44 @@ a bucket once a save worked (both warn past `FRESH_S` or on an error); a downloa
 is never called safe, because Bento can't see where it went (`note_made`, `.offsite` is in `PRIVATE`). It makes
 nothing: each way keeps its own door.
 
+## The databases are encrypted at rest, with the machine's key
+
+`agentos/dbcrypt.py` (SQLCipher through `sqlcipher3`) + `agentos/diskcrypt.py` + `/api/at-rest`, Settings → System →
+Encryption (`paintAtRest` in 11g), `bento vault at-rest|code`, `bento doctor`; `docs/vault.md`, `tests/test_dbcrypt.py`,
+live run `packaging/dev/at-rest-e2e/run.py`. Asked for as "is the database encrypted at rest too? This should be
+decrypted by machine key". Seven rules:
+- **`dbcrypt.connect` is the ONE way Bento opens a database**, and its errors and `Row` are `dbcrypt.*`
+  (sqlcipher3's classes are not sqlite3's: an `except sqlite3.OperationalError` catches nothing from it). The
+  test fails on a `sqlite3.connect` or `sqlite3.Row` anywhere in agentos. It reads the file's first 16 bytes:
+  a plain header opens unkeyed, anything else (a new file too) with the key.
+- **The key is the HOME's, never the process's** (`home_of`: the file's folder, or the machine home above
+  `users/<id>`): HMAC-SHA256(that home's service key from away.py, "bento database v1"), handed over raw so no
+  PBKDF2 runs on each open. Taken from the process's home, a test (or a staged restore) that switched homes opened
+  one home's file with another's key. Only the process's own home may put its key in the keyring: the keyring
+  entry has one name per OS user, and a second home's key there would replace the real one.
+- **Only a NEW database makes a key.** An existing encrypted file whose key is gone stays unreadable, never
+  re-keyed (the vault's rule).
+- **Converting happens at the server's own start, before any Store opens** (`migrate.everyone(encrypt=True)` in
+  `startup`; plain `bento migrate` never converts, because during an update the old server still holds the file,
+  and a file replaced under a process loses its writes). `encrypt_file` refuses a file something holds, checks the
+  copy table by table and `user_version` before `os.replace`, and says why when it leaves one plain. The diary says
+  what each start did. "Holds" is this process's own open connections (`_HELD`, a weak set `connect` fills through
+  the `_Conn` factory) plus other processes' fds in `/proc`, read within `OPEN_SCAN_S`; past it the answer is "can't
+  tell" and the file stays plain until the next start. Reading this process's own fds was tens of thousands of
+  readlinks late in the suite (a standby test 0.2 s alone, 93 s in the run).
+- **A backup's databases are PLAIN inside the sealed file** (`plain_copy`: the backup API into an encrypted copy
+  with the source's key, then `sqlcipher_export` to plain in the backup's private temp folder), so a backup restores
+  on any machine; `backup.apply` encrypts them with that machine's key at once. SQLCipher won't copy pages between
+  a plain and an encrypted file, and `ATTACH` borrows the main file's key: use `dbcrypt.attach`.
+- **Said, never overclaimed**: with the key in a file beside the databases (no keyring) a stolen disk carries
+  both; the key is in memory while Bento runs; flash keeps old blocks; files aren't covered. `diskcrypt.state` reads
+  (never assumes) whether the disk is encrypted: LUKS via `findmnt`/`lsblk`, FileVault via `fdesetup`, anything
+  else `unknown` with the reason.
+- **A 32-bit Pi keeps plain databases** (no wheel): the marker skips `armv7l`/`armv6l`, and install.sh and
+  `updates.install_deps` pass `--no-install-package sqlcipher3` on a 32-bit userland, whose Python may say aarch64.
+  Measured on this machine: a turn's writes 0.4 → 0.8 ms, reads within noise, file size the same, +7 MB RSS
+  (SQLCipher carries its own OpenSSL), a new Store 32 → 44 ms, a 1.8 MB home converted in 159 ms.
+
 ## Cloud standby: one side acts, the other holds a sealed copy
 
 `agentos/standby.py` + `/api/standby*` + `bento standby` + Settings → System → Cloud

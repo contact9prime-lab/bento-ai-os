@@ -30,6 +30,14 @@ import zero_run as zr          # noqa: E402  (its machines, servers and helpers)
 PINCTRL = '''#!/usr/bin/env python3
 import json, sys
 from pathlib import Path
+import os as _os
+import sys as _sys
+try:  # Bento's databases are encrypted with their home's key (agentos/dbcrypt.py)
+    _sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..", "..", "..")))
+    from agentos.dbcrypt import connect as _db_connect
+except Exception:
+    import sqlite3 as _sqlite3
+    _db_connect = _sqlite3.connect
 f = Path(__file__).with_suffix(".json")
 pins = json.loads(f.read_text()) if f.exists() else {"2": ["a0", 1, "SDA1"], "3": ["a0", 1, "SCL1"], "17": ["ip", 0, "input"]}
 a = sys.argv[1:]
@@ -46,7 +54,7 @@ elif a and a[0] == "set":
 
 
 def rows(name):
-    con = sqlite3.connect(zr.home(name) / "agentos.db")
+    con = _db_connect(zr.home(name) / "agentos.db")
     out = {"ledger": con.execute("select action, resource, coalesce(reason,'') || coalesce(detail,'') from audit "
                                  "where action like 'device.%' order by rowid").fetchall(),
            "diary": [r[0] for r in con.execute("select message from logs where kind='device' order by id")]}

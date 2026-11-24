@@ -18,6 +18,14 @@ import json, os, shutil, signal, sqlite3, subprocess, time
 from pathlib import Path
 import httpx
 from h import E, REPO, LHOME, LAG, LPORT, LURL, HOSTIP, say, lenv, laptop_start, laptop_kill, laptop_pid, wait_up, lget, lpost, chat, counts_local, diff
+import os as _os
+import sys as _sys
+try:  # Bento's databases are encrypted with their home's key (agentos/dbcrypt.py)
+    _sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..", "..", "..")))
+    from agentos.dbcrypt import connect as _db_connect
+except Exception:
+    import sqlite3 as _sqlite3
+    _db_connect = _sqlite3.connect
 
 CHOME = E / "cloud-user"
 CAG = CHOME / ".agentos"
@@ -213,7 +221,7 @@ after = counts_local(CAG)
 real, noisy = diff(before, after, "laptop", "cloud")
 real = [x for x in real if "_bento_sync" not in x]   # the journal lives on the laptop only
 say("tables that differ (laptop at kill vs cloud after takeover):", real or "none", "| noisy:", len(noisy))
-con = sqlite3.connect(CAG / "agentos.db")
+con = _db_connect(CAG / "agentos.db")
 titles = [r[0] for r in con.execute("select content from messages where role='user' order by created_at")]
 con.close()
 say("the cloud's user messages:", titles)

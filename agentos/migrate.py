@@ -35,13 +35,24 @@ def _one(label: str, cfg: dict, store) -> dict:
     return {"home": label, "ok": True, "characters": len(people)}
 
 
-def everyone(log=None) -> list[dict]:
-    """Migrate the machine's home and every account's. Returns one row per home."""
+def everyone(log=None, encrypt: bool = False) -> list[dict]:
+    """Migrate the machine's home and every account's. Returns one row per home.
+
+    `encrypt` converts plain databases to encrypted ones first (dbcrypt.encrypt_home). Only the
+    server's own start passes it, before anything there has opened a database: `bento migrate`
+    runs during an update while the old server still holds its files, and a file replaced under
+    a process that holds it open loses that process's writes."""
     from . import config as cfgmod
     from . import users as usersmod
     from .memory import Store
     say = log or (lambda m: None)
     out = []
+    if encrypt:
+        try:
+            from . import dbcrypt
+            dbcrypt.LAST[:] = dbcrypt.encrypt_home(cfgmod.AGENTOS_HOME, say)
+        except Exception as e:
+            say(f"! the databases couldn't be encrypted: {type(e).__name__}: {e}")
     try:
         cfg = cfgmod.load_config()
         out.append(_one("this machine", cfg, Store(cfgmod.DB_PATH)))

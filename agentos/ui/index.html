@@ -1682,6 +1682,15 @@ body.dev-touch .prefs label:has(> input[type=checkbox]:not(.psw input)){min-heig
 .bk-off-line{display:flex;gap:8px;align-items:baseline;line-height:1.4}
 .bk-off-doors{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 .bk-off-doors .endbtn{min-height:var(--tap,32px)}
+/* encrypted at rest: the databases and the disk (11g paintAtRest, dbcrypt.py, diskcrypt.py) */
+.ar-box{display:flex;flex-direction:column;gap:8px;padding:10px 16px 14px}
+/* a grid, not a flex row: a wider rule set flex-wrap on it, and a long line dropped the text under its icon */
+.ar-box .ar-row{display:grid;grid-template-columns:1.4em minmax(0,1fr);gap:10px;align-items:start;
+  padding:10px 12px;border-radius:10px;border:1px solid var(--line);
+  background:color-mix(in srgb,var(--bg2) 80%,transparent);line-height:1.4}
+.ar-box .ar-row .ar-i{display:block;text-align:center;line-height:1.4}
+.ar-row.ok .ar-i{color:var(--ok)}.ar-row.warn .ar-i{color:var(--warn,#d9a400)}
+.ar-t{min-width:0;flex:1 1 auto}.ar-h{font-weight:600}.ar-d{margin-top:4px;font-size:.92em}
 /* ================= window switcher (Ctrl+Tab) ================= */
 #switcher{position:fixed;inset:0;z-index:9720;display:none;align-items:center;justify-content:center;background:rgba(5,7,10,.4);backdrop-filter:blur(4px)}
 #switcher.show{display:flex}
@@ -22427,6 +22436,12 @@ function setTab(body,all){
          f:'cloud standby failover offload take over hand back away server vps move jack lambda always on'}),
     ],{f:'cloud standby failover'}));
     setTimeout(paintStandby,0);
+    /* Encrypted at rest: the databases (dbcrypt.py) and the disk (diskcrypt.py), read, never
+       assumed. Terminal: bento vault at-rest, and bento doctor. */
+    P.push(pGroup('Encrypted at rest',[
+      '<div id="ar-box" class="ar-box"><span class="mut">…</span></div>',
+    ],{f:'encrypted encryption at rest database disk luks filevault bitlocker sqlcipher key stolen'}));
+    setTimeout(paintAtRest,0);
     P.push(pGroup('Machine',[
       pRow('System Settings','<button class="endbtn" onclick="openApp(\'syssettings\')">Open</button>',
         {desc:'Network, Bluetooth, displays, sound, power, session and optional components.',f:'system settings network displays'}),
@@ -25139,6 +25154,29 @@ async function backupSeen(){
   try{await fetch('/api/backup/last',{method:'DELETE'})}catch(e){}
   const l=document.getElementById('bk-last');if(l)l.innerHTML='';
 }
+
+/* Settings → System → Encrypted at rest: whether the databases are encrypted with this
+   machine's key (dbcrypt.py) and whether the disk is (diskcrypt.py). Two lines, each with what
+   it covers; read on every paint, never assumed. */
+async function paintAtRest(){
+  const el=document.getElementById('ar-box');if(!el)return;
+  let d;
+  try{d=await apiJSON('/api/at-rest')}catch(e){el.textContent=e.message||'could not read it';return}
+  const mk=(t,c,txt)=>{const e=document.createElement(t);if(c)e.className=c;if(txt!=null)e.textContent=txt;return e};
+  const row=(icon,level,title,line,detail)=>{
+    const r=mk('div','ar-row '+level);
+    r.append(mk('b','ar-i',icon));
+    const t=mk('div','ar-t');t.append(mk('div','ar-h',title),mk('div','ar-l',line));
+    if(detail)t.append(mk('div','ar-d mut',detail));
+    r.append(t);return r};
+  const db=d.db||{},dk=d.disk||{};
+  const dbl=db.state==='encrypted'?'ok':'warn';
+  const kids=[row(dbl==='ok'?'✓':'!',dbl,'Databases',db.line||'',db.detail||'')];
+  const dkl={on:'ok',off:'warn'}[dk.state]||'warn';
+  kids.push(row({on:'✓',off:'!'}[dk.state]||'?',dkl,'Disk',dk.line||'',
+    dk.state==='off'?'Turn it on in your system’s settings: FileVault on a Mac, LUKS when Linux is installed, BitLocker on Windows.':''));
+  el.replaceChildren(...kids);
+}
 /* ================= Settings → System → Cloud standby (agentos/standby.py) =================
    Your machine works; a paired cloud machine keeps a sealed copy and takes over only while
    yours can't be reached, then hands the work back. This pane pairs the two, shows how
@@ -25871,7 +25909,7 @@ var SETSUBS={
   accounts:[['Sign in','Sign in'],['Mail & calendar','Mail'],['Websites','Websites'],['Your secrets','Your secrets'],['App registration','App registration'],['Vault','Vault'],['GitHub','GitHub']],
   voice:[['Speech','Speech'],['Listening','Listening']],
   look:[['Look','Look'],['Characters','Characters'],['Office','Office'],['This screen','On this screen']],
-  system:[['Version','Version'],['People','People'],['Setup','Footprint'],['Backup & cloud','Backup'],['Machine','Machine']],
+  system:[['Version','Version'],['People','People'],['Setup','Footprint'],['Backup & cloud','Backup'],['Encryption','Encrypted at rest'],['Machine','Machine']],
 };
 function setSubKey(tab){return 'setsub.'+tab}
 function setSubGet(tab){try{return localStorage.getItem(setSubKey(tab))||''}catch(e){return ''}}

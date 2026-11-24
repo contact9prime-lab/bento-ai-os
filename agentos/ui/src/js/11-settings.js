@@ -728,6 +728,12 @@ function setTab(body,all){
          f:'cloud standby failover offload take over hand back away server vps move jack lambda always on'}),
     ],{f:'cloud standby failover'}));
     setTimeout(paintStandby,0);
+    /* Encrypted at rest: the databases (dbcrypt.py) and the disk (diskcrypt.py), read, never
+       assumed. Terminal: bento vault at-rest, and bento doctor. */
+    P.push(pGroup('Encrypted at rest',[
+      '<div id="ar-box" class="ar-box"><span class="mut">…</span></div>',
+    ],{f:'encrypted encryption at rest database disk luks filevault bitlocker sqlcipher key stolen'}));
+    setTimeout(paintAtRest,0);
     P.push(pGroup('Machine',[
       pRow('System Settings','<button class="endbtn" onclick="openApp(\'syssettings\')">Open</button>',
         {desc:'Network, Bluetooth, displays, sound, power, session and optional components.',f:'system settings network displays'}),

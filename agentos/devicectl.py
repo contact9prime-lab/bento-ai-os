@@ -45,16 +45,24 @@ if pgrep -f '[s]creen-profile' >/dev/null 2>&1; then echo showing=yes; else echo
 echo "listening=$(python3 -c 'import json,os
 c=json.load(open(os.path.expanduser("~/.agentos/config.json")))
 print("on" if (c.get("face") or {{}}).get("kiosk") else "off")' 2>/dev/null || echo off)"
-python3 - <<'PYLOOK' 2>/dev/null || true
-import json, os, sqlite3
+PY="$S/.venv/bin/python"; [ -x "$PY" ] || PY=python3
+"$PY" - "$S" <<'PYLOOK' 2>/dev/null || true
+import json, os, sqlite3, sys
 h = os.path.expanduser("~/.agentos")
+try:
+    # its databases are encrypted with its own key (dbcrypt.py): Bento's own Python opens them
+    sys.path.insert(0, sys.argv[1])
+    from agentos import dbcrypt as _db
+    _open = _db.connect
+except Exception:
+    _open = sqlite3.connect
 try:
     c = json.load(open(os.path.join(h, "config.json")))
 except Exception:
     c = {{}}
 print("agent=" + str(c.get("agent_name") or "").replace("\\n", " ")[:40])
 try:
-    db = sqlite3.connect("file:" + os.path.join(h, "agentos.db") + "?mode=ro", uri=True)
+    db = _open("file:" + os.path.join(h, "agentos.db") + "?mode=ro", uri=True)
     row = db.execute("select recipe from avatars where key='@agent'").fetchone()
     print("look=" + (row[0] if row else "{{}}").replace("\\n", " "))
 except Exception:

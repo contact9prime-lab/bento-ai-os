@@ -527,8 +527,11 @@ A decision went from about 85 µs to about 105 µs here, nearly all of it still 
   hour or always, and the Permissions app is where consent lives (`bento grants` from a
   terminal). Prefer narrowing the sandbox + grants over
   running at `full` autonomy.
-- **Plaintext config:** `config.json` stores keys in plaintext under your user (a secrets
-  vault is on the roadmap). File permissions are your last line there.
+- **Keys and data at rest:** API keys, passwords and tokens are in the vault, never in
+  `config.json` ([The vault](vault.md)). The databases (memory, conversations, the ledger) are
+  encrypted with this machine's key. On a headless machine that key is a file beside them, so a
+  stolen disk carries both; full-disk encryption is what covers a stolen disk, and your
+  workspace and logs too. Settings → System → Encryption and `bento doctor` say which you have.
 - **Skills and MCP servers are code you invite in.** Install skills only from sources you
   trust; an MCP server you add by hand runs with your user's rights. App permission manifests + the store's
   checksum flow exist precisely because community marketplaces are the proven attack path.

@@ -11,6 +11,15 @@ hold needs the code. `bento integrity code` prints the same square in the termin
 
 The password boxes on that card no longer look like a sign-in form to the browser, which was filling your
 username into Settings' search box.
+**Your databases are encrypted at rest with this machine's key.** Memory, the knowledge graph, conversations,
+the ledger, usage and device readings were plain SQLite files. They are now encrypted with SQLCipher, keyed from
+the machine's service key, so a copied file reads as noise. An existing install converts once, at its first start
+on this version, checking every table before the plain file is replaced. Backups keep plain copies inside the
+sealed backup file, and the machine that restores one encrypts them with its own key straight away. Settings →
+System → Encryption, `bento vault at-rest` and `bento doctor` say whether the databases and the disk are
+encrypted, and what that covers: on a headless machine the key is a file beside the databases, so full-disk
+encryption is what protects a stolen disk. A 32-bit Pi has no SQLCipher build and keeps plain databases, and says
+so. `bento vault code` makes a new recovery code from a terminal.
 
 ## 0.99.2 — 2026-11-23
 

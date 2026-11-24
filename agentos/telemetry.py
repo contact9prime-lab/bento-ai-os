@@ -25,6 +25,7 @@ import collections
 import math
 import secrets
 import sqlite3
+from . import dbcrypt
 import threading
 import time
 from pathlib import Path
@@ -109,7 +110,7 @@ def db() -> sqlite3.Connection:
         c = _DBS.get(p)
         if c is None:
             Path(p).parent.mkdir(parents=True, exist_ok=True)
-            c = sqlite3.connect(p, check_same_thread=False, isolation_level=None)
+            c = dbcrypt.connect(p, check_same_thread=False, isolation_level=None)
             c.execute("PRAGMA journal_mode=WAL")
             c.execute("PRAGMA synchronous=NORMAL")
             c.executescript("""
