@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.99.8 — 2026-11-25
+
+- `bento integrity undo` takes a change to Bento's code back in one step: the watched files go back to
+  their commit, a copy of the change is kept in `~/.agentos/integrity-undone/`, and the agents run again.
+  Settings → Permissions → Security has the same as **Undo the change**, with your password.
+
 ## 0.99.7 — 2026-11-24
 
 No release notes were written for this one; the commits since 0.99.6 are what changed (`bento update` lists them).
