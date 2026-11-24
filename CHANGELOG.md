@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.99.4 — 2026-11-24
+
+No release notes were written for this one; the commits since 0.99.3 are what changed (`bento update` lists them).
+
 ## 0.99.3 — 2026-11-23
 
 **Setting up the authenticator code is four steps and a square to scan.** Settings → Permissions → Security
