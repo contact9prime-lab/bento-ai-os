@@ -70,11 +70,12 @@ def test_the_private_files_are_0600(tmp_path):
 # --- S-20, S-81: what the CLI reads of its own settings
 
 def test_a_folders_settings_are_never_read(tmp_path):
-    """`user` drops the folder's settings and `.mcp.json` (measured on 2.1.319), so a person's
-    chat keeps their own config and no workspace file gets a say."""
+    """`user` drops the folder's settings and `.mcp.json` (measured on 2.1.319), so no workspace
+    file gets a say. Their own MCP servers and claude.ai connectors are off too (2026-11-25, the
+    owner: "Bento is the ultimate truth for execution"): they're brought into Bento instead."""
     cmd = ex.build_command("x", ex.Envelope(workspace=str(tmp_path), person=True))
     assert cmd[cmd.index("--setting-sources") + 1] == "user"
-    assert "--strict-mcp-config" not in cmd, "their own MCP servers stay on their own chat"
+    assert "--strict-mcp-config" in cmd, "a chat acts only through Bento's servers"
 
 
 def test_a_run_nobody_is_at_keeps_nothing(tmp_path):

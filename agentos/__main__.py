@@ -2170,6 +2170,9 @@ def _mcp_cli(args):
         print("  bento mcp connect <name>   sign in (or sign in again)")
         return
 
+    if args.action == "claude":
+        return _mcp_claude_cli(args)
+
     if args.action in ("add", "connect", "disconnect") and not args.name:
         print(f"which server? try: bento mcp {args.action} canva")
         sys.exit(2)
@@ -2219,6 +2222,47 @@ def _mcp_cli(args):
         print(f"could not reach the AgentOS server at {base}: {e}")
         print("is it running?  systemctl --user status agentos.service")
         sys.exit(1)
+
+
+def _mcp_claude_cli(args):
+    """`bento mcp claude [NAME|all]`: Claude's connectors, and bringing them into Bento.
+
+    Through the running server, signed in like `bento terminal`: it holds each account's config
+    in memory, so a file written from here would be overwritten by its next save."""
+    import httpx
+    from . import config as cfgmod
+    from . import termcli
+    base = termcli._base(cfgmod.load_config())
+    hdrs = termcli._login(base)
+    if "error" in hdrs:
+        print(hdrs["error"])
+        sys.exit(1)
+    if not args.name:
+        print("  asking Claude Code for its connectors (it checks each one, ~10 s)…")
+        d = httpx.get(base + "/api/mcp/claude", headers=hdrs, timeout=120).json()
+        if d.get("error") or not d.get("ok"):
+            print("✗ " + (d.get("error") or d.get("why") or "no answer"))
+            sys.exit(1)
+        mark = {"ready": "+", "in-bento": "✓", "program": "·", "not-answering": "✗"}
+        for it in d["items"]:
+            print(f"  {mark.get(it['state'], '?')} {it['key']:<30} {it['shown'][:44]:<44} {it['why']}")
+        if any(it["state"] == "ready" for it in d["items"]):
+            print()
+            print("  bento mcp claude all       bring every ready one into Bento")
+            print("  bento mcp claude <name>    bring one")
+        return
+    body = {"all": True} if args.name == "all" else {"keys": [args.name]}
+    r = httpx.post(base + "/api/mcp/claude/bring", headers=hdrs, json=body, timeout=120)
+    d = r.json() if r.content else {}
+    if r.status_code >= 400:
+        print("✗ " + (d.get("error") or f"HTTP {r.status_code}"))
+        sys.exit(1)
+    for a in d.get("added", []):
+        print(f"✓ {a['key']}" + ("  sign in: bento mcp connect " + a["key"] if a["oauth"] else "  connected from your vault"))
+    for sk in d.get("skipped", []):
+        print(f"· {sk['key']}: {sk['why']}")
+    if not d.get("added") and not d.get("skipped"):
+        print(f"  nothing called {args.name!r} — see: bento mcp claude")
 
 
 def _apps_cli(args):
@@ -11617,10 +11661,10 @@ def main():
     p_mcp = verb("mcp", help="MCP servers — what is connected, and add the "
                                        "first-party ones (Canva, Higgsfield, Notion…)")
     p_mcp.add_argument("action", nargs="?", default="list",
-                       choices=["list", "catalog", "add", "connect", "disconnect"])
+                       choices=["list", "catalog", "add", "connect", "disconnect", "claude"])
     p_mcp.add_argument("name", nargs="?", default="",
-                       help="with add: a catalogue key (canva, higgsfield…); "
-                            "otherwise a configured server name")
+                       help="with add: a catalogue key (canva, higgsfield…); with claude: a "
+                            "connector's name or all; otherwise a configured server name")
 
     p_quar = verb("quarantine",
                             help="what the OS stopped for running away, and let it go again")

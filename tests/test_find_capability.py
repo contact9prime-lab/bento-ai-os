@@ -301,5 +301,4 @@ def test_a_claude_connector_has_a_bento_twin_for_missions():
     assert sm["remote_url"] == "https://mcp.supermetrics.com/mcp" and sm["auth"] == "oauth"
     assert company.KIT_MCP["supermetrics"]["curated"] == sm["registry_name"]
     note = executors.capability_note()
-    assert "mcp__claude_ai_" in note and "work in this chat only" in note
-    assert "never build a replacement" in note
+    assert "no connectors of your own" in note and "Never build a replacement" in note
