@@ -11,7 +11,8 @@ synthesised below, so there is nothing to license.
 What happens: every line is voiced first and measured, the beats are laid on that clock,
 one HTML page draws any moment of the reel (`render(t)`), Chromium photographs it 30 times
 a second, and ffmpeg puts the frames and the mixed audio together as H.264 + AAC at -14 LUFS.
-Each reel also gets OUT_DIR/<id>.txt: its Instagram caption and hashtags, ready to paste.
+Each reel also gets OUT_DIR/<id>.txt: its caption, five hashtags, cover and alt text and a first
+comment, ready to paste (`post_text`).
 """
 import base64
 import json
@@ -29,7 +30,7 @@ ROOT = HERE.parents[3]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(HERE))
 from agentos import avatars  # noqa: E402
-from reels import REELS  # noqa: E402
+from reels import MAX_TAGS, REELS  # noqa: E402
 
 FPS, SR = 30, 48000
 W, H, SCALE = 540, 960, 2                  # 1080x1920
@@ -466,6 +467,22 @@ def shoot(html_path, frames_dir, end, stills):
     return n
 
 
+def post_text(reel):
+    """What goes on Instagram with the reel, in the order it is pasted. Five hashtags at most,
+    because Instagram takes five per post and the first comment shares them."""
+    p = reel["post"]
+    tags = p["tags"]
+    if len(tags) > MAX_TAGS or len(set(tags)) != len(tags) or not all(t.startswith("#") for t in tags):
+        raise SystemExit(f"{reel['id']}: {len(tags)} hashtags; Instagram takes {MAX_TAGS}, each starting with #")
+    if "#" in p["first_comment"]:
+        raise SystemExit(f"{reel['id']}: a hashtag in the first comment counts against the same {MAX_TAGS}")
+    return (f"CAPTION\n{p['caption']}\n\n{' '.join(tags)}\n\n"
+            f"COVER TEXT\n{p['cover']}\n\n"
+            f"ALT TEXT (Advanced settings)\n{p['alt']}\n\n"
+            f"FIRST COMMENT (pin it)\n{p['first_comment']}\n\n"
+            f"KEYWORDS (what people search for: say them in the caption and on screen)\n{', '.join(p['keywords'])}\n")
+
+
 def make(reel, out: Path):
     work = out / reel["id"]
     work.mkdir(parents=True, exist_ok=True)
@@ -497,7 +514,7 @@ def make(reel, out: Path):
                     "-map", "[v]", "-map", "[a]", "-t", f"{end:.2f}",
                     "-c:v", "libx264", "-preset", "slow", "-crf", "18", "-profile:v", "high", "-r", str(FPS),
                     "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-movflags", "+faststart", str(mp4)], check=True)
-    (out / f"bento-ethics-{reel['id']}.txt").write_text(reel["caption"] + "\n\n" + reel["tags"] + "\n")
+    (out / f"bento-ethics-{reel['id']}.txt").write_text(post_text(reel))
     print(f"[{reel['id']}] {mp4} ({end:.1f} s)")
     return mp4
 

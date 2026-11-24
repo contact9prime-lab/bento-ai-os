@@ -28,6 +28,14 @@ rediscover, not style preferences.
 - **Every video is 9:16 and comes with its Instagram post.** 1080×1920, with sound, and
   delivered with a caption (a hook line, what it shows, a call to action) and its hashtags,
   ready to paste. That holds for every reel, demo or walk-through video, asked for or not.
+  **The post is written in the reply message itself**, not only in an attached file, and the
+  owner's aim is reach: every reel is made to go viral. Instagram takes **five hashtags at
+  most** per post or reel, and the caption and comments share them, so never more than five
+  (one or two broad, two niche, the brand `#bentoboxai`). Reach comes from the rest: searchable
+  words in the caption's first line (Instagram search reads captions), the same words on
+  screen and spoken, a cover title, alt text, a pinned first comment with no hashtags, and a
+  call to SEND it to someone (shares carry a reel furthest). `packaging/dev/reel/skits`
+  writes that pack per reel and refuses a sixth tag (`tests/test_reel_posts.py`).
 
 ---
 
