@@ -346,6 +346,7 @@ with "Unknown change". From 0.99.5:
   be a window anybody could use.
 
 ![A hold that is only a retired vault key: Back to normal, your password and one tap](screenshots/security-hold-retired-key.png)
+![After that tap: the watcher sealed again and the agents running](screenshots/security-hold-retired-key-accepted.png)
 
 When one changes without the OS having done it:
 
