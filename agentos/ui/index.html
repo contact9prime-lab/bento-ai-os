@@ -3980,6 +3980,18 @@ body.immersive .cside{position:absolute;left:0;top:0;bottom:0;width:280px;z-inde
   border-right:1px solid color-mix(in srgb,var(--txt) 10%,transparent);box-shadow:0 20px 60px rgba(0,0,0,.45);
   transition:transform var(--d-slow) var(--ease-out)}
 body.immersive .chatwrap.drawer .cside{transform:none}
+/* open beside the chat by default (10-chat.js chatSideWanted): a pane, not an overlay. A window narrower
+   than CHAT_SIDE_MIN keeps the drawer, because a 280px pane leaves a phone-width chat no room. */
+body.immersive .chatwrap{container-type:inline-size}
+body.immersive .chatwrap.side .cside{position:relative;transform:none;flex:none;padding-top:8px;box-shadow:none}
+/* with the list beside it the chat's row of controls has less room: the two pickers give way first and the
+   buttons wrap to a second line, rather than running off the window where nobody can reach them */
+body.immersive #topbar{flex-wrap:wrap}
+body.immersive #topbar>select.modelchip{flex:1 1 150px;min-width:0;max-width:300px}
+@container (max-width:639px){
+  body.immersive .chatwrap.side .cside{position:absolute;transform:translateX(-104%);padding-top:52px;box-shadow:0 20px 60px rgba(0,0,0,.45)}
+  body.immersive .chatwrap.side.drawer .cside{transform:none}
+}
 body.immersive .cmain{min-width:0}
 body.immersive #chat{padding:24px 0 12px}
 body.immersive .inner{max-width:760px}
@@ -8124,7 +8136,8 @@ body.mb-rail #ccpop,body.mb-rail #netpop,body.mb-rail #notifpanel,body.mb-rail #
    hero's one question, the plan as teacher → student → this machine, and a model as two bars
    (the base model, and yours). Colours are the theme's tokens only. The phone layout is a
    container query on .trn, because the window, not the screen, is what gets narrow. */
-.trn{height:100%;display:grid;grid-template-columns:200px minmax(0,1fr);container-type:inline-size;container-name:trn;min-width:0;
+.trn-g{height:100%;display:grid;grid-template-columns:200px minmax(0,1fr);grid-template-rows:minmax(0,1fr);min-width:0}
+.trn{height:100%;container-type:inline-size;container-name:trn;min-width:0;
   --trn-soft:color-mix(in srgb,var(--bg2) 72%,transparent);--trn-tint:color-mix(in srgb,var(--acc) 12%,transparent)}
 .trn-ic{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .trn-vh{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
@@ -8144,7 +8157,7 @@ body.mb-rail #ccpop,body.mb-rail #netpop,body.mb-rail #notifpanel,body.mb-rail #
 .trn-rig b{display:block;font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 .trn-pane{overflow:auto;padding:28px clamp(16px,4cqw,44px) 40px;min-height:0;min-width:0}
-.trn-pane>*{max-width:1040px;margin-left:auto;margin-right:auto}
+
 
 /* ---- the hero: one question ---- */
 .trn-hero{text-align:center;padding:18px 0 6px}
@@ -8169,7 +8182,8 @@ body.mb-rail #ccpop,body.mb-rail #netpop,body.mb-rail #notifpanel,body.mb-rail #
 .trn-how b{font-size:var(--fs-md)}
 .trn-how span{color:var(--dim);font-size:var(--fs-sm);line-height:1.4}
 
-.trn-sec{font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.08em;color:var(--dim2);font-weight:700;margin:30px auto 10px}
+.trn-sec{font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.08em;color:var(--dim2);font-weight:700;margin:30px 0 10px}
+.trn-pane>*{max-width:1040px;margin-left:auto;margin-right:auto}
 .trn-sec.first{margin-top:0}
 .trn-sec .mut{text-transform:none;letter-spacing:0;font-weight:400;margin-left:6px}
 
@@ -8184,7 +8198,7 @@ body.mb-rail #ccpop,body.mb-rail #netpop,body.mb-rail #notifpanel,body.mb-rail #
 .trn-node .k{font-size:var(--fs-2xs);text-transform:uppercase;letter-spacing:.07em;color:var(--dim2);font-weight:700}
 .trn-node>b{font-size:var(--fs-md);overflow-wrap:anywhere}
 .trn-link{display:flex;align-items:center;color:var(--dim2)}
-.trn-vhl{font-size:0;margin:0}.trn-vhl select{font-size:var(--fs-md);font-weight:700;margin:0}
+.trn-pick{margin:0}.trn .trn-pick select{font-weight:700;margin:0}
 .trn-end{justify-content:flex-end;margin-top:16px}
 
 /* ---- a run: stages that fill ---- */
@@ -8195,15 +8209,16 @@ body.mb-rail #ccpop,body.mb-rail #netpop,body.mb-rail #notifpanel,body.mb-rail #
 .trn-run header .grow b{font-size:var(--fs-lg,16px)}
 .trn-run header .grow span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .trn-stages{list-style:none;padding:0;margin:18px 0 4px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0}
-.trn-stages li{position:relative;padding:0 14px 0 0;display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:10px;row-gap:1px;align-items:center;color:var(--dim2)}
-.trn-stages li::before{content:'';position:absolute;left:34px;right:6px;top:14px;height:2px;background:var(--line);border-radius:2px}
-.trn-stages li:last-child::before{display:none}
-.trn-stages li.done::before{background:color-mix(in srgb,var(--acc) 70%,var(--line))}
-.trn-stages .dot{grid-row:1/3;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;border:2px solid var(--line);background:var(--bg2);font-size:var(--fs-xs);font-weight:700;position:relative;z-index:1}
+.trn-stages li{display:flex;flex-direction:column;gap:2px;padding-right:10px;color:var(--dim2);min-width:0}
+.trn-stages .top{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.trn-stages .ln{flex:1;height:2px;border-radius:2px;background:var(--line)}
+.trn-stages li:last-child .ln{visibility:hidden}
+.trn-stages li.done .ln{background:color-mix(in srgb,var(--acc) 70%,var(--line))}
+.trn-stages .dot{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;border:2px solid var(--line);background:var(--bg2);font-size:var(--fs-xs);font-weight:700;flex:none}
 .trn-stages .dot .trn-ic{width:14px;height:14px;stroke-width:2.6}
-.trn-stages b{font-size:var(--fs-sm);background:var(--bg2);padding-right:8px;position:relative;z-index:1;justify-self:start;border-radius:6px}
-.trn-stages .sub{grid-column:2;font-size:var(--fs-xs);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.trn-stages .bar{grid-column:2;margin-top:6px}
+.trn-stages b{font-size:var(--fs-sm)}
+.trn-stages .sub{font-size:var(--fs-xs);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trn-stages .bar{margin-top:6px;max-width:260px}
 .trn-stages li.done{color:var(--dim)}
 .trn-stages li.done .dot{background:var(--acc-grad,var(--acc));border-color:transparent;color:var(--on-acc,#fff)}
 .trn-stages li.done b{color:var(--txt)}
@@ -8284,7 +8299,8 @@ body.mb-rail #ccpop,body.mb-rail #netpop,body.mb-rail #notifpanel,body.mb-rail #
 .trn-tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
 .trn-t{width:100%;border-collapse:collapse;font-size:var(--fs-sm)}
 .trn-t th,.trn-t td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top;overflow-wrap:anywhere}
-.trn-t th{font-size:var(--fs-2xs);color:var(--dim2);font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.trn-t th{font-size:var(--fs-2xs);color:var(--dim2);font-weight:700;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}
+.trn-mine{display:flex;gap:6px;align-items:baseline}
 .trn-t td{max-width:420px}
 .trn-t td.was{color:var(--dim2)}
 .trn-hit{display:inline-block;width:1.1em;font-weight:800;color:var(--dim2)}.trn-hit.y{color:var(--ok)}
@@ -8349,12 +8365,16 @@ body.mb-rail #ccpop,body.mb-rail #netpop,body.mb-rail #notifpanel,body.mb-rail #
   .trn-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 @container trn (max-width:600px){
-  .trn-rail{grid-column:1/-1;flex-direction:row;align-items:center;border-right:0;border-bottom:1px solid var(--line);padding:8px 10px;overflow-x:auto;scroll-snap-type:x mandatory}
-  .trn-tabs{flex-direction:row}
-  .trn-tabs button{flex:none;scroll-snap-align:start;min-height:var(--tap,40px);padding:8px 12px}
+  /* .trn is the container and can't be restyled by its own query, so the grid is one level in */
+  .trn-g{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}
+  .trn-rail{border-right:0;border-bottom:1px solid var(--line);padding:6px 8px}
+  /* four places fit a phone as a tab bar: the icon over the word, a quarter each */
+  .trn-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;width:100%}
+  .trn-tabs button{flex-direction:column;gap:3px;padding:6px 2px;min-height:var(--tap,44px);font-size:var(--fs-xs);position:relative;justify-content:center}
   .trn-tabs button span{flex:none}
+  .trn-tabs small{position:absolute;top:3px;right:14%;padding:0 5px}
   .trn-rig{display:none}
-  .trn-pane{grid-column:1/-1;padding:16px 12px 28px}
+  .trn-pane{padding:16px 12px 28px}
   .trn-hero{padding-top:6px}
   .trn-askrow{flex-direction:column;align-items:stretch}
   .trn-ideas{flex-wrap:nowrap;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:2px}
@@ -8363,7 +8383,9 @@ body.mb-rail #ccpop,body.mb-rail #netpop,body.mb-rail #notifpanel,body.mb-rail #
   .trn-fields,.trn-srcs,.trn-how{grid-template-columns:minmax(0,1fr)}
   .trn-plan,.trn-run{padding:14px}
   .trn-stages{grid-template-columns:minmax(0,1fr);gap:12px}
-  .trn-stages li::before{display:none}
+  .trn-stages li{display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:10px;align-items:center}
+  .trn-stages .top{grid-row:1/3;margin:0}.trn-stages .ln{display:none}
+  .trn-stages .sub,.trn-stages .bar{grid-column:2}
   .trn-result{flex-direction:column;align-items:stretch}
   .trn-rside{flex-direction:row;align-items:center;justify-content:space-between}
   .trn-sr{grid-template-columns:76px minmax(0,1fr) auto}
@@ -20695,8 +20717,22 @@ function onWake(){
 /* ================= chat app ================= */
 const PLACEHOLDER_IDLE='Ask or tell it anything. @name a teammate to ask them';
 const PLACEHOLDER_BUSY='Say what comes next. It joins this run or waits its turn';
+/* The conversation list is open beside the chat by default and ☰ hides it; the choice is kept per
+   browser (chat.side). Asked for as "the left panel should be open by default in the chat but can be
+   hidden". A phone or a narrow window has no room for it beside the chat, so there it stays the
+   drawer ☰ opens over the chat, and picking a conversation closes it again. */
+function chatSideWanted(){try{return localStorage.getItem('chat.side')!=='0'}catch(e){return true}}
+function chatSideNarrow(w){return document.body.classList.contains('dev-mobile')||w.clientWidth<CHAT_SIDE_MIN}
+var CHAT_SIDE_MIN=640;
+function chatSideToggle(btn){
+  const w=btn.closest('.chatwrap');if(!w)return;
+  if(chatSideNarrow(w)){w.classList.toggle('drawer');return}
+  w.classList.remove('drawer');
+  const on=w.classList.toggle('side');
+  try{localStorage.setItem('chat.side',on?'1':'0')}catch(e){}
+}
 function renderChat(body){
-  body.innerHTML=`<div class="chatwrap">
+  body.innerHTML=`<div class="chatwrap${chatSideWanted()?' side':''}">
     <div class="cside">
       <button id="newchat"><span data-ic="plus">＋</span> New chat</button>
       <input id="conv-q" type="search" placeholder="Search chats" aria-label="Search chats">
@@ -20709,7 +20745,7 @@ function renderChat(body){
               Rendered always, shown only by that look (CSS) — the standard
               desktop keeps its permanent sidebar. */''}
         <button id="cs-toggle" class="endbtn" data-ic="layers" title="Conversations"
-          onclick="this.closest('.chatwrap').classList.toggle('drawer')">☰</button>
+          onclick="chatSideToggle(this)">☰</button>
         ${/* Two selects, coupled: WHO answers, then WHAT it runs on. One select
               holding both — engines in an optgroup above the models — could show
               Claude Code chosen and a Gemini model selected underneath it, which
@@ -20858,6 +20894,7 @@ function send(){
   // as the next turn. Either way the queue strip is the receipt, so no bubble yet.
   if(!wasRunning)userBubble(text,imgs);
   ws.send(JSON.stringify({type:'chat',text,images:imgs,conversation_id:currentConv,model:''}));
+  setTimeout(loadConvs,400);   // the server lists it at once; turn_start can be minutes away (a price card, a long history)
   if(!wasRunning)officeChatMirror(currentConv,text);   // the Office shows this conversation too
   draftClear(currentConv);
   input.value='';input.style.height='auto';renderAttach();
@@ -25760,10 +25797,28 @@ async function secHeldBox(held){
     SEC_HOLD.busy=false;secCardPaint();
   };
   form.appendChild(go);
+  // Take it back: the code returns to its commit, copies kept aside (holdclear.undo). No code
+  // needed, because it only goes towards a commit. Not offered for a locked home file, which git
+  // can't put back, nor once it's settled. TUI: bento integrity undo.
+  if(pic.kind!=='settled'&&!(pic.home&&pic.home.length)){
+    const back=secEl('button','endbtn','Undo the change');
+    back.disabled=SEC_HOLD.busy||pic.paused;
+    back.onclick=async()=>{
+      const pw=document.getElementById('s-sec-pw');
+      SEC_HOLD.busy=true;SEC_HOLD.msg='';
+      try{
+        const got=await secPost('/api/security/undo',{password:pw?pw.value:''});
+        SEC_HOLD.changes=false;
+        toast(got.released?'Put back. Agents can run again.':(got.why||'Put back.'));
+      }catch(e){SEC_HOLD.msg=e.message||String(e)}
+      SEC_HOLD.busy=false;secCardPaint();
+    };
+    form.appendChild(back);
+  }
   inner.appendChild(form);
-  const note=unknown&&!pic.code_set?'Bento can\'t vouch for this change, so accepting it here needs an authenticator code. Set one up under Details, or accept at the terminal: bento integrity accept'
+  const note=unknown&&!pic.code_set?'Bento can\'t vouch for this change, so accepting it here needs an authenticator code. Undo needs only your password.'
     :pic.paused?'Too many wrong answers. Try again in 15 minutes.'
-    :'Check what changed first. You can also answer from your paired phone, or run bento integrity accept.';
+    :'Check what changed first. Undo puts the code back as it was committed and keeps a copy of the change.';
   inner.appendChild(secEl('small','sec-note',note));
   if(unknown&&!pic.code_set){
     const setup=secEl('button','endbtn sec-show','Set up a code');
@@ -50477,7 +50532,7 @@ function trainPaint(){
   const keep={};body.querySelectorAll('[data-keep]').forEach(el=>{keep[el.id]={v:el.value,f:document.activeElement===el,s:el.selectionStart}});
   const sc=(body.querySelector('.trn-pane')||{}).scrollTop||0;
   const tabs=[['make','Make','make'],['datasets','Datasets','data',d.datasets],['runs','Runs','runs',d.jobs],['models','Models','models',d.models]];
-  body.querySelector('.trn').innerHTML=`
+  body.querySelector('.trn').innerHTML=`<div class="trn-g">
     <nav class="trn-rail" aria-label="Train">
       <div class="trn-tabs">${tabs.map(([id,l,ic,n])=>`<button class="${TRAIN.tab===id?'on':''}" ${TRAIN.tab===id?'aria-current="page"':''} onclick="trainTab('${id}')">${trnIc(ic)}<span>${l}</span>${n?`<small>${n}</small>`:''}</button>`).join('')}</div>
       <div class="trn-rig" title="${esc((d.hardware||{}).words||'')}">
@@ -50485,7 +50540,7 @@ function trainPaint(){
         <div><span>This machine</span><b>${esc(trainHw(d))}</b></div>
       </div>
     </nav>
-    <div class="trn-pane">${trainSetup(d)}${({make:trainMake,datasets:trainDatasets,runs:trainRuns,models:trainModels})[TRAIN.tab](d)}</div>`;
+    <div class="trn-pane">${trainSetup(d)}${({make:trainMake,datasets:trainDatasets,runs:trainRuns,models:trainModels})[TRAIN.tab](d)}</div></div>`;
   for(const id in keep){const el=body.querySelector('#'+id);if(el){el.value=keep[id].v;if(keep[id].f){el.focus();try{el.setSelectionRange(keep[id].s,keep[id].s)}catch(e){}}}}
   const pane=body.querySelector('.trn-pane');if(pane)pane.scrollTop=sc;
   if(TRAIN.tab==='runs')trainCurveWire();
@@ -50552,7 +50607,7 @@ function trainPlanHTML(p,d){
           :`It writes them in about ${calls} calls, counted in Usage.`}</span></div>
       <div class="trn-link">${trnIc('arrow')}</div>
       <div class="trn-node">${trnIc('student')}<span class="k">Student</span>
-        <label class="trn-l trn-vhl">Student<select id="trn-p-base" data-keep>${opts}</select></label>
+        <label class="trn-l trn-pick"><span class="trn-vh">Student</span><select id="trn-p-base" data-keep>${opts}</select></label>
         <span class="mut">${esc(cur.licence||'')}${cur.note?' · '+esc(cur.note):''}</span>
         <label class="trn-l">Passes over the examples<input id="trn-p-ep" data-keep type="number" min="1" max="20" step="1" value="${p.epochs||3}"></label></div>
       <div class="trn-link">${trnIc('arrow')}</div>
@@ -50571,12 +50626,15 @@ function trainRunHTML(r,d){
   const steps=r.steps||[],last=steps[steps.length-1]||{},has=t=>steps.some(s=>s.title===t);
   const m=(d.models_list||[]).find(x=>x.id===r.model),j=(d.jobs_list||[]).find(x=>x.id===r.job);
   const dsr=(d.datasets_list||[]).find(x=>x.id===r.dataset)||{},pr=dsr.progress||{};
-  const checking=!!j&&j.state==='running'&&/held-back/.test(j.phase||'');
+  /* the base model answers the held-back examples BEFORE training, so that belongs to Training;
+     the check is what comes after */
+  const checking=!!j&&j.state==='running'&&/after training|merging|saving/.test(j.phase||'');
+  const first=!!j&&j.state==='running'&&/before training/.test(j.phase||'');
   const st=[
     ['Examples',has('Wrote examples')||has('Imported from the Hub')||!!r.job,last.title==='Writing examples'||last.title==='Answering',
       pr.want?`${pr.done|0} of ${pr.want}`:dsr.rows?dsr.rows+' ready':((r.plan||{}).examples|0)+' to write',pr.want?(pr.done/pr.want):null],
     ['Training',!!r.model||(j&&j.state==='done'),!!j&&j.state==='running'&&!checking,
-      j?(j.state==='running'?(j.total&&j.phase==='training'?`step ${j.step} of ${j.total}`:j.phase):j.rows+' learned from'):trainShort((r.plan||{}).base),
+      j?(j.state==='running'?(first?`the base model answers first, ${j.step} of ${j.total}`:j.total&&j.phase==='training'?`step ${j.step} of ${j.total}`:checking?j.rows+' learned from':j.phase):j.rows+' learned from'):trainShort((r.plan||{}).base),
       j&&j.total&&j.phase==='training'?j.step/j.total:null],
     ['The check',!!r.model,checking,
       m&&m.eval&&m.eval.n?`${m.eval.exact_after} of ${m.eval.n} match`:checking&&j.total?`${j.step} of ${j.total} answered`:'on examples it never saw',
@@ -50588,8 +50646,9 @@ function trainRunHTML(r,d){
       ${r.state==='running'?`<button class="endbtn" onclick="trainDo('stop',()=>trainApi('/api/train/runs/${r.id}/stop','POST',{}))">Stop</button>`:''}</header>
     <ol class="trn-stages">${st.map(([name,done,now,sub,frac],i)=>`
       <li class="${done?'done':now&&r.state==='running'?'now':''}">
-        <span class="dot">${done?trnIc('check'):i+1}</span><b>${name}</b><span class="sub">${esc(sub||'')}</span>
-        ${now&&r.state==='running'?`<div class="bar"><i style="width:${Math.max(4,Math.round(100*(frac||0)))}%"></i></div>`:''}</li>`).join('')}</ol>
+        <div class="top"><span class="dot">${done?trnIc('check'):i+1}</span><i class="ln"></i></div>
+        <b>${name}</b><span class="sub">${esc(sub||'')}</span>
+        ${now&&r.state==='running'&&frac!=null?`<div class="bar"><i style="width:${Math.max(4,Math.round(100*frac))}%"></i></div>`:''}</li>`).join('')}</ol>
     ${bad?`<div class="${r.state==='failed'?'errmsg':'mut'}">${esc(last.detail||last.title||'')}</div>`:''}
     ${m?`<div class="trn-result">${trainScore(m.eval,true)}
       <div class="trn-rside">${trainWord(m.verdict)}
@@ -50735,7 +50794,7 @@ function trainJobHTML(j){
     ${j.state==='failed'?`<div class="errmsg">${esc(j.error||'It failed. The log says why.')}</div>`:''}
     ${j.state==='stopped'?'<div class="mut">Stopped.</div>':''}
     <div class="trn-tiles">${tile('Learned from',j.rows|0,'examples')}${tile('Held back',j.held|0,'never trained on')}
-      ${tile('Loss',lossNow==null?'–':lossNow.toFixed(2),curve.length>1?'from '+curve[0].loss.toFixed(2):'')}
+      ${tile('Loss',lossNow==null?'–':lossNow<.01?lossNow.toFixed(3):lossNow.toFixed(2),curve.length>1?'from '+curve[0].loss.toFixed(2):'')}
       ${tile('Took',m.seconds?(m.seconds>=90?Math.round(m.seconds/60)+' min':Math.round(m.seconds)+' s'):j.state==='running'?'…':'–',m.trainable_params?(100*m.trainable_params/m.params).toFixed(1)+'% of weights trained':'')}</div>
     ${j.verdict?`<div class="trn-result">${trainScore(ev,true)}<div class="trn-rside">${trainWord(j.verdict)}</div></div>
       <div class="mut">${esc(j.verdict.words)}</div>`:''}
@@ -50805,7 +50864,7 @@ function trainExamples(items){
   return `<h3 class="trn-sec">Held-back examples <span class="mut">it never trained on these</span></h3>
     <div class="trn-tw"><table class="trn-t trn-ex"><thead><tr><th>Prompt</th><th>Wanted</th><th>Base model</th><th>Yours</th></tr></thead><tbody>
     ${items.map(i=>`<tr><td data-l="Prompt">${esc(i.prompt)}</td><td data-l="Wanted">${esc(i.want)}</td><td data-l="Base model" class="was">${esc(i.before)}</td>
-      <td data-l="Yours"><span class="trn-hit ${i.exact_after?'y':''}" aria-label="${i.exact_after?'matches':'differs'}">${i.exact_after?'✓':'·'}</span> ${esc(i.after)}</td></tr>`).join('')}
+      <td data-l="Yours"><div class="trn-mine"><span class="trn-hit ${i.exact_after?'y':''}" aria-label="${i.exact_after?'matches':'differs'}">${i.exact_after?'✓':'·'}</span><span>${esc(i.after)}</span></div></td></tr>`).join('')}
     </tbody></table></div>`;
 }
 

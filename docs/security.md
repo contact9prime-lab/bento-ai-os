@@ -346,6 +346,7 @@ with "Unknown change". From 0.99.5:
   be a window anybody could use.
 
 ![A hold that is only a retired vault key: Back to normal, your password and one tap](screenshots/security-hold-retired-key.png)
+![After that tap: the watcher sealed again and the agents running](screenshots/security-hold-retired-key-accepted.png)
 
 When one changes without the OS having done it:
 
@@ -363,7 +364,28 @@ Bento works out what the change is, so you know how much to worry:
 | **Matches GitHub** | The code is a clean checkout of a commit on the branch your remote has. It just wasn't installed through `bento update`. | A tap |
 | **Unknown change** | Content git can't vouch for, a changed key file, or a record that doesn't check out. | The 6-digit code from your authenticator app |
 
-You can accept it in three places:
+### Taking a change back
+
+If you didn't make the change, or an agent did, undo it instead of accepting it:
+
+```bash
+bento integrity undo
+```
+
+It lists each watched file it will put back as committed and each new file it will move away, you type
+`undo`, and the agents can run again. A copy of everything it replaces goes to
+`~/.agentos/integrity-undone/<time>/` first, so nothing is lost. Files the watcher doesn't watch (a test,
+a note) are named and left alone. In Settings → Permissions → Security, **Undo the change** does the same
+with your password. It needs no authenticator code, because it only goes back to a commit.
+
+Undo can't help with a changed file in Bento's home (`config.json`, a key) or a commit made after the record.
+For those it says so, and you check the change and accept it.
+
+![An agent's edit to the code: Undo the change, with only your password](screenshots/security-undo-held.png)
+![The same card on a 390px phone](screenshots/security-undo-held-phone.png)
+![Put back: the agents run again, and every admin hears it](screenshots/security-undo-done.png)
+
+You can accept a change in three places:
 
 - **Your phone.** Reply `show`, `accept` or `keep` in the paired chat of an admin (Telegram also has buttons).
   For an unknown change Bento then asks for the code. The reply is read before any agent and never saved.
@@ -374,6 +396,7 @@ You can accept it in three places:
 ```bash
 bento integrity status     # what changed, and what Bento makes of it
 bento integrity changes    # the diff behind it
+bento integrity undo       # take the change back: the code returns to its commit, a copy kept aside
 bento integrity accept     # after you've looked. It lists what it takes as correct, and you type the word.
 bento integrity code       # set up the authenticator code that an unknown change needs
 ```

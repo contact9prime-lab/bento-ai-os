@@ -1194,6 +1194,11 @@ class Store:
             "INSERT INTO messages (id, conversation_id, role, content, meta, created_at) VALUES (?,?,?,?,?,?)",
             (mid, cid, role, content, json.dumps(meta or {}), time.time()),
         )
+        if role == "user":
+            # A person's message puts its chat at the top of the list NOW, wherever it came from
+            # (Chat, Telegram, WhatsApp, a Zero). Every surface bumped it only after the reply,
+            # so a turn that stuck left its chat where it was, often past the list's 100.
+            self.db.execute("UPDATE conversations SET updated_at=? WHERE id=?", (time.time(), cid))
         self.db.commit()
         return mid
 

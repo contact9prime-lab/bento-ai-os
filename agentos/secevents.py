@@ -68,6 +68,7 @@ KINDS: dict[str, tuple[str, int, int]] = {
     "integrity.unsigned": ("This code is not signed by a key this machine trusts", 1, 86400),
     "integrity.dev": ("Code changed on a development checkout", 1, 300),
     "integrity.accepted": ("An admin accepted a security change and the agents run again", 1, 60),
+    "integrity.undone": ("An admin took a security change back. A copy of it was kept aside", 1, 60),
     "integrity.code": ("The code that accepts security changes was set up or replaced", 1, 60),
     "integrity.accept_refused": ("A wrong code or password was given to accept a security change", 1, 300),
     "ledger.broken": ("The ledger's chain does not verify", 1, 300),

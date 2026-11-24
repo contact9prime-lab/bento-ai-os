@@ -2588,6 +2588,13 @@ autonomy level. The audit and its 97 fixes are in `docs/security-testing.md`; th
   (the hold's own list), or a replaced key read as settled; a machine with a signing key still accepts only at
   its terminal; every accept is an `integrity.accepted` alert and an `integrity.accept` ledger row. The phones
   hear the hold when it trips and at every start while it holds. Replacing the code needs the current one.
+- **Undo takes a change back in one step** (`holdclear.undo_plan`/`undo`, `/api/security/undo`, the card's
+  Undo the change, `bento integrity undo|reset`; `tests/test_holdclear.py`). Reported after an agent on Claude Code
+  rewrote `cdpbrowser.py` in the served tree and the way back was a checkout, an rm and an accept: "we need a simpler
+  command". It only goes TOWARDS the checkout's commit, so the password (or a terminal) is the proof and no code is
+  asked. Changed and new watched files are copied to `<home>/integrity-undone/<time>/` (0700) before git puts them
+  back; nothing is deleted unseen. A held home file or a commit that moved is refused in words (accept is for those).
+  Then it accepts only if the picture is `settled`, so it can never take anything else as correct.
 - **Attacks go in `secevents.flag`**, one alert per incident, the OS's words only to a model.
 - **Known vulnerabilities in what Bento installs are checked, and a scanner that didn't run is red**
   (`packaging/audit-vulns.py`, `.github/workflows/vulns.yml`, `packaging/vuln-exceptions.txt`;

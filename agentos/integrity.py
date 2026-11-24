@@ -1152,8 +1152,9 @@ def line(s: dict) -> str:
     if s.get("held"):
         names = s["held"].get("files") or []
         what = ", ".join(names[:3]) or "a security file"
-        return (f"Agents are stopped because {what} changed. An admin can accept it in Settings → "
-                "Permissions → Security, from their paired phone, or with bento integrity accept.")
+        return (f"Agents are stopped because {what} changed. To take the change back, run bento integrity "
+                "undo. To keep it, accept it in Settings → Permissions → Security, from your paired phone, "
+                "or with bento integrity accept.")
     if s.get("sealed") == "bad":
         return "The integrity record doesn't check out. Run bento integrity seal at this machine's terminal."
     how = {"signed": "sealed and signed by your key", "release": "a signed release",

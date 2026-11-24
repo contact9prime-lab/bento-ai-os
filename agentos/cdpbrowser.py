@@ -579,7 +579,7 @@ class Browser:
                 await asyncio.to_thread(_untar, data, run)
             elif plain.exists():
                 # the first start after the update: the old clear profile moves in and is sealed
-                await asyncio.to_thread(shutil.copytree, plain, run, dirs_exist_ok=True)
+                await asyncio.to_thread(_copy_profile, plain, run)
         except BaseException:
             shutil.rmtree(run, ignore_errors=True)
             raise
@@ -1331,6 +1331,16 @@ def _ram_dir() -> str:
     """Where an opened profile lives while it runs: RAM when this machine has a tmpfs for it."""
     d = "/dev/shm"
     return d if os.path.isdir(d) and os.access(d, os.W_OK) else _tempfile().gettempdir()
+
+
+def _copy_profile(src: Path, dest: Path) -> None:
+    """The old clear profile copied in the way `_tar` seals one: no links and nothing in _NO_SEAL.
+    A Chrome that died leaves SingletonLock/Socket/Cookie as links to nothing, and copytree raised on
+    them after copying the rest, so the browser never started and every sign-in failed. Found on the
+    owner's machine: links from a Chrome that died ten days before the profile was first sealed."""
+    def skip(folder, names):
+        return [n for n in names if n in _NO_SEAL or os.path.islink(os.path.join(folder, n))]
+    shutil.copytree(src, dest, dirs_exist_ok=True, ignore=skip, symlinks=True)
 
 
 def _tar(root: Path) -> bytes:

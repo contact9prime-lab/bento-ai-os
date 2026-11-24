@@ -10679,6 +10679,37 @@ def _integrity_cli(args):
         from . import holdclear
         print(holdclear.changes(root=root))
         return 0
+    if act in ("undo", "reset"):
+        # Put the watched code back to its commit and let the agents run again: one command for
+        # "an agent edited Bento, take it back". Changed and new files are copied aside first.
+        from . import holdclear
+        plan = holdclear.undo_plan(root)
+        if plan["why"]:
+            print(f"  {plan['why']}")
+            return 0 if plan["why"] == "Nothing is held." else 1
+        head = [f"  Code: {root}"]
+        if plan["restore"]:
+            head.append("  Put back as they are in the commit:")
+            head += [f"    {r}" for r in plan["restore"][:20]]
+        if plan["set_aside"]:
+            head.append("  New files, moved aside:")
+            head += [f"    {r}" for r in plan["set_aside"][:20]]
+        head.append(f"  A copy of each goes to {integrity._home() / holdclear.ASIDE}/ first.")
+        if not _integrity_person(args, "undo", "\n".join(head)):
+            return 1
+        got = holdclear.undo("the terminal", "terminal", root)
+        if not got["done"]:
+            print(f"✗ {got['why']}")
+            return 1
+        print(f"✓ Put back. The copies are in {got['aside']}.")
+        if got["released"]:
+            print("  The agents can run again within a minute.")
+        else:
+            print(f"  {got['why']}")
+        if plan["left"]:
+            print("  Not watched, so left as they are: " + ", ".join(plan["left"][:6])
+                  + (f" and {len(plan['left']) - 6} more" if len(plan["left"]) > 6 else ""))
+        return 0 if got["released"] else 1
     if act == "code":
         # The authenticator code an unknown change needs before a phone or Settings may accept it.
         from . import holdclear
@@ -11282,10 +11313,10 @@ def main():
     p_security.add_argument("--disallow", metavar="ADDRESS", help="take a local address off that list")
     p_security.add_argument("--local", action="store_true", help="list the local addresses fetches may reach")
 
-    p_integrity = verb("integrity", help="the code watcher: status, seal, accept a change, keys, the root lock")
+    p_integrity = verb("integrity", help="the code watcher: status, undo or accept a change, keys, the root lock")
     p_integrity.add_argument("action", nargs="?", default="status",
-                             choices=["status", "changes", "seal", "accept", "code", "dev", "keygen",
-                                      "trust", "sign-release", "lock", "unlock"])
+                             choices=["status", "changes", "undo", "reset", "seal", "accept", "code", "dev",
+                                      "keygen", "trust", "sign-release", "lock", "unlock"])
     p_integrity.add_argument("value", nargs="?", default="")
     p_integrity.add_argument("--key", default="", help="the private key's path, when you use one")
     p_integrity.add_argument("--root", default="", help="which copy of the code (default: the one the server runs)")
