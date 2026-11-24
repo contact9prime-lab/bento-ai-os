@@ -152,6 +152,10 @@ function updateDone(ev){
   if(c)c.querySelector('#upd-prog').textContent=
     `updated to ${ev.version||''} — restarting, this page will come back on its own…`;
   toast('updated to '+(ev.version||'the new version'));
+  // The security watcher, said at the update (updates.security_words): a hold or a changed locked
+  // file is waiting, and the person hears it now rather than finding stopped agents later.
+  const sec=ev.security||{};
+  if((sec.lines||[]).length)toast(sec.lines.join(' '),{kind:'warn',ms:12000,label:'Review',go:()=>placeSettings('permissions','Security')()});
 }
 function showSuggestion(ev){
   desktopCard('suggcard',

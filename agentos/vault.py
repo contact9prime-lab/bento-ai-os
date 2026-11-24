@@ -669,11 +669,20 @@ def reseal(uid: str) -> int:
     if mech == "file":
         with _quiet():
             _key_path().unlink()
+        _retired_key()
     elif mech == "keyring" and _keyring_tool() == "secret-tool":
         with _quiet():
             subprocess.run(["secret-tool", "clear", "service", SERVICE, "key", _scope()],
                            capture_output=True, timeout=10)
     return len(moved)
+
+
+def _retired_key() -> None:
+    """This vault no longer uses its key file, and Bento removed it: tell the watcher, or it reads
+    a locked file gone as somebody else's change and stops every agent. Found after 0.99.0, whose
+    two migrations (reseal at a first sign-in, to_service at start) each held the machine."""
+    from . import integrity
+    integrity.noted(_key_path())
 
 
 def drop_sealed(uid: str) -> int:
@@ -780,6 +789,7 @@ def to_service() -> int:
     if mech == "file":
         with _quiet():
             _key_path().unlink()
+        _retired_key()
     elif mech == "keyring" and _keyring_tool() == "secret-tool":
         with _quiet():
             subprocess.run(["secret-tool", "clear", "service", SERVICE, "key", _scope()],
