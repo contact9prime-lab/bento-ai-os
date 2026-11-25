@@ -281,6 +281,18 @@ await appAgent('Check the price, and if it moved more than 2% send me a Telegram
 appCopilot.mount({ starters: ['What changed today?', 'Explain this number'] });
 ```
 
+The corner assistant is handed the app's own code, its saved data and the text on its screen with
+every question, so it can explain the app without looking for it. Apps are kept in Bento's
+database, not as files, and the assistant is told so.
+
+![An app's corner assistant answering "Explain me the setup" from the app's own rules](screenshots/app-assistant.png)
+
+![The same corner assistant answering on a 390px phone, with the app's rules above it](screenshots/app-assistant-phone.png)
+
+When an app asks to run a read-only command on files in your workspace (`ls`, `cat`, `head`,
+`grep`…), the card's *1 hour* and *Always* cover every such read for that one app. Hidden files,
+anything outside the workspace and anything that writes still ask.
+
 The resilient-parsing trick is worth knowing: after `appTool('fetch_url', …)`, hand the page text
 to `appLLM` asking for **only JSON**, then `JSON.parse` inside a `try/catch`. It survives a site
 redesign that would break any regex.

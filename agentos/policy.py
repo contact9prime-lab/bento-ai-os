@@ -692,11 +692,22 @@ def command_covered(pattern: str, command: str, match=None) -> bool:
     return bool(segs) and all(any(match(a, x) for a in alts) for x in segs)
 
 
-def resource_match(pattern: str, resource: str) -> bool:
+# A remembered "read-only commands on files inside this folder" (tools.reads_inside), written
+# as `tool:run_command @read-only:<folder>`. Offered to an app whose command qualifies, so
+# one Always stops `ls` and `head` in the workspace from asking every time.
+READ_ONLY_MARK = "@read-only:"
+
+
+def resource_match(pattern: str, resource: str, cwd: str = "") -> bool:
     """A grant's resource pattern against a call's resource. Shell commands are matched
-    one command at a time (command_covered); everything else is a plain glob."""
+    one command at a time (command_covered); everything else is a plain glob. `cwd` is the
+    folder the command was asked to run in, which a read-only grant has to check."""
     pat = pattern or "*"
     pre = "tool:run_command "
+    if pat.startswith(pre + READ_ONLY_MARK):
+        from .tools import reads_inside
+        return resource.startswith(pre) and reads_inside(
+            resource[len(pre):], pat[len(pre + READ_ONLY_MARK):], cwd)
     if resource.startswith(pre) and pat.startswith("tool:run_command") and pat != "tool:run_command*":
         body = pat[len("tool:run_command"):].lstrip()
         return command_covered(body, resource[len(pre):])
@@ -1545,7 +1556,7 @@ class PDP(usersmod.Scoped):
                 "note": f"{link} may have {principal.id} {action} {scope} without asking"}
 
     def _matching(self, principal: Principal, action: str, resource: str,
-                  flow: str = "", conversation: str = "") -> list[dict]:
+                  flow: str = "", conversation: str = "", cwd: str = "") -> list[dict]:
         """The grants that apply — and, inside a flow's run, ONLY that flow's
         definition grants. A specialist is shared between flows and every flow
         writes its envelope onto the same principal, so without this the deny
@@ -1570,7 +1581,7 @@ class PDP(usersmod.Scoped):
             want = g.get("resource") or "*"
             if files:
                 want = _fs_pattern(want, self.cfg.get("workspace", ""))
-            if _match(g.get("action") or "*", action) and resource_match(want, resource):
+            if _match(g.get("action") or "*", action) and resource_match(want, resource, cwd):
                 out.append(g)
         return out
 
@@ -1885,7 +1896,8 @@ class PDP(usersmod.Scoped):
             return self._default(principal, action, resource, ctx)
         # 3./4. grants — deny wins; each grant only applies on the surfaces it covers
         matched = self._matching(principal, action, resource, flow=str(ctx.get("flow") or ""),
-                                 conversation=str(ctx.get("conversation_id") or ""))
+                                 conversation=str(ctx.get("conversation_id") or ""),
+                                 cwd=str((ctx.get("args") or {}).get("cwd") or ""))
         gated = [g for g in matched if surface_allows(g.get("surfaces"), surface)]
         for g in gated:
             if g.get("effect") == "deny":
@@ -2128,6 +2140,13 @@ class PDP(usersmod.Scoped):
             if not cmd:
                 return None         # nothing to remember, and `tool:run_command` means every command
             res = f"tool:run_command {command_offer(cmd)}"
+            # an app reading files in your workspace: one yes for all such reads
+            ws = self.cfg.get("workspace") or ""
+            if principal.kind == "app" and ws and not standing_refusal(
+                    "fs.write", f"fs:{os.path.realpath(os.path.expanduser(ws))}/*"):   # never a home
+                from .tools import reads_inside
+                if reads_inside(cmd, ws, str(args.get("cwd") or "")):
+                    res = f"tool:run_command {READ_ONLY_MARK}{os.path.realpath(os.path.expanduser(ws))}"
         elif action == "tool.use" and name:
             res = f"tool:{name}*"
         elif action in ("fs.read", "fs.write"):

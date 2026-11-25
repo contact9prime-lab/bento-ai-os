@@ -1,6 +1,17 @@
 # Changelog
 
 
+## 0.100.4 — 2026-11-25
+
+- The ✦ assistant inside an app knows its app. It's handed the app's code, its saved data and what's on
+  its screen, so "explain the setup" is answered straight away. It used to look for the app's files with
+  `ls` in your workspace (a card each time), never find them, and run out of steps.
+- An app reading files in your workspace can be allowed once. When an app asks to run a read-only command
+  on files inside your workspace (`ls`, `cat`, `head`, `grep`…), *1 hour* or *Always* on that card covers
+  all such reads for that app. Hidden files, anything outside the workspace and anything that writes still
+  ask. A workspace that is your whole home folder is never offered this.
+- The assistant's answers show bold text as bold.
+
 ## 0.100.3 — 2026-11-25
 
 - An approval card says what it means for you. It names who is asking (an app by its name, or your agent),

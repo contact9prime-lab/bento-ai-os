@@ -2251,6 +2251,16 @@ without the create_app mechanics, written as `APP_BRIEF.md` beside a chat build'
 
 ## An app's AI is the machine's brain, and the app is the principal of every step
 
+**The ✦ assistant is handed its app, and an app's look at the workspace is one yes** (`server._app_about`,
+`about_app`/`page` on `/api/apps/agent`, `tools.reads_inside`/`FILE_READERS`, `policy.READ_ONLY_MARK`;
+`tests/test_app_assistant.py`). Reported with a trading app whose assistant ran `ls` in the workspace looking
+for the app (a card each time), never found it and ran out of steps. Measured with real Claude Code: given
+nothing it refused; given the code, data and screen it explained all three setups with no tool call. The
+owner's choice was to keep asking, and offer an app `tool:run_command @read-only:<workspace>`, covered only
+when every command is a file reader in its read-only form, every path word resolves inside the workspace with
+no hidden part, and the command's `cwd` is inside it (`_matching` gets `cwd`). Never offered when the
+workspace is a home. An app can reach the web freely, so reading without any yes would be a way out.
+
 `executors.fenced_brain` / `ask_fenced` + the `/api/apps/llm/*` and `/api/apps/agent` routes;
 `tests/test_app_ai_brain.py`. Asked as "the app may call the agent … and the rest follows PDP.
 PDP is the permission hub." Five things to keep:
