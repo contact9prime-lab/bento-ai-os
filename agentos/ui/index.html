@@ -2579,7 +2579,7 @@ body.dev-tablet .cside{width:150px;min-width:150px}
    dock becomes a fixed bottom bar, the launcher becomes a full screen
    of apps, and every popover becomes a bottom sheet.
    ================================================================ */
-body.dev-mobile{--mbh:34px;--tbh:150px;--fs-2xs:11px;--fs-xs:12px;--fs-sm:13px;
+body.dev-mobile{--mbh:38px;--tbh:150px;--fs-2xs:11px;--fs-xs:12px;--fs-sm:13px;
   /* the bottom chrome a phone always shows: dock (64) + prompt bar (48) + gaps.
      Windows and the deck both reserve it so nothing hides behind the agent. */
   --chrome-b:calc(132px + var(--safe-b));
@@ -2592,6 +2592,11 @@ body.dev-mobile #pager,body.dev-mobile #mbapp{display:none!important}
 body.dev-mobile #tray{gap:6px;padding-left:0}
 body.dev-mobile #tray-voice,body.dev-mobile #tray-power{padding:2px 5px}
 body.dev-mobile #tbclock .dt{display:none}
+/* The bar was 34px and its buttons 36: each stood a pixel out of it top and bottom, and the
+   brain chip's outline crossed the bar's own edge. The bar is 38 now, and on a phone the chip
+   is its dot and its words with no pill round them, like the things beside it. */
+body.dev-mobile #fwdchip,body.immersive.dev-mobile #fwdchip{background:none;border-color:transparent;box-shadow:none;padding:2px 4px}
+body.dev-mobile #fwdchip.nobrain{color:var(--warn,#f5a524)}
 
 /* ---- windows are sheets: full canvas, no chrome to drag or resize ---- */
 body.dev-mobile #desktop{inset:calc(var(--mbh) + var(--safe-t)) 0 0 0}
@@ -2706,6 +2711,9 @@ body.dev-mobile #dock{flex:1;min-width:0;overflow-x:auto;scrollbar-width:none;ju
 body.dev-mobile #dock .dockb,body.dev-mobile #tbwins .tbwin{scroll-snap-align:end}
 body.dev-mobile #dock::-webkit-scrollbar{display:none}
 body.dev-mobile #tbwins{flex:none;max-width:36vw;overflow-x:auto;scrollbar-width:none}
+/* Both rows are given a width that is a whole number of icons (06b-dockfit.js). Snapping kept
+   one edge whole and the other showed half an icon: the eighth default icon spanned x=364..404
+   in a row ending at 374, and with windows open the row ended inside the seventh. */
 body.dev-mobile #tbwins::-webkit-scrollbar{display:none}
 body.dev-mobile #tbnative,body.dev-mobile .dsep{display:none!important}
 /* !important is deliberate, not lazy: every .aicon carries an inline
@@ -4080,6 +4088,12 @@ body.immersive.dev-mobile #omnilist,body.immersive.dev-mobile #omnicards{left:12
    drawer, so it comes back only while the drawer is open */
 body.immersive.dev-mobile .chatwrap.drawer .cside{display:flex!important}
 body.immersive.dev-mobile .win{border-radius:0}
+/* A phone's window is the whole screen, so there is nothing behind it worth showing: the
+   sheet under it (Settings' words through Files) and the dock through the setup wizard read
+   as a broken screen. Opaque, and the blur a phone would pay for is not asked for. */
+body.immersive.dev-mobile .win,body.immersive.dev-mobile .win.active{background:linear-gradient(180deg,var(--bg3),var(--bg));
+  backdrop-filter:none;-webkit-backdrop-filter:none}
+body.immersive.dev-mobile .wiz.ob{background:var(--bg);backdrop-filter:none;-webkit-backdrop-filter:none}
 body.immersive.dev-mobile #taskbar{border-left:none;border-right:none;border-bottom:none}
 /* ================= the Brief ================= */
 .br-app h2.br-hl{margin:2px 0 0;font-size:var(--fs-xl);font-weight:650;letter-spacing:-.01em}
@@ -8000,6 +8014,8 @@ body.dev-touch .vp-only{min-height:var(--tap)}
    space chip over Window and Help at 1366 wide) and a wrapped one changed the band's
    height. The spacer is the only thing that gives; past that, menubarFit hides in order. */
 #menubar>*,#tray>*{flex-shrink:0;white-space:nowrap}
+/* while the fit measures, nothing in the bar is on its way anywhere (04g-menubar-fit.js) */
+#menubar.mbfit,#menubar.mbfit *,#menubar.mbfit *::before,#menubar.mbfit *::after{transition:none!important}
 #menubar>#mb-spacer{flex:1 1 0;min-width:0}
 #menubar #mbmenus{min-width:auto}
 .spchip .spname{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -17316,6 +17332,11 @@ function menubarFit(){
   const mb=document.getElementById('menubar');if(!mb)return;
   const set=n=>{for(let i=1;i<=MBFIT.max;i++)mb.classList.toggle('f'+i,i<=n)};
   const over=()=>mb.scrollWidth>mb.clientWidth+1;
+  // Measured with no transitions: a class changed here is read back in the same breath, and
+  // a width still on its way (the brain chip folding to its dot) is the old width. With the
+  // phone's Reduce Motion on, every transition is .01ms rather than none, so each step read
+  // the size before it: a bar 547px wide on a 390px screen was called a fit at f2.
+  mb.classList.add('mbfit');
   let n=0;set(0);
   menubarRail(0);
   // the icons to the edge, then the date, then the two chips, then the steps above
@@ -17325,6 +17346,7 @@ function menubarFit(){
   if(rail&&over())menubarRail(2);
   while(n<MBFIT.max&&over()){n++;set(n)}
   MBFIT.n=n;
+  mb.classList.remove('mbfit');
   // what this pass moved is not news: drop it, or the observer would run the fit again
   if(MBFIT.obs)MBFIT.obs.takeRecords();
 }
@@ -18929,6 +18951,56 @@ function deckMoveTile(id,dir){
   g.apps.splice(i,1);g.apps.splice(j,0,id);
   deckSave();buildDeck();
 }
+/* ================= the phone dock shows whole icons =================
+   Reported as "the dock and bar, there are issues in ui", and before that as "the bar below
+   looks broken". On a phone the dock is a row that scrolls, and a row that scrolls rested with
+   half an icon at its edge: scroll-snap keeps ONE edge whole, and the row's width was whatever
+   the screen left over (318px for 44px icons, so 7.2 of them). Half an icon is a tap target
+   whose centre is outside its own row.
+
+   So the two rows are sized here, in whole icons: the running apps that are not pinned get up
+   to a third of the bar, the pinned ones the rest. Measured from the bar as it is, on resize
+   and whenever an icon comes or goes. Only on a phone: everywhere else the dock is as wide as
+   its icons and nothing is set.
+
+   GUI: this. TUI: not applicable, a terminal has no dock. SUI: the dock there is never a
+   phone's (the session owns a real screen), so nothing is set. */
+var DOCKFIT={raf:0,obs:null};
+function dockFit(){
+  DOCKFIT.raf=0;
+  const tb=document.getElementById('taskbar'),dock=document.getElementById('dock'),wins=document.getElementById('tbwins');
+  if(!tb||!dock)return;
+  [dock,wins].forEach(e=>{if(e){e.style.flex='';e.style.width='';e.style.maxWidth=''}});
+  if(!document.body.classList.contains('dev-mobile')){if(DOCKFIT.obs)DOCKFIT.obs.takeRecords();return}
+  const shown=el=>[...el.children].filter(c=>c.offsetWidth>0);
+  const whole=(el,avail)=>{
+    const k=shown(el);if(!k.length)return 0;
+    const gap=parseFloat(getComputedStyle(el).columnGap)||0,pitch=k[0].offsetWidth+gap;
+    return Math.max(1,Math.min(k.length,Math.floor((avail+gap)/pitch)))*pitch-gap;
+  };
+  const cs=getComputedStyle(tb),gap=parseFloat(cs.columnGap)||0;
+  const inner=tb.clientWidth-(parseFloat(cs.paddingLeft)||0)-(parseFloat(cs.paddingRight)||0);
+  let avail=inner-[...tb.children].filter(c=>c!==dock&&c!==wins&&c.offsetWidth>0).reduce((s,c)=>s+c.offsetWidth+gap,0);
+  if(wins&&shown(wins).length){
+    const w=whole(wins,inner*.36);
+    wins.style.flex='none';wins.style.maxWidth='none';wins.style.width=w+'px';
+    avail-=w+gap;
+  }
+  dock.style.flex='none';dock.style.width=whole(dock,avail)+'px';
+  // what this pass set is not news
+  if(DOCKFIT.obs)DOCKFIT.obs.takeRecords();
+}
+function dockFitSoon(){if(!DOCKFIT.raf)DOCKFIT.raf=requestAnimationFrame(dockFit)}
+(function(){
+  const tb=document.getElementById('taskbar');if(!tb)return;
+  try{new ResizeObserver(dockFitSoon).observe(tb)}catch(e){addEventListener('resize',dockFitSoon)}
+  // icons come and go, and a running app's tile hides when its app is pinned (class indock)
+  try{DOCKFIT.obs=new MutationObserver(dockFitSoon);
+    DOCKFIT.obs.observe(tb,{childList:true,subtree:true,attributes:true,attributeFilter:['class','hidden']})}catch(e){}
+  // the body learns it is a phone after the first paint
+  try{new MutationObserver(dockFitSoon).observe(document.body,{attributes:true,attributeFilter:['class']})}catch(e){}
+  dockFitSoon();
+})();
 /* ================= desktop widgets =================
    Every app has two surfaces: the desktop window (the whole application) and a
    widget (the one glanceable fact). The widget's size is a property of the APP —

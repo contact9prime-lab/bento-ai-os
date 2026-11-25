@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.100.1 — 2026-11-25
+
+**The phone's menu bar and dock fit.** With Reduce Motion on, the brain chip ran over the clock and the
+power button (the bar measured 547px on a 390px screen). The bar is measured properly now, is 38px tall
+so its buttons sit inside it, and the chip has no pill round it on a phone. The dock rested with half an
+icon at its edge, and now shows whole icons whatever is open. A phone's window and the setup wizard are
+opaque: the screen behind used to read through them.
+
 ## 0.100.0 — 2026-11-25
 
 **Train makes a small language model of your own.** Say what one narrow job it should do ("sort support

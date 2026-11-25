@@ -88,6 +88,14 @@ them was true.
 - **A control whose target cannot exist here is removed, not left.** The ✦
   copilot button answered a tap by doing nothing, which is the dead control the
   honesty rules forbid — and is indistinguishable from the OS being broken.
+- **A scrolling row is sized in whole items; snapping is not enough.** Snap keeps one edge
+  whole, and the phone dock showed half an icon at the other (318px for 44px icons). `dockFit`
+  (`06b-dockfit.js`) gives the pinned row and the running row a width that is a whole number
+  of icons, on resize and when an icon comes or goes.
+- **Anything that measures after changing a class does it with transitions off.** Reduce
+  Motion makes every transition .01ms, not none, so `menubarFit` read each step at the size
+  before it: a 547px bar on a 390px phone was called a fit, and the brain chip covered the
+  clock. It measures under `#menubar.mbfit` now. `tests/test_menubar_fit.py`.
 - **Measure it in a browser with real touch emulation.** Every number above came
   from CDP `Input.dispatchTouchEvent` and `elementFromPoint`, not from reading
   the CSS; synthetic clicks land dead centre every time and prove nothing about a

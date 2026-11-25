@@ -640,4 +640,10 @@ body.immersive.dev-mobile #omnilist,body.immersive.dev-mobile #omnicards{left:12
    drawer, so it comes back only while the drawer is open */
 body.immersive.dev-mobile .chatwrap.drawer .cside{display:flex!important}
 body.immersive.dev-mobile .win{border-radius:0}
+/* A phone's window is the whole screen, so there is nothing behind it worth showing: the
+   sheet under it (Settings' words through Files) and the dock through the setup wizard read
+   as a broken screen. Opaque, and the blur a phone would pay for is not asked for. */
+body.immersive.dev-mobile .win,body.immersive.dev-mobile .win.active{background:linear-gradient(180deg,var(--bg3),var(--bg));
+  backdrop-filter:none;-webkit-backdrop-filter:none}
+body.immersive.dev-mobile .wiz.ob{background:var(--bg);backdrop-filter:none;-webkit-backdrop-filter:none}
 body.immersive.dev-mobile #taskbar{border-left:none;border-right:none;border-bottom:none}
