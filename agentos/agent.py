@@ -1309,8 +1309,12 @@ class Agent:
             await self.emit({"type": "tool_start", "call_id": call_id, "name": name,
                              "args": args, "detail": tool_detail(name, args),
                              "pending_approval": True})
-            from .policy import _NEEDS_PERSON, _SAID
+            from .policy import _ASKED, _NEEDS_PERSON, _SAID
             tok = _NEEDS_PERSON.set(must_person) if must_person else None
+            # how the card ended, written by whichever card settled it (policy.note_outcome):
+            # a person's no, nobody answering and a Stop are three different things to say
+            asked: dict = {}
+            tok_asked = _ASKED.set(asked)
             # what the agent said it was doing, for the card's first line
             tok_said = _SAID.set(getattr(self, "_said", "") or "")
             # An ethics caution (ethics.py): the card asks for the phrase, and only a screen that
@@ -1322,6 +1326,7 @@ class Agent:
             try:
                 approved = await self.approver(name, args, why, dec.grant_offer)
             finally:
+                _ASKED.reset(tok_asked)
                 _SAID.reset(tok_said)
                 if tok is not None:
                     _NEEDS_PERSON.reset(tok)
@@ -1347,6 +1352,21 @@ class Agent:
                 finally:
                     if tok_jail is not None:
                         tools_mod._jail_waived.reset(tok_jail)
+            elif asked.get("how") == "timeout":
+                mins = asked.get("minutes") or ""
+                output = (f"[not done] Nobody answered the approval card"
+                          f"{f' within {mins} min' if mins else ''}, so this wasn't done. Nobody "
+                          f"said no, and the autonomy setting didn't block it. Tell the user what "
+                          f"you wanted to do and that it needs their yes; they can ask you to try "
+                          f"again."
+                          + (" The question is on their Brief." if asked.get("brief") else ""))
+            elif asked.get("how") == "stopped":
+                output = ("[stopped] The user pressed Stop while this was waiting for their "
+                          "answer, so it wasn't done. Don't try it again unless they ask.")
+            elif asked.get("how") == "answered":
+                output = (f"[denied] The user said no to this step"
+                          f"{' ' + asked['via'] if asked.get('via') else ''}. Don't try it another "
+                          f"way. Tell them what you wanted to do and ask what they'd like instead.")
             elif must_person:
                 output = (f"[denied] This step needs a person to say yes ({must_person}), and "
                           f"nobody said yes. Autonomy does not answer it. Try a read-only "

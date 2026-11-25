@@ -2114,6 +2114,15 @@ sense" when it was missing:
   open. That is a follow-up, so it continues the thread. One "◉ Desktop" thread for every
   question read as the bar losing them. Each card keeps its own `dataset.cid`, so Open in Chat
   goes to that card's thread.
+- **An approval says how it ended, on every card and to the agent** (`policy._ASKED`/`note_outcome`/
+  `closed_words`, `server.PHONE_GRACE_S`; `tests/test_approval_outcome.py`). Reported as "it said answered on
+  another screen, but that wasn't me": the desktop's card and the phones' all waited 300 s, the desktop's began
+  first and timed out first, and the race closed every phone's card through its only cancel path, "Answered on
+  another screen". The agent heard "not approved at the current autonomy level" and blamed autonomy. Whichever
+  card settles it writes how (answered and where, timeout, stopped) into the dict the agent loop puts around the
+  approver; the others close with `closed_words` of it, the desktop's `approval_resolved` carries it, and the
+  agent's refusal says it. The desk keeps the race's clock (a phone waits `PHONE_GRACE_S` longer), so a timeout
+  is said once. `request_approval` makes its own record when called outside the loop.
 - **Placed is not SEEN, for an approval card.** `APPROVALS` holds what is waiting. After placing a
   card, `approvalVisible` checks it is on screen (`checkVisibility`, never `offsetParent`, which
   is null for a fixed card), and `approvalFloat` puts a copy top right when it is not. The

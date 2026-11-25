@@ -794,7 +794,8 @@ function handle(ev){
       // one page can draw the same card twice (Chat and a floating copy), so all of them
       document.querySelectorAll('[id="ap-'+ev.id+'"]').forEach(box=>{
         if(!box.classList.contains('resolved')){box.classList.add('resolved');
-          box.querySelector('.atitle').textContent=ev.how==='timeout'?'⌛ Nobody answered':ev.approved?'✓ Allowed':'✕ Denied';}
+          box.querySelector('.atitle').textContent=ev.how==='timeout'?'⌛ Nobody answered':ev.how==='stopped'?'■ Stopped':
+            ev.how==='cancelled'?'Called off':(ev.approved?'✓ Allowed':'✕ Denied')+(ev.how==='elsewhere'&&ev.via?' '+ev.via:'');}
         box.querySelectorAll('.btns button').forEach(b=>b.disabled=true);
         if(!box.closest('.msg'))setTimeout(()=>box.remove(),2500);
       });

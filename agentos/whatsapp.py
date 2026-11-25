@@ -1108,14 +1108,18 @@ class WhatsAppBridge(usersmod.Scoped):
             self._pending.pop(aid, None)
             self.store.log("error", f"whatsapp: could not ask for approval: {e}")
             return False
+        from .policy import approval_outcome, closed_words, note_outcome
         try:
             val = await asyncio.wait_for(fut, timeout=timeout)
+            note_outcome("answered", via="on WhatsApp", approved=val in ("1", "2"))
         except asyncio.CancelledError:
-            # answered on another screen (server.request_approval asks every channel)
+            # closed from elsewhere (server.request_approval asks every channel), said as it
+            # ended: a card that timed out on the desktop is not one somebody answered
             with contextlib.suppress(Exception):
-                await asyncio.shield(self.send("↪ That one was answered on another screen.", wa_id, quiet=True))
+                await asyncio.shield(self.send(closed_words(approval_outcome()), wa_id, quiet=True))
             raise
         except asyncio.TimeoutError:
+            note_outcome("timeout", minutes=max(1, round(timeout / 60)))
             await self.send("⌛ Approval timed out — action not taken. The run continues "
                             "without it.", wa_id)
             return False

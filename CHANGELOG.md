@@ -1,5 +1,6 @@
 # Changelog
 
+
 ## 0.100.1 — 2026-11-25
 
 **The phone's menu bar and dock fit.** With Reduce Motion on, the brain chip ran over the clock and the
@@ -38,6 +39,13 @@ GPU: a 135M model learned a three-way sorting job from 216 written examples in a
 
 Not measured yet: adding a model to a real Ollama, publishing to the real Hub, and training on an NVIDIA
 or Apple GPU. The tabular and BERT-style tasks of doneitrightai were not brought over.
+
+## 0.99.11 — 2026-11-25
+
+- An approval card nobody answered no longer says it was answered. The desktop's card timed out first, and every phone's card was closed with "Answered on another screen". Each card now says how it ended: allowed or denied, and where (on a screen, on Telegram, on WhatsApp); nobody answered within 5 minutes; or stopped. The desktop's copy said "✕ Denied" when a phone allowed, and now says "✓ Allowed on Telegram".
+- The agent is told the same thing. It used to hear "not approved at the current autonomy level" for a no, a timeout and a Stop alike, and told people their autonomy setting had blocked a step nobody had answered.
+
+
 ## 0.99.10 — 2026-11-25
 
 - Bento decides what every run acts on. Claude Code no longer uses its own claude.ai connectors in any

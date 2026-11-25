@@ -9284,6 +9284,17 @@ async def request_approval(name: str, args: dict, reason: str, offer: dict | Non
     approvals should be done in Telegram, be it whatever concerning the account, and on
     WhatsApp too; the channels should be defined, and consistent". A card sent to one
     particular person (`evsend`, a linked team's owner) stays where it was sent."""
+    from .policy import _ASKED
+    if _ASKED.get() is None:
+        # asked from outside the agent loop (a route, a linked team): the cards still need one
+        # record of how it ended, or a phone's answer closed the desk's copy as "called off"
+        tok = _ASKED.set({})
+        try:
+            return await request_approval(name, args, reason, offer=offer, evsend=evsend, ws=ws,
+                                          timeout=timeout, run_id=run_id, flow=flow,
+                                          unanswered=unanswered, conversation_id=conversation_id)
+        finally:
+            _ASKED.reset(tok)
     once = {"done": False}
 
     async def missed_once():
@@ -9348,11 +9359,20 @@ async def _desk_approval(name: str, args: dict, reason: str, offer: dict | None 
     else:
         await _approval_send(entry, ev)
     outcome = {"approved": False, "how": "timeout"}
+    from .policy import note_outcome
     try:
         outcome["approved"] = await asyncio.wait_for(fut, timeout=timeout)
         outcome["how"] = "answered"
+        if entry.get("stopped"):
+            note_outcome("stopped")
+        else:
+            note_outcome("answered", via=entry.get("via") or "on a screen",
+                         approved=bool(outcome["approved"]))
         return outcome["approved"]
     except asyncio.TimeoutError:
+        # said BEFORE `unanswered` and before this returns, so the phones' cards, closed the
+        # moment this returns, say nobody answered rather than "answered elsewhere"
+        note_outcome("timeout", minutes=max(1, round(timeout / 60)), brief=bool(unanswered))
         # NOBODY ANSWERED, which is a different fact from "the person said no" and
         # the two must not keep arriving as the same `False`. A refusal is a
         # decision and wants no follow-up; silence means the question never
@@ -9364,7 +9384,13 @@ async def _desk_approval(name: str, args: dict, reason: str, offer: dict | None 
                 await unanswered()
         return False
     except asyncio.CancelledError:
-        outcome["how"] = "elsewhere"      # answered on a phone (request_approval)
+        # closed from a phone (request_approval), or the step was called off: this card
+        # says which, and what the phone answered. It read "✕ Denied" when a phone allowed.
+        from .policy import approval_outcome
+        got = approval_outcome()
+        outcome["how"] = "elsewhere" if got.get("how") == "answered" else (got.get("how") or "cancelled")
+        outcome["approved"] = bool(got.get("approved"))
+        outcome["via"] = got.get("via") or ""
         raise
     finally:
         state["pending_approvals"].pop(aid, None)
@@ -9781,6 +9807,7 @@ def _phone_of(cid: str) -> tuple[str, str] | None:
 
 
 APPROVAL_CHANNELS = ("telegram", "whatsapp")
+PHONE_GRACE_S = 30
 
 
 def approval_channels(cfg: dict | None = None) -> list[dict]:
@@ -9824,6 +9851,11 @@ def _approval_phones(cid: str) -> list[tuple[str, str]]:
 
 
 def _phone_asks(cid: str, name: str, args: dict, reason: str, offer, timeout, missed) -> list:
+    # The desk's card keeps the clock for the race: a phone's waits a little longer, so a card
+    # nobody answered ends once, as a timeout, and every card is closed saying so
+    # (policy.closed_words). With equal timers whichever began first won, and a phone closed
+    # by the desk's timeout said it had been "answered on another screen".
+    timeout = timeout + PHONE_GRACE_S
     asks = []
     for channel, key in _approval_phones(cid):
         if channel == "telegram":
@@ -9841,6 +9873,12 @@ async def _first_answer(*asks) -> bool:
     tasks = [asyncio.ensure_future(a) for a in asks]
     try:
         done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        first = next(iter(done))
+        if first is not tasks[0] and not first.cancelled() and first.exception() is None:
+            # a phone answered (a bridge says which one itself; this is the fallback), so
+            # the cards closed next say it was answered, not that it was called off
+            from .policy import note_outcome
+            note_outcome("answered", via="on a phone", approved=bool(first.result()))
         for t in pending:
             t.cancel()
         for t in pending:
@@ -9996,7 +10034,8 @@ def approval_typed_problem(aid: str, approved: bool, typed) -> str:
     return f"Type “{eth.get('confirm')}” to confirm. It's Bento's ethics check, so a tap doesn't answer it."
 
 
-async def resolve_approval(aid: str, approved: bool, remember=False, uid=None, typed=None) -> bool:
+async def resolve_approval(aid: str, approved: bool, remember=False, uid=None, typed=None,
+                           via: str = "on a screen") -> bool:
     """Settle an approval. `remember` is the scope the person chose ('chat', 'hour',
     'always', or True from an older page). `typed` is the phrase an ethics caution asks
     for (ethics.py): an allow without it leaves the card waiting. Returns False when there
@@ -10027,6 +10066,7 @@ async def resolve_approval(aid: str, approved: bool, remember=False, uid=None, t
                        "action": o["action"], "resource": o["resource"],
                        "effect": "allow", "via": "approval_prompt", "scope": scope})
         await _approval_send(entry, {"type": "grants"})
+    entry["via"] = via               # where it was answered, for the other cards and the agent
     entry["fut"].set_result(bool(approved))
     return True
 
@@ -20778,7 +20818,7 @@ async def api_fabric_approve(aid: str, body: dict, request: Request):
         return JSONResponse({"error": typed_problem, "ethics": True}, status_code=400)
     ok = await resolve_approval(aid, bool(b.get("approved")), b.get("remember") or False,
                                 uid=usersmod.current() if usersmod.enabled() else "",
-                                typed=b.get("typed"))
+                                typed=b.get("typed"), via="from a terminal")
     if not ok:
         return JSONResponse({"error": "nothing of yours is waiting under that id"},
                             status_code=404)
@@ -24164,6 +24204,7 @@ async def ws_endpoint(ws: WebSocket):
                         # this person's questions only: a Stop on one account's desk
                         # must not refuse what another account is being asked
                         if not entry["fut"].done() and _approval_mine(entry, ws_uid):
+                            entry["stopped"] = True     # a Stop, not somebody's no
                             entry["fut"].set_result(False)
     except (WebSocketDisconnect, json.JSONDecodeError, OSError):
         pass

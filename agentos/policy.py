@@ -914,6 +914,47 @@ def said() -> str:
     return _SAID.get()
 
 
+# How the approval being waited on ended. The agent loop puts an empty dict here around the
+# approver; whichever card settles it first writes into it (server.request_approval's desk,
+# Telegram, WhatsApp), and every other card and the agent read it. Reported as "it said
+# approved on another screen, but that wasn't me": a card nobody answered timed out on the
+# desktop first, and every other card read that as answered elsewhere, while the agent was
+# told its own autonomy had refused it.
+_ASKED: "_cv.ContextVar[dict | None]" = _cv.ContextVar("approval_outcome", default=None)
+
+# how: "answered" (a person tapped yes or no; `via` says where, `approved` which),
+# "timeout" (nobody answered within `minutes`), "stopped" (the person pressed Stop)
+OUTCOMES = ("answered", "timeout", "stopped")
+
+
+def note_outcome(how: str, **detail) -> None:
+    """Record how the approval being waited on ended. The first one counts."""
+    d = _ASKED.get()
+    if d is not None and not d.get("how") and how in OUTCOMES:
+        d.update(how=how, **detail)
+
+
+def approval_outcome() -> dict:
+    """How the approval being waited on ended so far ({} when nothing said)."""
+    return dict(_ASKED.get() or {})
+
+
+def closed_words(outcome: dict) -> str:
+    """The line a phone's card is closed with, read from how the approval ended."""
+    how = outcome.get("how")
+    if how == "answered":
+        verb = "Allowed" if outcome.get("approved") else "Denied"
+        return f"→ {verb} {outcome.get('via') or 'somewhere else'}."
+    if how == "timeout":
+        mins = outcome.get("minutes")
+        within = f" within {mins} min" if mins else ""
+        tail = " It's on your Brief." if outcome.get("brief") else ""
+        return f"⌛ Nobody answered{within}, so this wasn't done.{tail}"
+    if how == "stopped":
+        return "→ Stopped, so this wasn't done."
+    return "→ This step was called off before anyone answered, so it wasn't done."
+
+
 # ---- standing permissions for a linked team ----------------------------------------------
 #
 # A question from another team taints the run that answers it, so every step that would
