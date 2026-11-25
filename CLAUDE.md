@@ -88,6 +88,14 @@ them was true.
 - **A control whose target cannot exist here is removed, not left.** The ✦
   copilot button answered a tap by doing nothing, which is the dead control the
   honesty rules forbid — and is indistinguishable from the OS being broken.
+- **A scrolling row is sized in whole items; snapping is not enough.** Snap keeps one edge
+  whole, and the phone dock showed half an icon at the other (318px for 44px icons). `dockFit`
+  (`06b-dockfit.js`) gives the pinned row and the running row a width that is a whole number
+  of icons, on resize and when an icon comes or goes.
+- **Anything that measures after changing a class does it with transitions off.** Reduce
+  Motion makes every transition .01ms, not none, so `menubarFit` read each step at the size
+  before it: a 547px bar on a 390px phone was called a fit, and the brain chip covered the
+  clock. It measures under `#menubar.mbfit` now. `tests/test_menubar_fit.py`.
 - **Measure it in a browser with real touch emulation.** Every number above came
   from CDP `Input.dispatchTouchEvent` and `elementFromPoint`, not from reading
   the CSS; synthetic clicks land dead centre every time and prove nothing about a
@@ -4818,6 +4826,55 @@ LLM shared, by tokens or cost or both, unlimited by default". Five rules:
   `usage.sharing` ledger row. No agent tool sets a quota: `usage_report` only reads.
 - **An admin's everyone view reads each account's own database** (`everyone`), filtered to their tenant
   unless they are the machine's admin; a non-admin's `everyone` is refused.
+
+## Train: a small language model of your own, and the port of doneitrightai
+
+`agentos/slm.py` (datasets, the Hub, jobs, models, the verdict) + `agentos/slm_worker/worker.py` (the
+training process) + `agentos/slmdesk.py` (the teacher, and a run from a goal) + `agentos/slmiot.py` (device
+readings as examples) + `27b-train.js`/`45-train.css` + `/api/train*` + `bento train` + the `train_*` tools;
+`docs/training.md`, `tests/test_train.py`, live run `packaging/dev/train-e2e/run.py`. Asked for as "people
+should be able to create small language models using Bento … teacher student … data via Hugging Face or
+synthetic … I already have a repo for it, doneitrightai, port that in", then "train on the data of IoT as
+well". The repo had been wired in before as a separate server with no sign-in on a loopback port, drawn in an
+iframe (so no phone could open it), shared by every account, reached by no gate, and never downloadable (its
+address was `YOUR_ORG`). Two of the old tools called routes it never had. Ten rules:
+- **It is Bento's, not a service beside it.** Each account's `<home>/train/{datasets,jobs,runs,trained-models}`;
+  ids are 12 hex made here and `_dir` opens nothing else. No database tables: `bento train` reads and runs the
+  same files with the server down.
+- **The stack is asked for, never shipped** (components `train-stack`, into `slm.stack_dir()`), and the worker
+  runs in THAT Python as `python -I -u slm_worker/worker.py`. It is a folder of its own because a script's
+  folder goes first on the import path: beside Bento's modules, `import platform` found `agentos/platform` and
+  torch could not start. It imports nothing of Bento, gets an allow-listed environment (`slm.ENV_KEEP`, none
+  of Bento's keys) and never `trust_remote_code`.
+- **A job is a process of its own, one at a time on the machine** (`train.lock` in the machine home, whoever
+  started it). It survives a restart and is read back from its files. A finished child is a zombie until waited
+  for and a zombie answers signal 0: `_alive` waits first, and `busy()` also reads the job's own status.
+- **The loss is on the answer only, four examples to an update, and an answer stops at the end of a turn**
+  (`Rows`, `collate`, `stops` in the worker). With doneitrightai's whole-text loss and sixteen to an update, a
+  135M model taught to sort mail answered "billing\n\nother": 6 of 24. With these, 24 of 24 on the same examples.
+- **The check is counted, and a one-answer model is never "learned"** (`slm.verdict`, `breakdown`). One in ten
+  examples (40 at most) is held back by a hash of its prompt, so a prompt is never on both sides. The base model
+  and the tuned one both answer them. For a sorting job each answer is counted on its own: a device model scored
+  16 of 20 by saying "normal" every time and missed all four alarms, and the first verdict called it learned.
+- **The teacher is `executors.ask_fenced`**: the machine's brain with no tools, counted in Usage at the door. A
+  Hub row is somebody else's words, fenced as data. `read_pairs`/`read_plan` read a model's answer field by
+  field; three unreadable answers running stop the writing; a repeat inside one answer is a repeat.
+- **The Hub is asked with HTTP only** (`/api/datasets`, the rows service): no dataset library and no script
+  from a dataset's repository runs here. A class label arrives as its name. `AGENTOS_HF_BASE` stands a test's
+  server in, `AGENTOS_TRAIN_PYTHON` a test's worker.
+- **`model.train` is its own action** for what spends something (a run, a job, teaching), refused to apps,
+  workflows, peers, linked teams and pools (`_NO_TRAIN`). Reading is plain `tool.use`. **No agent tool puts a
+  model into Ollama or publishes one**: the first changes what every account can choose (an admin's route), the
+  second leaves the machine. The Hugging Face token is `vault:hf.token`, handed to one process, kept nowhere else.
+- **Device examples are the hub's own record** (`slmiot.build`): a window of per-minute readings as text, and
+  the alarm that was on, coming, or `normal`, from `devboard.episodes`. Which machines are an account's is the
+  server's answer (`_train_machines` over `_board_machines`), never the model's. Quiet windows are thinned to
+  match the others, each line also says its summary (now, rising by, on for), and no alarm on record gives
+  windows without answers and says why.
+- **Backups carry datasets and leave the weights** (`slm.MODELS` in `backup.SKIP_NAMES`).
+The page: a container (`.trn`) can't be restyled by its own query, so the grid is `.trn-g` one level in. The
+headless browser's animated wallpaper took a whole core from a CPU training (12 answers in five minutes): the
+live run asks for reduced motion. Not measured: a real Ollama import, a real Hub upload, any GPU.
 
 ## The footprint is a feature: this may be a Raspberry Pi
 

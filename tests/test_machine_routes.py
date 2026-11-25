@@ -36,7 +36,7 @@ ACCOUNT_ROUTES = (
     "/api/remote/logout", "/api/session", "/api/setup/say", "/api/shared", "/api/shell/result",
     "/api/shell/sui", "/api/skills", "/api/spaces", "/api/speech", "/api/stage", "/api/standby/peer",
     "/api/store", "/api/subagents", "/api/suggestions", "/api/tasks", "/api/team", "/api/telegram",
-    "/api/terminal", "/api/themes", "/api/timetravel", "/api/tool", "/api/users/login",
+    "/api/terminal", "/api/themes", "/api/train", "/api/timetravel", "/api/tool", "/api/users/login",
     "/api/users/logout", "/api/wallpaper", "/api/wallpapers", "/api/whatsapp", "/api/widgets",
     "/api/world",
     # read and written per person after cfg_for's deep copy: a price set here goes nowhere else,

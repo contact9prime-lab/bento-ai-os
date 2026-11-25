@@ -4587,20 +4587,18 @@ class Toolbox(usersmod.Scoped):
             # the agent may check itself, but not without the user knowing.
             return "risky", "Runs the behavioural evals (minutes of real model calls, billable on a cloud model)."
         if name == "train_autopilot":
-            return "risky", "Starts an autonomous dataset-import + training run (long GPU work)."
+            return "risky", "Has a teacher write examples and trains a model on them (model calls, then hours of this machine)."
         if name == "train_job":
-            if args.get("action") == "create":
-                return "risky", "Launches a model training job (long GPU work)."
+            if args.get("action") == "start":
+                return "risky", "Starts training a model (this machine is busy until it ends)."
             return "safe", ""
         if name == "train_model":
-            if args.get("action") == "publish":
-                return "risky", "Uploads a trained model to the Hugging Face Hub (leaves this machine)."
             return "safe", ""
         if name == "train_datasets":
-            if args.get("action") in ("import_hub", "import_url"):
-                return "risky", "Downloads an external dataset onto this machine."
-            return "safe", ""
-        if name == "trainforge_service":
+            if args.get("action") in ("write", "answer"):
+                return "risky", "Has a teacher model write or answer training examples (one model call per ten, or per prompt)."
+            if args.get("action") == "import_hub":
+                return "risky", "Downloads a public dataset from the Hugging Face Hub onto this machine."
             return "safe", ""
         if name == "run_tests":
             # A conftest.py is a program, in the workspace as much as anywhere. Risky is what
@@ -5060,128 +5058,142 @@ class Toolbox(usersmod.Scoped):
             result += "\n" + push_out
         return result
 
-    # ---- TrainForge (Train pillar) ------------------------------------------
-    # Fine-tune and evaluate your own models locally. TrainForge runs as a
-    # supervised loopback service (see agentos/trainforge.py); these tools call
-    # its REST API server-side. Watch runs live in the Train desktop app.
+    # ---- Train: a small language model of your own (slm.py, slmdesk.py) -----
+    # The agent's face of the Train app. Reading is safe. Anything that spends a teacher's
+    # calls or hours of this machine's GPU is `model.train`, asked like any risky step.
+    # Putting a model into Ollama and publishing one are not here at all: the first changes
+    # what every account can choose, the second leaves the machine, and a page an agent
+    # read must never be able to ask for either. They are a person's, in the Train app.
 
-    def _tf(self):
-        tf = getattr(self, "trainforge", None)
-        if tf is None:
-            return None, "[error] TrainForge integration not initialised (server startup)"
-        return tf, ""
+    def _train(self):
+        from . import slm
+        desk = getattr(self, "train", None)
+        if desk is None:
+            return None, None, "[error] Train is not available in this process (it needs the server)."
+        return desk, slm, ""
 
     @staticmethod
-    def _tf_out(code: int, data) -> str:
-        if code == 0:
-            return f"[error] {data}"
-        body = json.dumps(data, indent=1, default=str) if isinstance(data, (dict, list)) else str(data)
-        return _truncate(body if code < 400 else f"[error] HTTP {code}: {body[:800]}")
-
-    async def trainforge_service(self, action: str = "status") -> str:
-        if action in ("start", "stop") and (deny := self._admin_only("start or stop this machine's services")):
-            return deny
-        tf, err = self._tf()
-        if err:
-            return err
-        if action == "start":
-            return await tf.start()
-        if action == "stop":
-            return await tf.stop()
-        return json.dumps(await tf.health())
-
-    async def train_autopilot(self, goal: str, max_rows: int = 5000) -> str:
-        tf, err = self._tf()
-        if err:
-            return err
-        code, data = await tf.api("POST", "/api/agent/runs",
-                                  {"goal": goal, "max_rows": int(max_rows)})
-        return self._tf_out(code, data)
+    def _train_out(data) -> str:
+        return _truncate(json.dumps(data, indent=1, default=str, ensure_ascii=False))
 
     async def train_datasets(self, action: str = "list", query: str = "", repo_id: str = "",
-                             url: str = "", name: str = "", dataset_id: int = 0,
-                             max_rows: int = 5000) -> str:
-        tf, err = self._tf()
+                             name: str = "", dataset_id: str = "", max_rows: int = 2000,
+                             task: str = "", count: int = 100, examples: list | None = None) -> str:
+        desk, slm, err = self._train()
         if err:
             return err
-        if action == "list":
-            code, data = await tf.api("GET", "/api/datasets")
-        elif action == "search":
-            code, data = await tf.api("GET", "/api/datasets/search-hub",
-                                      params={"q": query, "limit": 25})
-        elif action == "import_hub":
-            body = {"repo_id": repo_id, "max_rows": int(max_rows)}
-            if name:
-                body["name"] = name
-            code, data = await tf.api("POST", "/api/datasets/import-hub", body)
-        elif action == "import_url":
-            # the training service does the fetching, so this judges the address it starts from
-            try:
-                await netguard.check_url(url)
-            except netguard.Refused as e:
-                return self._net_refused(e, "train_datasets")
-            except httpx.HTTPError as e:
-                return f"[error] {e}"
-            code, data = await tf.api("POST", "/api/datasets/import-url",
-                                      {"url": url, **({"name": name} if name else {})})
-        elif action == "get":
-            code, data = await tf.api("GET", f"/api/datasets/{int(dataset_id)}")
-        elif action == "preview":
-            code, data = await tf.api("GET", f"/api/datasets/{int(dataset_id)}/preview",
-                                      params={"rows": 30})
-        else:
-            return "[error] action must be list|search|import_hub|import_url|get|preview"
-        return self._tf_out(code, data)
+        base = desk.base()
+        try:
+            if action == "list":
+                return self._train_out([{k: d.get(k) for k in ("id", "name", "source", "rows", "answers", "state", "note")}
+                                        for d in desk.datasets()])
+            if action == "search":
+                return self._train_out(await asyncio.to_thread(slm.hub_search, query))
+            if action == "import_hub":
+                ds = await asyncio.to_thread(slm.import_hub, base, repo_id, name, "", "", int(max_rows or 2000),
+                                             None, task)
+                return self._train_out(ds)
+            if action == "preview":
+                return self._train_out({**slm.dataset(base, dataset_id), "sample": slm.rows(base, dataset_id, 12)})
+            if action == "write":
+                ex = [{"prompt": str(e.get("prompt") or ""), "response": str(e.get("response") or "")}
+                      for e in (examples or []) if isinstance(e, dict)][:20]
+                ds = desk.synth(name, task, int(count or 100), ex)
+                return self._train_out({**ds, "next": "The teacher is writing them. Read progress with action=list; "
+                                                      "train when state is ready."})
+            if action == "answer":
+                return self._train_out(desk.label(dataset_id, task=task or None))
+            if action == "devices":
+                # which machines are this account's is the server's to say (its board), never the model's
+                mine = await asyncio.to_thread(self.train_machines) if getattr(self, "train_machines", None) else []
+                if not name:
+                    return self._train_out([{k: m[k] for k in ("machine", "alarms", "readings")} for m in mine])
+                m = next((x for x in mine if x["machine"].lower() == name.lower()), None)
+                if not m:
+                    return "[error] no machine of yours by that name has readings kept"
+                from . import slmiot
+                rows, how = await asyncio.to_thread(slmiot.build, m["tkey"], m["machine"], m["things"], m["episodes"],
+                                                    None, float(max_rows if 0 < max_rows <= 30 else 7))
+                if not rows:
+                    return "[error] " + slmiot.words(how)
+                kinds = [r["response"].split(": ", 1)[1] for r in rows if ": " in r["response"]]
+                ds = slm.add_dataset(base, m["machine"] + " readings", rows, "devices", m["machine"],
+                                     slmiot.task_for(m["machine"], kinds), how)
+                return self._train_out({**ds, "words": slmiot.words(how)})
+        except KeyError:
+            return "[error] no such dataset"
+        except Exception as e:
+            return f"[error] {e}"
+        return "[error] action must be list|search|import_hub|preview|write|answer|devices"
 
-    async def train_job(self, action: str = "list", job_id: int = 0, name: str = "",
-                        dataset_id: int = 0, task: str = "", base_model: str = "",
-                        hyperparams: dict | None = None, offset: int = 0) -> str:
-        tf, err = self._tf()
+    async def train_job(self, action: str = "list", job_id: str = "", name: str = "",
+                        dataset_id: str = "", base_model: str = "", hyperparams: dict | None = None) -> str:
+        desk, slm, err = self._train()
         if err:
             return err
-        if action == "list":
-            code, data = await tf.api("GET", "/api/jobs")
-        elif action == "create":
-            body = {"name": name or f"{task} on dataset {dataset_id}",
-                    "dataset_id": int(dataset_id), "task": task}
-            if base_model:
-                body["base_model"] = base_model
-            if hyperparams:
-                body["hyperparams"] = hyperparams
-            code, data = await tf.api("POST", "/api/jobs", body)
-        elif action == "status":
-            code, data = await tf.api("GET", f"/api/jobs/{int(job_id)}")
-        elif action == "logs":
-            code, data = await tf.api("GET", f"/api/jobs/{int(job_id)}/logs",
-                                      params={"offset": int(offset)})
-        elif action == "metrics":
-            code, data = await tf.api("GET", f"/api/jobs/{int(job_id)}/metrics")
-        elif action == "stop":
-            code, data = await tf.api("POST", f"/api/jobs/{int(job_id)}/stop")
-        else:
-            return "[error] action must be list|create|status|logs|metrics|stop"
-        return self._tf_out(code, data)
+        base = desk.base()
+        try:
+            if action == "list":
+                st = await asyncio.to_thread(slm.status, base)
+                return self._train_out({"ready": st["ready"], "why": st["why"], "hardware": st["hardware"].get("words"),
+                                        "suggested_base": st["suggested_base"],
+                                        "jobs": [{k: j.get(k) for k in ("id", "name", "base", "state", "phase", "step", "total", "error")}
+                                                 for j in slm.jobs(base)]})
+            if action == "start":
+                return self._train_out(await asyncio.to_thread(
+                    slm.start_job, base, name, dataset_id, base_model, hyperparams, None, usersmod.current() or ""))
+            if action == "status":
+                j = slm.job(base, job_id)
+                ev = slm.evaluation(base, job_id)
+                size = slm.log(base, job_id, 0, 0)["size"]
+                return self._train_out({**j, "verdict": slm.verdict(ev) if j["state"] == "done" else None,
+                                        "log_tail": slm.log(base, job_id, max(0, size - 1500))["content"]})
+            if action == "stop":
+                return self._train_out(slm.stop_job(base, job_id))
+        except KeyError:
+            return "[error] no such job or dataset"
+        except Exception as e:
+            return f"[error] {e}"
+        return "[error] action must be list|start|status|stop"
 
-    async def train_model(self, action: str = "list", model_id: int = 0,
-                          inputs: list | None = None, prompt: str = "",
-                          repo_id: str = "", private: bool = True) -> str:
-        tf, err = self._tf()
+    async def train_model(self, action: str = "list", model_id: str = "", prompts: list | None = None) -> str:
+        desk, slm, err = self._train()
         if err:
             return err
-        if action == "list":
-            code, data = await tf.api("GET", "/api/models")
-        elif action == "signature":
-            code, data = await tf.api("GET", f"/api/models/{int(model_id)}/signature")
-        elif action == "predict":
-            body = {"prompt": prompt, "max_new_tokens": 200} if prompt else {"inputs": inputs or []}
-            code, data = await tf.api("POST", f"/api/models/{int(model_id)}/predict",
-                                      body, timeout=180)
-        elif action == "publish":
-            code, data = await tf.api("POST", f"/api/models/{int(model_id)}/publish",
-                                      {"repo_id": repo_id, "private": bool(private)}, timeout=600)
-        else:
-            return "[error] action must be list|signature|predict|publish"
-        return self._tf_out(code, data)
+        base = desk.base()
+        try:
+            if action == "list":
+                return self._train_out([{"id": m["id"], "name": m["name"], "base": m["base"],
+                                         "check": m["verdict"]["words"], "ollama": m.get("ollama") or "",
+                                         "published": m.get("published") or ""} for m in slm.models(base)])
+            if action == "examples":
+                return self._train_out({**slm.model(base, model_id),
+                                        "examples": (slm.evaluation(base, model_id).get("items") or [])[:12]})
+            if action == "try":
+                return self._train_out(await asyncio.to_thread(slm.try_model, base, model_id,
+                                                               [str(p) for p in (prompts or [])]))
+        except KeyError:
+            return "[error] no such model"
+        except Exception as e:
+            return f"[error] {e}"
+        return ("[error] action must be list|examples|try. Adding a model to Ollama or publishing it is the "
+                "person's, in the Train app.")
+
+    async def train_autopilot(self, goal: str, examples: int = 0) -> str:
+        """A goal in words to a checked model: plan, examples, training, the check."""
+        desk, slm, err = self._train()
+        if err:
+            return err
+        try:
+            plan = await desk.plan(goal)
+            if examples:
+                plan["examples"] = int(examples)
+            run = desk.run(goal, plan)
+        except Exception as e:
+            return f"[error] {e}"
+        return self._train_out({"run": run["id"], "plan": run["plan"],
+                                "next": "It runs on its own and can take a while. The person watches it in the "
+                                        "Train app; read where it is with train_job action=list."})
 
     # ---- Desktop parity (the parity law) ------------------------------------
     # Every capability the desktop UI has is also an agent tool through the same
@@ -7164,67 +7176,59 @@ TOOL_SCHEMAS.extend(TEST_TOOL_SCHEMAS)
 
 TRAIN_TOOL_SCHEMAS = [
     {
-        "name": "trainforge_service",
-        "description": "Train pillar: manage the local TrainForge training service "
-                       "(fine-tuning platform). Actions: status | start | stop. Start it before "
-                       "using the other train_* tools; the user can watch everything in the "
-                       "Train desktop app.",
-        "parameters": {"type": "object", "properties": {
-            "action": {"type": "string", "enum": ["status", "start", "stop"]}},
-            "required": ["action"]},
-    },
-    {
         "name": "train_autopilot",
-        "description": "Train pillar: hand TrainForge a goal in plain language ('train a "
-                       "sentiment classifier for movie reviews') — it finds a dataset, imports "
-                       "it, configures and launches training, and registers the model. Returns "
-                       "the run row; follow progress with train_job / the Train app.",
+        "description": "Train: make a small language model for ONE narrow job from a goal in plain "
+                       "words ('sort support mail into billing, bug or other'). A teacher (this "
+                       "machine's brain) writes the examples, a small open model is fine-tuned on "
+                       "them here, and held-back examples check what it learned. Runs on its own; "
+                       "the person watches it in the Train app.",
         "parameters": {"type": "object", "properties": {
-            "goal": {"type": "string", "description": "What to train, in plain language."},
-            "max_rows": {"type": "integer", "description": "Dataset row cap (default 5000)."}},
+            "goal": {"type": "string", "description": "What the small model should do, in plain language."},
+            "examples": {"type": "integer", "description": "How many examples to write (default: the plan's, 50 to 1000)."}},
             "required": ["goal"]},
     },
     {
         "name": "train_datasets",
-        "description": "Train pillar: datasets in TrainForge. Actions: list | search (HF Hub, "
-                       "query=) | import_hub (repo_id=) | import_url (url=) | get (dataset_id=) "
-                       "| preview (dataset_id=). Imports are async — poll with get until "
-                       "status is 'ready'.",
+        "description": "Train: the datasets a small model learns from, as prompt and answer pairs. "
+                       "Actions: list | search (public datasets on the Hugging Face Hub, query=) | "
+                       "import_hub (repo_id=, max_rows=, task=) | preview (dataset_id=) | write (a "
+                       "teacher writes count= examples of task=, optional examples=[{prompt,response}]) "
+                       "| answer (a teacher answers the prompts of dataset_id= that have no answer) | devices "
+                       "(no name: the person's machines with sensor readings kept; name= a machine: "
+                       "examples from its readings and the alarms that followed, max_rows= days back, up "
+                       "to 30). task is the instruction the small model will work under.",
         "parameters": {"type": "object", "properties": {
-            "action": {"type": "string",
-                       "enum": ["list", "search", "import_hub", "import_url", "get", "preview"]},
-            "query": {"type": "string"}, "repo_id": {"type": "string"},
-            "url": {"type": "string"}, "name": {"type": "string"},
-            "dataset_id": {"type": "integer"}, "max_rows": {"type": "integer"}},
+            "action": {"type": "string", "enum": ["list", "search", "import_hub", "preview", "write", "answer", "devices"]},
+            "query": {"type": "string"}, "repo_id": {"type": "string"}, "name": {"type": "string"},
+            "dataset_id": {"type": "string"}, "max_rows": {"type": "integer"},
+            "task": {"type": "string"}, "count": {"type": "integer"},
+            "examples": {"type": "array", "items": {"type": "object"}}},
             "required": ["action"]},
     },
     {
         "name": "train_job",
-        "description": "Train pillar: training jobs. Actions: list | create (name, dataset_id, "
-                       "task [tabular-classification|tabular-regression|text-classification|"
-                       "causal-lm], base_model?, hyperparams?) | status | logs (offset= for "
-                       "incremental tail) | metrics | stop. causal-lm = LoRA fine-tune of a "
-                       "language model on this machine's GPU.",
+        "description": "Train: fine-tuning runs (LoRA) on this machine. Actions: list (also says "
+                       "whether training is installed and what hardware there is) | start "
+                       "(dataset_id=, name=, base_model= as owner/name or blank for the one this "
+                       "machine can train, hyperparams= {epochs, learning_rate, batch_size, "
+                       "max_length, lora_r}) | status (job_id=, with the check on held-back "
+                       "examples when done) | stop. One runs at a time.",
         "parameters": {"type": "object", "properties": {
-            "action": {"type": "string",
-                       "enum": ["list", "create", "status", "logs", "metrics", "stop"]},
-            "job_id": {"type": "integer"}, "name": {"type": "string"},
-            "dataset_id": {"type": "integer"}, "task": {"type": "string"},
-            "base_model": {"type": "string"}, "hyperparams": {"type": "object"},
-            "offset": {"type": "integer"}},
+            "action": {"type": "string", "enum": ["list", "start", "status", "stop"]},
+            "job_id": {"type": "string"}, "name": {"type": "string"},
+            "dataset_id": {"type": "string"}, "base_model": {"type": "string"},
+            "hyperparams": {"type": "object"}},
             "required": ["action"]},
     },
     {
         "name": "train_model",
-        "description": "Train pillar: trained models. Actions: list | signature (what inputs it "
-                       "expects, with example) | predict (inputs=[...] for tabular/text, prompt= "
-                       "for causal-lm) | publish (repo_id= uploads to Hugging Face Hub). Every "
-                       "trained model is a live local endpoint — use predict to evaluate it.",
+        "description": "Train: the models trained here. Actions: list (each with what the held-back "
+                       "examples say) | examples (model_id=: what was wanted, the base model's "
+                       "answer and the tuned model's) | try (model_id=, prompts=[...] up to five). "
+                       "Adding a model to Ollama and publishing one are the person's, in the Train app.",
         "parameters": {"type": "object", "properties": {
-            "action": {"type": "string", "enum": ["list", "signature", "predict", "publish"]},
-            "model_id": {"type": "integer"}, "inputs": {"type": "array"},
-            "prompt": {"type": "string"}, "repo_id": {"type": "string"},
-            "private": {"type": "boolean"}},
+            "action": {"type": "string", "enum": ["list", "examples", "try"]},
+            "model_id": {"type": "string"}, "prompts": {"type": "array", "items": {"type": "string"}}},
             "required": ["action"]},
     },
 ]

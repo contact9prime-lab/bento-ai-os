@@ -166,12 +166,12 @@ def test_git_risk_levels(toolbox):
 
 
 def test_train_risk_levels(toolbox):
-    assert toolbox.risk_of("trainforge_service", {"action": "start"})[0] == "safe"
     assert toolbox.risk_of("train_autopilot", {"goal": "x"})[0] == "risky"
-    assert toolbox.risk_of("train_job", {"action": "create"})[0] == "risky"
+    assert toolbox.risk_of("train_job", {"action": "start"})[0] == "risky"
     assert toolbox.risk_of("train_job", {"action": "list"})[0] == "safe"
-    assert toolbox.risk_of("train_model", {"action": "publish"})[0] == "risky"
-    assert toolbox.risk_of("train_model", {"action": "predict"})[0] == "safe"
+    assert toolbox.risk_of("train_datasets", {"action": "write"})[0] == "risky"
+    assert toolbox.risk_of("train_datasets", {"action": "import_hub"})[0] == "risky"
+    assert toolbox.risk_of("train_model", {"action": "try"})[0] == "safe"
 
 
 # ---------------------------------------------------------------------------

@@ -1,6 +1,7 @@
-"""Three modules no test named before the test report found them: clitui (the plain
-terminal client), sessiondoctor (`agentos doctor --session`) and trainforge (the Train
-service). Each test here pins the claim the module's own docstring makes."""
+"""Modules no test named before the test report found them: clitui (the plain terminal
+client) and sessiondoctor (`agentos doctor --session`). Each test here pins the claim the
+module's own docstring makes. (The third was trainforge, the separate training service;
+it is gone, and Train is tested in test_train.py.)"""
 import asyncio
 import os
 import signal
@@ -10,56 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from agentos import clitui, sessiondoctor, shellhost, trainforge   # noqa: E402
-
-
-# ---- trainforge: found where it lives, and never listening beyond loopback -------------
-
-def _checkout(p: Path) -> Path:
-    (p / "server").mkdir(parents=True)
-    (p / "server" / "main.py").write_text("")
-    return p
-
-
-def test_a_stale_configured_path_falls_through_to_one_that_has_the_server(tmp_path, monkeypatch):
-    real = _checkout(tmp_path / "found" / "doneitrightai")          # the repo nests one level
-    monkeypatch.setattr(trainforge, "_KNOWN_LOCATIONS", [str(tmp_path / "found")])
-    c = trainforge.conf({"trainforge": {"path": str(tmp_path / "gone")}})
-    assert c["path"] == str(real), "a path with no server/main.py is stale, and the nested repo counts"
-    assert c["port"] == trainforge.DEFAULT_PORT != 8000
-
-
-def test_nothing_found_is_an_empty_path_not_a_guess(tmp_path, monkeypatch):
-    monkeypatch.setattr(trainforge, "_KNOWN_LOCATIONS", [str(tmp_path / "nowhere")])
-    assert trainforge.conf({})["path"] == ""
-
-
-def test_it_is_reached_and_started_on_loopback_only():
-    tf = trainforge.TrainForge({"trainforge": {"port": 8399}}, store=None)
-    assert tf.base_url() == "http://127.0.0.1:8399"
-    src = Path(trainforge.__file__).read_text()
-    assert '"TRAINFORGE_HOST": "127.0.0.1"' in src, "it has no auth, so it never listens beyond loopback"
-
-
-def test_a_machine_with_no_download_url_says_so(tmp_path, monkeypatch):
-    class _Store:
-        def log(self, *a, **k):
-            pass
-    monkeypatch.setattr(trainforge, "_KNOWN_LOCATIONS", [])
-    tf = trainforge.TrainForge({"trainforge": {"install_dir": str(tmp_path / "tf")}}, _Store())
-    path, err = asyncio.run(tf._fetch())
-    assert path == "" and "trainforge.repo" in err and not (tmp_path / "tf").exists()
-
-
-def test_health_says_not_running_when_nothing_answers(tmp_path, monkeypatch):
-    s = socket.socket()
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()                                        # a port nothing listens on
-    monkeypatch.setattr(trainforge, "_KNOWN_LOCATIONS", [])
-    tf = trainforge.TrainForge({"trainforge": {"port": port}}, store=None)
-    h = asyncio.run(tf.health())
-    assert h["running"] is False and h["managed"] is False and h["fetchable"] is False
+from agentos import clitui, sessiondoctor, shellhost   # noqa: E402
 
 
 # ---- sessiondoctor: a crash is a result, and nothing is changed ------------------------

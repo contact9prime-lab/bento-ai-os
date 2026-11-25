@@ -3,6 +3,8 @@
    space chip over Window and Help at 1366 wide) and a wrapped one changed the band's
    height. The spacer is the only thing that gives; past that, menubarFit hides in order. */
 #menubar>*,#tray>*{flex-shrink:0;white-space:nowrap}
+/* while the fit measures, nothing in the bar is on its way anywhere (04g-menubar-fit.js) */
+#menubar.mbfit,#menubar.mbfit *,#menubar.mbfit *::before,#menubar.mbfit *::after{transition:none!important}
 #menubar>#mb-spacer{flex:1 1 0;min-width:0}
 #menubar #mbmenus{min-width:auto}
 .spchip .spname{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

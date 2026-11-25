@@ -73,7 +73,6 @@ from .whatsapp import WhatsAppBridge
 from . import tools
 from . import netguard
 from .tools import ALWAYS_ASK, Toolbox
-from .trainforge import TrainForge
 from . import constcmp
 
 UI_DIR = Path(__file__).parent / "ui"
@@ -393,8 +392,11 @@ async def startup():
     pdp.on_rate_trip = _quarantine
     pdp.on_rate_steer = _steered
     toolbox.pdp = pdp
-    trainforge = TrainForge(cfg, store, broadcast)
-    toolbox.trainforge = trainforge
+    # Train (slm.py): the teacher's desk needs a brain and time, so it lives with the server.
+    # Each account's datasets and models are in that account's own home.
+    from .slmdesk import Desk as TrainDesk
+    toolbox.train = TrainDesk(lambda: state["cfg"], toolbox, broadcast_user)
+    toolbox.train_machines = _train_machines      # whose machines: this account's board, never the model's word
     toolbox.shell = shell_command  # the parity law: shell actions are tools too
     # A community of machines (pool.py). Machine-level: it reads the machine's config,
     # store and gate whoever is signed in, because a community is joined by the machine.
@@ -412,7 +414,7 @@ async def startup():
                  mcp=mcp, telegram=telegram, whatsapp=whatsapp,
                  clients=clients, client_uids=client_uids,
                  broadcast=broadcast, broadcast_user=broadcast_user,
-                 fabric=control, pdp=pdp, trainforge=trainforge, pool=toolbox.pool,
+                 fabric=control, pdp=pdp, train=toolbox.train, pool=toolbox.pool,
                  wayvnc=None,           # the interactive-control server, when running
                  pending_approvals={},  # aid -> {"fut","offer","ws"} — global approval broker
                  shell_pending={},      # cmd id -> Future — shell-control channel (see below)
@@ -2603,9 +2605,8 @@ async def shutdown():
             await state["whatsapp"].link.stop()
     if "mcp" in state:
         await state["mcp"].stop()
-    if "trainforge" in state:
-        with contextlib.suppress(Exception):
-            await state["trainforge"].stop()
+    # A training that is running is left running: it is a process of its own, it may be
+    # hours in, and the next start reads where it got to from its files.
     # never outlive the session that started it — an orphaned VNC server is an
     # unauthenticated door left open on the machine
     proc = state.get("wayvnc")
@@ -22907,17 +22908,11 @@ async def api_lifecycle():
     cfg, store = state["cfg"], state["store"]
     out: dict = {}
 
-    tf = await state["trainforge"].health()
-    train = {"service": "running" if tf.get("running") else ("available" if tf.get("path") else "not installed"),
-             "url": tf.get("url", ""), "jobs_running": 0, "models": 0}
-    if tf.get("running"):
-        code, jobs = await state["trainforge"].api("GET", "/api/jobs", timeout=5)
-        if code == 200 and isinstance(jobs, list):
-            train["jobs_running"] = sum(1 for j in jobs if j.get("status") == "running")
-            train["jobs_total"] = len(jobs)
-        code, models = await state["trainforge"].api("GET", "/api/models", timeout=5)
-        if code == 200 and isinstance(models, list):
-            train["models"] = len(models)
+    from . import slm
+    tst = await asyncio.to_thread(slm.status, slm.root(usersmod.home_for(usersmod.current() or "")))
+    train = {"service": ("training" if tst["running"] else "ready") if tst["ready"] else "not installed",
+             "jobs_running": tst["running"], "jobs_total": tst["jobs"], "models": tst["models"],
+             "datasets": tst["datasets"]}
     out["train"] = train
 
     last_test = next(iter(store.get_logs(kind="test", limit=1) or []), None) \
@@ -23008,22 +23003,357 @@ async def api_lifecycle():
     return out
 
 
-@app.get("/api/train/status")
-async def train_status():
-    """Train pillar: TrainForge service health for the Train desktop app."""
-    return await state["trainforge"].health()
+# ---- Train: a small language model of your own (slm.py, slmdesk.py) ----------------------
+# Every route acts on the signed-in account's own `<home>/train`. The one machine-wide act is
+# putting a model into Ollama, which every account then sees: an admin's.
+
+def _train_base():
+    from . import slm
+    return slm.root(usersmod.home_for(usersmod.current() or ""))
 
 
-@app.post("/api/train/service")
-async def train_service(body: dict):
-    """Start/stop the TrainForge service from the desktop (loopback-bound, no auth
-    beyond localhost — same trust model as the rest of the control surface)."""
-    action = (body or {}).get("action", "")
-    if action == "start":
-        return {"result": await state["trainforge"].start()}
-    if action == "stop":
-        return {"result": await state["trainforge"].stop()}
-    return JSONResponse({"error": "action must be start|stop"}, status_code=400)
+def _train_err(e: Exception, code: int = 400):
+    if isinstance(e, KeyError):
+        return JSONResponse({"error": "That is not there any more."}, status_code=404)
+    return JSONResponse({"error": str(e) or type(e).__name__}, status_code=code)
+
+
+def _train_token() -> str:
+    from . import vault
+    with contextlib.suppress(Exception):
+        return vault.get("hf.token", "train") or ""
+    return ""
+
+
+@app.get("/api/train")
+async def api_train():
+    """Everything the Train app draws, in one answer."""
+    from . import slm, vault
+    desk, base = state["train"], _train_base()
+    out = await asyncio.to_thread(slm.status, base)
+    who, why = desk.teacher_name("")
+    has_token = False
+    with contextlib.suppress(Exception):
+        has_token = vault.has("hf.token")
+    out.update(bases=slm.BASES, teacher=who, teacher_missing=why, token=has_token,
+               datasets_list=desk.datasets(), jobs_list=slm.jobs(base), models_list=slm.models(base),
+               runs_list=desk.runs(), limits={"teach": slm.MAX_TEACH, "batch": slm.TEACH_BATCH,
+                                              "min_rows": slm.MIN_ROWS + 1, "held": slm.HELD_MAX},
+               admin=usersmod.is_admin(usersmod.current() or ""))
+    return out
+
+
+@app.get("/api/train/hub")
+async def api_train_hub(q: str = ""):
+    from . import slm
+    if not q.strip():
+        return {"results": []}
+    try:
+        return {"results": await asyncio.to_thread(slm.hub_search, q)}
+    except Exception as e:
+        return _train_err(e, 502)
+
+
+@app.post("/api/train/datasets/hub")
+async def api_train_import_hub(body: dict):
+    from . import slm
+    try:
+        ds = await asyncio.to_thread(
+            slm.import_hub, _train_base(), str(body.get("repo") or ""), str(body.get("name") or ""),
+            str(body.get("config") or ""), str(body.get("split") or ""), int(body.get("max_rows") or 2000),
+            body.get("columns") if isinstance(body.get("columns"), dict) else None,
+            str(body.get("system") or ""), _train_token())
+    except Exception as e:
+        return _train_err(e)
+    _ledger("train.import", f"hub:{ds['ref']}", f"imported {ds['rows']} rows from the Hugging Face Hub")
+    return ds
+
+
+@app.post("/api/train/datasets/file")
+async def api_train_import_file(request: Request, filename: str = "data.csv", name: str = "", system: str = ""):
+    from . import slm
+    raw = bytearray()
+    async for part in request.stream():
+        raw += part
+        if len(raw) > slm.MAX_UPLOAD:
+            return JSONResponse({"error": f"That file is over {slm.MAX_UPLOAD // 2**20} MB."}, status_code=413)
+    try:
+        return await asyncio.to_thread(slm.import_file, _train_base(), filename, bytes(raw), name, None, system)
+    except Exception as e:
+        return _train_err(e)
+
+
+def _train_machines() -> list[dict]:
+    """The machines whose readings this account may train on: its own board (the list Devices
+    draws for it), each with the items that have readings kept and its alarms on record."""
+    from . import devboard, slmiot
+    uid = usersmod.current() or ""
+    have = slmiot.machines()
+    whose = {uid} | ({""} if uid in _dev_here_owners() else set())
+    ended, still = devboard.episodes(_alarm_lines(whose, limit=4000, events=("alarm", "cleared")))
+    out = []
+    for m in _board_machines(uid):
+        kept = have.get(m.get("tkey") or "", {})
+        things = [t for t in m["things"] if t["id"] in kept]
+        if not things:
+            continue
+        eps = [e for e in ended + still if str(e.get("machine") or "").lower() == str(m["machine"]).lower()]
+        out.append({"key": m["key"], "tkey": m["tkey"], "machine": m["machine"], "things": things, "episodes": eps,
+                    "alarms": len(eps), "since": min(kept[t["id"]]["first"] for t in things),
+                    "readings": sum(kept[t["id"]]["n"] for t in things)})
+    return out
+
+
+@app.get("/api/train/devices")
+async def api_train_devices():
+    """Machines with readings this account can turn into examples. Never another account's."""
+    got = await asyncio.to_thread(_train_machines)
+    return {"machines": [{k: m[k] for k in ("key", "machine", "alarms", "since", "readings")}
+                         | {"things": [{"id": t["id"], "name": t["name"], "unit": t["unit"]} for t in m["things"]]}
+                         for m in got]}
+
+
+@app.post("/api/train/datasets/devices")
+async def api_train_from_devices(body: dict):
+    """A dataset from one machine's readings and the alarms that followed (slmiot.py)."""
+    from . import slm, slmiot
+    try:
+        m = next((x for x in await asyncio.to_thread(_train_machines) if x["key"] == str(body.get("machine") or "")), None)
+        if not m:
+            return JSONResponse({"error": "That machine has no readings you can use."}, status_code=404)
+        items = [str(i) for i in (body.get("items") or []) if isinstance(i, str)] or None
+        rows, how = await asyncio.to_thread(slmiot.build, m["tkey"], m["machine"], m["things"], m["episodes"], items,
+                                            float(body.get("days") or 7), int(body.get("width") or 0),
+                                            int(body.get("stride") or 0), int(body.get("horizon") or 0))
+        if not rows:
+            return JSONResponse({"error": slmiot.words(how)}, status_code=400)
+        kinds = [r["response"].split(": ", 1)[1] for r in rows if ": " in r["response"]]
+        ds = slm.add_dataset(_train_base(), str(body.get("name") or m["machine"] + " readings"), rows, "devices",
+                             m["machine"], slmiot.task_for(m["machine"], kinds), how)
+        ds = slm.update_dataset(_train_base(), ds["id"], note=how.get("note") or "")
+    except Exception as e:
+        return _train_err(e)
+    _ledger("train.import", f"device:{m['machine']}", f"made {ds['rows']} examples from {m['machine']}'s readings")
+    return {**ds, "words": slmiot.words(how)}
+
+
+@app.post("/api/train/datasets/synth")
+async def api_train_synth(body: dict):
+    """A teacher writes examples for a task. Each ten examples is one call to the teacher."""
+    try:
+        ex = [{"prompt": str(e.get("prompt") or ""), "response": str(e.get("response") or "")}
+              for e in (body.get("examples") or []) if isinstance(e, dict) and str(e.get("prompt") or "").strip()][:20]
+        ds = state["train"].synth(str(body.get("name") or ""), str(body.get("task") or ""),
+                                  int(body.get("n") or 100), ex, str(body.get("teacher") or ""))
+    except Exception as e:
+        return _train_err(e)
+    _ledger("train.teach", f"dataset:{ds['id']}", f"a teacher ({ds.get('teacher')}) writes {ds['progress']['want']} examples")
+    return ds
+
+
+@app.post("/api/train/datasets/{ident}/label")
+async def api_train_label(ident: str, body: dict):
+    try:
+        ds = state["train"].label(ident, str(body.get("teacher") or ""), bool(body.get("redo")),
+                                  str(body["task"]) if isinstance(body.get("task"), str) else None)
+    except Exception as e:
+        return _train_err(e)
+    _ledger("train.teach", f"dataset:{ident}", f"a teacher ({ds.get('teacher')}) answers {ds['progress']['want']} prompts")
+    return ds
+
+
+@app.post("/api/train/datasets/{ident}/stop")
+async def api_train_dataset_stop(ident: str):
+    return {"stopping": state["train"].stop(ident)}
+
+
+@app.get("/api/train/datasets/{ident}")
+async def api_train_dataset(ident: str, rows: int = 30, offset: int = 0):
+    from . import slm
+    try:
+        base = _train_base()
+        return {**slm.dataset(base, ident), "sample": slm.rows(base, ident, max(1, min(rows, 200)), max(0, offset))}
+    except Exception as e:
+        return _train_err(e)
+
+
+@app.put("/api/train/datasets/{ident}")
+async def api_train_dataset_edit(ident: str, body: dict):
+    from . import slm
+    try:
+        f = {}
+        if isinstance(body.get("name"), str):
+            f["name"] = slm.name_of(body["name"], "dataset")
+        if isinstance(body.get("system"), str):
+            f["system"] = slm.plain(body["system"], 4000)
+        return slm.update_dataset(_train_base(), ident, **f)
+    except Exception as e:
+        return _train_err(e)
+
+
+@app.delete("/api/train/datasets/{ident}")
+async def api_train_dataset_delete(ident: str):
+    from . import slm
+    try:
+        if state["train"].working(ident):
+            return JSONResponse({"error": "The teacher is at work on it. Stop that first."}, status_code=409)
+        slm.delete_dataset(_train_base(), ident)
+    except Exception as e:
+        return _train_err(e)
+    return {"ok": True}
+
+
+@app.post("/api/train/jobs")
+async def api_train_job_start(body: dict):
+    from . import slm
+    try:
+        j = await asyncio.to_thread(
+            slm.start_job, _train_base(), str(body.get("name") or ""), str(body.get("dataset") or ""),
+            str(body.get("base") or ""), body.get("hp") if isinstance(body.get("hp"), dict) else None,
+            str(body["system"]) if isinstance(body.get("system"), str) else None, usersmod.current() or "")
+    except Exception as e:
+        return _train_err(e)
+    _ledger("train.start", f"model:{j['base']}", f"training '{j['name']}' on {j['rows']} examples")
+    return j
+
+
+@app.get("/api/train/jobs/{ident}")
+async def api_train_job(ident: str, offset: int = 0):
+    from . import slm
+    try:
+        base = _train_base()
+        j = slm.job(base, ident)
+        ev = slm.evaluation(base, ident)
+        return {**j, "log": slm.log(base, ident, offset), "curve": slm.metrics(base, ident),
+                "eval": ev, "verdict": slm.verdict(ev) if j["state"] == "done" else None}
+    except Exception as e:
+        return _train_err(e)
+
+
+@app.post("/api/train/jobs/{ident}/stop")
+async def api_train_job_stop(ident: str):
+    from . import slm
+    try:
+        return slm.stop_job(_train_base(), ident)
+    except Exception as e:
+        return _train_err(e)
+
+
+@app.delete("/api/train/jobs/{ident}")
+async def api_train_job_delete(ident: str):
+    from . import slm
+    try:
+        slm.delete_job(_train_base(), ident)
+    except Exception as e:
+        return _train_err(e)
+    return {"ok": True}
+
+
+@app.post("/api/train/plan")
+async def api_train_plan(body: dict):
+    """What a run for this goal would do. Nothing is made and nothing but one call is spent."""
+    try:
+        return await state["train"].plan(str(body.get("goal") or ""), str(body.get("teacher") or ""))
+    except Exception as e:
+        return _train_err(e)
+
+
+@app.post("/api/train/runs")
+async def api_train_run(body: dict):
+    try:
+        r = state["train"].run(str(body.get("goal") or ""), body.get("plan") if isinstance(body.get("plan"), dict) else {},
+                               str(body.get("teacher") or ""))
+    except Exception as e:
+        return _train_err(e)
+    _ledger("train.start", f"model:{r['plan']['base']}",
+            f"a run for '{r['plan']['name']}': {r['plan']['examples']} examples, taught by {r['plan']['teacher']}")
+    return r
+
+
+@app.post("/api/train/runs/{ident}/stop")
+async def api_train_run_stop(ident: str):
+    return {"stopping": state["train"].stop(ident)}
+
+
+@app.get("/api/train/models/{ident}")
+async def api_train_model(ident: str):
+    from . import slm
+    try:
+        base = _train_base()
+        m = slm.model(base, ident)
+        return {**m, "examples": (slm.evaluation(base, ident).get("items") or [])[:slm.HELD_MAX],
+                "ollama_name": slm.ollama_name(m)}
+    except Exception as e:
+        return _train_err(e)
+
+
+@app.post("/api/train/models/{ident}/try")
+async def api_train_model_try(ident: str, body: dict):
+    from . import slm
+    try:
+        prompts = body.get("prompts") if isinstance(body.get("prompts"), list) else [body.get("prompt")]
+        return await asyncio.to_thread(slm.try_model, _train_base(), ident, [str(p or "") for p in prompts],
+                                       None, int(body.get("max_new_tokens") or 200))
+    except Exception as e:
+        return _train_err(e)
+
+
+@app.post("/api/train/models/{ident}/ollama")
+async def api_train_model_ollama(ident: str):
+    """Into this machine's Ollama, where every account can then choose it: an admin's."""
+    from . import slm
+    if (deny := _require_admin()):
+        return deny
+    try:
+        m = await asyncio.to_thread(slm.ollama_add, _train_base(), ident)
+    except Exception as e:
+        return _train_err(e)
+    providers.forget_models()
+    _ledger("train.ollama", f"model:ollama/{m['ollama']}", f"'{m['name']}' was added to Ollama as {m['ollama']}")
+    return m
+
+
+@app.post("/api/train/models/{ident}/publish")
+async def api_train_model_publish(ident: str, body: dict):
+    """Upload to the Hugging Face Hub. It leaves this machine, so it is a person's, here."""
+    from . import slm
+    token = _train_token()
+    try:
+        m = await asyncio.to_thread(slm.publish, _train_base(), ident, str(body.get("repo") or ""), token,
+                                    body.get("private", True) is not False)
+    except Exception as e:
+        return _train_err(e)
+    _ledger("train.publish", f"hub:{m['published']}", f"'{m['name']}' was uploaded to the Hugging Face Hub"
+            + ("" if body.get("private", True) is not False else ", public"))
+    return m
+
+
+@app.delete("/api/train/models/{ident}")
+async def api_train_model_delete(ident: str):
+    from . import slm
+    try:
+        slm.delete_model(_train_base(), ident)
+    except Exception as e:
+        return _train_err(e)
+    return {"ok": True}
+
+
+@app.put("/api/train/token")
+async def api_train_token(body: dict):
+    """A Hugging Face token, kept in this account's vault. Written, never read back."""
+    from . import vault
+    tok = str(body.get("token") or "").strip()
+    try:
+        if tok:
+            if not re.match(r"^hf_[A-Za-z0-9]{20,}$", tok):
+                return JSONResponse({"error": "A Hugging Face token starts with hf_."}, status_code=400)
+            vault.put("hf.token", tok)
+        else:
+            vault.forget("hf.token")
+    except Exception as e:
+        return _train_err(e)
+    _ledger("train.token", "vault:hf.token", "a Hugging Face token was saved" if tok else "the Hugging Face token was removed")
+    return {"token": bool(tok)}
 
 
 @app.get("/api/build/status")

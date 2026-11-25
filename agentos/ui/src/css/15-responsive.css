@@ -102,7 +102,7 @@ body.dev-tablet .cside{width:150px;min-width:150px}
    dock becomes a fixed bottom bar, the launcher becomes a full screen
    of apps, and every popover becomes a bottom sheet.
    ================================================================ */
-body.dev-mobile{--mbh:34px;--tbh:150px;--fs-2xs:11px;--fs-xs:12px;--fs-sm:13px;
+body.dev-mobile{--mbh:38px;--tbh:150px;--fs-2xs:11px;--fs-xs:12px;--fs-sm:13px;
   /* the bottom chrome a phone always shows: dock (64) + prompt bar (48) + gaps.
      Windows and the deck both reserve it so nothing hides behind the agent. */
   --chrome-b:calc(132px + var(--safe-b));
@@ -115,6 +115,11 @@ body.dev-mobile #pager,body.dev-mobile #mbapp{display:none!important}
 body.dev-mobile #tray{gap:6px;padding-left:0}
 body.dev-mobile #tray-voice,body.dev-mobile #tray-power{padding:2px 5px}
 body.dev-mobile #tbclock .dt{display:none}
+/* The bar was 34px and its buttons 36: each stood a pixel out of it top and bottom, and the
+   brain chip's outline crossed the bar's own edge. The bar is 38 now, and on a phone the chip
+   is its dot and its words with no pill round them, like the things beside it. */
+body.dev-mobile #fwdchip,body.immersive.dev-mobile #fwdchip{background:none;border-color:transparent;box-shadow:none;padding:2px 4px}
+body.dev-mobile #fwdchip.nobrain{color:var(--warn,#f5a524)}
 
 /* ---- windows are sheets: full canvas, no chrome to drag or resize ---- */
 body.dev-mobile #desktop{inset:calc(var(--mbh) + var(--safe-t)) 0 0 0}
@@ -229,6 +234,9 @@ body.dev-mobile #dock{flex:1;min-width:0;overflow-x:auto;scrollbar-width:none;ju
 body.dev-mobile #dock .dockb,body.dev-mobile #tbwins .tbwin{scroll-snap-align:end}
 body.dev-mobile #dock::-webkit-scrollbar{display:none}
 body.dev-mobile #tbwins{flex:none;max-width:36vw;overflow-x:auto;scrollbar-width:none}
+/* Both rows are given a width that is a whole number of icons (06b-dockfit.js). Snapping kept
+   one edge whole and the other showed half an icon: the eighth default icon spanned x=364..404
+   in a row ending at 374, and with windows open the row ended inside the seventh. */
 body.dev-mobile #tbwins::-webkit-scrollbar{display:none}
 body.dev-mobile #tbnative,body.dev-mobile .dsep{display:none!important}
 /* !important is deliberate, not lazy: every .aicon carries an inline

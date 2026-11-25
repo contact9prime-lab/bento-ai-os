@@ -39,7 +39,8 @@ async function renderMission(body,w){
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px">
       ${lane('🧬 Train','train',[
-        ['service',t.service||'—',t.service!=='running'],
+        ['training',t.service||'—',t.service==='not installed'],
+        ['datasets',t.datasets??0],
         ['jobs running',t.jobs_running??0],
         ['trained models',t.models??0]])}
       ${lane('🧪 Test','evals',[
@@ -72,57 +73,6 @@ async function renderMission(body,w){
   await paint();
   winTick(w,paint,6000,{now:false,key:'poll'});
 }
-
-/* ================= train app (TrainForge) ================= */
-const TRAIN_SETUP_LISTENERS=new Set();
-async function renderTrain(body,w){
-  stopWinTicks(w);
-  body.style.cssText='display:flex;flex-direction:column;height:100%;padding:0';
-  body.innerHTML='<div class="mut" style="padding:24px">checking the training service…</div>';
-  const paint=async()=>{
-    let st={running:false};
-    try{st=await (await fetch('/api/train/status')).json()}catch(e){}
-    if(st.running){
-      if(!body.querySelector('iframe')){
-        body.innerHTML=`<iframe src="${esc(st.url||'http://127.0.0.1:8377')}" style="border:0;width:100%;height:100%;flex:1" title="TrainForge"></iframe>`;
-        stopTick(w._tick);   // the iframe is the UI now — stop polling for good
-      }
-      return;
-    }
-    if(body.querySelector('iframe'))return; // don't tear down a live UI on a blip
-    const busy=st.setup==='fetching'||st.setup==='installing';
-    const notHere=!st.path;
-    const canGet=st.path||st.fetchable;   // on disk, or a repo URL is configured
-    const btnLabel=busy?(st.setup==='fetching'?'downloading…':'installing…'):(notHere?'Get & start TrainForge':'Start TrainForge');
-    body.innerHTML=`
-      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:14px;padding:30px;text-align:center">
-        <div style="font-size:40px">🧬</div>
-        <div style="font-size:17px;font-weight:600">Train your own models</div>
-        <div class="mut" style="max-width:460px">TrainForge is AgentOS's training service: import datasets, fine-tune models
-        (including LoRA fine-tunes of language models on your GPU), watch live loss curves, test every trained model as a
-        live endpoint, and publish to Hugging Face. Everything stays on this machine.</div>
-        ${notHere&&!st.fetchable?'<div class="errmsg">TrainForge isn\'t installed and no download URL is set — add <code>trainforge.repo</code> (or <code>trainforge.path</code>) in config.json.</div>':''}
-        ${notHere&&st.fetchable?'<div class="mut" style="font-size:12px">Not installed yet — the button below downloads and sets it up (one-time, a few minutes; the GPU stack is a few GB).</div>':''}
-        <button class="pact" id="tf-start" ${(canGet&&!busy)?'':'disabled'}>${btnLabel}</button>
-        <div class="mut" style="font-size:11px">or just ask the agent: “fine-tune a model on …” — it fetches &amp; starts the service itself</div>
-        <div id="tf-msg" class="mut" style="max-width:480px">${esc(busy?'setting up…':'')}</div>
-      </div>`;
-    const b=$('#tf-start');
-    if(b&&!busy)b.onclick=async()=>{
-      b.disabled=true;b.textContent=notHere?'downloading…':'starting…';
-      fetch('/api/train/service',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'start'})})
-        .then(r=>r.json()).then(r=>{const el=$('#tf-msg');if(el)el.textContent=r.result||''})
-        .catch(e=>{const el=$('#tf-msg');if(el)el.textContent=''+e});
-      // start returns only when up (or on error) — the poller flips us to the iframe
-    };
-  };
-  // live setup progress from the server (download / install messages)
-  w._onSetup=ev=>{if(ev.type==='train_setup'){const el=$('#tf-msg');if(el)el.textContent=ev.message||''}};
-  TRAIN_SETUP_LISTENERS.add(w._onSetup);
-  await paint();
-  w._tick=winTick(w,paint,4000,{now:false,key:'poll'});
-}
-
 
 /* ================= evals app (behavioural tests for the agent) ================= */
 /* The GUI face of `agentos eval`. Mission Control's Test lane links here.
