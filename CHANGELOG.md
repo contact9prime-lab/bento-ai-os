@@ -1,6 +1,13 @@
 # Changelog
 
 
+## 0.100.5 — 2026-11-25
+
+- Faint text is readable on every theme. Hints, a schedule's details, section labels and the like are
+  lifted to at least 4.5:1 against the theme's own panels, keeping the theme's tint; most built-in themes
+  were at about 3:1. Custom themes get the same floor.
+- The role on the menu bar's account chip (ADMIN) is no longer a dark pill on the bar.
+
 ## 0.100.4 — 2026-11-25
 
 - The ✦ assistant inside an app knows its app. It's handed the app's code, its saved data and what's on

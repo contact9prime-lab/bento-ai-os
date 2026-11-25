@@ -779,3 +779,14 @@ bento voice set elevenlabs --key … # switch, and save the key
 bento voice voices system          # the voices this computer has
 bento voice try "hello" --agent researcher -o hello.mp3
 ```
+
+### Faint text has a floor
+
+Secondary text (hints, details under a row, section labels) is lifted to at least 4.5:1 against the
+theme's own panels wherever a theme is applied, custom themes included. It moves towards the theme's
+main text colour by the smallest step that reads, so each theme keeps its tint, and a theme that
+already reads well is left as it is.
+
+![Missions, Schedule tab, with the schedule's details and the hint under the form readable on the AgentOS theme](screenshots/readable-text.png)
+
+![The same Schedule tab on a 390px phone, on the Nova theme](screenshots/readable-text-phone.png)

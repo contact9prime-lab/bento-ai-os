@@ -253,6 +253,43 @@ function _applyThemeObj(t){
   if(!st){st=document.createElement('style');st.id='theme-extra';document.head.appendChild(st)}
   st.textContent=t.css||'';
   setExperience(t.shell?'custom':(t.exp||'standard'),t.shell);
+  themeReadable(v);
+}
+/* Secondary text has a floor: 4.5:1 against the theme's own panels. Reported as "the dark
+   font behind the dark is just so silly, how can I read it": measured on the owner's
+   screen, --dim2 (schedule details, hints, section labels) was 3.0:1 on its panel, and most
+   built-in themes were at or under 3.3. Lifted here, where every theme (custom ones and the
+   Theme Builder's preview too) is applied, by mixing it towards the theme's own --txt, so
+   each theme keeps its tint. A theme that already reads well is left as it is. */
+var READ_FLOOR=4.5, READ_KEYS=['dim','dim2'];
+function _rgbOf(s){
+  s=String(s||'').trim();const m=/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(s);if(!m)return null;
+  let h=m[1];if(h.length===3)h=h.replace(/./g,c=>c+c);
+  return [0,2,4].map(i=>parseInt(h.slice(i,i+2),16));
+}
+function _relLum(c){return c.map(v=>{v/=255;return v<=.03928?v/12.92:Math.pow((v+.055)/1.055,2.4)})
+  .reduce((a,v,i)=>a+v*[.2126,.7152,.0722][i],0)}
+function _contrast(a,b){const x=_relLum(a),y=_relLum(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05)}
+function _hex(c){return '#'+c.map(v=>Math.round(v).toString(16).padStart(2,'0')).join('')}
+function readableTone(fg,txt,bgs){
+  // the smallest step towards txt that reads on every panel; the theme's own colour when it already does
+  const worst=c=>Math.min(...bgs.map(b=>_contrast(c,b)));
+  if(worst(fg)>=READ_FLOOR)return null;
+  for(let t=.05;t<=1.0001;t+=.05){
+    const c=fg.map((v,i)=>v+(txt[i]-v)*t);
+    if(worst(c)>=READ_FLOOR)return _hex(c);
+  }
+  return _hex(txt);
+}
+function themeReadable(v){
+  const r=document.documentElement;v=v||{};
+  // our last lift goes first, so the theme's own value is what is measured
+  READ_KEYS.forEach(k=>{if(!(k in v))r.style.removeProperty('--'+k);else r.style.setProperty('--'+k,v[k])});
+  const cs=getComputedStyle(r),get=k=>_rgbOf(cs.getPropertyValue('--'+k));
+  const txt=get('txt'),bgs=['bg','bg2','bg3'].map(get).filter(Boolean);
+  if(!txt||!bgs.length)return;
+  READ_KEYS.forEach(k=>{const fg=get(k);if(!fg)return;
+    const up=readableTone(fg,txt,bgs);if(up)r.style.setProperty('--'+k,up)});
 }
 
 /* ================= experience shells ================= */

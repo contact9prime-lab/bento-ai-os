@@ -2952,6 +2952,8 @@ Claude Code reading the screenshots from the workspace); its first two fixes —
 shadowed bottom edge on every surface, real elevation on icons, a lighter focused window — are the
 ones that made it read as a surface rather than "a colourful wallpaper behind the old UI".
 
+**Faint text has a floor** (`themeReadable`/`readableTone` in 02-themes-shells.js, `tests/test_readable_text.py`): --dim and --dim2 are lifted to 4.5:1 against bg, bg2 and bg3 wherever a theme is applied, by the smallest mix towards --txt. Reported as "the dark font behind the dark is just so silly"; measured 3.0:1 on the owner's screen, and most built-in themes were at or under 3.3. Don't lower a theme's --dim2 to get it back.
+
 **Themes are tokens, and the default is Nova.** A browser that never chose gets `nova` (deep ink,
 an indigo→violet accent, Geist, its own `nova.svg`). The accent as a FILL is `--acc-grad` and the
 text on it is `--on-acc` (`00-tokens-base.css`): `#04211c` was written into two dozen rules for a
