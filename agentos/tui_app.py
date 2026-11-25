@@ -71,8 +71,19 @@ class ApprovalScreen(ModalScreen):
                 # long command used to push the buttons off the bottom of the terminal
                 from . import approvalcard
                 yield Static(f"[b]{_esc(approvalcard.headline(self._card))}[/b]", id="ap-goal")
+                ch = self._card.get("choices") or {}
                 with VerticalScroll(id="ap-scroll"):
+                    if self._card.get("means"):
+                        # who wants what and what it would do to you, in words; inside the
+                        # scroll, so a small terminal still shows the buttons
+                        yield Static(_esc(" ".join(self._card["means"])), id="ap-means")
                     yield Static(_esc(self._card.get("body") or ""), id="ap-cmd")
+                    if ch:
+                        # what each button does: a terminal has no tooltip
+                        names = {"allow": "Allow once" if self._offer else "Allow", "deny": "Deny",
+                                 "chat": "This chat", "hour": "1 hour", "always": "Always"}
+                        yield Static("\n".join(f"[b]{names[k]}[/b]: {_esc(ch[k])}"
+                                               for k in names if ch.get(k)), id="ap-choices")
                 if (self._card.get("lines") or 0) > 8 or self._card.get("cut"):
                     more = f"{self._card.get('lines')} lines, scroll to read all"
                     if self._card.get("cut"):

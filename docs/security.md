@@ -155,6 +155,23 @@ can be scoped to a subset of them in the Permissions app (the ⛩ badge on any r
 Deny rules scope the same way, so "allowed everywhere except over Telegram" is one allow rule
 plus one telegram-scoped deny.
 
+## What an approval card tells you
+
+A card asking for your yes says who is asking (an app by its name, or your agent), what the step
+would do in plain words, and then exactly what would run. A command that hides its script in base64
+is decoded first, so you read the script itself. What the card says the script does is read from its
+text, and the card says so: it's a reading, not a check.
+
+*What do these buttons do?* opens one line per button. *1 hour* and *Always* name exactly what they
+would let through next time: commands that start with `git status`, files in one folder, pages on one
+site, or this exact command. A line that pipes code into python, a shell or node is only ever
+remembered as itself. Telegram and WhatsApp put the same lines under the question, and the terminal
+shows them on the card.
+
+![An app's approval card in App Studio: who is asking, what the hidden script does, the script decoded, and what Allow once, Deny, 1 hour and Always each do](screenshots/approval-explained.png)
+
+![The same approval card on a 390px phone, with the explanation above the decoded script and the buttons](screenshots/approval-explained-phone.png)
+
 ## Agents that start agents
 
 A conversation can hand work to a specialist, and build one when none fits. Both are

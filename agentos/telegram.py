@@ -972,7 +972,9 @@ class TelegramBridge(usersmod.Scoped):
         # what it is for and the start of what it does; a message is capped at 4096
         from . import approvalcard
         from .policy import said
-        text = approvalcard.message(approvalcard.card(name, args, said()), reason, limit=4000)
+        c = approvalcard.card(name, args, said(), offer=offer,
+                              who=approvalcard.store_who(offer, getattr(self, "store", None)))
+        text = approvalcard.message(c, reason, limit=4000)
         row = [{"text": "✅ Allow once", "callback_data": f"ap:{aid}:1"},
                {"text": "⛔ Deny", "callback_data": f"ap:{aid}:0"}]
         if offer:

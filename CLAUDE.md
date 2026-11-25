@@ -2143,6 +2143,15 @@ sense" when it was missing:
   gate checked; otherwise the tool's phrase from `GOALS`. Its `body` is shortened by each surface,
   and `preview()` ALWAYS says how much is not shown: cutting a command silently would hide the
   `; rm -rf` at its end. The floating card has a max height and sits above the toast stack.
+- **An approval says what it MEANS for the person** (`approvalcard.who_of`/`meaning`/`unhide`/`choices`,
+  `apChoices`; `tests/test_approval_card.py`). Reported over an app's `echo <base64> | base64 -d | python3`
+  card: "I don't know what this means for me." The card names who asks, says what the step does, decodes a
+  hidden script before the command as sent, and says what each button writes (`_covers` reads the offer's
+  resource, so the words and the grant can't differ). What a script "does" is read from its text and the card
+  says it is not a check. The explainer sits ABOVE the buttons: the floating card's `.btns` is sticky and
+  covered anything after it. Writing it found a hole: `command_offer` remembered that line as
+  `{echo*,base64 -d,python3}`, any script piped into python3; a code-running program reading its code from
+  the line (`_OFFER_RUNS_CODE`) is now remembered as exactly itself.
 - **A turn that MAKES something offers the door to it.** `10a-handoff.js` maps
   the creating tools (`create_app`, `create_flow`, `enable_flow`,
   `save_automation`, `schedule_task`) to the app that owns the result, and the

@@ -9335,7 +9335,7 @@ async def _desk_approval(name: str, args: dict, reason: str, offer: dict | None 
     uid = usersmod.current() if usersmod.enabled() else ""
     # what the step is FOR and exactly what it does, shortened by each surface rather
     # than dumped: a long command used to push Allow off the bottom of the screen
-    card = approvalcard.card(name, args, _approval_said())
+    card = approvalcard.card(name, args, _approval_said(), offer=offer, who=_approval_who(offer))
     entry = {"fut": fut, "offer": offer, "ws": ws, "name": name, "uid": uid,
              "args": args, "reason": reason, "run_id": run_id, "card": card,
              "flow": flow, "asked_at": time.time(), "must_person": _approval_must_person()}
@@ -9999,6 +9999,18 @@ def _approval_mine(entry: dict, uid) -> bool:
     if uid is None or not usersmod.enabled():
         return True
     return (entry.get("uid") or "") == (uid or "")
+
+
+def _approval_who(offer: dict | None) -> str:
+    """Who is asking, in the words a card says it: an app by its name, your agent by its."""
+    def app_name(aid):
+        a = state["store"].get_app(aid)
+        return (a or {}).get("name") or ""
+    try:
+        agent = str(state["cfg"].get("agent_name") or "")
+    except Exception:
+        agent = ""
+    return approvalcard.who_of(offer, app_name, agent)
 
 
 def _approval_must_person() -> bool:

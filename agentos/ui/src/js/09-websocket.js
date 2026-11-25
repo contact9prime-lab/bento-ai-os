@@ -235,6 +235,8 @@ function buildApprovalBox(ev,cur){
   const cut=card.cut?`<div class="acut">${card.cut} more characters are not shown here.</div>`:'';
   box.innerHTML=`<div class="atitle">${avatarImg(askKey,'av-ap')}Approval needed${who?' · '+esc(who):''}${from}</div>`
     +`<div class="agoal${card.said?' said':''}" title="${card.said?'What the agent said it is doing':'What this step does'}">${esc(apGoalLine(card))}</div>`
+    // what it means for you: who wants what, a hidden script decoded, what its text does
+    +((card.means||[]).length?`<div class="ameans${card.hidden?' warn':''}">${(card.means||[]).map(esc).join(' ')}</div>`:'')
     +(card.body?`<div class="acmd${long?' clip':''}">${esc(card.body)}</div>`:'')
     +`<button class="amore" type="button"${long?'':' hidden'}>Show all · ${card.lines} line${card.lines===1?'':'s'}</button>${cut}`
     +`<div class="areason">${esc(ev.reason||'')}</div><div class="btns"><button class="allow">${o?'Allow once':'Allow'}</button><button class="deny">Deny</button>${rem}</div>`;
@@ -245,6 +247,7 @@ function buildApprovalBox(ev,cur){
   requestAnimationFrame(()=>{if(pre&&!pre.classList.contains('open')&&pre.scrollHeight>pre.clientHeight+2){
     pre.classList.add('clip');more.hidden=false}});
   if(ev.ethics){apEthics(box,ev);return box}
+  apChoices(box,card);
   box.querySelector('.allow').onclick=()=>resolveApproval(ev.id,true);
   box.querySelector('.deny:not(.always)').onclick=()=>resolveApproval(ev.id,false);
   box.querySelectorAll('.always').forEach(b=>b.onclick=()=>{
@@ -254,6 +257,26 @@ function buildApprovalBox(ev,cur){
     toast(o.note&&standing?o.note:('✓ '+who+' may do this '+words+' (Permissions)'));
   });
   return box;
+}
+/* What each button does, from the server (approvalcard.choices): on the button as its
+   tooltip, and as a list a tap opens, because a phone has no hover. Reported as "I don't
+   know what this means for me" over Allow once / Deny / 1 hour / Always. */
+function apChoices(box,card){
+  const ch=card.choices||{};if(!Object.keys(ch).length)return;
+  const btn={allow:box.querySelector('.allow'),deny:box.querySelector('.deny:not(.always)')};
+  box.querySelectorAll('.always').forEach(b=>btn[b.dataset.rem]=b);
+  const names={allow:btn.allow&&btn.allow.textContent,deny:'Deny',chat:'This chat',hour:'1 hour',always:btn.always&&btn.always.textContent};
+  const rows=[];
+  ['allow','deny','chat','hour','always'].forEach(k=>{if(!ch[k]||!btn[k])return;
+    btn[k].title=ch[k];rows.push([names[k]||k,ch[k]])});
+  if(!rows.length)return;
+  const t=document.createElement('button');t.type='button';t.className='awhat';t.textContent='What do these buttons do?';
+  const ul=document.createElement('ul');ul.className='achoices';ul.hidden=true;
+  rows.forEach(([n,w])=>{const li=document.createElement('li');const b=document.createElement('b');b.textContent=n+': ';
+    li.append(b,document.createTextNode(w));ul.appendChild(li)});
+  t.onclick=e=>{e.stopPropagation();ul.hidden=!ul.hidden;t.textContent=ul.hidden?'What do these buttons do?':'Hide'};
+  // above the buttons: on the floating card they stick to the bottom and would cover it
+  const btns=box.querySelector('.btns');btns.before(t,ul);
 }
 /* An ethics caution (agentos/ethics.py): what Bento measured, who it would hurt, and a
    phrase to type. Allow stays off until the words match, and the server checks them again:

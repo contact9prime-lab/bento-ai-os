@@ -251,6 +251,12 @@ body.act-approving #working,body.act-approving .mf-working{cursor:pointer}
 .approval .amore[hidden]{display:none}
 .approval .acut{color:var(--dim);font-size:var(--fs-sm)}
 .approval .areason{color:var(--dim);font-size:var(--fs-sm)}
+.approval .ameans{color:var(--txt);font-size:var(--fs-sm);line-height:1.45;margin:0 0 6px;overflow-wrap:anywhere}
+.approval .ameans.warn{border-left:3px solid var(--warn,#f0b429);padding-left:8px}
+.approval .awhat{color:var(--acc);font-size:var(--fs-sm);padding:4px 0;min-height:var(--tap,24px);background:none;border:0;cursor:pointer}
+.approval .achoices{margin:2px 0 0;padding-left:18px;color:var(--dim);font-size:var(--fs-sm);line-height:1.45}
+.approval .achoices[hidden]{display:none}
+.approval .achoices b{color:var(--txt);font-weight:600}
 .approval .btns{display:flex;gap:8px;margin-top:11px;flex-wrap:wrap;align-items:center}
 .approval .ap-rem{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-left:auto}
 .approval .ap-remlbl{color:var(--dim);font-size:var(--fs-sm)}
