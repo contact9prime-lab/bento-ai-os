@@ -587,6 +587,9 @@ ABILITY_WORDS = {"run_code": "run_code", "code": "run_code", "python": "run_code
                  "run_python": "run_code", "run_code_(python)": "run_code"}
 
 ALWAYS_ASK = {"power_action", "enable_flow", "enable_openclaw_plugin",
+              # an app's script that will run on a clock with no model (appjobs.py): the
+              # card is the script, and the yes is a grant for exactly that script
+              "schedule_app_job",
               # a message in somebody's inbox cannot be unsent; full autonomy is
               # trust in the user's instructions, and no recipe grants this
               "mail_send",
@@ -658,13 +661,14 @@ ASK_FROM_SPECIALISTS = {"run_python", "run_tests"}
 # given its own line in risk_of.
 # Tools that act for ONE app when the caller is that app (its appTool) or is building
 # it (App Studio): the agent loop and /api/tool inject `_app`, never the model or the page.
-APP_BOUND_TOOLS = ("schedule_task", "create_trigger", "update_app_data", "fetch_url", "desktop_state")
+APP_BOUND_TOOLS = ("schedule_task", "create_trigger", "update_app_data", "fetch_url", "desktop_state",
+                   "schedule_app_job", "app_jobs")
 
 SAFE_TOOLS = {
     # reading
     "read_file", "list_dir", "search_files", "read_source", "search_docs", "system_info",
     "fetch_url", "recall", "kg_query", "timeline", "list_spaces", "list_flows",
-    "list_assets", "get_asset", "list_automations", "read_app_data", "update_app_data",
+    "list_assets", "get_asset", "list_automations", "read_app_data", "update_app_data", "app_jobs",
     "mail_search",
     "mail_read", "calendar_events", "find_tools", "openclaw_report",
     # what this account spent on each LLM, and its quotas (usage.py): numbers, never a key
@@ -4457,6 +4461,41 @@ class Toolbox(usersmod.Scoped):
                                           delay_minutes, weekday=weekday, app_id=app_id,
                                           space_id=zero_space)
 
+    async def schedule_app_job(self, title: str = "", script: str = "", interval_minutes: int = 5,
+                               key: str = "", app: str = "", _app: str = "") -> str:
+        """An app's script run on a clock with no model (appjobs.py). Reached only after a
+        person approved this exact script (ALWAYS_ASK); the yes is a grant for it alone."""
+        from . import appjobs
+        app_id, err = self._schedule_app(app, _app)
+        if err:
+            return err
+        if not app_id:
+            return "[error] an app job belongs to an app: call it from the app, or name the app"
+        job, err = appjobs.clean(title, script, interval_minutes, key)
+        if err:
+            return err
+        try:
+            _tid, words = appjobs.save(self.store, app_id, job)
+        except ValueError as e:
+            return f"[error] {e}"
+        if self.broadcast:
+            try:
+                await self.broadcast({"type": "tasks"})
+            except Exception:
+                pass
+        return words
+
+    async def app_jobs(self, app: str = "", _app: str = "") -> str:
+        """This app's jobs: titles, how often, the data key, the script's fingerprint and the
+        last run. An app calls it on open and proposes a job only when it is missing or changed."""
+        from . import appjobs
+        app_id, err = self._schedule_app(app, _app)
+        if err:
+            return err
+        if not app_id:
+            return "[error] name the app"
+        return json.dumps([appjobs.summary(t) for t in appjobs.of_app(self.store, app_id)])
+
     async def create_trigger(self, kind: str, match_or_path: str = "", prompt: str = "",
                              cooldown_secs: int = 300, minutes: float = 30,
                              app: str = "", _app: str = "") -> str:
@@ -4672,6 +4711,8 @@ class Toolbox(usersmod.Scoped):
                              f"{ABILITIES.get(str(args.get('ability') or ''), ('', 'run code'))[1]}.")
         if name == "open_app":
             return "risky", "Launches an application or URL on your desktop."
+        if name == "schedule_app_job":
+            return "risky", "runs an app's own script on a clock, with no model"
         if name in ("schedule_task", "create_trigger"):
             return "risky", "Creates a recurring background task."
         if name == "update_soul":
@@ -7195,6 +7236,36 @@ TOOL_SCHEMAS = [
             },
             "required": ["prompt", "schedule_type"],
         },
+    },
+    {
+        "name": "schedule_app_job",
+        "description": "Keep an app's numbers fresh with no model: run the app's own Python "
+                       "script every N minutes, as the app, and save what it prints (JSON if it "
+                       "parses) under `key` in the app's data. For fetching and computing; work "
+                       "that needs judgement is schedule_task. The person approves this exact "
+                       "script on a card; a changed script asks again. Listed in Missions → "
+                       "Schedule, each run in Missions → History.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "What the job does, e.g. 'Scan the market'. "
+                          "The same title again replaces that job."},
+                "script": {"type": "string", "description": "The Python to run. Print the result "
+                           "(ideally one JSON value) to stdout."},
+                "interval_minutes": {"type": "integer", "description": "How often, in minutes."},
+                "key": {"type": "string", "description": "The app data key it saves under."},
+                "app": {"type": "string", "description": "The app, by name, when not called from it."},
+            },
+            "required": ["title", "script", "interval_minutes", "key"],
+        },
+    },
+    {
+        "name": "app_jobs",
+        "description": "An app's jobs (schedule_app_job): title, how often, data key, the "
+                       "script's fingerprint and the last run.",
+        "parameters": {"type": "object", "properties": {
+            "app": {"type": "string", "description": "The app, by name, when not called from it."}},
+            "required": []},
     },
 ]
 TOOL_SCHEMAS.extend(GIT_TOOL_SCHEMAS)

@@ -192,6 +192,87 @@ def _has(html: str, pattern: str) -> bool:
 
 # ----------------------------------------------------------------------------- rules
 
+_WORK = re.compile(r"__WORK__|\bfetch\s*\(")
+_TOOL_WORK = re.compile(r"\bappTool\s*\(\s*['\"](?:run_command|run_python|fetch_url)['\"]")
+# a regex literal where an expression starts; its quotes and brackets are not code
+_REGEX_LIT = re.compile(r"(?<=[(,=:\[!&|?{};])(\s*)/(?![/*])(?:\\.|\[(?:\\.|[^\]\\\n])*\]|[^/\\\n\[])+/[a-z]*")
+
+
+def _structure(code: str) -> str:
+    """The code with the work marked, then regex literals, strings and comments blanked, so
+    brackets can be matched without a quote inside `/[&<>"]/g` swallowing the rest."""
+    code = _TOOL_WORK.sub("appTool(__WORK__", code)
+    code = _REGEX_LIT.sub(lambda m: m.group(1) + " " * (len(m.group(0)) - len(m.group(1))), code)
+    return _strip_strings_and_comments(code)
+_CALL = re.compile(r"(?<![\w.$])([A-Za-z_$][\w$]*)\s*\(")
+_NOT_CALLS = {"if", "for", "while", "switch", "catch", "function", "return", "typeof", "await", "new"}
+
+
+def _until_close(code: str, i: int, open_c: str, close_c: str) -> int:
+    """The index just past the bracket that closes the one at code[i] (in _structure'd code)."""
+    depth = 0
+    for j in range(i, len(code)):
+        c = code[j]
+        if c == open_c:
+            depth += 1
+        elif c == close_c:
+            depth -= 1
+            if depth == 0:
+                return j + 1
+    return len(code)
+
+
+def _interval_callbacks(code: str) -> list[str]:
+    """The first argument of every setInterval(...)."""
+    out = []
+    for m in re.finditer(r"\bsetInterval\s*\(", code):
+        start = m.end() - 1
+        args = code[start + 1:_until_close(code, start, "(", ")") - 1]
+        depth, cut = 0, len(args)
+        for k, c in enumerate(args):
+            if c in "([{":
+                depth += 1
+            elif c in ")]}":
+                depth -= 1
+            elif c == "," and depth == 0:
+                cut = k
+                break
+        out.append(args[:cut].strip())
+    return out
+
+
+def _body_of(code: str, name: str) -> str:
+    """The body of a named function (declaration, or a const/let/var/window. arrow or function)."""
+    pats = [rf"\bfunction\s+{re.escape(name)}\s*\(", rf"(?:\b(?:const|let|var)\s+|window\.){re.escape(name)}\s*=\s*(?:async\s*)?(?:function\b[^(]*)?\("]
+    for p in pats:
+        m = re.search(p, code)
+        if m:
+            b = code.find("{", m.end())
+            if b < 0:
+                return ""
+            return code[b:_until_close(code, b, "{", "}")]
+    return ""
+
+
+def _timer_works(code: str, expr: str, depth: int = 4, seen: set | None = None) -> bool:
+    """Does what a timer runs reach fetching or running code, a few calls deep?"""
+    seen = seen if seen is not None else set()
+    if _WORK.search(expr):
+        return True
+    if depth <= 0:
+        return False
+    names = [expr] if re.fullmatch(r"[A-Za-z_$][\w$]*", expr) else \
+        [n for n in _CALL.findall(expr) if n not in _NOT_CALLS]
+    for n in names:
+        if n in seen:
+            continue
+        seen.add(n)
+        body = _body_of(code, n)
+        if body and _timer_works(code, body, depth - 1, seen):
+            return True
+    return False
+
+
 def check(html: str, known_tools: set[str] | None = None) -> Report:
     """Every contract check, in one pass. `known_tools` enables the appTool name check;
     omit it where the toolbox is not to hand and that one rule is simply skipped."""
@@ -276,6 +357,28 @@ def check(html: str, known_tools: set[str] | None = None) -> Report:
                   "the app uses none of the built-in AI runtime",
                   "appLLM.stream for visible output, appChat for conversation, "
                   "appAgent when it should act"))
+
+    # Work on a clock belongs to the framework (appjobs.py, schedule_task). Found in Signal
+    # Desk: asked for a schedule, the page ran a hidden Python reader every minute from a
+    # setInterval, so Missions showed nothing, every run was an approval card, and it all
+    # stopped when the window closed. A timer may redraw; it may not fetch, run or ask.
+    # setInterval with fetching or running code: a debounce setTimeout or a timer that only
+    # redraws is fine, and a false alarm here costs a rebuild (CONTRACT is worth_fixing)
+    # What the timer CALLS is read, a few calls deep: an app that fetches once on open and
+    # redraws "updated 3 min ago" on a timer is right, and was flagged (found live).
+    runs = re.findall(r"\bappTool\s*\(\s*['\"](run_command|run_python)['\"]", h)
+    code = _structure("\n".join(_scripts(h) + handlers))
+    if any(_timer_works(code, cb) for cb in _interval_callbacks(code)):
+        add(Issue(CONTRACT, "clock-in-page",
+                  "work is done on a page timer: it runs only while the window is open, is not "
+                  "in Missions, keeps no run history and asks on every run",
+                  "numbers: await appJob.ensure({title, script, every, key}) and redraw from "
+                  "appData; judgement: appTool('schedule_task', …)"))
+    if runs:
+        add(Issue(CONTRACT, "runs-commands",
+                  f"the page runs {runs[0]} itself, so the person is asked every time and the "
+                  "work is not a schedule they can find",
+                  "move the code into an app job: appJob.ensure({title, script, every, key})"))
 
     # Layout rules the design system exists to make unnecessary.
     if _has(h, r"position\s*:\s*fixed"):

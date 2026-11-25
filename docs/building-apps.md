@@ -289,6 +289,38 @@ database, not as files, and the assistant is told so.
 
 ![The same corner assistant answering on a 390px phone, with the app's rules above it](screenshots/app-assistant-phone.png)
 
+#### Work on a clock: an app job or an agent schedule
+
+Anything an app does every N minutes runs in Bento, never on a timer in its page. A page timer runs
+only while the window is open, isn't listed in Missions, keeps no history, and would ask you on every
+run.
+
+- **Numbers** (fetch prices, scan a market, compute something): an app job, with no model.
+
+  ```js
+  await appJob.ensure({ title: 'Scan the market', script: PY, every: 5, key: 'scan' });
+  ```
+
+  Bento runs `PY` (Python that prints one JSON value) as the app every 5 minutes and saves it under
+  `scan` in the app's data. You approve the script once, on a card that shows it; `ensure` asks
+  again only when the script, the interval or the key changes. Each run goes through your
+  permissions and the ethics check, the job is in Missions → Schedule as "app job · no model", and
+  each run is in Missions → History. `appData._jobs[title]` holds the last run's time, whether it
+  worked and why not, so the page can say "updated 3 min ago".
+- **Judgement** (read the news and decide, choose whom to alert): `appTool('schedule_task', …)`, an
+  agent run.
+
+The page reads its data on open and redraws on the `appdata` event. App Studio flags an app that
+fetches or runs code from a page timer, or runs `run_command` itself.
+
+![The approval card for an app job: the app's name, what the script does, and the script itself, with Allow and Deny](screenshots/app-job-card.png)
+
+![Missions, Schedule tab: the job marked "app job · no model", for Crypto Prices, every 5 minutes, last run done](screenshots/app-job-missions.png)
+
+![The Crypto Prices app showing the prices its job saved, updated just now, every 5 minutes](screenshots/app-job-app.png)
+
+![The same Crypto Prices app on a 390px phone, showing the saved Bitcoin price](screenshots/app-job-app-phone.png)
+
 When an app asks to run a read-only command on files in your workspace (`ls`, `cat`, `head`,
 `grep`…), the card's *1 hour* and *Always* cover every such read for that one app. Hidden files,
 anything outside the workspace and anything that writes still ask.

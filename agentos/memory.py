@@ -1043,6 +1043,9 @@ class Store:
             # itself (appTool), by a chat naming it, or by App Studio while it builds
             # that app; Missions and the Studio read it so the two show one schedule.
             ("tasks", (("app_id", "TEXT DEFAULT ''"),)),
+            # An app job (appjobs.py): the script a schedule runs with no model, and the key
+            # in the app's data its output is saved under. '' for every other schedule.
+            ("tasks", (("script", "TEXT DEFAULT ''"), ("data_key", "TEXT DEFAULT ''"))),
             ("grants", (("source_ref", "TEXT DEFAULT ''"),)),
             ("subagents", (("memory_scope", "TEXT DEFAULT 'inherit'"),
                            ("skills_locked", "INTEGER DEFAULT 1"),
@@ -3432,15 +3435,16 @@ class Store:
     def add_task(self, prompt: str, schedule_type: str, interval_seconds: int | None,
                  at_time: str | None, next_run: float | None, trigger: str = "",
                  trigger_config: str = "{}", cooldown_secs: int = 300,
-                 flow: str = "", space_id: str = "", weekday: int = -1, app_id: str = "") -> str:
+                 flow: str = "", space_id: str = "", weekday: int = -1, app_id: str = "",
+                 script: str = "", data_key: str = "") -> str:
         tid = uuid.uuid4().hex[:12]
         self.db.execute(
             'INSERT INTO tasks (id, prompt, schedule_type, interval_seconds, at_time, next_run, '
-            'created_at, "trigger", trigger_config, cooldown_secs, flow, space_id, weekday, app_id) '
-            'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+            'created_at, "trigger", trigger_config, cooldown_secs, flow, space_id, weekday, app_id, '
+            'script, data_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
             (tid, prompt, schedule_type, interval_seconds, at_time, next_run, time.time(),
              trigger, trigger_config or "{}", int(cooldown_secs), flow or "", space_id or "",
-             int(weekday if weekday is not None else -1), app_id or ""),
+             int(weekday if weekday is not None else -1), app_id or "", script or "", data_key or ""),
         )
         self.db.commit()
         return tid
@@ -3495,6 +3499,10 @@ class Store:
     def delete_task(self, tid: str):
         self.db.execute("DELETE FROM tasks WHERE id=?", (tid,))
         self.db.commit()
+        # an app job's one grant (appjobs.py) goes with it: it covers nothing else
+        for g in self.db.execute("SELECT id FROM grants WHERE source_ref=? AND revoked_at IS NULL",
+                                 (f"job:{tid}",)).fetchall():
+            self.revoke_grant(g["id"])
 
     # -- proactive items (digests & suggestions) -----------------------------
 

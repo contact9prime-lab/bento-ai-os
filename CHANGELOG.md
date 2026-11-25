@@ -1,6 +1,23 @@
 # Changelog
 
 
+## 0.100.6 — 2026-11-25
+
+- An app's work on a clock runs in Bento, not in its page. Numbers an app shows (prices, a market
+  scan) are an **app job**: Bento runs the app's own script every N minutes with no model, as the app,
+  and saves what it prints into the app's data. You approve the script once on a card that shows it,
+  each run passes your permissions and the ethics check, the job is listed in Missions → Schedule as
+  "app job · no model", and every run is in Missions → History. A changed script asks again, and
+  removing the job removes its permission. Work that needs judgement stays an agent schedule.
+- The app builder is told to use these and never to fetch or run code from a page timer. App Studio
+  flags an app that does (Problems: "work is done on a page timer", "the page runs run_command
+  itself"), so Fix it can move it over.
+- A schedule left without a next run when the server stopped gets one again at start, and a run that
+  fails still books its next run. Before, such a schedule read "waiting for its event" for good.
+- An approval card that offers no Remember (a step asked every time) names the app or agent asking;
+  it said "Aria" for an app.
+- `appIcon()` icons are the size of a letter unless the app sizes them; an unsized arrow filled a card.
+
 ## 0.100.5 — 2026-11-25
 
 - Faint text is readable on every theme. Hints, a schedule's details, section labels and the like are

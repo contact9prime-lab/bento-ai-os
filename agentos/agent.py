@@ -1317,6 +1317,8 @@ class Agent:
             tok_asked = _ASKED.set(asked)
             # what the agent said it was doing, for the card's first line
             tok_said = _SAID.set(getattr(self, "_said", "") or "")
+            from . import approvalcard as _apc
+            tok_asker = _apc.ASKER.set(_apc.asker_of(self.principal))
             # An ethics caution (ethics.py): the card asks for the phrase, and only a screen that
             # had it typed confirms the token. Every other approver leaves it unconfirmed.
             eth_tok = eth_ctx = None
@@ -1328,6 +1330,7 @@ class Agent:
             finally:
                 _ASKED.reset(tok_asked)
                 _SAID.reset(tok_said)
+                _apc.ASKER.reset(tok_asker)
                 if tok is not None:
                     _NEEDS_PERSON.reset(tok)
                 if eth_ctx is not None:

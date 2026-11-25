@@ -774,7 +774,8 @@ PARANOID_FREE = {
 # remembers it) or come from the manifest the person approved. The old default let any
 # SAFE call through, and the shell's "safe" commands include `cat ~/.ssh/id_rsa`.
 APP_FREE_ACTIONS = {"net.fetch", "media.read", "flow.read", "space.read"}
-APP_FREE_TOOLS = {"system_info", "notify", "search_docs", "list_themes", "desktop_state"}
+APP_FREE_TOOLS = {"system_info", "notify", "search_docs", "list_themes", "desktop_state",
+                  "app_jobs"}      # an app reading its own jobs (appjobs.summary: no grant, no script)
 
 
 # How fast a principal may spend what it has been granted.

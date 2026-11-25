@@ -194,7 +194,9 @@ def schedules(store, now: float | None = None) -> list[dict]:
         runs = by_task.get(t["id"], [])
         last = runs[0] if runs else None
         week = [r for r in runs if float(r.get("started_at") or 0) > now - WEEK]
-        out.append({**t, "words": schedule_words(t),
+        out.append({**{k: v for k, v in t.items() if k != "script"}, "words": schedule_words(t),
+                    # an app job (appjobs.py): the app's script on a clock, no model
+                    "app_job": bool(t.get("script")),
                     "title": t.get("flow") or _said(t.get("prompt"), 120),
                     "runs_7d": len(week),
                     "failed_7d": sum(1 for r in week if r.get("status") == "failed"),

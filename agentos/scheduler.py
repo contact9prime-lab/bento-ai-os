@@ -358,6 +358,10 @@ class Scheduler(usersmod.Scoped):
             await self._run_task_inner(task, trid, origin, title)
         except BaseException as e:
             self.store.task_run_finish(trid, "failed", f"[error] {type(e).__name__}: {e}")
+            # the next run is booked anyway: the task was claimed (next_run cleared) when it
+            # fired, and a run that died here used to leave it waiting for nothing, for good
+            with contextlib.suppress(Exception):
+                self._reschedule(task, f"[error] {type(e).__name__}: {e}")
             raise
 
     async def _run_task_inner(self, task: dict, trid: str, origin: str, title: str):
@@ -408,6 +412,15 @@ class Scheduler(usersmod.Scoped):
                 await self.broadcast({"type": "task_finished", "task_id": task["id"],
                                       "conversation_id": cid, "result": result_text[:500]})
                 return
+        # An app job (appjobs.py): the app's own approved script, no model. Through the
+        # whole gate as the app, so its grant, the ethics check and the ledger all apply.
+        if task.get("script") and task.get("app_id"):
+            ok, line = await self._run_app_job(task)
+            self._reschedule(task, line)
+            self.store.task_run_finish(trid, "ok" if ok else "failed", line)
+            await self.broadcast({"type": "task_finished", "task_id": task["id"],
+                                  "conversation_id": "", "result": line[:500]})
+            return
         prompt = (f"[Scheduled background JOB — no user is present, do not ask questions. Work until the "
                   f"deliverable exists. If it produces findings, call `save_report` to save an HTML report "
                   f"(and set to_telegram=true to deliver it), or use `telegram_send`/`notify` to alert the "
@@ -429,6 +442,40 @@ class Scheduler(usersmod.Scoped):
         await self.broadcast({"type": "task_finished", "task_id": task["id"],
                               "conversation_id": cid, "result": result_text[:500]})
 
+    async def _run_app_job(self, task: dict) -> tuple[bool, str]:
+        """Run one app job as its app and save what it printed. (ok, a line for the run)."""
+        from . import appjobs
+        from .agent import Agent
+        from .policy import Principal
+        app_id = task["app_id"]
+        if not self.store.get_app(app_id):
+            return False, "the app this job belongs to was deleted"
+
+        async def emit(_ev):
+            pass
+
+        async def nobody(*_a, **_k):
+            return False          # nobody is there: a step that needs a yes is refused
+
+        agent = Agent({**self.cfg, "max_steps": 1}, self.toolbox, "", emit, nobody,
+                      tool_filter=["run_python"], principal=Principal("app", app_id),
+                      surface="task")
+        try:
+            out, *_ = await agent.call_tool("run_python", appjobs.args_of(task["script"]))
+        except Exception as e:
+            out = f"[error] {type(e).__name__}: {e}"
+        ok, value, line = appjobs.result_of(out)
+        if ok:
+            await self.toolbox.update_app_data(key=task.get("data_key") or "data",
+                                               value=json.dumps(value), _app=app_id)
+        elif "not approved" in line or line.lower().startswith("[denied]"):
+            line = ("refused: the script no longer matches the one approved, or its permission "
+                    "was removed. Open the app to approve it again. " + line)
+        data = appjobs.status(self.store.get_app_data(app_id), task.get("prompt") or "", ok, line)
+        self.store.set_app_data(app_id, json.dumps(data))
+        await self.broadcast({"type": "app_data", "app_id": app_id, "key": appjobs.STATUS_KEY})
+        return ok, line
+
     def _sweep(self):
         """Whose tasks to look at this tick. One person on a single-user machine;
         everybody, one at a time, once there are users — a scheduled job belongs to
@@ -437,7 +484,33 @@ class Scheduler(usersmod.Scoped):
             return [""]
         return [u["id"] for u in usersmod.list_users()]
 
+    def revive(self) -> int:
+        """Clocked schedules left claimed with no next run (the server stopped while one ran)
+        get one again. Seen on the owner's machine: an every-3-hours schedule read "waiting
+        for its event · has not run yet" for good. A trigger has no clock and is left alone."""
+        n, now = 0, time.time()
+        for t in self.store.list_tasks():
+            if not t.get("enabled") or t.get("next_run") is not None:
+                continue
+            kind = t.get("schedule_type")
+            if kind == "interval":
+                nxt = now + 60            # it is overdue: soon, not a whole interval away
+            elif kind == "daily":
+                nxt = _next_daily(t.get("at_time") or "09:00", now)
+            elif kind == "weekly":
+                nxt = _next_weekly(t.get("at_time") or "09:00", t.get("weekday", 0) or 0, now)
+            else:
+                continue
+            self.store.update_task(t["id"], next_run=nxt)
+            n += 1
+        return n
+
     async def run_forever(self):
+        for uid in self._sweep():
+            with usersmod.as_user(uid), contextlib.suppress(Exception):
+                if (n := self.revive()):
+                    self.store.log("info", f"scheduler: {n} schedule{'s' if n != 1 else ''} had no "
+                                           f"next run after a stop and got one again")
         while not self._stop.is_set():
             for uid in self._sweep():
                 # `_launch` calls asyncio.create_task, and a task copies the current

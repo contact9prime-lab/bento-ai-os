@@ -2207,6 +2207,28 @@ connection should be there in the chat". `tests/test_app_schedules.py`. Five thi
 The `app_data` broadcast reaches an open app as the `appdata` event (`09-websocket.js` posts into
 the app's frames; the runtime accepts it only from `parent`).
 
+## An app's work on a clock is the framework's: an app job, or an agent schedule
+
+`agentos/appjobs.py` + `schedule_app_job`/`app_jobs` (tools.py) + `Scheduler._run_app_job` + `appJob.ensure` in
+APP_RUNTIME + `appcheck` `clock-in-page`/`runs-commands` + "WORK ON A CLOCK" in BUILDER_PERSONA;
+`docs/building-apps.md`, `tests/test_app_jobs.py`. Asked for as "when you have a framework, the app should look
+into the framework": Signal Desk's page ran a hidden Python reader every minute, Missions showed nothing, every
+run was a card. The owner chose by kind of work: numbers are an app job (no model), judgement is schedule_task.
+Five rules:
+- **The card is the script, and the yes is a grant for exactly it** (ALWAYS_ASK; `grant_of` = run_python's own
+  resource, glob-free, `source_ref` job:<task>). A changed script is refused at run time and says so; removing
+  the task revokes the grant (`Store.delete_task`).
+- **Every run is `Agent.call_tool("run_python")` as the app with a headless approver**, so the PDP, ethics,
+  ledger and jail are the ones any step gets. Never run the script directly.
+- **The output is the app's data** under `data_key`, and `_jobs[title]` = {at, ok, note}; the page only displays.
+- **`app_jobs` never returns the script** (a fingerprint), and `appJob.ensure` proposes only on a change, so
+  an app opening does not raise a card each time.
+- **A page timer may only redraw.** A false `clock-in-page` costs a rebuild (CONTRACT is worth_fixing), so it
+  needs setInterval AND fetching or running code.
+
+A clocked schedule left with `next_run` NULL by a stop is booked again at start (`Scheduler.revive`), and a run
+that raises still reschedules: the owner's every-3-hours schedule read "waiting for its event" for good.
+
 ## App Studio is an IDE, and a hand save is a version like a build
 
 `agentos/appsource.py` (load, `problems`, `save`, `blank`) + `/api/apps/{id}/source`, `/api/apps/check`,

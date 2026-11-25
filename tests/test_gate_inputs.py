@@ -638,7 +638,7 @@ NOT_MACHINE = {
     "list_spaces", "list_themes", "list_windows", "llm_generate", "mail_read", "mail_search", "mail_send", "manage_window",
     "new_company", "notify", "open_app", "open_company", "openclaw_report", "pin_widget", "pool_task", "port_openclaw_plugin", "read_app_data",
     "read_file", "read_skill", "read_source", "recall", "remember", "request_capability", "run_automation", "run_command",
-    "run_flow", "run_python", "save_asset", "save_automation", "save_report", "save_skill", "schedule_task", "screen_face",
+    "run_flow", "run_python", "save_asset", "save_automation", "save_report", "save_skill", "schedule_task", "schedule_app_job", "app_jobs", "screen_face",
     "search_docs", "search_files", "set_agent_brain", "set_avatar", "set_brightness", "set_office", "set_wallpaper",
     "show_scene", "stage_file", "system_control", "system_info", "take_screenshot", "telegram_send", "terminal_read", "terminal_send",
     "terminal_sessions", "timeline", "train_autopilot", "train_datasets", "train_job", "train_model", "update_app_data",

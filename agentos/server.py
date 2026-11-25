@@ -8153,6 +8153,26 @@ window.appTool = async (name,args={}) => {
   try{ const r = await fetch('/api/tool',{method:'POST',headers:{'Content-Type':'application/json','X-App-Token':window.APP_TOKEN},body:JSON.stringify({name,args})}); return await r.json(); }catch(e){ return {error:String(e)}; }
 };
 const _appHdrs = {'Content-Type':'application/json','X-App-Token':window.APP_TOKEN};
+// appJob.ensure({title, script, every, key}): keep this app's numbers fresh with NO model.
+// Bento runs the script every `every` minutes as this app (a schedule in Missions, each run in
+// Missions → History) and saves what it prints under `key` in appData. The person approves the
+// script once; ensure asks only when the job is missing or its script, interval or key changed.
+// The page then only displays: read appData on open and on the 'appdata' event.
+window.appJob = {
+  _sha: async (t) => { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(t));
+    return Array.from(new Uint8Array(b)).map(x => x.toString(16).padStart(2,'0')).join('').slice(0,12); },
+  async list(){ const r = await window.appTool('app_jobs', {});
+    try { return JSON.parse((r && r.output) || '[]'); } catch(e){ return []; } },
+  async ensure(o){
+    o = o || {}; const every = Math.max(1, parseInt(o.every || o.interval_minutes || 5, 10));
+    const have = (await window.appJob.list()).find(j => j.title === o.title);
+    if (have && have.every_minutes === every && have.key === o.key
+        && have.script_sha === await window.appJob._sha(String(o.script || ''))) return {ok:true, job:have, asked:false};
+    const r = await window.appTool('schedule_app_job', {title:o.title, script:o.script, interval_minutes:every, key:o.key});
+    const out = String((r && (r.output || r.error)) || '');
+    return {ok: !/^\\[error\\]|not approved|denied|needs approval/i.test(out), asked:true, message: out};
+  },
+};
 async function _appStream(body, onDelta){
   let r;
   try{ r = await fetch('/api/apps/llm/stream',{method:'POST',headers:_appHdrs,body:JSON.stringify(body)}); }
@@ -8345,7 +8365,9 @@ const _aoIc = {plus:'M12 5v14M5 12h14', check:'M5 12l5 5L20 7', x:'M6 6l12 12M18
   money:'M3 7h18v10H3zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z', up:'M12 19V5M5 12l7-7 7 7', down:'M12 5v14M5 12l7 7 7-7',
   fire:'M12 3s5 4 5 9a5 5 0 0 1-10 0c0-2 1-3 1-3s0 2 2 2c0-4 2-8 2-8z',
   target:'M12 21a9 9 0 1 1 0-18 9 9 0 0 1 0 18zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8z'};
-window.appIcon = (n) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + (_aoIc[n] || _aoIc.sparkle) + '"/></svg>';
+// sized like a letter unless the app's CSS says otherwise: with no size an SVG fills its box,
+// and a trend arrow in a price card was drawn 200px tall (found in a live build)
+window.appIcon = (n) => '<svg width="1em" height="1em" style="vertical-align:-.125em;flex:none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + (_aoIc[n] || _aoIc.sparkle) + '"/></svg>';
 window.appIcon.names = Object.keys(_aoIc);
 window.appShare = async (o) => {
   o = o || {};
@@ -9174,7 +9196,8 @@ DATA — every app has its OWN data store (its "MCP"), pre-injected as page glob
 - ALWAYS call appCopilot.mount({starters:[2-3 app-specific prompts]}) once at startup — every app
   ships with its resident agent (the ✦ corner button) IN ADDITION to its bespoke AI feature. Pass
   {act:false} only for pure-content apps where acting makes no sense.
-- Apps may poll (setInterval) or open ws://{location.host}/ws for realtime.
+- Apps may open ws://{location.host}/ws for realtime. A page timer (setInterval) may only REDRAW
+  from what the app already has; it never fetches, runs code or asks the AI (see WORK ON A CLOCK).
 - THE FULL API REGISTRY of this OS is appended below (also live at GET /api/registry). Anything listed
   there is fair game — your app can drive the whole OS: chat, files, models, tasks, themes, workflows.
   The user's interface wishes are the spec; the registry is what makes them possible.
@@ -9196,8 +9219,21 @@ ALERTS & CHANNELS — bake delivery in; the user should not have to keep the win
   e.detail.scene.kind one of chart, map, numbers, timeline, steps or table, with the fields
   show_scene takes (title, caption, source, illustrative, series, points, regions, items, events,
   columns, rows).
-- "Refresh every N minutes" while the app is open is setInterval in the app; while it is closed
-  it is a schedule. Do both when the user wants it kept up to date.
+WORK ON A CLOCK — the framework runs it, the page shows it:
+- Anything done every N minutes is a SCHEDULE, never a page timer: a timer runs only while the
+  window is open, is not in Missions, has no run history and skips the person's permissions and
+  ethics checks per run. Pick by the kind of work:
+  · Numbers (fetch prices, scan a market, compute indicators, read a file): an APP JOB, no model.
+    await appJob.ensure({title:'Scan the market', script:PY, every:5, key:'scan'}) at startup,
+    where PY is the Python that prints the result (one JSON value). Bento runs it as this app
+    every 5 minutes, saves it under appData 'scan', and lists it in Missions. The person
+    approves the script once; ensure asks again only when the script changes. Put the logic in
+    the script, never in a page timer or appTool('run_command'/'run_python').
+  · Judgement (read the news and decide, write a summary, choose whom to alert): appTool(
+    'schedule_task', {prompt, schedule_type:'interval', interval_minutes:N}) — an agent run.
+- The page reads appData on open, redraws on window.addEventListener('appdata', …), and shows when
+  the data was made: appData's '_jobs'[title] holds {at, ok, note} for each job's last run (say
+  "updated 3 min ago", or the note when it failed). A Refresh button re-reads appData.
 - Give such apps a small "Alerts" card in the UI: a threshold/condition input and an on/off toggle that
   creates or removes the scheduled task, and show when the last check ran.
 
@@ -10999,10 +11035,12 @@ async def api_run_tool(body: dict, request: Request):
             # the card asks for the phrase; only a screen that had it typed confirms (ethics.py)
             from . import ethics as ethics_mod
             eth_tok, eth_ctx = ethics_mod.ask(dec.ethics)
+        tok_asker = approvalcard.ASKER.set(approvalcard.asker_of(principal))
         try:
             approved = await request_approval(name, args, dec.reason or reason,
                                               offer=dec.grant_offer)
         finally:
+            approvalcard.ASKER.reset(tok_asker)
             if eth_ctx is not None:
                 ethics_mod.done(eth_ctx)
         if eth_tok and approved and not ethics_mod.consume(eth_tok):
@@ -23630,8 +23668,10 @@ async def _run_build(data: dict):
             "hour), set it up ONCE with {tool}: it belongs to this app, is listed with it in "
             "Missions → Schedule, and each run can save into the app's data with "
             "update_app_data, which the app reads on open (and hears as the `appdata` event "
-            "while open). Write the app to read that key. Refreshing while it is open is "
-            "setInterval in the app. Say in one line which of the two you set up.\n")
+            "while open). Write the app to read that key. Numbers on a clock (fetching, "
+            "computing) are an app job instead, with no model: the app calls appJob.ensure({{title, "
+            "script, every, key}}) at startup and the person approves the script once. A page "
+            "timer only redraws. Say in one line which you set up.\n")
 
         def persona_for(use_model: str) -> str:
             """Full API registry for capable cloud models; trimmed for local ones —
