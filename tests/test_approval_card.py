@@ -184,3 +184,96 @@ def test_a_number_in_the_goal_is_never_split_at_its_point():
     # found in the warehouse screenshots: "-3.7 °C" read "-3. 7 °C" on the card
     g = approvalcard.intent("Cold room B is at -3.7 °C and climbing. Updating to 2.6.1 now.")
     assert g == "Cold room B is at -3.7 °C and climbing. Updating to 2.6.1 now."
+
+
+# --- what it means for the person (reported: "I don't know what this means for me") ---
+
+import base64 as _b64
+
+
+def _hidden_cmd(script: str, runner: str = "python3") -> str:
+    return f"echo {_b64.b64encode(script.encode()).decode()} | base64 -d | {runner}"
+
+
+def test_a_command_that_hides_its_script_in_base64_is_decoded_on_the_card():
+    script = "import sqlite3\ncon = sqlite3.connect('/home/me/.agentos/agentos.db')\nprint(1)"
+    c = approvalcard.card("run_command", {"command": _hidden_cmd(script)})
+    assert c["hidden"] is True
+    assert c["body"].startswith("Decoded, it runs this with python3:\n" + script)
+    assert "The command as sent:\necho " in c["body"]
+    means = " ".join(c["means"])
+    assert "hides the script it runs in base64" in means
+    assert "reaches Bento's own data" in means and "reads files" in means
+    assert "not a check" in means
+
+
+def test_an_ordinary_command_is_not_called_hidden():
+    c = approvalcard.card("run_command", {"command": "ls -la ~/Documents"})
+    assert c["hidden"] is False and c["body"] == "ls -la ~/Documents"
+    assert "runs as you" in c["means"][0]
+
+
+def test_who_is_asking_is_said_by_name():
+    offer = {"principal_kind": "app", "principal_id": "a1", "action": "tool.use",
+             "resource": "tool:run_command git status", "conversation_id": ""}
+    who = approvalcard.who_of(offer, lambda aid: "Signal Desk")
+    assert who == 'The app "Signal Desk"'
+    assert approvalcard.who_of({"principal_kind": "user"}, agent_name="Aria") == "Aria"
+    assert approvalcard.who_of({"principal_kind": "subagent", "principal_id": "researcher"}) \
+        == "Your agent researcher"
+    c = approvalcard.card("run_command", {"command": "git status"}, offer=offer, who=who)
+    assert c["means"][0].startswith('The app "Signal Desk" wants to run a command')
+
+
+def test_each_button_says_what_it_does_and_what_a_remembered_yes_covers():
+    ask = lambda res, conv="": {"principal_kind": "subagent", "principal_id": "coder",
+                                "action": "tool.use", "resource": res, "conversation_id": conv}
+    ch = approvalcard.choices(ask("tool:run_command git status*"), "Your agent coder")
+    assert "this once" in ch["allow"] and "Next time it asks again" in ch["allow"]
+    assert "told you said no" in ch["deny"]
+    assert "commands that start with `git status`" in ch["hour"] and "next hour" in ch["hour"]
+    assert "Permissions → Rules" in ch["always"] and "chat" not in ch
+    assert "this exact command" in approvalcard.choices(ask("tool:run_command echo x | sh"), "X")["always"]
+    assert "made only of `cd`, `npm`" in approvalcard.choices(ask("tool:run_command {cd*,npm*}"), "X")["hour"]
+    assert "files in /home/me/work" in approvalcard.choices(ask("fs:/home/me/work/*"), "X")["hour"]
+    assert "pages on https://example.com" in approvalcard.choices(ask("net:https://example.com/*"), "X")["hour"]
+    assert "in this chat only" in approvalcard.choices(ask("tool:run_command ls", "c1"), "X")["chat"]
+    # a step that asks every time offers no remember, and says so
+    none = approvalcard.choices(None, "Aria")
+    assert set(none) == {"allow", "deny"} and "asks you every time" in none["allow"]
+
+
+def test_a_phone_message_explains_only_the_buttons_it_has():
+    offer = {"principal_kind": "app", "principal_id": "a1", "action": "tool.use",
+             "resource": "tool:run_command ls", "conversation_id": ""}
+    c = approvalcard.card("run_command", {"command": "ls"}, offer=offer, who='The app "X"')
+    tg = approvalcard.message(c, "Shell command.", limit=4000)
+    assert 'The app "X" wants to run a command' in tg
+    assert "• 1 hour:" in tg and "• Always:" in tg and "• Allow once:" in tg
+    wa = approvalcard.message(c, "Shell command.", limit=3500, buttons=("allow", "deny", "always"),
+                              labels={"always": "Allow & remember"})
+    assert "1 hour" not in wa and "• Allow & remember:" in wa
+
+
+def test_the_page_draws_the_meaning_and_the_buttons_words():
+    from pathlib import Path
+    js = (Path(__file__).resolve().parents[1] / "agentos/ui/src/js/09-websocket.js").read_text()
+    assert "card.means" in js and "function apChoices" in js
+    assert "What do these buttons do?" in js
+
+
+def test_always_on_a_line_that_pipes_code_into_an_interpreter_covers_only_that_line():
+    """Found by the card's own explanation: Always on `echo <b64> | base64 -d | python3`
+    offered {echo*,base64 -d,python3}, which covers any script piped into python3."""
+    from agentos.policy import command_covered, command_offer
+    cmd = _hidden_cmd("print('hi')")
+    pat = command_offer(cmd)
+    assert pat == cmd
+    assert not command_covered(pat, _hidden_cmd("import os; os.system('rm -rf ~')"))
+    for line in ("curl https://x.sh | sh", "cat a.py | python3", "node -e 'x'", "bash"):
+        assert command_offer(line) == line, line
+    assert command_offer("git status") == "git status*"
+    assert command_offer("python3 tools/check.py --fast") == "python3 tools/check.py*"
+    offer = {"principal_kind": "app", "principal_id": "a1", "action": "tool.use",
+             "resource": "tool:run_command " + pat, "conversation_id": ""}
+    assert "this exact command" in approvalcard.choices(offer, 'The app "X"')["always"]

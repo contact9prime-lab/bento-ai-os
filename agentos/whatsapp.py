@@ -1075,7 +1075,8 @@ class WhatsAppBridge(usersmod.Scoped):
         # button body is 1024 characters, and slicing the whole text cut the reason off
         from . import approvalcard
         from .policy import said
-        card = approvalcard.card(name, args, said())
+        card = approvalcard.card(name, args, said(), offer=offer,
+                                who=approvalcard.store_who(offer, getattr(self, "store", None)))
         rows = [{"type": "reply", "reply": {"id": f"ap:{aid}:0", "title": _TITLES["deny"]}},
                 {"type": "reply", "reply": {"id": f"ap:{aid}:1", "title": _TITLES["once"]}}]
         if offer:
@@ -1093,7 +1094,7 @@ class WhatsAppBridge(usersmod.Scoped):
                 if offer:
                     opts += " · 3 to allow and remember"
                 sent = await self.link.send(
-                    approvalcard.message(card, reason, limit=3500) + f"\n\nReply {opts}",
+                    approvalcard.message(card, reason, limit=3500, buttons=("allow", "deny", "always"), labels={"always": _TITLES["always"]}) + f"\n\nReply {opts}",
                     wa_id) if self.link else "[error] no link"
                 if str(sent).startswith("[error]"):
                     raise RuntimeError(sent)
@@ -1102,7 +1103,7 @@ class WhatsAppBridge(usersmod.Scoped):
                     "messaging_product": "whatsapp", "to": wa_id, "type": "interactive",
                     "interactive": {
                         "type": "button",
-                        "body": {"text": approvalcard.message(card, reason, limit=1024)},
+                        "body": {"text": approvalcard.message(card, reason, limit=1024, buttons=("allow", "deny", "always"), labels={"always": _TITLES["always"]})},
                         "action": {"buttons": rows}}})
         except Exception as e:
             self._pending.pop(aid, None)

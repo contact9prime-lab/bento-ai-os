@@ -197,8 +197,14 @@ async def run_tui():
                             card = ev.get("card") or approvalcard.card(ev["name"], ev.get("args") or {})
                             # what it is for, then the start of what it does and how much is left
                             pv = "\n".join("  " + ln[:_w() - 4] for ln in approvalcard.preview(card).splitlines())
+                            means = " ".join(card.get("means") or [])
                             print(f"\n{C['warn']}⚠ approval: {approvalcard.headline(card)}{C['r']}\n"
-                                  f"{C['dim']}{pv}{C['r']}\n{C['warn']}  {ev.get('reason','')}{C['r']}")
+                                  + (f"  {means}\n" if means else "")
+                                  + f"{C['dim']}{pv}{C['r']}\n{C['warn']}  {ev.get('reason','')}{C['r']}")
+                            ch = card.get("choices") or {}
+                            if ch.get("allow"):
+                                # this prompt offers yes or no only; say what each does
+                                print(f"{C['dim']}  y: {ch['allow']}  N: {ch.get('deny', 'nothing runs.')}{C['r']}")
                             eth = ev.get("ethics")
                             if eth:
                                 # an ethics caution (agentos/ethics.py): typed, never a y

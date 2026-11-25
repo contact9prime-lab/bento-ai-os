@@ -8,6 +8,13 @@
   either, or the split. `bento train preview OWNER/NAME` does the same in a terminal.
 - Train: a Hub dataset whose columns have unusual names (`sms` and `label`) is read from its
   values, so `ucirvine/sms_spam` imports.
+- An approval card says what it means for you. It names who is asking (an app by its name, or your agent),
+  says in plain words what the step would do, and decodes a command that hides its script in base64, so you
+  read the script that would really run. Under the buttons, *What do these buttons do?* says what each one
+  does, including exactly what *1 hour* and *Always* would let it do next time. Telegram, WhatsApp and the
+  terminal say the same.
+- *Always* on a command that pipes code into python, a shell or node now covers only that exact command.
+  On `echo … | base64 -d | python3` it used to cover any script piped into python3.
 
 ## 0.100.2 — 2026-11-25
 

@@ -20,6 +20,8 @@ Stdlib only, no HTTP: the TUI, the CLI and the channels import it as they are.
 """
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import re
 
@@ -194,10 +196,179 @@ def body(name: str, args: dict) -> str:
     return "\n".join(rows)
 
 
-def card(name: str, args: dict, said: str = "") -> dict:
-    """{goal, said, body, lines, chars, cut}. `said` is the reply text that made the
-    call; `cut` is how many characters past BODY_CAP were left off."""
+# --- What it means for the person -------------------------------------------------
+# Reported with a screenshot: an app asked to run `echo aW1wb3J0… | base64 -d | python3`,
+# and the card showed the base64 and five buttons. "I don't know what this means for me."
+# So a card also says who is asking, what the step does in plain words (a hidden script
+# decoded first), and what each button will do. All of it is read from the text: nothing
+# here runs anything, and the card says the reading is not a check.
+
+_B64 = re.compile(r"[A-Za-z0-9+/_-]{24,}={0,2}")
+_DECODES = re.compile(r"\bbase64\s+(?:-d|--decode|-D)\b|b64decode|atob\(|frombase64string", re.I)
+_RUNNER = re.compile(r"\|\s*(?:sudo\s+)?(python3?|bash|sh|zsh|node|perl|ruby|php)\b")
+HIDDEN_MAX = 8_000
+
+
+def _b64(tok: str) -> str:
+    t = tok.replace("-", "+").replace("_", "/")
+    try:
+        raw = base64.b64decode(t + "=" * (-len(t) % 4), validate=True)
+        text = raw.decode("utf-8")
+    except (binascii.Error, ValueError, UnicodeDecodeError):
+        return ""
+    ok = sum(c.isprintable() or c in "\n\r\t" for c in text)
+    return text if text and ok >= 0.95 * len(text) else ""
+
+
+def unhide(command: str) -> list[dict]:
+    """The scripts a command carries in base64 and decodes to run: [{runs, text}]. A command
+    that hides what it runs is the one a person most needs to read, so the card decodes it."""
+    cmd = str(command or "")
+    if not _DECODES.search(cmd):
+        return []
+    m = _RUNNER.search(cmd)
+    runs = m.group(1) if m else ("python" if "b64decode" in cmd else "")
+    out = []
+    for tok in _B64.findall(cmd):
+        text = _b64(tok)
+        if text and len(text) >= 8:
+            out.append({"runs": runs, "text": text[:HIDDEN_MAX]})
+    return out[:3]
+
+
+# What a script or command line visibly does, read from its words. Each is a plain phrase.
+_DOES = (
+    ("connects to the internet", r"\bcurl\b|\bwget\b|\brequests\.|urllib|http\.client|https?://|\bfetch\(|socket\."),
+    ("deletes files", r"\brm\s|\brmdir\b|\bunlink\b|rmtree|os\.remove|\.unlink\("),
+    ("writes or changes files", r"(?<![<>=!])>{1,2}\s*[^\s&=>]|open\([^)]*,\s*['\"][wax]|write_text|write_bytes|\.write\(|\b(?:mv|cp|mkdir|touch|chmod|chown|tee|sed\s+-i)\b"),
+    ("reads files", r"\bopen\(|read_text|read_bytes|\bcat\s|\bhead\s|\btail\s|sqlite3|\bglob\b|listdir|os\.walk|\bls\b"),
+    ("installs software", r"pip3?\s+install|apt(?:-get)?\s+install|npm\s+(?:i|install)\b|brew\s+install|\buv\s+(?:add|pip)"),
+    ("runs other programs", r"subprocess|os\.system|\bexec\(|\beval\(|popen"),
+    ("reaches Bento's own data", r"\.agentos\b|agentos\.db"),
+    ("touches passwords, keys or tokens", r"\.ssh\b|\.env\b|passw|secret|token|api[_-]?key|keyring|vault"),
+    ("needs administrator rights", r"\bsudo\b|\bsu\s"),
+)
+
+
+def does(text: str) -> list[str]:
+    t = str(text or "")
+    return [w for w, rx in _DOES if re.search(rx, t, re.I)]
+
+
+def store_who(offer: dict | None, store=None, agent_name: str = "") -> str:
+    """who_of with an app's name read from a Store, for surfaces holding one."""
+    def app_name(aid):
+        return ((store.get_app(aid) if store else None) or {}).get("name") or ""
+    return who_of(offer, app_name, agent_name)
+
+
+def who_of(offer: dict | None, app_name=None, agent_name: str = "") -> str:
+    """Who is asking, as a person says it. `app_name(id)` looks an app's name up."""
+    o = offer or {}
+    kind, pid = str(o.get("principal_kind") or ""), str(o.get("principal_id") or "")
+    if kind == "app":
+        name = ""
+        try:
+            name = app_name(pid) if app_name else ""
+        except Exception:
+            name = ""
+        return f'The app "{name or pid}"'
+    if kind == "subagent":
+        return f"Your agent {pid}" if pid else "One of your agents"
+    if kind == "team":
+        return f'The linked team "{pid.rstrip("/*")}"'
+    if kind == "flow":
+        return f'The mission "{pid}"'
+    return agent_name or "Your agent"
+
+
+def _covers(offer: dict | None) -> str:
+    """What a remembered yes would cover, in words, read from the grant it would write."""
+    res = str((offer or {}).get("resource") or "")
+    if res.startswith("tool:run_command "):
+        pat = res[len("tool:run_command "):].strip()
+        if pat.startswith("{") and pat.endswith("}"):
+            progs = [p.rstrip("*").strip() for p in pat[1:-1].split(",") if p.strip()]
+            return "command lines made only of " + ", ".join(f"`{p}`" for p in progs)
+        if pat.endswith("*") and "*" not in pat[:-1]:
+            return f"commands that start with `{pat[:-1].strip()}`"
+        return "this exact command"
+    if res.startswith("fs:"):
+        path = res[3:]
+        return f"files in {path[:-2]}" if path.endswith("/*") else f"the file {path}"
+    if res.startswith("net:"):
+        u = res[4:].rstrip("*").rstrip("/")
+        return f"pages on {u}"
+    if res.startswith("tool:"):
+        return f"the {_words(res[5:].rstrip('*')).lower()} tool"
+    if res.startswith("agent:"):
+        return f"asking {res.split('/')[-1]}"
+    return "this kind of step"
+
+
+def choices(offer: dict | None, who: str) -> dict:
+    """What each button does, one sentence each, keyed as the page's buttons are."""
+    if not offer:
+        return {"allow": "It runs now. This kind of step asks you every time.",
+                "deny": f"Nothing runs, and {_lc(who)} is told you said no."}
+    if offer.get("label"):
+        return {"allow": "It runs now, this once. Next time it asks again.",
+                "deny": f"Nothing runs, and {_lc(who)} is told you said no.",
+                "always": str(offer.get("note") or offer["label"])}
+    what = _covers(offer)
+    out = {"allow": "It runs now, this once. Next time it asks again.",
+           "deny": f"Nothing runs, and {_lc(who)} is told you said no."}
+    if offer.get("conversation_id"):
+        out["chat"] = f"{who} may run {what} without asking, in this chat only, for up to a day."
+    out["hour"] = f"{who} may run {what} without asking, for the next hour."
+    out["always"] = (f"{who} may run {what} without asking, until you remove it in "
+                     f"Permissions → Rules.")
+    return out
+
+
+def _lc(who: str) -> str:
+    return who[:1].lower() + who[1:] if who.startswith(("Your", "One", "The")) else who
+
+
+def meaning(name: str, args: dict, who: str, hidden: list[dict]) -> list[str]:
+    """Two or three plain sentences: who wants what, and what it would do to you."""
     args = args if isinstance(args, dict) else {}
+    lines = []
+    if name in ("run_command", "Bash"):
+        cmd = str(args.get("command") or "")
+        lines.append(f"{who} wants to run a command on this computer. It runs as you, so it can "
+                     f"do what you can do with your files.")
+        if hidden:
+            lines.append("The command hides the script it runs in base64, which is unusual. "
+                         "It is decoded below so you can read what would really run.")
+        found = does(cmd + "\n" + "\n".join(h["text"] for h in hidden))
+        if found:
+            lines.append("Read from its text, it " + _join(found) + ". That is a reading, not a check.")
+    elif name in ("write_file", "Write", "Edit", "edit_file"):
+        path = args.get("path") or args.get("file_path") or "a file"
+        lines.append(f"{who} wants to change {path} on this computer.")
+    elif name == "run_python":
+        lines.append(f"{who} wants to run Python code on this computer.")
+        found = does(str(args.get("code") or ""))
+        if found:
+            lines.append("Read from its text, it " + _join(found) + ". That is a reading, not a check.")
+    else:
+        g = GOALS.get(name) or _words(name)
+        lines.append(f"{who} wants to: {g[:1].lower() + g[1:]}.")
+    return lines
+
+
+def _join(xs: list[str]) -> str:
+    return xs[0] if len(xs) == 1 else ", ".join(xs[:-1]) + " and " + xs[-1]
+
+
+def card(name: str, args: dict, said: str = "", offer: dict | None = None,
+         who: str = "") -> dict:
+    """{goal, said, body, lines, chars, cut, who, means, choices, hidden}. `said` is the
+    reply text that made the call; `cut` is how many characters past BODY_CAP were left
+    off; `offer` is the grant a remembered yes would write, which the choices describe."""
+    args = args if isinstance(args, dict) else {}
+    who = who or who_of(offer)
     goal = intent(said)
     from_agent = bool(goal)
     if not goal and name == "Bash" and isinstance(args.get("description"), str):
@@ -208,10 +379,18 @@ def card(name: str, args: dict, said: str = "") -> dict:
         if tgt:
             goal = f"{goal}: {tgt}"
     full = body(name, args)
+    hidden = unhide(args.get("command")) if name in ("run_command", "Bash") else []
+    if hidden:
+        # what really runs comes first, and the command as sent after it
+        shown = "\n\n".join(f"Decoded, it runs this{' with ' + h['runs'] if h['runs'] else ''}:\n{h['text']}"
+                             for h in hidden)
+        full = f"{shown}\n\nThe command as sent:\n{full}"
     cut = max(0, len(full) - BODY_CAP)
     text = full[:BODY_CAP]
     return {"goal": goal, "said": from_agent, "body": text,
-            "lines": text.count("\n") + 1 if text else 0, "chars": len(full), "cut": cut}
+            "lines": text.count("\n") + 1 if text else 0, "chars": len(full), "cut": cut,
+            "who": who, "means": meaning(name, args, who, hidden), "hidden": bool(hidden),
+            "choices": choices(offer, who)}
 
 
 def preview(c: dict, lines: int = PREVIEW_LINES, chars: int = PREVIEW_CHARS) -> str:
@@ -238,17 +417,30 @@ def headline(c: dict) -> str:
     return f"“{g}”" if c.get("said") else g
 
 
-def message(c: dict, reason: str = "", limit: int = 0, lines: int = PREVIEW_LINES) -> str:
+def message(c: dict, reason: str = "", limit: int = 0, lines: int = PREVIEW_LINES,
+            buttons: tuple = ("allow", "deny", "hour", "always"), labels: dict | None = None) -> str:
     """The card as one plain-text message (Telegram, WhatsApp). The goal and the reason
     always fit; the preview shrinks to make room, so a 1024-character cap never cuts the
-    reason off the end the way slicing the whole message did."""
-    top = f"⚠ Approval needed\n{headline(c)}"
-    tail = f"\n\n{reason}" if reason else ""
-    chars = PREVIEW_CHARS
-    while True:
-        pv = preview(c, lines=lines, chars=chars)
-        out = top + (f"\n\n{pv}" if pv else "") + tail
-        if not limit or len(out) <= limit or chars <= 40:
-            return out[:limit] if limit else out
-        chars = max(40, chars - max(40, len(out) - limit))
-        lines = max(1, min(lines, chars // 40))
+    reason off the end the way slicing the whole message did. When even that is too long,
+    the buttons' meanings go first, then what it means (the goal and reason stay)."""
+    means = " ".join(c.get("means") or [])
+    ch = c.get("choices") or {}
+    names = {"allow": "Allow once" if "hour" in ch else "Allow", "deny": "Deny",
+             "hour": "1 hour", "always": "Always", **(labels or {})}
+    opts = [f"• {names[k]}: {ch[k]}" for k in buttons if ch.get(k)]
+    out = ""
+    for with_means, with_opts in ((True, True), (True, False), (False, False)):
+        top = f"⚠ Approval needed\n{headline(c)}" + (f"\n\n{means}" if means and with_means else "")
+        # the buttons' meaning before the reason: the reason is always the last line
+        tail = ("\n\n" + "\n".join(opts) if opts and with_opts else "") + (f"\n\n{reason}" if reason else "")
+        chars, n = PREVIEW_CHARS, lines
+        while True:
+            pv = preview(c, lines=n, chars=chars)
+            out = top + (f"\n\n{pv}" if pv else "") + tail
+            if not limit or len(out) <= limit or chars <= 40:
+                break
+            chars = max(40, chars - max(40, len(out) - limit))
+            n = max(1, min(n, chars // 40))
+        if not limit or len(out) <= limit:
+            return out
+    return out[:limit]

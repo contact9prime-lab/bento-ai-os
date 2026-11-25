@@ -354,6 +354,13 @@ def _has_glob(pattern: str) -> bool:
 OFFER_WHOLE = {"cd", "ls", "cat", "pwd", "echo", "head", "tail", "wc", "grep", "rg", "tree", "du", "df",
                "stat", "mkdir", "touch", "true", "pytest", "ruff", "mypy", "black", "flake8", "tsc",
                "eslint", "prettier", "jest", "vitest"}
+# A program that runs whatever code it is handed on stdin or after -c. Found when the card
+# started saying what "Always" covers: `echo <base64> | base64 -d | python3` offered
+# {echo*,base64 -d,python3}, which covers ANY script piped into python3. So a line where one
+# of these reads its code from the line itself is remembered as exactly itself.
+_OFFER_RUNS_CODE = re.compile(r"^(?:python[0-9.]*|pypy[0-9.]*|sh|bash|zsh|dash|ksh|fish|node|nodejs|"
+                              r"deno|bun|perl|ruby|php|lua|tclsh|osascript|pwsh|powershell)$")
+_CODE_FLAGS = {"-c", "-e", "-", "--eval", "-E", "--command", "-Command", "eval", "-r"}
 # A second word that names what runs next, so the third is the thing the person approved
 _OFFER_RUNS_NEXT = {"run", "run-script", "exec", "x", "dlx"}
 
@@ -377,6 +384,10 @@ def command_offer(cmd: str) -> str:
                for w in head[:2]):
             return exact
         vals = [w.value for w in words]
+        prog = vals[0].rsplit("/", 1)[-1]
+        if _OFFER_RUNS_CODE.match(prog) and (len(vals) == 1 or vals[1] in _CODE_FLAGS
+                                              or (len(segs) > 1 and vals[1].startswith("-"))):
+            return exact            # its code is in this line or arrives on stdin
         if vals[0] in OFFER_WHOLE:
             pat = f"{vals[0]}*"
         elif len(vals) == 1:
