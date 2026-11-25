@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.99.10 — 2026-11-25
+
+- An approval card nobody answered no longer says it was answered. The desktop's card timed out first, and every phone's card was closed with "Answered on another screen". Each card now says how it ended: allowed or denied, and where (on a screen, on Telegram, on WhatsApp); nobody answered within 5 minutes; or stopped. The desktop's copy said "✕ Denied" when a phone allowed, and now says "✓ Allowed on Telegram".
+- The agent is told the same thing. It used to hear "not approved at the current autonomy level" for a no, a timeout and a Stop alike, and told people their autonomy setting had blocked a step nobody had answered.
+
 ## 0.99.9 — 2026-11-25
 
 - The shared browser starts again on a profile a crashed Chrome left lock links in. Signing in to a site (Instagram, Suno) failed with `[Errno 2] … SingletonLock` before.

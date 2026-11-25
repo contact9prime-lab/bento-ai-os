@@ -986,18 +986,23 @@ class TelegramBridge(usersmod.Scoped):
         except Exception:
             self._pending.pop(aid, None)
             return False
+        from .policy import approval_outcome, closed_words, note_outcome
         try:
             val = await asyncio.wait_for(fut, timeout=timeout)
+            note_outcome("answered", via="on Telegram", approved=val in ("1", "2", "3"))
         except asyncio.CancelledError:
-            # answered on another screen (server.request_approval asks every channel at
-            # once): the buttons go, so this card is not a control that does nothing
+            # closed from elsewhere (server.request_approval asks every channel at once): the
+            # buttons go, so this card is not a control that does nothing, and it says HOW it
+            # ended. It always said "answered on another screen", and a card that timed out on
+            # the desktop first read as somebody having answered it.
             mid = (sent or {}).get("message_id") if isinstance(sent, dict) else None
             if mid:
                 with contextlib.suppress(Exception):
                     await asyncio.shield(self._api("editMessageText", chat_id=chat_id, message_id=mid,
-                                                   text=text[:3900] + "\n\n→ Answered on another screen."))
+                                                   text=text[:3900] + "\n\n" + closed_words(approval_outcome())))
             raise
         except asyncio.TimeoutError:
+            note_outcome("timeout", minutes=max(1, round(timeout / 60)), brief=bool(unanswered))
             # Nobody tapped. Same rule as the desktop's broker: silence is not a
             # refusal, so the question is filed where it will be seen rather than
             # disappearing with the message nobody opened.
