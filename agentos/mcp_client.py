@@ -130,6 +130,19 @@ def _opened(values, name: str = "") -> dict:
     return out
 
 
+def opened_url(conf: dict, name: str = "") -> str:
+    """A server's address as it connects: an address that carried a private token is kept in
+    the vault (claudeconn.conf_for) and opened here, for this one start. '' when it can't be."""
+    url = str((conf or {}).get("url") or "")
+    from . import vault
+    if vault.is_ref(url):
+        try:
+            return vault.get(url, f"MCP server {name}".strip()) or ""
+        except Exception:
+            return ""
+    return url
+
+
 def _resolve_command(cmd: str) -> str:
     """Absolute path for an MCP server command, searched over the extended PATH."""
     import shutil
@@ -182,7 +195,7 @@ def refusal(conf: dict) -> str:
     if not _restricted():
         return ""
     if (conf.get("transport") or "stdio") == "http":
-        u = urlsplit(str(conf.get("url") or ""))
+        u = urlsplit(opened_url(conf))
         if u.scheme not in ("http", "https"):
             return "A tool server's address has to start with http or https."
         return _address_refused(u.hostname or "")
@@ -270,11 +283,13 @@ class MCPServer:
     async def _run(self, on_change):
         try:
             transport = self.conf.get("transport", "stdio")
-            if (why := refusal(self.conf)):
+            if (why := await asyncio.to_thread(refusal, self.conf)):   # may open the vault
                 raise RuntimeError(why)
             if transport == "http":
                 headers = await asyncio.to_thread(_opened, self.conf.get("headers"), self.name)
-                url = self.conf.get("url", "")
+                url = await asyncio.to_thread(opened_url, self.conf, self.name)
+                if not url:
+                    raise RuntimeError("its address is in the vault and can't be opened right now")
                 if _restricted():
                     # the name's answer, right before connecting: the save only saw the name
                     await asyncio.to_thread(_resolves_public, url)

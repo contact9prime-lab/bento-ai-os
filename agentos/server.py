@@ -7746,6 +7746,51 @@ async def api_mcp_catalog():
             [{"id": i, "title": t} for i, t in mcp_catalog.CATEGORIES]}
 
 
+@app.get("/api/mcp/claude")
+async def api_mcp_claude():
+    """The connectors Claude Code has on this machine, and what bringing each into Bento would
+    do (claudeconn.plan). Names and masked addresses only. Admin only: the CLI is signed in as
+    the machine's owner, and an address can hold that person's private token."""
+    denied = _require_admin()
+    if denied:
+        return denied
+    from . import claudeconn
+    got = await asyncio.to_thread(claudeconn.listed)
+    items = claudeconn.plan(got["items"], state["cfg"].get("mcp_servers") or {})
+    for it in items:
+        it.pop("url", None)
+        it.pop("command", None)
+    return {"ok": got["ok"], "why": got["why"], "items": items}
+
+
+@app.post("/api/mcp/claude/bring")
+async def api_mcp_claude_bring(body: dict):
+    """Add Claude's connectors to Bento: `keys` names them, `all` takes every ready one. The
+    list is read again here, never taken from the page. Each OAuth one then asks for its sign-in
+    in MCP Servers; one with a token in its address is in the vault and connects at once."""
+    denied = _require_admin()
+    if denied:
+        return denied
+    from . import claudeconn
+    got = await asyncio.to_thread(claudeconn.listed)
+    if not got["ok"]:
+        return JSONResponse({"error": got["why"]}, status_code=409)
+    keys = None if body.get("all") else [str(k) for k in (body.get("keys") or [])][:50]
+    if keys == []:
+        return JSONResponse({"error": "Say which connectors, or all."}, status_code=400)
+    out = await asyncio.to_thread(claudeconn.bring, state["cfg"], state["store"], keys, got["items"])
+    if out["added"]:
+        cfgmod.save_config(state["cfg"])
+        with contextlib.suppress(Exception):
+            state["store"].audit_add(principal_kind="user", principal_id=usersmod.current() or "",
+                                     surface="gui", action="mcp.import", resource="claude",
+                                     effect="allow", rule="person", outcome="ok",
+                                     detail=", ".join(a["key"] for a in out["added"])[:500])
+        await state["mcp"].reload()
+        await state["broadcast"]({"type": "config"})
+    return out
+
+
 @app.get("/api/mcp/oauth/callback/{name}")
 async def api_mcp_oauth_callback(name: str, code: str = "", state_: str = "",
                                  error: str = "", request: Request = None):
