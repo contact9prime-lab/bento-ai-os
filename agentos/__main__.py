@@ -7312,6 +7312,14 @@ def _train_cli(args):
         return text, why
     desk = Desk(lambda: cfg, None, ask=ask)
 
+    def tok():
+        # the Hub token the app keeps in the vault, for a private or gated dataset
+        try:
+            from . import vault
+            return vault.get("hf.token", "train") or ""
+        except Exception:
+            return ""
+
     def need(what):
         if not one:
             print(f"say which: bento train {a} {what}")
@@ -7408,9 +7416,26 @@ def _train_cli(args):
             for r in slm.hub_search(" ".join(rest)):
                 print(f"  {r['repo']:<44.44} {r['downloads']:>9,} downloads  {r['licence'] or 'licence not stated'}"
                       + ("  [gated]" if r["gated"] else "") + (f"\n      {r['about'][:120]}" if r["about"] else ""))
+        elif a == "preview":
+            need("OWNER/NAME")
+            want = {"prompt": args.prompt, "response": args.answer} if args.prompt else None
+            v = slm.hub_preview(one, args.config, args.split, slm.PREVIEW_ROWS, tok(), want)
+            ra = v["read_as"]
+            print(f"{v['repo']} · {v['split']}" + (f" ({v['config']})" if v["config"] != "default" else "")
+                  + (f" · splits: {', '.join(s['split'] if s['config'] == 'default' else s['config'] + '/' + s['split'] for s in v['splits'])}"
+                     if len(v["splits"]) > 1 else ""))
+            print("  columns: " + ", ".join(c + (" [prompt]" if c == ra["prompt"] else " [answer]" if c == ra["response"] else "")
+                                            for c in v["columns"]))
+            if not ra["prompt"]:
+                print("  no column reads as a prompt by its name: pick one with --prompt COLUMN")
+            for r in v["rows"]:
+                print("  - " + " | ".join(f"{c}: {r.get(c, '')[:80]!r}" for c in v["columns"]))
+            print(f"  import it with: bento train import {one}" + (f" --prompt {ra['prompt']}" if ra["prompt"] else "")
+                  + (f" --answer {ra['response']}" if ra["response"] else ""))
         elif a == "import":
             need("OWNER/NAME")
-            d = slm.import_hub(base, one, args.name, "", "", args.rows or 2000, None, args.task or "")
+            want = {"prompt": args.prompt, "response": args.answer} if args.prompt else None
+            d = slm.import_hub(base, one, args.name, args.config, args.split, args.rows or 2000, want, args.task or "", tok())
             print("✓ imported\n" + ds_line(d))
             print(f"  read as: prompt = {d['how'].get('prompt')!r}, answer = {d['how'].get('response') or 'none'!r}")
         elif a == "file":
@@ -11801,15 +11826,19 @@ def main():
     p_ar.add_argument("--user", default="", help="whose arena, on a machine with users")
     p_tr = verb("train", help="make a small language model of your own: examples, a fine-tune, a check")
     p_tr.add_argument("action", nargs="?", default="status",
-                      choices=["status", "install", "make", "bases", "datasets", "data", "search", "import", "file", "devices", "write",
+                      choices=["status", "install", "make", "bases", "datasets", "data", "search", "preview", "import", "file", "devices", "write",
                                "answer", "start", "jobs", "log", "stop", "models", "examples", "try", "ollama"])
-    p_tr.add_argument("rest", nargs="*", help='make "what it should do" · search WORDS · import OWNER/NAME · '
+    p_tr.add_argument("rest", nargs="*", help='make "what it should do" · search WORDS · preview/import OWNER/NAME · '
                                               'file PATH · write "the task" · answer DATASET · start DATASET · '
                                               'log/stop JOB · examples/try/ollama MODEL')
     p_tr.add_argument("--task", default="", help="the instruction the small model works under")
     p_tr.add_argument("--name", default="")
     p_tr.add_argument("--count", type=int, default=0, help="examples to write (make, write) or to show (examples)")
     p_tr.add_argument("--rows", type=int, default=0, help="import: how many rows to take (default 2000) · devices: days back (default 7)")
+    p_tr.add_argument("--prompt", default="", help="preview, import: the column that is the prompt")
+    p_tr.add_argument("--answer", default="", help="preview, import: the column that is the answer")
+    p_tr.add_argument("--config", default="", help="preview, import: the Hub dataset's config")
+    p_tr.add_argument("--split", default="", help="preview, import: the split (train by default)")
     p_tr.add_argument("--base", default="", help="the student: owner/name on the Hugging Face Hub (bento train bases)")
     p_tr.add_argument("--epochs", type=float, default=0)
     p_tr.add_argument("--lr", type=float, default=0)

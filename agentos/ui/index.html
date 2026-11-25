@@ -8313,7 +8313,14 @@ body.mb-rail #ccpop,body.mb-rail #netpop,body.mb-rail #notifpanel,body.mb-rail #
 .trn-srcbody{margin-top:10px}
 .trn-hub{display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line);margin-top:12px}
 .trn-hub+.trn-hub{margin-top:0}
+.trn-prev{padding:0 0 12px;display:flex;flex-direction:column;gap:8px}
+.trn-prev-pick{flex-wrap:wrap}
+.trn-prev-t th.prompt,.trn-prev-t th.answer{color:var(--acc)}
+.trn-prev-t td{max-width:320px;font-size:var(--fs-xs)}
+.trn-prev-t td:not(.prompt):not(.answer){color:var(--dim2)}
+.trn-role{font-weight:600;text-transform:none;letter-spacing:0;opacity:.8}
 .trn-hub .grow{flex:1;min-width:0}
+.trn-hub b{overflow-wrap:anywhere}
 .trn-hub .sub{color:var(--dim2);font-size:var(--fs-xs);margin-top:2px;overflow-wrap:anywhere}
 .trn-badge{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;background:var(--trn-tint);color:var(--acc);flex:none}
 .trn .trn-x{padding:5px 10px}
@@ -8416,11 +8423,16 @@ body.mb-rail #ccpop,body.mb-rail #netpop,body.mb-rail #notifpanel,body.mb-rail #
   .trn .pact,.trn .endbtn,.trn-name{min-height:var(--tap,40px)}
   .trn-run header{flex-wrap:wrap}
   .trn-try{flex-direction:column;align-items:stretch}
+  .trn-hub{flex-wrap:wrap}
+  .trn-hub .grow{flex-basis:100%}
+  .trn-prev-pick{flex-direction:column;align-items:stretch;gap:8px}
+  .trn-prev-pick .trn-inl{display:flex;align-items:center;gap:12px;margin:0}
+  .trn-prev-pick .trn-inl select{flex:1;min-width:0}
   /* columns can't fit a phone: each row becomes a card with its labels */
-  .trn-ex thead,.trn-pairs thead{display:none}
-  .trn-ex tr,.trn-pairs tr{display:block;border:1px solid var(--line);border-radius:var(--r-sm);margin-bottom:8px;padding:4px 0}
-  .trn-ex td,.trn-pairs td{display:block;border:0;padding:3px 10px;max-width:none}
-  .trn-ex td::before,.trn-pairs td::before{content:attr(data-l);display:block;font-size:var(--fs-2xs);color:var(--dim2);text-transform:uppercase;letter-spacing:.05em}
+  .trn-ex thead,.trn-pairs thead,.trn-prev-t thead{display:none}
+  .trn-ex tr,.trn-pairs tr,.trn-prev-t tr{display:block;border:1px solid var(--line);border-radius:var(--r-sm);margin-bottom:8px;padding:4px 0}
+  .trn-ex td,.trn-pairs td,.trn-prev-t td{display:block;border:0;padding:3px 10px;max-width:none}
+  .trn-ex td::before,.trn-pairs td::before,.trn-prev-t td::before{content:attr(data-l);display:block;font-size:var(--fs-2xs);color:var(--dim2);text-transform:uppercase;letter-spacing:.05em}
 }
 </style>
 </head>
@@ -50805,10 +50817,12 @@ function trainDatasets(d){
         <span class="sp"></span><button class="pact" ${d.teacher_missing||TRAIN.busy?'disabled':''} onclick="trainSynth()">Write them</button></div>`;
   else if(src==='hub')h+=`<div class="trn-row"><input id="trn-hubq" data-keep placeholder="Search public datasets: sentiment, sms spam, intent…" value="${esc(TRAIN.hubQ)}" onkeydown="if(event.key==='Enter')trainHub()">
         <button class="pact" onclick="trainHub()">${TRAIN.busy==='hub'?'Searching…':'Search'}</button></div>
-      ${(TRAIN.hub||[]).map(r=>`<div class="trn-hub"><div class="grow"><b>${esc(r.repo)}</b>
+      ${(TRAIN.hub||[]).map(r=>{const pv=trainPrevOpen(r.repo);return `<div class="trn-hub"><div class="grow"><b>${esc(r.repo)}</b>
           <div class="sub">${(r.downloads||0).toLocaleString()} downloads · ${esc(r.licence||'licence not stated')}${r.gated?' · gated':''}</div>
           ${r.about?`<div class="sub">${esc(r.about)}</div>`:''}</div>
-          <button class="endbtn" ${r.gated&&!d.token?'disabled title="A gated dataset needs your Hugging Face token (Models)"':''} onclick="trainImport('${jsq(r.repo)}')">Import</button></div>`).join('')}`;
+          <button class="endbtn" aria-expanded="${pv}" ${r.gated&&!d.token?'disabled title="A gated dataset needs your Hugging Face token (Models)"':''} onclick="trainPreview('${jsq(r.repo)}')">${TRAIN.busy==='preview'&&pv?'Reading…':pv?'Hide':'Preview'}</button>
+          <button class="pact" ${r.gated&&!d.token?'disabled title="A gated dataset needs your Hugging Face token (Models)"':''} onclick="trainImport('${jsq(r.repo)}')">Import</button></div>
+        ${pv?trainPrevHTML(TRAIN.prev):''}`}).join('')}`;
   else if(src==='devices'){
     const ms=TRAIN.devs;
     h+=!ms?'<div class="mut">loading…</div>':!ms.length?`<div class="trn-row"><div class="grow mut">No machine of yours has readings kept yet. They are kept once a Pi or an ESP32 node is set up in Devices.</div>
@@ -50866,11 +50880,62 @@ async function trainHub(){
   await trainDo('hub',async()=>{TRAIN.hub=(await trainApi('/api/train/hub?q='+encodeURIComponent(TRAIN.hubQ))).results||[];
     if(!TRAIN.hub.length)toast('Nothing on the Hub for those words.')});
 }
+/* A Hub dataset is looked at before it is taken: its first rows as they are, which column
+   is read as the prompt and which as the answer (either can be changed), and its split. */
+function trainPrevOpen(repo){return !!(TRAIN.prev&&TRAIN.prev.repo===repo)}
+function trainPrevHTML(p){
+  if(!p.data)return p.err?`<div class="trn-prev"><div class="mut">${esc(p.err)}</div></div>`:'<div class="trn-prev"><div class="mut">Reading the first rows…</div></div>';
+  const v=p.data,ra=v.read_as||{},P=ra.prompt||'',A=ra.response||'';
+  const all=v.columns||[],cols=[P,A].filter(c=>c&&all.includes(c)).concat(all.filter(c=>c!==P&&c!==A));
+  const opt=(sel,none)=>(none?`<option value=""${sel?'':' selected'}>${none}</option>`:'')
+    +all.map(c=>`<option value="${esc(c)}"${c===sel?' selected':''}>${esc(c)}</option>`).join('');
+  const splits=v.splits||[];
+  const role=c=>c===P?'prompt':A&&c===A?'answer':'';
+  return `<div class="trn-prev">
+    <div class="trn-row trn-prev-pick">
+      ${splits.length>1?`<label class="trn-l trn-inl">Split<select onchange="trainPrevSet('split',this.value)">${splits.map(s=>{const k=s.config+'/'+s.split;
+        return `<option value="${esc(k)}"${s.config===v.config&&s.split===v.split?' selected':''}>${esc(s.config==='default'?s.split:k)}</option>`}).join('')}</select></label>`:''}
+      <label class="trn-l trn-inl">Prompt<select onchange="trainPrevSet('prompt',this.value)">${P?'':'<option value="" selected>choose a column</option>'}${opt(P)}</select></label>
+      <label class="trn-l trn-inl">Answer<select onchange="trainPrevSet('response',this.value)">${opt(A,'none (a teacher answers)')}</select></label>
+    </div>
+    ${P?'':'<div class="mut">No column reads as a prompt by its name. Choose one to import.</div>'}
+    <div class="trn-tw"><table class="trn-t trn-prev-t"><thead><tr>${cols.map(c=>`<th class="${role(c)}">${esc(c)}${role(c)?` <span class="trn-role">${role(c)}</span>`:''}</th>`).join('')}</tr></thead><tbody>
+      ${(v.rows||[]).map(r=>`<tr>${cols.map(c=>`<td data-l="${esc(c)}${role(c)?' · '+role(c):''}" class="${role(c)}">${esc(r[c]||'')}</td>`).join('')}</tr>`).join('')}
+    </tbody></table></div>
+    <div class="mut">The first ${(v.rows||[]).length} rows of ${esc(v.split)}${v.config&&v.config!=='default'?' ('+esc(v.config)+')':''}.</div></div>`;
+}
+async function trainPrevLoad(){
+  const p=TRAIN.prev;if(!p)return;
+  const q=new URLSearchParams({repo:p.repo,config:p.config||'',split:p.split||'',prompt:p.prompt||'',response:p.response||''});
+  TRAIN.busy='preview';trainPaint();
+  try{const v=await trainApi('/api/train/hub/preview?'+q);if(TRAIN.prev===p){p.data=v;p.err='';p.config=v.config;p.split=v.split}}
+  catch(e){if(TRAIN.prev===p){p.data=null;p.err=e.message||String(e)}}
+  TRAIN.busy='';trainPaint();
+}
+async function trainPreview(repo){
+  if(trainPrevOpen(repo)){TRAIN.prev=null;return trainPaint()}
+  if(TRAIN.busy)return;
+  TRAIN.prev={repo,data:null,err:'',config:'',split:'',prompt:'',response:''};
+  await trainPrevLoad();
+}
+async function trainPrevSet(k,val){
+  const p=TRAIN.prev;if(!p||TRAIN.busy)return;
+  const ra=(p.data||{}).read_as||{};
+  p.prompt=ra.prompt||'';p.response=ra.response||'';
+  if(k==='split'){const i=val.indexOf('/');p.config=val.slice(0,i);p.split=val.slice(i+1)}
+  else p[k]=val;
+  if(!p.prompt){p.response='';if(p.data)p.data.read_as={prompt:'',response:''};return trainPaint()}
+  await trainPrevLoad();
+}
 async function trainImport(repo){
-  const n=await osPrompt('Import '+repo,{message:'How many rows to take (the first of its training split).',value:'1000',confirmText:'Import'});
+  const p=trainPrevOpen(repo)&&TRAIN.prev.data?TRAIN.prev:null,ra=p?p.data.read_as||{}:{};
+  if(p&&!ra.prompt)return toast('Choose the column that is the prompt first.');
+  const n=await osPrompt('Import '+repo,{message:'How many rows to take'+(p?` (the first of ${p.split})`:' (the first of its training split)')+'.',value:'1000',confirmText:'Import'});
   if(n===null||n===undefined)return;
-  await trainDo('import',async()=>{const ds=await trainApi('/api/train/datasets/hub','POST',{repo,max_rows:+n||1000});
-    toast(`Imported ${ds.rows} rows. Read as: prompt = ${ds.how.prompt}, answer = ${ds.how.response||'none'}.`);TRAIN.hub=[]});
+  const body={repo,max_rows:+n||1000};
+  if(p)Object.assign(body,{config:p.config,split:p.split,columns:{prompt:ra.prompt,response:ra.response||''}});
+  await trainDo('import',async()=>{const ds=await trainApi('/api/train/datasets/hub','POST',body);
+    toast(`Imported ${ds.rows} rows. Read as: prompt = ${ds.how.prompt}, answer = ${ds.how.response||'none'}.`);TRAIN.hub=[];TRAIN.prev=null});
 }
 async function trainSynth(){
   const task=($('#trn-task')||{}).value||'',n=+($('#trn-n')||{}).value||100;

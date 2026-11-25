@@ -23094,6 +23094,18 @@ async def api_train_hub(q: str = ""):
         return _train_err(e, 502)
 
 
+@app.get("/api/train/hub/preview")
+async def api_train_hub_preview(repo: str = "", config: str = "", split: str = "", prompt: str = "",
+                                response: str = ""):
+    """The first rows of a Hub dataset and how an import would read them. Takes nothing."""
+    from . import slm
+    try:
+        return await asyncio.to_thread(slm.hub_preview, repo, config, split, slm.PREVIEW_ROWS, _train_token(),
+                                       {"prompt": prompt, "response": response} if prompt else None)
+    except Exception as e:
+        return _train_err(e, 502)
+
+
 @app.post("/api/train/datasets/hub")
 async def api_train_import_hub(body: dict):
     from . import slm

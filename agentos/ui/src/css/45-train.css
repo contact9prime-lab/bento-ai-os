@@ -161,7 +161,14 @@
 .trn-srcbody{margin-top:10px}
 .trn-hub{display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line);margin-top:12px}
 .trn-hub+.trn-hub{margin-top:0}
+.trn-prev{padding:0 0 12px;display:flex;flex-direction:column;gap:8px}
+.trn-prev-pick{flex-wrap:wrap}
+.trn-prev-t th.prompt,.trn-prev-t th.answer{color:var(--acc)}
+.trn-prev-t td{max-width:320px;font-size:var(--fs-xs)}
+.trn-prev-t td:not(.prompt):not(.answer){color:var(--dim2)}
+.trn-role{font-weight:600;text-transform:none;letter-spacing:0;opacity:.8}
 .trn-hub .grow{flex:1;min-width:0}
+.trn-hub b{overflow-wrap:anywhere}
 .trn-hub .sub{color:var(--dim2);font-size:var(--fs-xs);margin-top:2px;overflow-wrap:anywhere}
 .trn-badge{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;background:var(--trn-tint);color:var(--acc);flex:none}
 .trn .trn-x{padding:5px 10px}
@@ -264,9 +271,14 @@
   .trn .pact,.trn .endbtn,.trn-name{min-height:var(--tap,40px)}
   .trn-run header{flex-wrap:wrap}
   .trn-try{flex-direction:column;align-items:stretch}
+  .trn-hub{flex-wrap:wrap}
+  .trn-hub .grow{flex-basis:100%}
+  .trn-prev-pick{flex-direction:column;align-items:stretch;gap:8px}
+  .trn-prev-pick .trn-inl{display:flex;align-items:center;gap:12px;margin:0}
+  .trn-prev-pick .trn-inl select{flex:1;min-width:0}
   /* columns can't fit a phone: each row becomes a card with its labels */
-  .trn-ex thead,.trn-pairs thead{display:none}
-  .trn-ex tr,.trn-pairs tr{display:block;border:1px solid var(--line);border-radius:var(--r-sm);margin-bottom:8px;padding:4px 0}
-  .trn-ex td,.trn-pairs td{display:block;border:0;padding:3px 10px;max-width:none}
-  .trn-ex td::before,.trn-pairs td::before{content:attr(data-l);display:block;font-size:var(--fs-2xs);color:var(--dim2);text-transform:uppercase;letter-spacing:.05em}
+  .trn-ex thead,.trn-pairs thead,.trn-prev-t thead{display:none}
+  .trn-ex tr,.trn-pairs tr,.trn-prev-t tr{display:block;border:1px solid var(--line);border-radius:var(--r-sm);margin-bottom:8px;padding:4px 0}
+  .trn-ex td,.trn-pairs td,.trn-prev-t td{display:block;border:0;padding:3px 10px;max-width:none}
+  .trn-ex td::before,.trn-pairs td::before,.trn-prev-t td::before{content:attr(data-l);display:block;font-size:var(--fs-2xs);color:var(--dim2);text-transform:uppercase;letter-spacing:.05em}
 }
