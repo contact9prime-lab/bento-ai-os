@@ -132,7 +132,8 @@ def test_every_app_ai_door_uses_the_one_brain_and_the_pdp():
         assert "principal=principal" in door and 'default_model' not in door
     assert "_app_held(principal)" in agent and '"model.use", f"model:{label}"' in agent
     assert "principal=principal" in agent and "fabric._run_on_executor(" in agent
-    assert 'surface="gui", kind="app"' in agent
+    # the run is shared with a phone's /app question (_app_agent_run), so the surface is the caller's
+    assert 'surface=surface, kind="app"' in agent and 'surface="gui"' in agent
     ctx = SERVER[SERVER.index('@app.get("/api/apps/context")'):][:1400]
     assert '"ai_ready": not why' in ctx and '"brain": engine' in ctx
     # appLLM no longer goes through llm_generate's default-model-only path

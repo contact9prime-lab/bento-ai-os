@@ -460,10 +460,14 @@ class Scheduler(usersmod.Scoped):
         agent = Agent({**self.cfg, "max_steps": 1}, self.toolbox, "", emit, nobody,
                       tool_filter=["run_python"], principal=Principal("app", app_id),
                       surface="task")
+        from .tools import job_input
+        tok = job_input.set(appjobs.input_of(self.store.get_app_data(app_id), task))
         try:
             out, *_ = await agent.call_tool("run_python", appjobs.args_of(task["script"]))
         except Exception as e:
             out = f"[error] {type(e).__name__}: {e}"
+        finally:
+            job_input.reset(tok)
         ok, value, line = appjobs.result_of(out)
         said = ""
         if ok:

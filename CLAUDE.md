@@ -2244,6 +2244,10 @@ give its data to the channels or their groups". Five rules:
   without one, and the job's card names its chats so the one yes writes their `channel.send` grants with
   `source_ref` job:<task> (removed with the job).
 - **Every message starts with the app's name** (`framed`): a group's members did not install the app.
+- **A run is handed its last saved value** (`tools.job_input`, a contextvar the scheduler sets; run_python
+  writes it beside the script as sys.argv[1]). Never an argument: run_python's resource is its whole args,
+  so a value that changes each run would stop the job's grant matching. Live, Claude Code's job kept state
+  in `~/.cache` without it.
 - **The phone's question is the app's own assistant** (`_app_agent_run`, shared with `/api/apps/agent`): as
   the app, quarantine checked, `agent.invoke agent:main` asked. A glance (`/app <name>`) runs nothing.
 

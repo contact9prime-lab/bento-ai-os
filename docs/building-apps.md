@@ -343,6 +343,14 @@ await appJob.ensure({ title: 'Watch BTC', script: PY, every: 5, key: 'prices', s
 // PY prints {"btc": 101000, "_message": "BTC is above 100k"}; "_message" is sent, not saved
 ```
 
+A run is handed what the job saved last time, so a script can compare with it and keep a short
+history without a file of its own:
+
+```python
+import json, sys
+last = json.load(open(sys.argv[1]))["previous"] if len(sys.argv) > 1 else None
+```
+
 The job's card names those chats, so one yes covers the script and where it reports. A run with no
 `_message` sends nothing, which is how a price watch alerts only when a line is crossed. Missions →
 Schedule shows *reports to …* under the job. An agent schedule for an app (judgement) uses the
@@ -352,6 +360,14 @@ On the phone, the owner's Telegram has **/apps**, a list of your apps with a but
 **/app &lt;name&gt;**, which shows what the app's jobs last saved and when. **/app &lt;name&gt;
 &lt;question&gt;** asks the app's own assistant, which answers as the app with its code and data in
 front of it, as the ✦ inside the app does. WhatsApp has the same two commands for its owner.
+
+![An app job's card naming the two chats it will report to: you on Telegram and the group Traders](screenshots/app-channels-card.png)
+
+![Missions, Schedule tab: the job says "reports to Piyush on Telegram, Traders on Telegram" and its last run sent to both](screenshots/app-channels-missions.png)
+
+![The owner's Telegram on a phone: the app's report, /apps with a button for the app, and its latest numbers](screenshots/app-channels-phone.png)
+
+![The Traders group got the same report, starting with the app's name](screenshots/app-channels-group.png)
 
 When an app asks to run a read-only command on files in your workspace (`ls`, `cat`, `head`,
 `grep`…), the card's *1 hour* and *Always* cover every such read for that one app. Hidden files,

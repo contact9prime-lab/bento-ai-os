@@ -20,6 +20,8 @@ How a job keeps to the framework:
   that no longer matches its grant is refused there and the run says so.
 - **What it prints is the app's data** under `data_key` (JSON if it parses), and `_jobs` keeps
   each job's last run, so the page only displays and says when it was updated.
+- **It is handed what it saved last time** (`input_of`, a JSON file named by sys.argv[1]), so a
+  script that compares with the last run keeps no state of its own.
 - **It may speak in chats the card named** (`send_to`, appchannels.py): an object printed with
   a `_message` sends that text there as the app, through the same gate (`channel.send`), and
   the key is never saved. No `_message`, nothing is sent.
@@ -190,6 +192,18 @@ def result_of(output: str) -> tuple[bool, object, str]:
     except ValueError:
         value = body
     return True, value, f"saved {len(body)} characters"
+
+
+def input_of(data_json: str, task: dict) -> dict:
+    """What a run is handed (sys.argv[1], a JSON file): what this job saved last time under its
+    key, and when, so "alert when it moved since the last check" needs no state of its own."""
+    try:
+        data = json.loads(data_json or "{}")
+    except ValueError:
+        data = {}
+    data = data if isinstance(data, dict) else {}
+    run = (data.get(STATUS_KEY) or {}).get(task.get("prompt") or "") if isinstance(data.get(STATUS_KEY), dict) else None
+    return {"previous": data.get(task.get("data_key") or ""), "at": (run or {}).get("at")}
 
 
 MESSAGE_KEY = "_message"     # what a run wants said in the job's chats; never saved

@@ -8,6 +8,11 @@
   chat asks you; Always lets that app send there again. An app job takes `send_to`, and a run sends
   the `"_message"` its script printed (and saves the rest), so a price watch alerts only when it has
   something to say. The job's card names those chats, and Missions shows *reports to …*.
+- An app job's run is handed what it saved last time (`sys.argv[1]`), so a job that compares with
+  the last check keeps no state file of its own. Found when Claude Code's alerting job wrote one in
+  `~/.cache`.
+- An app job's card says what Allow starts ("runs every 5 minutes without asking again") instead of
+  "this kind of step asks you every time".
 - Your apps from the phone: `/apps` on Telegram lists them with a button each, `/app <name>` shows
   what its jobs last saved, and `/app <name> <question>` asks the app's own assistant. WhatsApp has
   the same two commands for its owner.

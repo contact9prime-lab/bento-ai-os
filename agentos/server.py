@@ -9262,7 +9262,10 @@ WORK ON A CLOCK — the framework runs it, the page shows it:
     the script, never in a page timer or appTool('run_command'/'run_python'). To report on the
     phone too, add send_to:['telegram'] (or chats from appChannel.list()) and have the script
     print a JSON object with a "_message" string when there is something to say (an alert, a
-    summary); "_message" is sent and not saved, and no "_message" sends nothing.
+    summary); "_message" is sent and not saved, and no "_message" sends nothing. The script is
+    handed what it saved last time: last = json.load(open(sys.argv[1]))['previous'] if
+    len(sys.argv) > 1 else None. Keep anything it must remember (the last price, a history, past
+    alerts) in what it prints, never in a file of its own.
   · Judgement (read the news and decide, write a summary, choose whom to alert): appTool(
     'schedule_task', {prompt, schedule_type:'interval', interval_minutes:N}) — an agent run.
 - The page reads appData on open, redraws on window.addEventListener('appdata', …), and shows when

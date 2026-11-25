@@ -956,6 +956,12 @@ JAILED_TOOLS = ("run_command", "run_python", "terminal_send")
 # around the call from the principal it is running as, never from the model's arguments:
 # {"name": company, "rw": [real paths], "ro": [real paths]}.
 company_jail = contextvars.ContextVar("company_jail", default=None)
+# An app job's input: {"previous": what the job saved last time, "at": when}. Set by the scheduler
+# around the job's run (Scheduler._run_app_job), never by a caller, and kept out of the args so
+# the grant for the script still matches. run_python writes it beside the script and passes the
+# path as sys.argv[1]. Found live: told to alert on a move since the last check, Claude Code's
+# job kept its own state file in ~/.cache, outside the app's data.
+job_input = contextvars.ContextVar("job_input", default=None)
 
 
 def jail_gap(cfg: dict) -> str:
@@ -5675,18 +5681,26 @@ class Toolbox(usersmod.Scoped):
                 return f"[error] there is no folder '{folder}' in the workspace"
             cwd = str(d)
         path = os.path.join(base, f".agentos-run-{uuid.uuid4().hex[:8]}.py")
+        given = job_input.get()
+        inpath = path[:-3] + ".in.json" if given is not None else ""
         try:
             with open(path, "w") as fh:
                 fh.write(code)
+            if inpath:
+                with open(inpath, "w") as fh:
+                    json.dump(given, fh)
             py = jail_python(sys.executable) if jailed else sys.executable
             if hub:
-                out = await self.run_command(edgecode.local_command(py, path, cwd))
+                out = await self.run_command(edgecode.local_command(py, path, cwd, inpath))
             else:
                 lead = f"cd {shlex.quote(cwd)} && " if cwd else ""
-                out = await self.run_command(f"{lead}{shlex.quote(py)} {shlex.quote(path)}")
+                tail = f" {shlex.quote(inpath)}" if inpath else ""
+                out = await self.run_command(f"{lead}{shlex.quote(py)} {shlex.quote(path)}{tail}")
         finally:
-            with contextlib.suppress(OSError):
-                os.unlink(path)
+            for p_ in (path, inpath):
+                if p_:
+                    with contextlib.suppress(OSError):
+                        os.unlink(p_)
         why = edgecode.stopped_by_limit(out) if hub and where != "here" else ""
         if why:
             return await edgecode.offload(self.cfg, code, Path(base), folder, why)

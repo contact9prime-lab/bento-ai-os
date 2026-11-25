@@ -213,3 +213,26 @@ def test_the_builder_is_told_to_report_through_appchannel():
     src = (ROOT / "agentos/server.py").read_text()
     assert "window.appChannel = {" in src and "appChannel.send(text, {to:'telegram'})" in src
     assert "send_to:['telegram']" in src and '"_message"' in src
+
+
+def test_a_run_is_handed_what_the_job_saved_last_time(tmp_path):
+    """Found live: told to alert on a move since the last check, real Claude Code's job kept its
+    own state file in ~/.cache. A run gets its last saved value instead (sys.argv[1])."""
+    c, store, tb, sched, aid = _world(tmp_path)
+    script = ("import json, sys\n"
+              "last = json.load(open(sys.argv[1]))['previous'] if len(sys.argv) > 1 else None\n"
+              "n = (last or {}).get('n', 0) + 1\n"
+              "out = {'n': n}\n"
+              "if last: out['_message'] = f'run {n}, last was {last[\"n\"]}'\n"
+              "print(json.dumps(out))\n")
+    asyncio.run(tb.schedule_app_job(title="Count", script=script, interval_minutes=5, key="c",
+                                    _app=aid, send_to=["telegram"]))
+    task = appjobs.find(store, aid, "Count")
+    for _ in range(3):
+        asyncio.run(sched._run_task(appjobs.find(store, aid, "Count")))
+    assert json.loads(store.get_app_data(aid))["c"] == {"n": 3}
+    assert [t for _, t in tb.telegram.sent] == ["▦ Signal Desk\nrun 2, last was 1", "▦ Signal Desk\nrun 3, last was 2"]
+    # the script's grant is unchanged: the input is not an argument the gate words
+    assert appjobs.args_of(script) == {"code": script, "timeout": appjobs.TIMEOUT}
+    assert not list((tmp_path / "ws").glob(".agentos-run-*")), "the script and its input are removed"
+    del task
