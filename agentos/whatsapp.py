@@ -706,6 +706,18 @@ class WhatsAppBridge(usersmod.Scoped):
         if wa_id == (self._c().get("owner_wa_id") or "") and low.split(" ")[0] in ("/people", "/allow", "/block"):
             await self.send(await self._owner_command(low.split(" ")[0], text.partition(" ")[2].strip()), wa_id)
             return
+        if wa_id == (self._c().get("owner_wa_id") or "") and low.split(" ")[0] in ("/apps", "/app"):
+            # your apps from the phone, as Telegram's /apps and /app (appphone.py); owner only
+            from . import appphone
+            if low.split(" ")[0] == "/apps":
+                await self.send(appphone.apps_text(self.store).replace("Tap one", "Send /app <name>"), wa_id)
+                return
+
+            async def approver(name, args, reason, offer=None):
+                door = getattr(self.toolbox, "approve", None)
+                return bool(await door(name, args, reason, offer=offer)) if callable(door) else False
+            await self.send(await appphone.answer(self.store, text.partition(" ")[2], "whatsapp", approver), wa_id)
+            return
         if low.startswith("/clear"):
             self.store.clear_messages(self._conversation(chat))
             await self.send("🧹 Session cleared — starting fresh.", wa_id)

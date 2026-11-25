@@ -1339,6 +1339,14 @@ class TelegramBridge(usersmod.Scoped):
             said = await _cdpb.from_phone(usersmod.current() or "", f"tg:{chat_id}", "done")
             await self.send("✓ " + (said or "Nothing is waiting on that page now."), chat_id)
             return
+        if data.startswith("apx:"):
+            # an app's button under /apps (telegram_admin): its latest numbers; the owner's only
+            msg = cq.get("message", {})
+            chat_id = (msg.get("chat") or {}).get("id") or cq.get("from", {}).get("id")
+            if chat_id != (self._t().get("owner_chat_id") or 0):
+                return
+            await self.send(await self._console.show_app(data[4:]), chat_id)
+            return
         if data.startswith("co:"):
             # a company's Open button (telegram_admin /companies)
             said = await self._console.open_company(data[3:])

@@ -2229,6 +2229,24 @@ Five rules:
 A clocked schedule left with `next_run` NULL by a stop is booked again at start (`Scheduler.revive`), and a run
 that raises still reschedules: the owner's every-3-hours schedule read "waiting for its event" for good.
 
+**An app reports in the person's chats, and the phone reaches the apps** (`agentos/appchannels.py`,
+`agentos/appphone.py`, `send_to_channel`/`channel_destinations`, `appChannel` in APP_RUNTIME, `send_to` on an app
+job, `Scheduler._job_says`, `/apps` `/app` on Telegram and WhatsApp, `server.app_ask_from_phone`;
+`tests/test_app_channels.py`). Asked for as "Telegram or WhatsApp has no hook into the apps … a schedule should
+give its data to the channels or their groups". Five rules:
+- **A destination is a chat the person already let in** (`destinations`: the paired owner, allowed chats,
+  allowed groups). The gate decides the chat the OS resolved (`gate_fields` puts it in `_dest`, never the
+  caller's words), so a grant is "this app may post to that group".
+- **The message is the APP's, whoever runs the step** (`agent.APP_SPEAKS`: decided as `Principal("app", …)`
+  when `app_id` is set). A schedule's agent runs as MAIN with the app beside it; deciding as MAIN would make
+  the app's Always worthless there and the person's grants count for the app.
+- **A job speaks only through `_message`**: `split_message` takes it out before saving, nothing is sent
+  without one, and the job's card names its chats so the one yes writes their `channel.send` grants with
+  `source_ref` job:<task> (removed with the job).
+- **Every message starts with the app's name** (`framed`): a group's members did not install the app.
+- **The phone's question is the app's own assistant** (`_app_agent_run`, shared with `/api/apps/agent`): as
+  the app, quarantine checked, `agent.invoke agent:main` asked. A glance (`/app <name>`) runs nothing.
+
 ## App Studio is an IDE, and a hand save is a version like a build
 
 `agentos/appsource.py` (load, `problems`, `save`, `blank`) + `/api/apps/{id}/source`, `/api/apps/check`,

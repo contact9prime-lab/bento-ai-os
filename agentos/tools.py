@@ -662,13 +662,14 @@ ASK_FROM_SPECIALISTS = {"run_python", "run_tests"}
 # Tools that act for ONE app when the caller is that app (its appTool) or is building
 # it (App Studio): the agent loop and /api/tool inject `_app`, never the model or the page.
 APP_BOUND_TOOLS = ("schedule_task", "create_trigger", "update_app_data", "fetch_url", "desktop_state",
-                   "schedule_app_job", "app_jobs")
+                   "schedule_app_job", "app_jobs", "send_to_channel", "channel_destinations")
 
 SAFE_TOOLS = {
     # reading
     "read_file", "list_dir", "search_files", "read_source", "search_docs", "system_info",
     "fetch_url", "recall", "kg_query", "timeline", "list_spaces", "list_flows",
     "list_assets", "get_asset", "list_automations", "read_app_data", "update_app_data", "app_jobs",
+    "channel_destinations",
     "mail_search",
     "mail_read", "calendar_events", "find_tools", "openclaw_report",
     # what this account spent on each LLM, and its quotas (usage.py): numbers, never a key
@@ -4462,7 +4463,7 @@ class Toolbox(usersmod.Scoped):
                                           space_id=zero_space)
 
     async def schedule_app_job(self, title: str = "", script: str = "", interval_minutes: int = 5,
-                               key: str = "", app: str = "", _app: str = "") -> str:
+                               key: str = "", app: str = "", _app: str = "", send_to=None) -> str:
         """An app's script run on a clock with no model (appjobs.py). Reached only after a
         person approved this exact script (ALWAYS_ASK); the yes is a grant for it alone."""
         from . import appjobs
@@ -4474,6 +4475,11 @@ class Toolbox(usersmod.Scoped):
         job, err = appjobs.clean(title, script, interval_minutes, key)
         if err:
             return err
+        from . import appchannels
+        dests, err = appchannels.clean_targets(self.store, self.cfg, send_to)
+        if err:
+            return err
+        job["send_to"] = [d["id"] for d in dests]
         try:
             _tid, words = appjobs.save(self.store, app_id, job)
         except ValueError as e:
@@ -4495,6 +4501,54 @@ class Toolbox(usersmod.Scoped):
         if not app_id:
             return "[error] name the app"
         return json.dumps([appjobs.summary(t) for t in appjobs.of_app(self.store, app_id)])
+
+    async def channel_destinations(self, app: str = "", _app: str = "") -> str:
+        """The chats an app may send to: the person's own Telegram and WhatsApp and the chats
+        and groups they let in (appchannels.destinations). Reading the list sends nothing."""
+        from . import appchannels
+        return json.dumps(appchannels.destinations(self.store, self.cfg))
+
+    def _bridge_of(self, channel: str):
+        get = getattr(self, "bridge", None)
+        if callable(get):
+            with contextlib.suppress(Exception):
+                b = get(channel)
+                if b is not None:
+                    return b
+        return getattr(self, channel, None)
+
+    async def send_to_channel(self, text: str = "", to: str = "", app: str = "",
+                              _app: str = "", _dest: str = "") -> str:
+        """A message from an app to one chat the person already let in. The gate decided
+        `channel.send` on the chat `_dest` names (resolved by the OS, never the caller), as
+        the app; this only sends, with the app's name first (appchannels.framed)."""
+        from . import appchannels
+        app_id, err = self._schedule_app(app, _app)
+        if err:
+            return err
+        if not app_id:
+            return "[error] a message to a channel is sent by an app: call it from the app, or name the app"
+        dest, err = appchannels.resolve(self.store, self.cfg, _dest or to)
+        if err:
+            return err
+        if _dest and dest["id"] != _dest:
+            return "[error] that chat changed while this was decided; send it again"
+        body = appchannels.clean(text)
+        if not body:
+            return "[error] nothing to send: give the message text"
+        name = (self.store.get_app(app_id) or {}).get("name") or ""
+        chan, _, chat = dest["id"].partition(":")
+        bridge = self._bridge_of(chan)
+        if bridge is None:
+            return f"[error] {chan.title()} is not running on this machine"
+        msg = appchannels.framed(name, body)
+        try:
+            out = await (bridge.send(msg, int(chat)) if chan == "telegram" else bridge.send(msg, chat))
+        except Exception as e:
+            out = f"[error] {type(e).__name__}: {e}"
+        self.store.log(chan, f"app '{name}' → {dest['label']}: {body[:160]}",
+                       {"app_id": app_id, "to": dest["id"], "ok": not str(out).startswith("[error]")})
+        return out if str(out).startswith("[error]") else f"sent to {dest['label']}"
 
     async def create_trigger(self, kind: str, match_or_path: str = "", prompt: str = "",
                              cooldown_secs: int = 300, minutes: float = 30,
@@ -4795,6 +4849,8 @@ class Toolbox(usersmod.Scoped):
             return "risky", f"Deletes the skill '{args.get('name', '?')}'."
         if name == "delete_asset":
             return "risky", "Deletes a file from your gallery."
+        if name == "send_to_channel":
+            return "risky", "Sends a message from an app to a Telegram or WhatsApp chat."
         if name == "telegram_send" and int(args.get("chat_id") or 0):
             return "risky", "Sends a Telegram message to a chat other than yours."
         if name == "whatsapp_send" and str(args.get("wa_id") or "").strip():
@@ -6195,6 +6251,7 @@ class Toolbox(usersmod.Scoped):
                     f"plain text instead of a tool call, or produce a smaller version.")
         try:
             keep = ({"_flow", "_run_id"} if name == "brief_item" else {"_conv"} if name in ("create_app", "department_task", "show_scene", "stage_file", "create_subagent") else {"_from"} if name == "request_capability" else {"_surface", "_conv"} if name in ("open_company", "new_company") else {"_who", "_why"} if name in ("device_get", "device_set") else {"_taint", "_space", "_files", "_files_note", "_root", "_escalate"} if name == "delegate" else {"_taint"} if name == "run_automation" else
+                    {"_app", "_dest"} if name == "send_to_channel" else
                     {"_app"} if name in APP_BOUND_TOOLS else
                     {"_from", "_chain", "_root", "_run_id", "_conv", "_space", "_taint"}
                     if name == "ask_agent" else set())
@@ -7255,6 +7312,10 @@ TOOL_SCHEMAS = [
                 "interval_minutes": {"type": "integer", "description": "How often, in minutes."},
                 "key": {"type": "string", "description": "The app data key it saves under."},
                 "app": {"type": "string", "description": "The app, by name, when not called from it."},
+                "send_to": {"type": "array", "items": {"type": "string"},
+                            "description": "Chats a run may post to (ids from channel_destinations, "
+                            "or 'telegram'/'whatsapp' for the person's own). A run posts only when "
+                            "its printed JSON object has a \"_message\" string, which is not saved."},
             },
             "required": ["title", "script", "interval_minutes", "key"],
         },
@@ -7263,6 +7324,27 @@ TOOL_SCHEMAS = [
         "name": "app_jobs",
         "description": "An app's jobs (schedule_app_job): title, how often, data key, the "
                        "script's fingerprint and the last run.",
+        "parameters": {"type": "object", "properties": {
+            "app": {"type": "string", "description": "The app, by name, when not called from it."}},
+            "required": []},
+    },
+    {
+        "name": "send_to_channel",
+        "description": "Send a message from an app to a Telegram or WhatsApp chat the person "
+                       "already let in: their own chat, a person or a group. The message starts "
+                       "with the app's name. The first send to a chat asks the person, with "
+                       "Remember. channel_destinations lists the chats.",
+        "parameters": {"type": "object", "properties": {
+            "text": {"type": "string", "description": "The message, plain text."},
+            "to": {"type": "string", "description": "A chat id from channel_destinations, "
+                   "'telegram' or 'whatsapp' for the person's own chat, or a group's name."},
+            "app": {"type": "string", "description": "The app, by name, when not called from it."}},
+            "required": ["text"]},
+    },
+    {
+        "name": "channel_destinations",
+        "description": "The Telegram and WhatsApp chats an app may send to (send_to_channel): "
+                       "id, channel, label and kind (you, person, group).",
         "parameters": {"type": "object", "properties": {
             "app": {"type": "string", "description": "The app, by name, when not called from it."}},
             "required": []},

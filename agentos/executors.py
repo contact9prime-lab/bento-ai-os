@@ -2355,7 +2355,7 @@ def linked_note(cfg: dict, store=None, prefix: str = "mcp__bento__") -> str:
                "when it needs more than you." if not mine else ""))
 
 
-APP_DOOR_TOOLS = ("read_app_data", "update_app_data")
+APP_DOOR_TOOLS = ("read_app_data", "update_app_data", "send_to_channel", "channel_destinations")
 
 
 def open_app_door(env: "Envelope", cfg: dict, toolbox, app_id: str, approver, emit=None,

@@ -179,6 +179,13 @@ def history(store, task_id: str = "", mission: str = "", limit: int = 80,
                                                        "title": title}}
 
 
+def _sends_to(store, task: dict) -> str:
+    if not task.get("send_to"):
+        return ""
+    from . import appchannels, appjobs
+    return ", ".join(appchannels.label_of(store, d) for d in appjobs.targets_of(task))
+
+
 def schedules(store, now: float | None = None) -> list[dict]:
     """Every schedule with what it has done: the Schedule tab's rows. `words` is the
     schedule in words; a mission's schedule is named by its mission, not the prompt."""
@@ -197,6 +204,8 @@ def schedules(store, now: float | None = None) -> list[dict]:
         out.append({**{k: v for k, v in t.items() if k != "script"}, "words": schedule_words(t),
                     # an app job (appjobs.py): the app's script on a clock, no model
                     "app_job": bool(t.get("script")),
+                    # the chats its runs post to, in words (appchannels.py)
+                    "sends_to": _sends_to(store, t),
                     "title": t.get("flow") or _said(t.get("prompt"), 120),
                     "runs_7d": len(week),
                     "failed_7d": sum(1 for r in week if r.get("status") == "failed"),
@@ -227,6 +236,8 @@ def schedules_text(rows: list[dict], app: str = "") -> str:
             out.append("      for an app that was deleted")
         elif r.get("app_name"):
             out.append(f"      for the app {r['app_name']}")
+        if r.get("sends_to"):
+            out.append(f"      reports to {r['sends_to']}")
     return "\n".join(out)
 
 

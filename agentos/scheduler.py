@@ -465,16 +465,46 @@ class Scheduler(usersmod.Scoped):
         except Exception as e:
             out = f"[error] {type(e).__name__}: {e}"
         ok, value, line = appjobs.result_of(out)
+        said = ""
         if ok:
+            value, said = appjobs.split_message(value)
             await self.toolbox.update_app_data(key=task.get("data_key") or "data",
                                                value=json.dumps(value), _app=app_id)
         elif "not approved" in line or line.lower().startswith("[denied]"):
             line = ("refused: the script no longer matches the one approved, or its permission "
                     "was removed. Open the app to approve it again. " + line)
+        if ok and said:
+            line += "; " + await self._job_says(app_id, appjobs.targets_of(task), said)
         data = appjobs.status(self.store.get_app_data(app_id), task.get("prompt") or "", ok, line)
         self.store.set_app_data(app_id, json.dumps(data))
         await self.broadcast({"type": "app_data", "app_id": app_id, "key": appjobs.STATUS_KEY})
         return ok, line
+
+    async def _job_says(self, app_id: str, targets: list, text: str) -> str:
+        """A job's `_message`, sent to each chat its card named, as the app and through the
+        gate (`channel.send`): the grant the card wrote lets it, and a chat the person has
+        since removed is refused there. A line for the run, in words."""
+        if not targets:
+            return "it printed a message, and this job sends to no chat"
+        from .agent import Agent
+        from .policy import Principal
+
+        async def emit(_ev):
+            pass
+
+        async def nobody(*_a, **_k):
+            return False
+        agent = Agent({**self.cfg, "max_steps": 1}, self.toolbox, "", emit, nobody,
+                      tool_filter=["send_to_channel"], principal=Principal("app", app_id),
+                      surface="task")
+        said = []
+        for to in targets:
+            try:
+                out, *_ = await agent.call_tool("send_to_channel", {"text": text, "to": to})
+            except Exception as e:
+                out = f"[error] {type(e).__name__}: {e}"
+            said.append(str(out).strip()[:160])
+        return "; ".join(said)
 
     def _sweep(self):
         """Whose tasks to look at this tick. One person on a single-user machine;

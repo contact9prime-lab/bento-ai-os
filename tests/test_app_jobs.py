@@ -220,7 +220,7 @@ def test_a_card_with_no_offer_still_names_who_asks():
     assert who == 'The app "Crypto Prices"'
     assert approvalcard.who_of(None, agent_name="Aria") == "Aria"
     src = (Path(__file__).parent.parent / "agentos/agent.py").read_text()
-    assert "_apc.ASKER.set(_apc.asker_of(self.principal))" in src
+    assert "_apc.ASKER.set(_apc.asker_of(who))" in src
 
 
 def test_a_job_saves_its_data_without_the_gates_untrusted_fence():

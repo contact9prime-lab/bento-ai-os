@@ -58,6 +58,9 @@ UNTRUSTED_TOOLS = {
 TAINT_CARRIERS = {"ask_agent", "delegate", "run_flow", "department_task", "huddle"}
 # Browser steps that change something on a page, and so carry the site they act on
 BROWSER_ACTS = ("browser_click", "browser_type", "browser_key", "browser_upload")
+# Tools whose effect goes out under an app's name: decided as that app whoever runs the step
+# (its page, its job, a schedule's agent working for it). appchannels.py.
+APP_SPEAKS = ("send_to_channel",)
 
 
 def _untrusted_source(name: str, args: dict) -> str:
@@ -541,12 +544,31 @@ _STEER_PREFACE = (
 
 
 
-def gate_fields(name: str, args: dict, who: str = "", why: str = "") -> dict:
+def gate_fields(name: str, args: dict, who: str = "", why: str = "", toolbox=None) -> dict:
     """What the gate needs to know that only this OS can tell it: which site a click lands
     on, what is in a terminal's foreground, who asked for a device. Read here and never taken
     from the caller. The agent loop and /api/tool both use it, because a browser act from
     an app was decided as `site:*` when only the loop filled these in."""
-    args = {k: v for k, v in (args or {}).items() if k not in ("_fg", "_site", "_who", "_why", "_commit")}
+    args = {k: v for k, v in (args or {}).items()
+            if k not in ("_fg", "_site", "_who", "_why", "_commit", "_dest", "_dest_label", "_send_labels")}
+    if name == "send_to_channel":
+        # the chat the message would reach, resolved against the chats the person let in
+        # (appchannels.resolve): the gate decides that chat, never a name the caller chose
+        try:
+            from . import appchannels
+            dest, _ = appchannels.resolve(toolbox.store, toolbox.cfg, str(args.get("to") or ""))
+        except Exception:
+            dest = None
+        args["_dest"] = dest["id"] if dest else ""
+        args["_dest_label"] = dest["label"] if dest else ""
+    if name == "schedule_app_job" and args.get("send_to"):
+        # the card names the chats a job will post to, in words (appchannels.words)
+        try:
+            from . import appchannels
+            dests, _ = appchannels.clean_targets(toolbox.store, toolbox.cfg, args.get("send_to"))
+        except Exception:
+            dests = []
+        args["_send_labels"] = appchannels.words(dests) if dests else ""
     if name == "terminal_send":
         # keys typed into a running program (an editor, ssh, a [y/N] prompt) are not a
         # command the classifier can judge, so they always go to a person
@@ -1260,14 +1282,19 @@ class Agent:
                     args.pop("everywhere")
         if name == "terminal_send" or name in BROWSER_ACTS:
             args = gate_fields(name, args)
+        if name in ("send_to_channel", "schedule_app_job"):
+            args = gate_fields(name, args, toolbox=self.toolbox)
         if name == "run_automation":
             # what this turn has read goes with the steps the page replays (tools.automation_ticket)
             args = {**args, "_taint": list(self.taint)}
         level, reason = self.toolbox.risk_of(name, args)
         base = self.toolbox.base_risk(name, args) if hasattr(self.toolbox, "base_risk") else level
+        # a message an app sends goes out under the app's name, so it is the APP's permission
+        # whoever runs the step: its page, its job, or a schedule's agent working for it
+        who = Principal("app", self.app_id) if name in APP_SPEAKS and self.app_id else self.principal
         if self.toolbox.pdp:
             dec = self.toolbox.pdp.decide_tool(
-                self.principal, name, args, level, reason=reason, base_risk=base,
+                who, name, args, level, reason=reason, base_risk=base,
                 autonomy=self.cfg.get("autonomy", ""), surface=self.surface,
                 space_id=self.space_id, conversation_id=self.conversation_id,
                 taint=self.taint, flow=self.flow,
@@ -1289,8 +1316,8 @@ class Agent:
             dec = await self._ethics_review(name, args, dec, base)
         if dec.rule == "ethics":
             await self._ethics_tell()
-        must_person = person_rule(self.principal, name, args, dec, self.toolbox.pdp, level=level)
-        note_refusal(name, self.principal, dec)
+        must_person = person_rule(who, name, args, dec, self.toolbox.pdp, level=level)
+        note_refusal(name, who, dec)
         # The sandbox is on and cannot start here: code runs only on a person's yes, each time, with
         # no remember and whatever a grant or the autonomy says. tools.run_command refuses without it.
         jail_gap = tools_mod.jail_gap(self.cfg) if name in tools_mod.JAILED_TOOLS and dec.effect != "deny" else ""
@@ -1318,7 +1345,7 @@ class Agent:
             # what the agent said it was doing, for the card's first line
             tok_said = _SAID.set(getattr(self, "_said", "") or "")
             from . import approvalcard as _apc
-            tok_asker = _apc.ASKER.set(_apc.asker_of(self.principal))
+            tok_asker = _apc.ASKER.set(_apc.asker_of(who))
             # An ethics caution (ethics.py): the card asks for the phrase, and only a screen that
             # had it typed confirms the token. Every other approver leaves it unconfirmed.
             eth_tok = eth_ctx = None

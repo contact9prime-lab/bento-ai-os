@@ -20,6 +20,9 @@ How a job keeps to the framework:
   that no longer matches its grant is refused there and the run says so.
 - **What it prints is the app's data** under `data_key` (JSON if it parses), and `_jobs` keeps
   each job's last run, so the page only displays and says when it was updated.
+- **It may speak in chats the card named** (`send_to`, appchannels.py): an object printed with
+  a `_message` sends that text there as the app, through the same gate (`channel.send`), and
+  the key is never saved. No `_message`, nothing is sent.
 
 Stdlib only, no HTTP or asyncio.
 """
@@ -93,13 +96,24 @@ def summary(task: dict) -> dict:
             "every_minutes": int(task.get("interval_seconds") or 0) // 60,
             "key": task.get("data_key") or "", "script_sha": digest(task.get("script") or ""),
             "enabled": bool(task.get("enabled")), "last_run": task.get("last_run"),
-            "last_result": (task.get("last_result") or "")[:300]}
+            "last_result": (task.get("last_result") or "")[:300],
+            "send_to": targets_of(task)}
+
+
+def targets_of(task: dict | None) -> list[str]:
+    """The chats a job sends its `_message` to (appchannels ids), as saved."""
+    try:
+        got = json.loads((task or {}).get("send_to") or "[]")
+    except ValueError:
+        return []
+    return [str(t) for t in got if isinstance(t, str)] if isinstance(got, list) else []
 
 
 def same(task: dict | None, job: dict) -> bool:
     return bool(task) and task.get("script") == job["script"] \
         and int(task.get("interval_seconds") or 0) == job["every"] * 60 \
-        and (task.get("data_key") or "") == job["key"]
+        and (task.get("data_key") or "") == job["key"] \
+        and targets_of(task) == list(job.get("send_to") or [])
 
 
 def _drop_grant(store, task_id: str):
@@ -121,13 +135,22 @@ def save(store, app_id: str, job: dict) -> tuple[str, str]:
         tid = old["id"]
         _drop_grant(store, tid)
         store.update_task(tid, script=job["script"], interval_seconds=job["every"] * 60,
-                          data_key=job["key"], next_run=now + 5, enabled=1)
+                          data_key=job["key"], next_run=now + 5, enabled=1,
+                          send_to=json.dumps(list(job.get("send_to") or [])))
     else:
         tid = store.add_task(job["title"], "interval", job["every"] * 60, None, now + 5,
-                             app_id=app_id, script=job["script"], data_key=job["key"])
+                             app_id=app_id, script=job["script"], data_key=job["key"],
+                             send_to=json.dumps(list(job.get("send_to") or [])))
     action, resource = grant_of(job["script"])
     store.add_grant("app", app_id, action, resource, source="user",
                     note=f"app job '{job['title']}', approved on its card", source_ref=f"job:{tid}")
+    for dest in job.get("send_to") or []:
+        # the same card named these chats, so the same yes lets the job post there; they go
+        # with the job (`_drop_grant`), a send from the app's page still asks for itself
+        chan, _, chat = dest.partition(":")
+        store.add_grant("app", app_id, "channel.send", f"channel:{chan}/{chat}", source="user",
+                        note=f"app job '{job['title']}' sends to this chat, approved on its card",
+                        source_ref=f"job:{tid}")
     return tid, (f"{'updated' if old else 'scheduled'}: {job['title']}, every {job['every']} min, "
                  f"no model. Its runs are in Missions → History, and what it prints is saved "
                  f"under '{job['key']}' in the app's data")
@@ -167,6 +190,21 @@ def result_of(output: str) -> tuple[bool, object, str]:
     except ValueError:
         value = body
     return True, value, f"saved {len(body)} characters"
+
+
+MESSAGE_KEY = "_message"     # what a run wants said in the job's chats; never saved
+
+
+def split_message(value) -> tuple[object, str]:
+    """(what to save, what to send). A job's script decides when to speak: an object with a
+    non-empty `_message` sends it to the job's chats; anything else sends nothing, so a
+    price check can alert only when a line is crossed."""
+    if isinstance(value, dict) and MESSAGE_KEY in value:
+        value = dict(value)
+        msg = value.pop(MESSAGE_KEY)
+        return value, (str(msg).strip() if msg not in (None, "", False) and not
+                       isinstance(msg, (dict, list)) else "")
+    return value, ""
 
 
 def status(data_json: str, title: str, ok: bool, line: str) -> dict:
