@@ -1,6 +1,10 @@
 # Changelog
 
 
+## 0.100.4 — 2026-11-25
+
+No release notes were written for this one; the commits since 0.100.3 are what changed (`bento update` lists them).
+
 ## 0.100.3 — 2026-11-25
 
 - Train: a Hugging Face Hub dataset can be previewed before it is imported. Preview shows its
