@@ -22,8 +22,20 @@ from __future__ import annotations
 
 import base64
 import binascii
+import contextvars
 import json
 import re
+
+# Who is asking, for a card whose offer is None (a step confirmed every time has no
+# remember, so the offer that named the asker is gone). Set around the approver call by the
+# agent loop and /api/tool. Found live: an app's job card said "Aria wants to …".
+ASKER: contextvars.ContextVar = contextvars.ContextVar("approval_asker", default=None)
+
+
+def asker_of(principal) -> dict | None:
+    if principal is None:
+        return None
+    return {"principal_kind": getattr(principal, "kind", ""), "principal_id": getattr(principal, "id", "")}
 
 BODY_CAP = 20_000          # past this the card is not the place to read it
 GOAL_MAX = 200
@@ -82,6 +94,7 @@ GOALS = {
     "set_engine": "Change the machine's brain",
     "launch_native_app": "Open an app on this machine",
     "pool_task": "Hand work to the community",
+    "schedule_app_job": "Run an app's script on a clock, with no model",
     "train_autopilot": "Make a small model from a goal",
     "train_job": "Train a model on this machine",
     "train_datasets": "Get or write training examples",
@@ -174,6 +187,11 @@ def body(name: str, args: dict) -> str:
         who = str(args.get("who") or args.get("_from") or "an agent")
         what = {"run_code": "run Python code (each run is still asked)"}.get(str(args.get("ability") or ""), "")
         return f"{who} asks to {what or args.get('ability')}.\nWhy: {args.get('why') or '(not said)'}"
+    if name == "schedule_app_job":
+        # the script IS what is approved: the yes is a grant for exactly these bytes
+        return (f"Every {args.get('interval_minutes')} minutes, with no model, as the app: run "
+                f"this script and save what it prints under \"{args.get('key')}\" in the app's "
+                f"data.\n\n{args.get('script') or ''}")
     if name == "install_mcp_server":
         # the command that will run, with its version: the name alone says nothing about that
         from . import mcp_store
@@ -264,7 +282,7 @@ def store_who(offer: dict | None, store=None, agent_name: str = "") -> str:
 
 def who_of(offer: dict | None, app_name=None, agent_name: str = "") -> str:
     """Who is asking, as a person says it. `app_name(id)` looks an app's name up."""
-    o = offer or {}
+    o = offer or ASKER.get() or {}
     kind, pid = str(o.get("principal_kind") or ""), str(o.get("principal_id") or "")
     if kind == "app":
         name = ""
@@ -350,6 +368,14 @@ def meaning(name: str, args: dict, who: str, hidden: list[dict]) -> list[str]:
     elif name in ("write_file", "Write", "Edit", "edit_file"):
         path = args.get("path") or args.get("file_path") or "a file"
         lines.append(f"{who} wants to change {path} on this computer.")
+    elif name == "schedule_app_job":
+        lines.append(f"{who} wants to run its own Python script every {args.get('interval_minutes')} "
+                     f"minutes, with no model, to keep its numbers fresh. Each run goes through "
+                     f"your permissions and the ethics check, and shows in Missions → History.")
+        found = does(str(args.get("script") or ""))
+        if found:
+            lines.append("Read from its text, the script " + _join(found) + ". That is a reading, not a check.")
+        lines.append("If the script changes, you're asked again.")
     elif name == "run_python":
         lines.append(f"{who} wants to run Python code on this computer.")
         found = does(str(args.get("code") or ""))

@@ -8,7 +8,7 @@ async function renderTasks(body){
   const items=d.tasks.map(t=>{
     const last=t.last_status?`last run ${st[t.last_status]||t.last_status}${t.last_at?' '+jobAgo(t.last_at):''}`:'has not run yet';
     return `<div class="item task-row" data-f="${esc(t.title||t.prompt)}"><div class="grow">
-      ${t.flow?`<span class="job-hkind">mission</span> `:''}${esc(t.title||t.prompt)}
+      ${t.flow?`<span class="job-hkind">mission</span> `:''}${t.app_job?`<span class="job-hkind" title="Runs the app's own approved script on this clock, with no model">app job · no model</span> `:''}${esc(t.title||t.prompt)}
       ${t.app_name?`<div class="sub task-app">for <b>${esc(t.app_name)}</b> <button class="endbtn" onclick="taskOpenApp('${jsq(t.app_id)}')">Open app</button></div>`
         :t.app_gone?'<div class="sub">for an app that was deleted</div>':''}
       <div class="sub">${esc(t.words||'')} · ${t.enabled?(t.next_run?'next: '+new Date(t.next_run*1000).toLocaleString():'waiting for its event'):'switched off'}</div>
