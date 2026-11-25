@@ -445,6 +445,61 @@ def segment_reads(words: list) -> bool:
         return _git_reads(words)
     spec = _SAFE_FLAGS.get(prog.value)
     return spec is not None and _flags_safe(spec, words)
+# The read-only programs that only look at files (or print their own words). The rest of
+# _SAFE_FLAGS reads the MACHINE (ps, ip, history, env-like output) and is not "a file in
+# your workspace", so a remembered "read-only in the workspace" never covers it.
+FILE_READERS = frozenset({"ls", "cat", "head", "tail", "wc", "grep", "rg", "tree", "du", "stat", "file",
+                          "find", "sort", "uniq", "cut", "jq", "nl", "column", "diff", "md5sum",
+                          "sha256sum", "less", "more", "basename", "dirname", "realpath", "pwd", "echo"})
+
+
+def reads_inside(command: str, root: str, cwd: str = "") -> bool:
+    """Does this command line only READ files, all of them inside `root`, with no hidden
+    file or folder anywhere? Asked for as "ls in the workspace is too heavy to ask every
+    time": an app's yes to it can then be remembered once for that app. Every command in
+    the line must be a file reader in its read-only form (segment_reads), every word that
+    could be a path must resolve inside `root`, and the line runs in `root` (a cwd elsewhere
+    is refused, because a relative path would then read there)."""
+    cmd = (command or "").strip()
+    real_root = os.path.realpath(os.path.expanduser(root or ""))
+    if not cmd or not root or not os.path.isabs(real_root) or real_root == "/":
+        return False
+    if DANGEROUS_META.search(cmd) or BACKGROUND.search(cmd):
+        return False
+    base = os.path.realpath(os.path.expanduser(cwd)) if cwd else real_root
+    if not (base == real_root or base.startswith(real_root + os.sep)):
+        return False
+    segs = shell_parse(cmd)
+    if not segs:
+        return False
+
+    def inside(word: str) -> bool:
+        p = os.path.expanduser(word)
+        if not os.path.isabs(p):
+            p = os.path.join(base, p)
+        real = os.path.realpath(p)
+        rel = os.path.relpath(real, real_root)
+        if rel == ".":
+            return True
+        return not rel.startswith("..") and not any(x.startswith(".") for x in rel.split(os.sep))
+
+    for words in segs:
+        if not words or words[0].value not in FILE_READERS or not segment_reads(words):
+            return False
+        for w in words[1:]:
+            v = w.value
+            if v.startswith("-"):
+                # a flag naming a file (`--file=/etc/x`, `-f/etc/x`) points somewhere: refused
+                if "/" in v or "~" in v:
+                    return False
+                continue
+            if any(x.startswith(".") and x not in (".",) for x in v.split("/") if x):
+                return False          # a hidden name, or `..`
+            if not inside(v):
+                return False
+    return True
+
+
 # Commands never run even with approval.
 BLOCKED_PATTERNS = [
     r"\brm\s+(-[a-zA-Z]*\s+)*/(\s|$)",   # rm on filesystem root

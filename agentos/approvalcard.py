@@ -287,6 +287,9 @@ def _covers(offer: dict | None) -> str:
     res = str((offer or {}).get("resource") or "")
     if res.startswith("tool:run_command "):
         pat = res[len("tool:run_command "):].strip()
+        if pat.startswith("@read-only:"):
+            return ("read-only commands (ls, cat, head, grep and the like) on files in "
+                    f"{pat[len('@read-only:'):]}, never a hidden file")
         if pat.startswith("{") and pat.endswith("}"):
             progs = [p.rstrip("*").strip() for p in pat[1:-1].split(",") if p.strip()]
             return "command lines made only of " + ", ".join(f"`{p}`" for p in progs)
