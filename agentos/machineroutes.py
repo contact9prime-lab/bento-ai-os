@@ -68,7 +68,6 @@ MACHINE_ONLY: tuple[tuple[frozenset, str], ...] = (
     (WRITE, "/api/handoff/switch"),
     (WRITE, "/api/restart"),
     (WRITE, "/api/update/*"),
-    (WRITE, "/api/train/service"),
     # the community is the machine's, and what its notes say reaches every member
     (WRITE, "/api/pool/notes/*"),
     # a snapshot is the machine's config, database and code

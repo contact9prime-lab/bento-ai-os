@@ -1,9 +1,50 @@
 # Changelog
 
+
+## 0.100.1 — 2026-11-25
+
+**The phone's menu bar and dock fit.** With Reduce Motion on, the brain chip ran over the clock and the
+power button (the bar measured 547px on a 390px screen). The bar is measured properly now, is 38px tall
+so its buttons sit inside it, and the chip has no pill round it on a phone. The dock rested with half an
+icon at its edge, and now shows whole icons whatever is open. A phone's window and the setup wizard are
+opaque: the screen behind used to read through them.
+
+## 0.100.0 — 2026-11-25
+
+**Train makes a small language model of your own.** Say what one narrow job it should do ("sort support
+mail into billing, bug or other") and Bento plans it, has a teacher write the examples, fine-tunes a small
+open model on them on this machine, and checks it on examples it never saw. The teacher is this machine's
+brain. Examples can also come from the Hugging Face Hub or a file, and a teacher can answer prompts that
+came without answers. A finished model can be tried, put into Ollama so an agent runs on it, or published.
+It is in the Train app, in `bento train`, and your agent can do it when you ask. docs/training.md.
+
+This is the port of doneitrightai (TrainForge) into Bento. It used to run beside Bento as a separate
+service on its own port, drawn in a frame, which a phone could not open and no permission reached. It was
+also never downloadable: its address was a placeholder. Now each account's datasets and models are in that
+account's own home, starting a training is its own permission (`model.train`), and no agent can put a
+model into Ollama or publish one. The old `trainforge` setting and the `trainforge_service` tool are gone.
+
+**It trains on your devices' readings too.** A hub already keeps what every sensor read and which alarms
+were raised. Datasets → Your devices turns one machine's record into examples: 30 minutes of readings, and
+whether an alarm was on, was coming within 15 minutes, or nothing was wrong. Measured on two days of a
+cold room with 15 alarms: the smallest model found all 3 alarm windows and both "coming" windows it had
+never seen, of 9 held back. `bento train devices`.
+
+The check counts each answer on its own. A model that says "normal" to everything is marked "one answer"
+however many it matched: the first device model scored 16 of 20 that way and had missed every alarm.
+
+Training needs PyTorch, which is not part of Bento: install it from the Train app or with
+`bento train install` (about 1 GB on a Mac, 5 GB or more on Linux). Measured on a 4-core machine with no
+GPU: a 135M model learned a three-way sorting job from 216 written examples in a few minutes.
+
+Not measured yet: adding a model to a real Ollama, publishing to the real Hub, and training on an NVIDIA
+or Apple GPU. The tabular and BERT-style tasks of doneitrightai were not brought over.
+
 ## 0.99.11 — 2026-11-25
 
 - An approval card nobody answered no longer says it was answered. The desktop's card timed out first, and every phone's card was closed with "Answered on another screen". Each card now says how it ended: allowed or denied, and where (on a screen, on Telegram, on WhatsApp); nobody answered within 5 minutes; or stopped. The desktop's copy said "✕ Denied" when a phone allowed, and now says "✓ Allowed on Telegram".
 - The agent is told the same thing. It used to hear "not approved at the current autonomy level" for a no, a timeout and a Stop alike, and told people their autonomy setting had blocked a step nobody had answered.
+
 
 ## 0.99.10 — 2026-11-25
 

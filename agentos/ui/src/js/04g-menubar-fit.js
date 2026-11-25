@@ -65,6 +65,11 @@ function menubarFit(){
   const mb=document.getElementById('menubar');if(!mb)return;
   const set=n=>{for(let i=1;i<=MBFIT.max;i++)mb.classList.toggle('f'+i,i<=n)};
   const over=()=>mb.scrollWidth>mb.clientWidth+1;
+  // Measured with no transitions: a class changed here is read back in the same breath, and
+  // a width still on its way (the brain chip folding to its dot) is the old width. With the
+  // phone's Reduce Motion on, every transition is .01ms rather than none, so each step read
+  // the size before it: a bar 547px wide on a 390px screen was called a fit at f2.
+  mb.classList.add('mbfit');
   let n=0;set(0);
   menubarRail(0);
   // the icons to the edge, then the date, then the two chips, then the steps above
@@ -74,6 +79,7 @@ function menubarFit(){
   if(rail&&over())menubarRail(2);
   while(n<MBFIT.max&&over()){n++;set(n)}
   MBFIT.n=n;
+  mb.classList.remove('mbfit');
   // what this pass moved is not news: drop it, or the observer would run the fit again
   if(MBFIT.obs)MBFIT.obs.takeRecords();
 }

@@ -82,3 +82,31 @@ def test_no_rail_where_native_windows_would_cover_it_or_on_a_phone():
 
 def test_the_fit_drops_its_own_moves_from_the_observer():
     assert "MBFIT.obs.takeRecords()" in FIT
+
+
+def test_the_fit_measures_with_no_transition_running():
+    """With Reduce Motion on, every transition is .01ms rather than none, so a class changed
+    by the fit was read back at its old size: a phone's bar 547px wide on a 390px screen was
+    called a fit at f2, and the brain chip lay over the clock and the power button."""
+    body = FIT.split("function menubarFit(){", 1)[1].split("function menubarFitSoon", 1)[0]
+    assert body.index("classList.add('mbfit')") < body.index("set(0)")
+    assert body.index("classList.remove('mbfit')") > body.index("MBFIT.n=n")
+    assert "#menubar.mbfit *" in CSS and "transition:none!important" in CSS
+
+
+def test_a_phone_dock_is_sized_in_whole_icons():
+    """Snapping keeps one edge of a scrolling row whole. The other showed half an icon, whose
+    centre is outside its own row: the eighth default icon spanned x=364..404 in a row that
+    ended at 374."""
+    dock = (SRC / "js" / "06b-dockfit.js").read_text()
+    assert "Math.floor((avail+gap)/pitch)" in dock
+    assert "dev-mobile" in dock, "only a phone's dock scrolls"
+    assert "ResizeObserver" in dock and "MutationObserver" in dock
+    assert "setInterval" not in dock
+
+
+def test_a_phone_bar_holds_its_own_buttons():
+    """The bar was 34px and its touch buttons 36, so each stood out of it."""
+    resp = (SRC / "css" / "15-responsive.css").read_text()
+    assert "body.dev-mobile{--mbh:38px;" in resp
+    assert "body.dev-touch #omnibar button,body.dev-touch #tray button{min-width:36px;min-height:36px}" in resp

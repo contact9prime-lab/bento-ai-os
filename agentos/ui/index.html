@@ -2582,7 +2582,7 @@ body.dev-tablet .cside{width:150px;min-width:150px}
    dock becomes a fixed bottom bar, the launcher becomes a full screen
    of apps, and every popover becomes a bottom sheet.
    ================================================================ */
-body.dev-mobile{--mbh:34px;--tbh:150px;--fs-2xs:11px;--fs-xs:12px;--fs-sm:13px;
+body.dev-mobile{--mbh:38px;--tbh:150px;--fs-2xs:11px;--fs-xs:12px;--fs-sm:13px;
   /* the bottom chrome a phone always shows: dock (64) + prompt bar (48) + gaps.
      Windows and the deck both reserve it so nothing hides behind the agent. */
   --chrome-b:calc(132px + var(--safe-b));
@@ -2595,6 +2595,11 @@ body.dev-mobile #pager,body.dev-mobile #mbapp{display:none!important}
 body.dev-mobile #tray{gap:6px;padding-left:0}
 body.dev-mobile #tray-voice,body.dev-mobile #tray-power{padding:2px 5px}
 body.dev-mobile #tbclock .dt{display:none}
+/* The bar was 34px and its buttons 36: each stood a pixel out of it top and bottom, and the
+   brain chip's outline crossed the bar's own edge. The bar is 38 now, and on a phone the chip
+   is its dot and its words with no pill round them, like the things beside it. */
+body.dev-mobile #fwdchip,body.immersive.dev-mobile #fwdchip{background:none;border-color:transparent;box-shadow:none;padding:2px 4px}
+body.dev-mobile #fwdchip.nobrain{color:var(--warn,#f5a524)}
 
 /* ---- windows are sheets: full canvas, no chrome to drag or resize ---- */
 body.dev-mobile #desktop{inset:calc(var(--mbh) + var(--safe-t)) 0 0 0}
@@ -2709,6 +2714,9 @@ body.dev-mobile #dock{flex:1;min-width:0;overflow-x:auto;scrollbar-width:none;ju
 body.dev-mobile #dock .dockb,body.dev-mobile #tbwins .tbwin{scroll-snap-align:end}
 body.dev-mobile #dock::-webkit-scrollbar{display:none}
 body.dev-mobile #tbwins{flex:none;max-width:36vw;overflow-x:auto;scrollbar-width:none}
+/* Both rows are given a width that is a whole number of icons (06b-dockfit.js). Snapping kept
+   one edge whole and the other showed half an icon: the eighth default icon spanned x=364..404
+   in a row ending at 374, and with windows open the row ended inside the seventh. */
 body.dev-mobile #tbwins::-webkit-scrollbar{display:none}
 body.dev-mobile #tbnative,body.dev-mobile .dsep{display:none!important}
 /* !important is deliberate, not lazy: every .aicon carries an inline
@@ -4083,6 +4091,12 @@ body.immersive.dev-mobile #omnilist,body.immersive.dev-mobile #omnicards{left:12
    drawer, so it comes back only while the drawer is open */
 body.immersive.dev-mobile .chatwrap.drawer .cside{display:flex!important}
 body.immersive.dev-mobile .win{border-radius:0}
+/* A phone's window is the whole screen, so there is nothing behind it worth showing: the
+   sheet under it (Settings' words through Files) and the dock through the setup wizard read
+   as a broken screen. Opaque, and the blur a phone would pay for is not asked for. */
+body.immersive.dev-mobile .win,body.immersive.dev-mobile .win.active{background:linear-gradient(180deg,var(--bg3),var(--bg));
+  backdrop-filter:none;-webkit-backdrop-filter:none}
+body.immersive.dev-mobile .wiz.ob{background:var(--bg);backdrop-filter:none;-webkit-backdrop-filter:none}
 body.immersive.dev-mobile #taskbar{border-left:none;border-right:none;border-bottom:none}
 /* ================= the Brief ================= */
 .br-app h2.br-hl{margin:2px 0 0;font-size:var(--fs-xl);font-weight:650;letter-spacing:-.01em}
@@ -8003,6 +8017,8 @@ body.dev-touch .vp-only{min-height:var(--tap)}
    space chip over Window and Help at 1366 wide) and a wrapped one changed the band's
    height. The spacer is the only thing that gives; past that, menubarFit hides in order. */
 #menubar>*,#tray>*{flex-shrink:0;white-space:nowrap}
+/* while the fit measures, nothing in the bar is on its way anywhere (04g-menubar-fit.js) */
+#menubar.mbfit,#menubar.mbfit *,#menubar.mbfit *::before,#menubar.mbfit *::after{transition:none!important}
 #menubar>#mb-spacer{flex:1 1 0;min-width:0}
 #menubar #mbmenus{min-width:auto}
 .spchip .spname{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -8133,6 +8149,278 @@ body.mb-rail #ccpop,body.mb-rail #netpop,body.mb-rail #notifpanel,body.mb-rail #
   .usg-qrow > button{grid-column:3;grid-row:1}
   .usg-qrow > label:nth-of-type(1){grid-column:1;grid-row:2}
   .usg-qrow > label:nth-of-type(2){grid-column:2;grid-row:2}
+}
+/* Train (27b-train.js): a small language model of your own.
+   A rail and a pane. What carries the look is three things drawn from the work itself: the
+   hero's one question, the plan as teacher → student → this machine, and a model as two bars
+   (the base model, and yours). Colours are the theme's tokens only. The phone layout is a
+   container query on .trn, because the window, not the screen, is what gets narrow. */
+.trn-g{height:100%;display:grid;grid-template-columns:200px minmax(0,1fr);grid-template-rows:minmax(0,1fr);min-width:0}
+.trn{height:100%;container-type:inline-size;container-name:trn;min-width:0;
+  --trn-soft:color-mix(in srgb,var(--bg2) 72%,transparent);--trn-tint:color-mix(in srgb,var(--acc) 12%,transparent)}
+.trn-ic{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.trn-vh{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.trn .mut{line-height:1.45}
+
+/* ---- the rail ---- */
+.trn-rail{display:flex;flex-direction:column;gap:4px;padding:14px 10px;border-right:1px solid var(--line);min-height:0;background:color-mix(in srgb,var(--bg) 35%,transparent)}
+.trn-tabs{display:flex;flex-direction:column;gap:4px}
+.trn-tabs button{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:var(--r-md);color:var(--dim);font-size:var(--fs-md);font-weight:600;text-align:left;min-height:var(--tap,36px)}
+.trn-tabs button:hover{background:var(--trn-soft);color:var(--txt)}
+.trn-tabs button.on{background:var(--trn-tint);color:var(--txt);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--acc) 35%,transparent)}
+.trn-tabs button.on .trn-ic{color:var(--acc)}
+.trn-tabs button span{flex:1}
+.trn-tabs small{font-size:var(--fs-2xs);color:var(--dim2);background:var(--bg3);border-radius:var(--r-full);padding:1px 7px;font-weight:700}
+.trn-rig{margin-top:auto;display:flex;flex-direction:column;gap:10px;padding:12px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--trn-soft)}
+.trn-rig span{display:block;font-size:var(--fs-2xs);color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;font-weight:700}
+.trn-rig b{display:block;font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.trn-pane{overflow:auto;padding:28px clamp(16px,4cqw,44px) 40px;min-height:0;min-width:0}
+
+
+/* ---- the hero: one question ---- */
+.trn-hero{text-align:center;padding:18px 0 6px}
+.trn-hero h1{font-size:clamp(26px,3.6cqw,40px);line-height:1.1;font-weight:750;letter-spacing:-.02em;margin:0 0 10px;
+  background:linear-gradient(180deg,var(--txt),color-mix(in srgb,var(--txt) 62%,var(--acc)));-webkit-background-clip:text;background-clip:text;color:transparent}
+.trn-hero p{color:var(--dim);font-size:var(--fs-md);max-width:560px;margin:0 auto 22px;line-height:1.5}
+.trn-ask{text-align:left;max-width:760px;margin:0 auto;border-radius:20px;padding:14px;background:var(--bg2);
+  border:1px solid color-mix(in srgb,var(--acc) 38%,var(--line));
+  box-shadow:0 0 0 5px color-mix(in srgb,var(--acc) 9%,transparent),0 18px 50px -24px color-mix(in srgb,var(--acc) 55%,transparent)}
+.trn .trn-ask textarea{border:0;background:transparent;box-shadow:none;outline:0;font-size:17px;line-height:1.45;padding:6px 8px;resize:none;min-height:58px}
+.trn-askrow{display:flex;align-items:center;gap:10px;margin-top:6px}
+.trn-ideas{display:flex;gap:6px;flex-wrap:wrap;flex:1;min-width:0}
+.trn-ideas button{border:1px solid var(--line);border-radius:var(--r-full);padding:5px 12px;font-size:var(--fs-xs);color:var(--dim);min-height:var(--tap,30px);white-space:nowrap}
+.trn-ideas button:hover{color:var(--txt);border-color:color-mix(in srgb,var(--acc) 50%,var(--line))}
+.trn .trn-go{display:inline-flex;align-items:center;gap:8px;padding:10px 18px;border-radius:var(--r-full);font-weight:700;min-height:var(--tap,40px)}
+.trn-go .trn-ic{width:16px;height:16px;stroke-width:2.2}
+
+.trn-how{list-style:none;padding:0;margin:34px auto 0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;counter-reset:how}
+.trn-how li{position:relative;padding:16px;border:1px solid var(--line);border-radius:var(--r-lg,14px);background:var(--trn-soft);display:flex;flex-direction:column;gap:6px;counter-increment:how}
+.trn-how li::after{content:counter(how);position:absolute;top:12px;right:14px;font-size:var(--fs-xs);color:var(--dim2);font-weight:700}
+.trn-how .trn-ic{width:22px;height:22px;color:var(--acc)}
+.trn-how b{font-size:var(--fs-md)}
+.trn-how span{color:var(--dim);font-size:var(--fs-sm);line-height:1.4}
+
+.trn-sec{font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.08em;color:var(--dim2);font-weight:700;margin:30px 0 10px}
+.trn-pane>*{max-width:1040px;margin-left:auto;margin-right:auto}
+.trn-sec.first{margin-top:0}
+.trn-sec .mut{text-transform:none;letter-spacing:0;font-weight:400;margin-left:6px}
+
+/* ---- the plan: teacher → student → this machine ---- */
+.trn-plan{margin-top:22px;border:1px solid var(--line);border-radius:var(--r-lg,16px);background:var(--trn-soft);padding:20px}
+.trn-planhead{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.trn-planhead h2{font-size:var(--fs-lg,17px);margin:0}
+.trn-fields{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:12px}
+.trn-flow{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr) auto minmax(0,1fr);gap:8px;align-items:stretch;margin-top:16px}
+.trn-node{border:1px solid var(--line);border-radius:var(--r-lg,14px);background:var(--bg2);padding:14px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.trn-node>.trn-ic{width:22px;height:22px;color:var(--acc)}
+.trn-node .k{font-size:var(--fs-2xs);text-transform:uppercase;letter-spacing:.07em;color:var(--dim2);font-weight:700}
+.trn-node>b{font-size:var(--fs-md);overflow-wrap:anywhere}
+.trn-link{display:flex;align-items:center;color:var(--dim2)}
+.trn-pick{margin:0}.trn .trn-pick select{font-weight:700;margin:0}
+.trn-end{justify-content:flex-end;margin-top:16px}
+
+/* ---- a run: stages that fill ---- */
+.trn-run{border:1px solid var(--line);border-radius:var(--r-lg,16px);background:var(--trn-soft);padding:18px 20px;margin-bottom:12px}
+.trn-run.trn-running{border-color:color-mix(in srgb,var(--acc) 45%,var(--line))}
+.trn-run header{display:flex;align-items:center;gap:12px}
+.trn-run header .grow{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.trn-run header .grow b{font-size:var(--fs-lg,16px)}
+.trn-run header .grow span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trn-stages{list-style:none;padding:0;margin:18px 0 4px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0}
+.trn-stages li{display:flex;flex-direction:column;gap:2px;padding-right:10px;color:var(--dim2);min-width:0}
+.trn-stages .top{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.trn-stages .ln{flex:1;height:2px;border-radius:2px;background:var(--line)}
+.trn-stages li:last-child .ln{visibility:hidden}
+.trn-stages li.done .ln{background:color-mix(in srgb,var(--acc) 70%,var(--line))}
+.trn-stages .dot{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;border:2px solid var(--line);background:var(--bg2);font-size:var(--fs-xs);font-weight:700;flex:none}
+.trn-stages .dot .trn-ic{width:14px;height:14px;stroke-width:2.6}
+.trn-stages b{font-size:var(--fs-sm)}
+.trn-stages .sub{font-size:var(--fs-xs);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trn-stages .bar{margin-top:6px;max-width:260px}
+.trn-stages li.done{color:var(--dim)}
+.trn-stages li.done .dot{background:var(--acc-grad,var(--acc));border-color:transparent;color:var(--on-acc,#fff)}
+.trn-stages li.done b{color:var(--txt)}
+.trn-stages li.now{color:var(--txt)}
+.trn-stages li.now .dot{border-color:var(--acc);color:var(--acc);box-shadow:0 0 0 4px color-mix(in srgb,var(--acc) 18%,transparent)}
+@media (prefers-reduced-motion:no-preference){
+  .trn-stages li.now .dot{animation:trn-pulse 1.6s ease-in-out 6}
+  @keyframes trn-pulse{50%{box-shadow:0 0 0 8px color-mix(in srgb,var(--acc) 6%,transparent)}}
+}
+.trn-result{display:flex;align-items:center;gap:20px;margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}
+.trn-result .trn-score{flex:1}
+.trn-rside{display:flex;flex-direction:column;align-items:flex-end;gap:10px}
+.trn-said{margin-top:10px}
+.trn-said summary,.trn-tbl summary,.trn-log summary{cursor:pointer;color:var(--dim2);font-size:var(--fs-xs);min-height:var(--tap,28px);display:flex;align-items:center}
+.trn-steps{margin:6px 0 0;padding-left:20px;font-size:var(--fs-sm)}
+.trn-steps li{margin:4px 0;color:var(--dim)}
+.trn-steps li b{color:var(--txt)}
+.trn-steps li span{overflow-wrap:anywhere}
+
+/* ---- before and after ---- */
+.trn-score{display:flex;flex-direction:column;gap:7px;min-width:0}
+.trn-sr{display:grid;grid-template-columns:84px minmax(0,1fr) auto;gap:10px;align-items:center;font-size:var(--fs-sm)}
+.trn-sr>span{color:var(--dim)}
+.trn-sr>b{font-variant-numeric:tabular-nums;min-width:62px;text-align:right}
+.trn-sr small{color:var(--dim2);font-weight:400}
+.trn-sb{height:8px;border-radius:0 4px 4px 0;background:color-mix(in srgb,var(--txt) 7%,transparent);overflow:hidden}
+.trn-sb i{display:block;height:100%;border-radius:0 4px 4px 0;background:color-mix(in srgb,var(--txt) 34%,transparent)}
+.trn-sr.mine>span{color:var(--txt);font-weight:700}
+.trn-sr.mine .trn-sb i{background:var(--acc-grad,var(--acc))}
+.trn-score.big .trn-sb{height:12px}.trn-score.big .trn-sr>b{font-size:var(--fs-lg,17px)}
+.trn-word{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:var(--r-full);border:1px solid var(--line);font-size:var(--fs-xs);font-weight:700;color:var(--txt);white-space:nowrap;flex:none}
+.trn-word i{font-style:normal;font-weight:800}
+.trn-learned{border-color:color-mix(in srgb,var(--ok) 60%,var(--line));background:color-mix(in srgb,var(--ok) 10%,transparent)}.trn-learned i{color:var(--ok)}
+.trn-no-better,.trn-partly,.trn-one-answer{border-color:color-mix(in srgb,var(--warn) 60%,var(--line))}
+.trn-no-better i,.trn-partly i,.trn-one-answer i{color:var(--warn)}
+
+/* ---- shared pieces ---- */
+.trn-card{border:1px solid var(--line);border-radius:var(--r-lg,14px);background:var(--trn-soft);padding:16px 18px;margin-bottom:12px;min-width:0}
+.trn-need{display:flex;align-items:center;gap:12px;padding:12px 16px;margin-bottom:14px;border-radius:var(--r-lg,14px);
+  border:1px solid color-mix(in srgb,var(--warn) 45%,var(--line));background:color-mix(in srgb,var(--warn) 7%,transparent)}
+.trn-need>.trn-ic{color:var(--warn)}
+.trn-need .grow,.trn-row .grow{flex:1;min-width:0}
+.trn-h{font-weight:700;font-size:var(--fs-md);margin:0 0 6px}
+.trn-l{display:block;font-size:var(--fs-xs);color:var(--dim2);margin:8px 0 0;font-weight:600}
+.trn-l input,.trn-l select,.trn-l textarea{display:block;margin-top:5px;width:100%;font-weight:400}
+.trn-inl{display:flex;align-items:center;gap:8px;margin:0}.trn-inl input{width:90px;margin:0}
+.trn textarea,.trn input:not([type=file]):not([type=checkbox]),.trn select{width:100%;min-width:0;box-sizing:border-box;min-height:var(--tap,34px)}
+.trn textarea{resize:vertical;line-height:1.45}
+.trn-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;min-width:0}
+.trn-row:first-child{margin-top:0}
+.trn-row>input,.trn-row>textarea{flex:1 1 180px}
+.trn-row .sp{flex:1}
+.trn .pact,.trn .endbtn{min-height:var(--tap,32px);flex:none}
+.trn .endbtn{padding:5px 12px;font-size:var(--fs-sm)}
+.trn-empty{display:flex;flex-direction:column;align-items:center;gap:10px;padding:46px 10px;color:var(--dim2);font-size:var(--fs-sm);text-align:center}
+.trn-empty .trn-ic{width:34px;height:34px;stroke-width:1.2;opacity:.7}
+.trn-name{font-weight:700;font-size:var(--fs-md);color:var(--txt);text-align:left;overflow-wrap:anywhere}
+.trn-name:hover{color:var(--acc)}
+.trn-prog{display:flex;align-items:center;gap:10px;margin-top:12px}
+.trn-prog .bar{flex:1;min-width:60px}
+.trn-open{margin-top:14px;padding-top:14px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:10px}
+.trn-open>*{margin-top:0}
+
+/* ---- datasets ---- */
+.trn-srcs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.trn-mono .trn-pairs td:first-child{white-space:pre-wrap;font-family:var(--mono,ui-monospace,monospace);font-size:var(--fs-xs)}
+.trn-src{display:flex;flex-direction:column;gap:4px;text-align:left;padding:14px;border:1px solid var(--line);border-radius:var(--r-lg,14px);background:var(--trn-soft);min-height:var(--tap,44px)}
+.trn-src .trn-ic{width:20px;height:20px;color:var(--dim);margin-bottom:4px}
+.trn-src b{font-size:var(--fs-md)}
+.trn-src span{font-size:var(--fs-xs);color:var(--dim2);line-height:1.4}
+.trn-src.on{border-color:color-mix(in srgb,var(--acc) 55%,var(--line));background:var(--trn-tint)}
+.trn-src.on .trn-ic{color:var(--acc)}
+.trn-srcbody{margin-top:10px}
+.trn-hub{display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line);margin-top:12px}
+.trn-hub+.trn-hub{margin-top:0}
+.trn-hub .grow{flex:1;min-width:0}
+.trn-hub .sub{color:var(--dim2);font-size:var(--fs-xs);margin-top:2px;overflow-wrap:anywhere}
+.trn-badge{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;background:var(--trn-tint);color:var(--acc);flex:none}
+.trn .trn-x{padding:5px 10px}
+.trn-tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.trn-t{width:100%;border-collapse:collapse;font-size:var(--fs-sm)}
+.trn-t th,.trn-t td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top;overflow-wrap:anywhere}
+.trn-t th{font-size:var(--fs-2xs);color:var(--dim2);font-weight:700;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}
+.trn-mine{display:flex;gap:6px;align-items:baseline}
+.trn-t td{max-width:420px}
+.trn-t td.was{color:var(--dim2)}
+.trn-hit{display:inline-block;width:1.1em;font-weight:800;color:var(--dim2)}.trn-hit.y{color:var(--ok)}
+
+/* ---- runs ---- */
+.trn-split{display:grid;grid-template-columns:minmax(180px,230px) minmax(0,1fr);gap:22px;align-items:start}
+.trn-list{display:flex;flex-direction:column;gap:6px}
+.trn-li{display:flex;flex-direction:column;gap:2px;text-align:left;border:1px solid var(--line);border-radius:var(--r-md);padding:9px 11px;min-height:var(--tap,40px);min-width:0;background:var(--trn-soft)}
+.trn-li b,.trn-li>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.trn-li.on{border-color:color-mix(in srgb,var(--acc) 55%,var(--line));background:var(--trn-tint)}
+.trn-mk{display:inline-block;width:1.2em;color:var(--dim2)}
+.trn-live{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--acc)}
+.trn-detail{min-width:0}
+.trn-jt{font-size:var(--fs-xl,20px);margin:0 0 2px}
+.trn-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:16px 0}
+.trn-tile{border:1px solid var(--line);border-radius:var(--r-md);background:var(--trn-soft);padding:12px 14px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.trn-tile span{font-size:var(--fs-2xs);text-transform:uppercase;letter-spacing:.06em;color:var(--dim2);font-weight:700}
+.trn-tile b{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.15}
+.trn-tile small{font-size:var(--fs-xs);color:var(--dim2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trn-detail .trn-result{border:1px solid var(--line);border-radius:var(--r-md);padding:14px 16px;margin:0 0 8px;background:var(--trn-soft)}
+.trn-fig{margin:22px 0 6px}
+.trn-fig figcaption{font-size:var(--fs-sm);font-weight:700;margin-bottom:6px}
+.trn-fig figcaption .mut{font-weight:400;display:block;margin-top:2px}
+.trn-chart{position:relative;max-width:680px}
+.trn-chart svg{width:100%;height:auto;display:block;touch-action:pan-y;outline-offset:3px}
+.trn-chart .ax{stroke:var(--line);stroke-width:1}
+.trn-chart .gr{stroke:var(--line);stroke-width:1;stroke-dasharray:2 4;opacity:.7}
+.trn-chart .tk{fill:var(--dim2);font-size:10px}
+.trn-chart .lb{fill:var(--txt);font-size:11px;font-weight:700}
+.trn-chart .ln{fill:none;stroke:var(--acc);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.trn-chart .dot,.trn-chart .hov{fill:var(--acc);stroke:var(--bg2);stroke-width:2}
+.trn-chart .cross{stroke:var(--dim2);stroke-width:1}
+.trn-tip{position:absolute;pointer-events:none;background:var(--bg4);border:1px solid var(--line);border-radius:var(--r-sm);padding:3px 8px;font-size:var(--fs-xs);color:var(--txt);white-space:nowrap;font-variant-numeric:tabular-nums}
+.trn-log pre{max-height:260px;overflow:auto;font-size:var(--fs-xs);background:var(--bg);border:1px solid var(--line);border-radius:var(--r-sm);padding:10px;white-space:pre-wrap;overflow-wrap:anywhere}
+
+/* ---- models ---- */
+.trn-mgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;align-items:start}
+.trn-model{margin:0;display:flex;flex-direction:column;gap:12px}
+.trn-model.open{grid-column:1/-1}
+.trn-model header{display:flex;align-items:flex-start;gap:10px}
+.trn-model header .grow{flex:1;min-width:0}
+.trn-model .trn-name{font-size:var(--fs-lg,17px)}
+.trn-where{display:flex;align-items:center;gap:6px;font-size:var(--fs-sm);color:var(--dim)}
+.trn-where .trn-ic{width:14px;height:14px;color:var(--ok);stroke-width:2.4}
+.trn .trn-openbtn{align-self:flex-start}
+.trn-sys{font-size:var(--fs-sm);border-left:2px solid color-mix(in srgb,var(--acc) 60%,var(--line));padding:2px 0 2px 12px;overflow-wrap:anywhere}
+.trn-sys span{display:block;font-size:var(--fs-2xs);text-transform:uppercase;letter-spacing:.06em;color:var(--dim2);font-weight:700}
+.trn-try{display:flex;gap:8px;align-items:flex-end;border:1px solid var(--line);border-radius:var(--r-lg,14px);background:var(--bg2);padding:8px}
+.trn .trn-try textarea{border:0;background:transparent;box-shadow:none;outline:0;resize:none;flex:1}
+.trn-ans{padding:12px 14px;border-radius:var(--r-lg,14px);background:var(--trn-tint);border:1px solid color-mix(in srgb,var(--acc) 30%,var(--line))}
+.trn-ans>div:nth-child(2){margin:4px 0;font-size:var(--fs-lg,17px);font-weight:600;white-space:pre-wrap;overflow-wrap:anywhere}
+.trn-token{margin-top:24px}
+
+/* ---- narrow: the rail becomes a row, grids become one column ---- */
+@container trn (max-width:820px){
+  .trn-flow{grid-template-columns:minmax(0,1fr)}
+  .trn-link{justify-content:center}.trn-link .trn-ic{transform:rotate(90deg)}
+  .trn-how{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .trn-srcs{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .trn-split{grid-template-columns:minmax(0,1fr)}
+  .trn-list{flex-direction:row;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:4px}
+  .trn-li{flex:0 0 72%;scroll-snap-align:start}
+  .trn-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@container trn (max-width:600px){
+  /* .trn is the container and can't be restyled by its own query, so the grid is one level in */
+  .trn-g{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}
+  .trn-rail{border-right:0;border-bottom:1px solid var(--line);padding:6px 8px}
+  /* four places fit a phone as a tab bar: the icon over the word, a quarter each */
+  .trn-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;width:100%}
+  .trn-tabs button{flex-direction:column;gap:3px;padding:6px 2px;min-height:var(--tap,44px);font-size:var(--fs-xs);position:relative;justify-content:center}
+  .trn-tabs button span{flex:none}
+  .trn-tabs small{position:absolute;top:3px;right:14%;padding:0 5px}
+  .trn-rig{display:none}
+  .trn-pane{padding:16px 12px 28px}
+  .trn-hero{padding-top:6px}
+  .trn-askrow{flex-direction:column;align-items:stretch}
+  .trn-ideas{flex-wrap:nowrap;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:2px}
+  /* flex:none, or four chips shrink into each other and their words overlap (seen at 390px) */
+  .trn-ideas button{flex:none;scroll-snap-align:start;min-height:var(--tap,40px)}
+  .trn .trn-go{justify-content:center}
+  .trn-fields,.trn-srcs,.trn-how{grid-template-columns:minmax(0,1fr)}
+  .trn-plan,.trn-run{padding:14px}
+  .trn-stages{grid-template-columns:minmax(0,1fr);gap:12px}
+  .trn-stages li{display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:10px;align-items:center}
+  .trn-stages .top{grid-row:1/3;margin:0}.trn-stages .ln{display:none}
+  .trn-stages .sub,.trn-stages .bar{grid-column:2}
+  .trn-result{flex-direction:column;align-items:stretch}
+  .trn-rside{flex-direction:row;align-items:center;justify-content:space-between}
+  .trn-sr{grid-template-columns:76px minmax(0,1fr) auto}
+  .trn-mgrid{grid-template-columns:minmax(0,1fr)}
+  .trn .pact,.trn .endbtn,.trn-name{min-height:var(--tap,40px)}
+  .trn-run header{flex-wrap:wrap}
+  .trn-try{flex-direction:column;align-items:stretch}
+  /* columns can't fit a phone: each row becomes a card with its labels */
+  .trn-ex thead,.trn-pairs thead{display:none}
+  .trn-ex tr,.trn-pairs tr{display:block;border:1px solid var(--line);border-radius:var(--r-sm);margin-bottom:8px;padding:4px 0}
+  .trn-ex td,.trn-pairs td{display:block;border:0;padding:3px 10px;max-width:none}
+  .trn-ex td::before,.trn-pairs td::before{content:attr(data-l);display:block;font-size:var(--fs-2xs);color:var(--dim2);text-transform:uppercase;letter-spacing:.05em}
 }
 </style>
 </head>
@@ -17047,6 +17335,11 @@ function menubarFit(){
   const mb=document.getElementById('menubar');if(!mb)return;
   const set=n=>{for(let i=1;i<=MBFIT.max;i++)mb.classList.toggle('f'+i,i<=n)};
   const over=()=>mb.scrollWidth>mb.clientWidth+1;
+  // Measured with no transitions: a class changed here is read back in the same breath, and
+  // a width still on its way (the brain chip folding to its dot) is the old width. With the
+  // phone's Reduce Motion on, every transition is .01ms rather than none, so each step read
+  // the size before it: a bar 547px wide on a 390px screen was called a fit at f2.
+  mb.classList.add('mbfit');
   let n=0;set(0);
   menubarRail(0);
   // the icons to the edge, then the date, then the two chips, then the steps above
@@ -17056,6 +17349,7 @@ function menubarFit(){
   if(rail&&over())menubarRail(2);
   while(n<MBFIT.max&&over()){n++;set(n)}
   MBFIT.n=n;
+  mb.classList.remove('mbfit');
   // what this pass moved is not news: drop it, or the observer would run the fit again
   if(MBFIT.obs)MBFIT.obs.takeRecords();
 }
@@ -17143,8 +17437,7 @@ const APPS={
   personalize:{id:'personalize',title:'Personalize',icon:'',w:620,h:560,desc:'AI wallpapers & gallery',render:renderPersonalize},
   snapshots:{id:'snapshots',title:'Snapshots',icon:'',w:560,h:500,desc:'Restore points — roll the OS back in time',render:renderSnapshots},
   tokens:{id:'tokens',title:'Token Analytics',icon:'',w:640,h:600,desc:'Tokens and money by LLM and account, and daily quotas',render:renderTokens},
-  train:{id:'train',title:'Train',icon:'',w:1100,h:700,desc:'Fine-tune & evaluate your own models (TrainForge)',
-    render:renderTrain,onClose(w){if(w._onSetup)TRAIN_SETUP_LISTENERS.delete(w._onSetup);return true}},
+  train:{id:'train',title:'Train',icon:'',w:1100,h:720,desc:'Make a small language model of your own: examples, a fine-tune, a check',render:renderTrain},
   mission:{id:'mission',title:'Mission Control',icon:'◎',w:860,h:600,desc:'The whole lifecycle: Train · Test · Operate · Build · Ship · Manage',
     render:renderMission},
   evals:{id:'evals',title:'Evals',icon:'🧪',w:820,h:620,desc:'Behavioural evals — does the agent still behave after a change?',
@@ -17206,7 +17499,7 @@ const APP_CTX={
   personalize:()=>'AI wallpaper generation + gallery',
   snapshots:()=>'OS restore points',
   tokens:()=>'token usage analytics',
-  train:()=>'TrainForge — fine-tuning datasets, jobs, models',
+  train:()=>'Train: datasets, fine-tuning runs and the small models trained on this machine',
   mission:()=>'Mission Control: the Train/Test/Operate/Build/Ship/Manage lifecycle dashboard',
   evals:()=>'Evals: behavioural test cases for the agent itself (memory, tool choice, injection resistance, honesty)',
   settings:()=>'core settings: providers, API keys, autonomy, voice',
@@ -18661,6 +18954,56 @@ function deckMoveTile(id,dir){
   g.apps.splice(i,1);g.apps.splice(j,0,id);
   deckSave();buildDeck();
 }
+/* ================= the phone dock shows whole icons =================
+   Reported as "the dock and bar, there are issues in ui", and before that as "the bar below
+   looks broken". On a phone the dock is a row that scrolls, and a row that scrolls rested with
+   half an icon at its edge: scroll-snap keeps ONE edge whole, and the row's width was whatever
+   the screen left over (318px for 44px icons, so 7.2 of them). Half an icon is a tap target
+   whose centre is outside its own row.
+
+   So the two rows are sized here, in whole icons: the running apps that are not pinned get up
+   to a third of the bar, the pinned ones the rest. Measured from the bar as it is, on resize
+   and whenever an icon comes or goes. Only on a phone: everywhere else the dock is as wide as
+   its icons and nothing is set.
+
+   GUI: this. TUI: not applicable, a terminal has no dock. SUI: the dock there is never a
+   phone's (the session owns a real screen), so nothing is set. */
+var DOCKFIT={raf:0,obs:null};
+function dockFit(){
+  DOCKFIT.raf=0;
+  const tb=document.getElementById('taskbar'),dock=document.getElementById('dock'),wins=document.getElementById('tbwins');
+  if(!tb||!dock)return;
+  [dock,wins].forEach(e=>{if(e){e.style.flex='';e.style.width='';e.style.maxWidth=''}});
+  if(!document.body.classList.contains('dev-mobile')){if(DOCKFIT.obs)DOCKFIT.obs.takeRecords();return}
+  const shown=el=>[...el.children].filter(c=>c.offsetWidth>0);
+  const whole=(el,avail)=>{
+    const k=shown(el);if(!k.length)return 0;
+    const gap=parseFloat(getComputedStyle(el).columnGap)||0,pitch=k[0].offsetWidth+gap;
+    return Math.max(1,Math.min(k.length,Math.floor((avail+gap)/pitch)))*pitch-gap;
+  };
+  const cs=getComputedStyle(tb),gap=parseFloat(cs.columnGap)||0;
+  const inner=tb.clientWidth-(parseFloat(cs.paddingLeft)||0)-(parseFloat(cs.paddingRight)||0);
+  let avail=inner-[...tb.children].filter(c=>c!==dock&&c!==wins&&c.offsetWidth>0).reduce((s,c)=>s+c.offsetWidth+gap,0);
+  if(wins&&shown(wins).length){
+    const w=whole(wins,inner*.36);
+    wins.style.flex='none';wins.style.maxWidth='none';wins.style.width=w+'px';
+    avail-=w+gap;
+  }
+  dock.style.flex='none';dock.style.width=whole(dock,avail)+'px';
+  // what this pass set is not news
+  if(DOCKFIT.obs)DOCKFIT.obs.takeRecords();
+}
+function dockFitSoon(){if(!DOCKFIT.raf)DOCKFIT.raf=requestAnimationFrame(dockFit)}
+(function(){
+  const tb=document.getElementById('taskbar');if(!tb)return;
+  try{new ResizeObserver(dockFitSoon).observe(tb)}catch(e){addEventListener('resize',dockFitSoon)}
+  // icons come and go, and a running app's tile hides when its app is pinned (class indock)
+  try{DOCKFIT.obs=new MutationObserver(dockFitSoon);
+    DOCKFIT.obs.observe(tb,{childList:true,subtree:true,attributes:true,attributeFilter:['class','hidden']})}catch(e){}
+  // the body learns it is a phone after the first paint
+  try{new MutationObserver(dockFitSoon).observe(document.body,{attributes:true,attributeFilter:['class']})}catch(e){}
+  dockFitSoon();
+})();
 /* ================= desktop widgets =================
    Every app has two surfaces: the desktop window (the whole application) and a
    widget (the one glanceable fact). The widget's size is a property of the APP —
@@ -20347,7 +20690,7 @@ function handle(ev){
     // the same runner
     case 'automation.run': onAutomationBroadcast(ev); break;
     case 'theme_apply':{const t=ev.theme;if(t){if(t.name)CUSTOM_THEMES[t.name]=t;applyThemeObj(t);if(t.name){CURRENT_THEME=t.name;localStorage.setItem('theme',t.name)}toast('theme applied: '+(t.name||''));refreshApp('themes')} break;}
-    case 'train_setup': TRAIN_SETUP_LISTENERS.forEach(fn=>{try{fn(ev)}catch(e){}}); break;
+    case 'train': if(typeof trainPulse==='function')trainPulse(ev); break;
     case 'eval_result': case 'evals_done':
       EVAL_LISTENERS.forEach(fn=>{try{fn(ev)}catch(e){}}); break;
     case 'files': refreshApp('files'); break;
@@ -50081,7 +50424,8 @@ async function renderMission(body,w){
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px">
       ${lane('🧬 Train','train',[
-        ['service',t.service||'—',t.service!=='running'],
+        ['training',t.service||'—',t.service==='not installed'],
+        ['datasets',t.datasets??0],
         ['jobs running',t.jobs_running??0],
         ['trained models',t.models??0]])}
       ${lane('🧪 Test','evals',[
@@ -50114,57 +50458,6 @@ async function renderMission(body,w){
   await paint();
   winTick(w,paint,6000,{now:false,key:'poll'});
 }
-
-/* ================= train app (TrainForge) ================= */
-const TRAIN_SETUP_LISTENERS=new Set();
-async function renderTrain(body,w){
-  stopWinTicks(w);
-  body.style.cssText='display:flex;flex-direction:column;height:100%;padding:0';
-  body.innerHTML='<div class="mut" style="padding:24px">checking the training service…</div>';
-  const paint=async()=>{
-    let st={running:false};
-    try{st=await (await fetch('/api/train/status')).json()}catch(e){}
-    if(st.running){
-      if(!body.querySelector('iframe')){
-        body.innerHTML=`<iframe src="${esc(st.url||'http://127.0.0.1:8377')}" style="border:0;width:100%;height:100%;flex:1" title="TrainForge"></iframe>`;
-        stopTick(w._tick);   // the iframe is the UI now — stop polling for good
-      }
-      return;
-    }
-    if(body.querySelector('iframe'))return; // don't tear down a live UI on a blip
-    const busy=st.setup==='fetching'||st.setup==='installing';
-    const notHere=!st.path;
-    const canGet=st.path||st.fetchable;   // on disk, or a repo URL is configured
-    const btnLabel=busy?(st.setup==='fetching'?'downloading…':'installing…'):(notHere?'Get & start TrainForge':'Start TrainForge');
-    body.innerHTML=`
-      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:14px;padding:30px;text-align:center">
-        <div style="font-size:40px">🧬</div>
-        <div style="font-size:17px;font-weight:600">Train your own models</div>
-        <div class="mut" style="max-width:460px">TrainForge is AgentOS's training service: import datasets, fine-tune models
-        (including LoRA fine-tunes of language models on your GPU), watch live loss curves, test every trained model as a
-        live endpoint, and publish to Hugging Face. Everything stays on this machine.</div>
-        ${notHere&&!st.fetchable?'<div class="errmsg">TrainForge isn\'t installed and no download URL is set — add <code>trainforge.repo</code> (or <code>trainforge.path</code>) in config.json.</div>':''}
-        ${notHere&&st.fetchable?'<div class="mut" style="font-size:12px">Not installed yet — the button below downloads and sets it up (one-time, a few minutes; the GPU stack is a few GB).</div>':''}
-        <button class="pact" id="tf-start" ${(canGet&&!busy)?'':'disabled'}>${btnLabel}</button>
-        <div class="mut" style="font-size:11px">or just ask the agent: “fine-tune a model on …” — it fetches &amp; starts the service itself</div>
-        <div id="tf-msg" class="mut" style="max-width:480px">${esc(busy?'setting up…':'')}</div>
-      </div>`;
-    const b=$('#tf-start');
-    if(b&&!busy)b.onclick=async()=>{
-      b.disabled=true;b.textContent=notHere?'downloading…':'starting…';
-      fetch('/api/train/service',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'start'})})
-        .then(r=>r.json()).then(r=>{const el=$('#tf-msg');if(el)el.textContent=r.result||''})
-        .catch(e=>{const el=$('#tf-msg');if(el)el.textContent=''+e});
-      // start returns only when up (or on error) — the poller flips us to the iframe
-    };
-  };
-  // live setup progress from the server (download / install messages)
-  w._onSetup=ev=>{if(ev.type==='train_setup'){const el=$('#tf-msg');if(el)el.textContent=ev.message||''}};
-  TRAIN_SETUP_LISTENERS.add(w._onSetup);
-  await paint();
-  w._tick=winTick(w,paint,4000,{now:false,key:'poll'});
-}
-
 
 /* ================= evals app (behavioural tests for the agent) ================= */
 /* The GUI face of `agentos eval`. Mission Control's Test lane links here.
@@ -50249,6 +50542,531 @@ async function renderEvals(body,w){
     else if(ev.type==='evals_done'){load().then(d=>{data=d;paint()})}
   };
   EVAL_LISTENERS.add(w._onEval);
+}
+/* ================= Train: a small language model of your own =================
+   The page of agentos/slm.py. One answer (/api/train) drawn as four places: Make (say the
+   job, see the plan, watch it go through Examples, Training and the Check), Datasets (the
+   Hub, a teacher, a file), Runs (a fine-tune as it happens) and Models (what the held-back
+   examples say, try it, put it in Ollama, publish it).
+
+   It used to be an iframe onto another server on a loopback port, which a phone or any
+   remote browser could not reach at all. Then it was a form in boxes, and the owner's word
+   for that was "really bad". What it shows now is the thing itself: a teacher, a student
+   and this machine, a line of stages that fills as the work is done, and a model as a
+   scoreboard of before and after.
+
+   GUI: this. TUI: `bento train` (the same files, with the server down). SUI: this page,
+   no native process, nothing touching the compositor.
+
+   Everything a dataset, a teacher or a model said is somebody else's words: every one of
+   them goes through esc() on the way to the page. State is `var`: 09-websocket.js calls
+   trainPulse() and loads first. */
+var TRAIN={tab:'make',d:null,plan:null,goal:'',hub:[],hubQ:'',ds:null,job:null,jobd:null,model:null,busy:'',tried:null,logOff:0,logText:'',src:'teacher'};
+
+/* drawn here, nothing copied: 24x24, stroke only */
+var TRN_IC={
+  make:'<path d="M12 3l1.8 4.9L19 9.5l-4.1 2.9L16 18l-4-3-4 3 1.1-5.6L5 9.5l5.2-1.6z"/>',
+  data:'<ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/>',
+  runs:'<path d="M3 17l5-6 4 3 4-7 5 5"/><path d="M3 21h18"/>',
+  models:'<path d="M12 2l8 4.5v9L12 20l-8-4.500v-9z"/><path d="M4 6.500l8 4.500 8-4.500M12 11v9"/>',
+  teacher:'<path d="M3 9l9-5 9 5-9 5z"/><path d="M7 11.500V16c0 1.400 2.200 2.500 5 2.500s5-1.100 5-2.500v-4.500"/><path d="M21 9v5"/>',
+  student:'<circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/>',
+  chip:'<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>',
+  hub:'<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/>',
+  file:'<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>',
+  check:'<path d="M5 12.500l4.500 4.500L19 7.500"/>',
+  arrow:'<path d="M5 12h14M13 6l6 6-6 6"/>',
+  play:'<path d="M7 5l12 7-12 7z"/>'};
+function trnIc(n,cls){return `<svg class="trn-ic ${cls||''}" viewBox="0 0 24 24" aria-hidden="true">${TRN_IC[n]||''}</svg>`}
+
+function trainWin(){return (typeof winsOf==='function'?winsOf('train'):[])[0]}
+function trainBody(){const w=trainWin();return w&&w.el.querySelector('.wbody')}
+function trainPulse(ev){               /* the server says something of mine changed */
+  if(!trainBody())return;
+  clearTimeout(TRAIN._t);TRAIN._t=setTimeout(trainLoad,250);
+}
+async function trainApi(path,method,body,raw){
+  const o={method:method||'GET'};
+  if(raw){o.body=raw}else if(body!==undefined){o.headers={'Content-Type':'application/json'};o.body=JSON.stringify(body)}
+  return apiJSON(path,o);
+}
+async function trainDo(label,fn){      /* one action at a time, and a failure is a sentence */
+  if(TRAIN.busy)return;
+  TRAIN.busy=label;trainPaint();
+  try{await fn()}catch(e){toast(e.message||String(e),{kind:'err'})}
+  TRAIN.busy='';await trainLoad();
+}
+function trainAgo(t){
+  if(!t)return '';
+  const s=Math.max(0,Date.now()/1000-t);
+  return s<90?'just now':s<3600?Math.round(s/60)+' min ago':s<86400?Math.round(s/3600)+' h ago':Math.round(s/86400)+' d ago';
+}
+function trainMB(b){return b>=2**30?(b/2**30).toFixed(1)+' GB':Math.round((b||0)/2**20)+' MB'}
+function trainShort(id){return String(id||'').split('/').pop()}
+function trainHw(d){const hw=d.hardware||{};
+  return d.ready?(hw.device==='cuda'?(hw.name||'NVIDIA GPU'):hw.device==='mps'?'Apple GPU':'Processor only'):'Not installed'}
+function trainWord(v){                  /* never colour alone: an icon and the word */
+  const w=(v&&v.word)||'unchecked';
+  const ic=w==='learned'?'✓':w==='no better'?'=':w==='partly'?'~':w==='one answer'?'1':'?';
+  return `<span class="trn-word trn-${w.replace(' ','-')}"><i>${ic}</i>${esc(w)}</span>`;
+}
+/* Before and after, as two bars on one scale with the counts written out. The same measure
+   for both, so one axis; the base model is the quiet bar and yours is the accent. */
+function trainScore(ev,big){
+  const n=(ev&&ev.n)|0;if(!n)return '<div class="mut">Nothing was held back, so there is no check.</div>';
+  const b=ev.exact_before|0,a=ev.exact_after|0,w=x=>Math.max(2,Math.round(100*x/n));
+  return `<div class="trn-score${big?' big':''}" role="img" aria-label="On ${n} held-back examples the base model matched ${b} and yours matches ${a}">
+    <div class="trn-sr"><span>Base model</span><div class="trn-sb"><i style="width:${w(b)}%"></i></div><b>${b}<small> of ${n}</small></b></div>
+    <div class="trn-sr mine"><span>Yours</span><div class="trn-sb"><i style="width:${w(a)}%"></i></div><b>${a}<small> of ${n}</small></b></div>
+  </div>`;
+}
+
+async function renderTrain(body,w){
+  stopWinTicks(w);
+  body.style.cssText='padding:0;height:100%';
+  body.innerHTML='<div class="trn"><div class="mut" style="padding:24px">loading…</div></div>';
+  await trainLoad();
+  /* poll only while something is at work; the socket's `train` event covers the rest */
+  winTick(w,()=>{const d=TRAIN.d;if(!d)return;
+    const live=d.running||(d.datasets_list||[]).some(x=>x.state!=='ready')||(d.runs_list||[]).some(x=>x.state==='running');
+    if(live)trainLoad()},3000,{now:false,key:'poll'});
+}
+async function trainLoad(){
+  const body=trainBody();if(!body)return;
+  try{TRAIN.d=await trainApi('/api/train')}
+  catch(e){body.innerHTML=`<div class="trn"><div class="errmsg" style="margin:16px">${esc(e.message)}</div></div>`;return}
+  if(TRAIN.tab==='runs')await trainJobLoad();
+  trainPaint();
+}
+async function trainTab(t){TRAIN.tab=t;trainPaint();if(t==='runs'){await trainJobLoad();trainPaint()}}
+
+function trainPaint(){
+  const body=trainBody(),d=TRAIN.d;if(!body||!d)return;
+  /* keep what is being typed: a repaint must not eat a half-written goal */
+  const keep={};body.querySelectorAll('[data-keep]').forEach(el=>{keep[el.id]={v:el.value,f:document.activeElement===el,s:el.selectionStart}});
+  const sc=(body.querySelector('.trn-pane')||{}).scrollTop||0;
+  const tabs=[['make','Make','make'],['datasets','Datasets','data',d.datasets],['runs','Runs','runs',d.jobs],['models','Models','models',d.models]];
+  body.querySelector('.trn').innerHTML=`<div class="trn-g">
+    <nav class="trn-rail" aria-label="Train">
+      <div class="trn-tabs">${tabs.map(([id,l,ic,n])=>`<button class="${TRAIN.tab===id?'on':''}" ${TRAIN.tab===id?'aria-current="page"':''} onclick="trainTab('${jsq(id)}')">${trnIc(ic)}<span>${l}</span>${n?`<small>${n}</small>`:''}</button>`).join('')}</div>
+      <div class="trn-rig" title="${esc((d.hardware||{}).words||'')}">
+        <div><span>Teacher</span><b>${esc(d.teacher||'none yet')}</b></div>
+        <div><span>This machine</span><b>${esc(trainHw(d))}</b></div>
+      </div>
+    </nav>
+    <div class="trn-pane">${trainSetup(d)}${({make:trainMake,datasets:trainDatasets,runs:trainRuns,models:trainModels})[TRAIN.tab](d)}</div></div>`;
+  for(const id in keep){const el=body.querySelector('#'+id);if(el){el.value=keep[id].v;if(keep[id].f){el.focus();try{el.setSelectionRange(keep[id].s,keep[id].s)}catch(e){}}}}
+  const pane=body.querySelector('.trn-pane');if(pane)pane.scrollTop=sc;
+  if(TRAIN.tab==='runs')trainCurveWire();
+}
+
+/* ---- what is missing, said once at the top ---- */
+function trainSetup(d){
+  let h='';
+  if(!d.ready)h+=`<div class="trn-need">${trnIc('chip')}<div class="grow"><b>Training isn't installed yet</b>
+    <div class="mut">PyTorch and the Hugging Face libraries go in a folder of their own. You can collect examples before that.${pInfo('About 1 GB on a Mac and 5 GB or more on Linux, where PyTorch brings NVIDIA\'s libraries. Nothing is added to Bento itself.')}</div></div>
+    <button class="pact" onclick="trainInstall()">Install…</button></div>`;
+  if(d.teacher_missing)h+=`<div class="trn-need">${trnIc('teacher')}<div class="grow"><b>No teacher yet</b>
+    <div class="mut">${esc(d.teacher_missing)}</div></div>
+    <button class="endbtn" onclick="openApp('settings');setTimeout(()=>typeof settingsGo==='function'&&settingsGo('ai'),200)">AI providers</button></div>`;
+  if(d.busy&&d.busy.name&&!d.running)h+=`<div class="trn-need">${trnIc('chip')}<div class="grow mut">Another account is training on this machine (${esc(d.busy.name)}). Yours can start when it ends.</div></div>`;
+  return h;
+}
+async function trainInstall(){await installComponent('train-stack');trainLoad()}
+
+/* ---- Make: say the job, see the plan, watch it go ---- */
+var TRN_IDEAS=[['Sort support mail','Sort support mail into billing, bug or other. Answer with one word.'],
+  ['Tag notes by urgency','Read a note from the warehouse floor and answer urgent or routine.'],
+  ['Pull fields from invoices','From an invoice email, give the supplier, the amount and the due date as JSON.'],
+  ['Spot a question','Say yes if the message asks me a question I have to answer, otherwise no.']];
+function trainIdea(i){const el=$('#trn-goal');if(el){el.value=TRN_IDEAS[i][1];el.focus()}}
+function trainMake(d){
+  const p=TRAIN.plan,runs=d.runs_list||[],live=runs.find(r=>r.state==='running');
+  let h=`<section class="trn-hero">
+    <h1>Teach a small model one job.</h1>
+    <p>A teacher writes the examples, a small model learns them on this machine, and examples it never saw check the result.</p>
+    <div class="trn-ask">
+      <label class="trn-vh" for="trn-goal">What should the small model do?</label>
+      <textarea id="trn-goal" data-keep rows="2" placeholder="What should the small model do?">${esc(TRAIN.goal)}</textarea>
+      <div class="trn-askrow">
+        <div class="trn-ideas">${TRN_IDEAS.map((x,i)=>`<button onclick="trainIdea(${i})">${esc(x[0])}</button>`).join('')}</div>
+        <button class="pact trn-go" ${TRAIN.busy?'disabled':''} onclick="trainPlan()">${TRAIN.busy==='plan'?'Planning…':'Plan it'}${trnIc('arrow')}</button>
+      </div>
+    </div>
+  </section>`;
+  if(p)h+=trainPlanHTML(p,d);
+  else if(!runs.length)h+=`<ol class="trn-how">
+      <li>${trnIc('teacher')}<b>Examples</b><span>${esc(d.teacher||'Your machine\'s brain')} writes them, or bring a dataset.</span></li>
+      <li>${trnIc('chip')}<b>Training</b><span>A small open model is fine-tuned here. Nothing leaves.</span></li>
+      <li>${trnIc('check')}<b>The check</b><span>Examples it never saw, before and after.</span></li>
+      <li>${trnIc('models')}<b>Use it</b><span>Try it, or put it in Ollama for an agent.</span></li></ol>`;
+  if(runs.length)h+=`<h2 class="trn-sec">${live?'Under way':'Made from a goal'}</h2>`+runs.map(r=>trainRunHTML(r,d)).join('');
+  return h;
+}
+function trainPlanHTML(p,d){
+  const bases=(d.bases||[]),cur=bases.find(b=>b.id===p.base)||{id:p.base,params:'',licence:'',note:''};
+  const opts=bases.map(b=>`<option value="${esc(b.id)}" ${b.id===p.base?'selected':''}>${esc(trainShort(b.id))} · ${esc(b.params)}</option>`).join('');
+  const calls=p.source==='synthetic'?Math.ceil((p.examples||0)/((d.limits||{}).batch||10)):0;
+  const hw=d.hardware||{};
+  return `<section class="trn-plan">
+    <div class="trn-planhead"><h2>The plan</h2><span class="mut">${esc(p.how||'')}. Change anything before it starts.</span></div>
+    <div class="trn-fields">
+      <label class="trn-l">Name<input id="trn-p-name" data-keep value="${esc(p.name)}"></label>
+      <label class="trn-l trn-wide">The instruction it works under<textarea id="trn-p-task" data-keep rows="2">${esc(p.task)}</textarea></label>
+    </div>
+    <div class="trn-flow">
+      <div class="trn-node">${trnIc('teacher')}<span class="k">Teacher</span><b>${esc(p.teacher||'none yet')}</b>
+        <label class="trn-l">Examples to write<input id="trn-p-n" data-keep type="number" min="20" max="1000" value="${p.examples|0}"></label>
+        <span class="mut trn-cost">${p.source==='hub'?`From the Hugging Face Hub (search: ${esc(p.hub_query)}). The teacher answers any without an answer.`
+          :`It writes them in about ${calls} calls, counted in Usage.`}</span></div>
+      <div class="trn-link">${trnIc('arrow')}</div>
+      <div class="trn-node">${trnIc('student')}<span class="k">Student</span>
+        <label class="trn-l trn-pick"><span class="trn-vh">Student</span><select id="trn-p-base" data-keep>${opts}</select></label>
+        <span class="mut">${esc(cur.licence||'')}${cur.note?' · '+esc(cur.note):''}</span>
+        <label class="trn-l">Passes over the examples<input id="trn-p-ep" data-keep type="number" min="1" max="20" step="1" value="${p.epochs||3}"></label></div>
+      <div class="trn-link">${trnIc('arrow')}</div>
+      <div class="trn-node">${trnIc('chip')}<span class="k">This machine</span><b>${esc(trainHw(d))}</b>
+        <span class="mut">${esc(d.ready?(hw.words||''):'Install training first.')}</span>
+        <span class="mut">One in ten examples is held back to check it.</span></div>
+    </div>
+    ${(p.dropped||[]).length?`<div class="mut">Not used from the plan: ${esc(p.dropped.join(', '))}.</div>`:''}
+    <div class="trn-row trn-end"><button class="endbtn" onclick="TRAIN.plan=null;trainPaint()">Discard</button>
+      <button class="pact trn-go" ${(!d.ready||d.teacher_missing||TRAIN.busy)?'disabled':''} onclick="trainRun()">Make it${trnIc('play')}</button></div>
+  </section>`;
+}
+/* A run as a line of stages that fills as the work is done. Which stage is lit is read from
+   the run's own steps and its job, never from a timer. */
+function trainRunHTML(r,d){
+  const steps=r.steps||[],last=steps[steps.length-1]||{},has=t=>steps.some(s=>s.title===t);
+  const m=(d.models_list||[]).find(x=>x.id===r.model),j=(d.jobs_list||[]).find(x=>x.id===r.job);
+  const dsr=(d.datasets_list||[]).find(x=>x.id===r.dataset)||{},pr=dsr.progress||{};
+  /* the base model answers the held-back examples BEFORE training, so that belongs to Training;
+     the check is what comes after */
+  const checking=!!j&&j.state==='running'&&/after training|merging|saving/.test(j.phase||'');
+  const first=!!j&&j.state==='running'&&/before training/.test(j.phase||'');
+  const st=[
+    ['Examples',has('Wrote examples')||has('Imported from the Hub')||!!r.job,last.title==='Writing examples'||last.title==='Answering',
+      pr.want?`${pr.done|0} of ${pr.want}`:dsr.rows?dsr.rows+' ready':((r.plan||{}).examples|0)+' to write',pr.want?(pr.done/pr.want):null],
+    ['Training',!!r.model||(j&&j.state==='done'),!!j&&j.state==='running'&&!checking,
+      j?(j.state==='running'?(first?`the base model answers first, ${j.step} of ${j.total}`:j.total&&j.phase==='training'?`step ${j.step} of ${j.total}`:checking?j.rows+' learned from':j.phase):j.rows+' learned from'):trainShort((r.plan||{}).base),
+      j&&j.total&&j.phase==='training'?j.step/j.total:null],
+    ['The check',!!r.model,checking,
+      m&&m.eval&&m.eval.n?`${m.eval.exact_after} of ${m.eval.n} match`:checking&&j.total?`${j.step} of ${j.total} answered`:'on examples it never saw',
+      checking&&j.total?j.step/j.total:null]];
+  const bad=r.state==='failed'||r.state==='stopped';
+  return `<article class="trn-run trn-${esc(r.state)}">
+    <header><div class="grow"><b>${esc((r.plan||{}).name||'run')}</b><span class="mut">${esc((r.plan||{}).task||'')}</span></div>
+      <span class="mut">${esc(trainAgo(r.created))}</span>
+      ${r.state==='running'?`<button class="endbtn" onclick="trainDo('stop',()=>trainApi('/api/train/runs/${jsq(r.id)}/stop','POST',{}))">Stop</button>`:''}</header>
+    <ol class="trn-stages">${st.map(([name,done,now,sub,frac],i)=>`
+      <li class="${done?'done':now&&r.state==='running'?'now':''}">
+        <div class="top"><span class="dot">${done?trnIc('check'):i+1}</span><i class="ln"></i></div>
+        <b>${name}</b><span class="sub">${esc(sub||'')}</span>
+        ${now&&r.state==='running'&&frac!=null?`<div class="bar"><i style="width:${Math.max(4,Math.round(100*frac))}%"></i></div>`:''}</li>`).join('')}</ol>
+    ${bad?`<div class="${r.state==='failed'?'errmsg':'mut'}">${esc(last.detail||last.title||'')}</div>`:''}
+    ${m?`<div class="trn-result">${trainScore(m.eval,true)}
+      <div class="trn-rside">${trainWord(m.verdict)}
+        <button class="pact" onclick="trainOpenModel('${jsq(m.id)}')">Open the model</button></div></div>`:''}
+    <details class="trn-said"><summary>What happened, step by step</summary>
+      <ol class="trn-steps">${steps.map(s=>`<li><b>${esc(s.title)}</b> <span>${esc(s.detail)}</span></li>`).join('')}</ol></details>
+  </article>`;
+}
+async function trainPlan(){
+  const goal=($('#trn-goal')||{}).value||'';TRAIN.goal=goal;
+  if(!goal.trim())return toast('Say what the model should do.');
+  await trainDo('plan',async()=>{TRAIN.plan=await trainApi('/api/train/plan','POST',{goal})});
+}
+async function trainRun(){
+  const p=Object.assign({},TRAIN.plan,{name:$('#trn-p-name').value,task:$('#trn-p-task').value,
+    examples:+$('#trn-p-n').value||200,base:$('#trn-p-base').value,epochs:+$('#trn-p-ep').value||3});
+  await trainDo('run',async()=>{await trainApi('/api/train/runs','POST',{goal:TRAIN.goal,plan:p});TRAIN.plan=null;TRAIN.goal=''});
+}
+
+/* ---- Datasets ---- */
+async function trainSrc(s){TRAIN.src=s;trainPaint();
+  if(s==='devices'){try{TRAIN.devs=(await trainApi('/api/train/devices')).machines||[]}catch(e){TRAIN.devs=[]}trainPaint()}}
+async function trainFromDevice(key){
+  const days=+(($('#trn-dv-days')||{}).value)||7;
+  await trainDo('devices',async()=>{const ds=await trainApi('/api/train/datasets/devices','POST',{machine:key,days});toast(ds.words)});
+}
+function trainDatasets(d){
+  const lim=d.limits||{},src=TRAIN.src;
+  const tile=(id,ic,t,sub)=>`<button class="trn-src ${src===id?'on':''}" aria-pressed="${src===id}" onclick="trainSrc('${jsq(id)}')">${trnIc(ic)}<b>${t}</b><span>${sub}</span></button>`;
+  let h=`<h2 class="trn-sec first">Add examples</h2>
+    <div class="trn-srcs">${tile('teacher','teacher','A teacher writes them','Describe the job. '+esc(d.teacher||'Your machine\'s brain')+' does the writing.')}
+      ${tile('hub','hub','Hugging Face Hub','Search public datasets and take the first rows of one.')}
+      ${tile('devices','chip','Your devices','Sensor readings, with the alarms that followed as the answers.')}
+      ${tile('file','file','A file','CSV, TSV, JSON or JSONL of your own.')}</div>
+    <div class="trn-card trn-srcbody">`;
+  if(src==='teacher')h+=`<label class="trn-l" for="trn-task">The job, as you would tell a person</label>
+      <textarea id="trn-task" data-keep rows="3" placeholder="What comes in, and what to answer."></textarea>
+      <div class="trn-row"><label class="trn-l trn-inl">How many<input id="trn-n" data-keep type="number" min="10" max="${lim.teach||2000}" value="100"></label>
+        <span class="mut">Ten to a call.${pInfo('Written examples are synthetic data: good for teaching a format or a sorting rule, and only as right as the teacher. Read some before you train on them.')}</span>
+        <span class="sp"></span><button class="pact" ${d.teacher_missing||TRAIN.busy?'disabled':''} onclick="trainSynth()">Write them</button></div>`;
+  else if(src==='hub')h+=`<div class="trn-row"><input id="trn-hubq" data-keep placeholder="Search public datasets: sentiment, sms spam, intent…" value="${esc(TRAIN.hubQ)}" onkeydown="if(event.key==='Enter')trainHub()">
+        <button class="pact" onclick="trainHub()">${TRAIN.busy==='hub'?'Searching…':'Search'}</button></div>
+      ${(TRAIN.hub||[]).map(r=>`<div class="trn-hub"><div class="grow"><b>${esc(r.repo)}</b>
+          <div class="sub">${(r.downloads||0).toLocaleString()} downloads · ${esc(r.licence||'licence not stated')}${r.gated?' · gated':''}</div>
+          ${r.about?`<div class="sub">${esc(r.about)}</div>`:''}</div>
+          <button class="endbtn" ${r.gated&&!d.token?'disabled title="A gated dataset needs your Hugging Face token (Models)"':''} onclick="trainImport('${jsq(r.repo)}')">Import</button></div>`).join('')}`;
+  else if(src==='devices'){
+    const ms=TRAIN.devs;
+    h+=!ms?'<div class="mut">loading…</div>':!ms.length?`<div class="trn-row"><div class="grow mut">No machine of yours has readings kept yet. They are kept once a Pi or an ESP32 node is set up in Devices.</div>
+        <button class="endbtn" onclick="openApp('devices')">Open Devices</button></div>`
+      :`<div class="trn-row"><label class="trn-l trn-inl">How far back<select id="trn-dv-days" data-keep><option value="1">1 day</option><option value="7" selected>7 days</option><option value="30">30 days</option></select></label>
+          <span class="mut">Each example is 30 minutes of readings. The answer is the alarm that was on, the one that came next, or normal.${pInfo('The answers come from your own alarm record, so nobody writes them. A machine with no alarm on record gives windows without answers, which a teacher can fill in from your instruction.')}</span></div>`
+        +ms.map(m=>`<div class="trn-hub"><span class="trn-badge">${trnIc('chip')}</span><div class="grow"><b>${esc(m.machine)}</b>
+          <div class="sub">${(m.readings||0).toLocaleString()} readings since ${esc(new Date(m.since*1000).toLocaleDateString())} · ${m.alarms} ${m.alarms===1?'alarm':'alarms'} on record</div>
+          <div class="sub">${esc(m.things.slice(0,6).map(t=>t.name).join(', '))}${m.things.length>6?' and '+(m.things.length-6)+' more':''}</div></div>
+          <button class="pact" ${TRAIN.busy?'disabled':''} onclick="trainFromDevice('${jsq(m.key)}')">Make examples</button></div>`).join('');
+  }
+  else h+=`<div class="mut">A prompt column and an answer column. A file with prompts only is fine: a teacher can answer them.</div>
+      <div class="trn-row"><input type="file" id="trn-file" accept=".csv,.tsv,.json,.jsonl,.txt" onchange="trainFile(this)"></div>`;
+  h+='</div>';
+  const list=d.datasets_list||[];
+  h+=`<h2 class="trn-sec">Your datasets</h2>`;
+  if(!list.length)h+='<div class="trn-empty">'+trnIc('data')+'<span>None yet.</span></div>';
+  h+=list.map(x=>{
+    const left=x.rows-(x.answers||0),pr=x.progress||{},open=TRAIN.ds&&TRAIN.ds.id===x.id;
+    const working=x.state!=='ready',ic=x.source==='hub'?'hub':x.source==='synthetic'?'teacher':x.source==='devices'?'chip':'file';
+    const from=x.source==='synthetic'?'written by '+(x.ref||'a teacher'):x.source==='hub'?x.ref:x.source==='devices'?'readings of '+(x.ref||'a machine'):'from '+(x.ref||'a file');
+    return `<article class="trn-card trn-ds">
+      <div class="trn-row"><span class="trn-badge">${trnIc(ic)}</span>
+        <div class="grow"><button class="trn-name" onclick="trainOpenDs('${jsq(x.id)}')" aria-expanded="${open?'true':'false'}">${esc(x.name)}</button>
+          <div class="mut">${x.rows} examples${left?`, ${left} without an answer`:''} · ${esc(from)}</div></div>
+        ${working?`<button class="endbtn" onclick="trainDo('stop',()=>trainApi('/api/train/datasets/${jsq(x.id)}/stop','POST',{}))">Stop</button>`:`
+          ${left?`<button class="endbtn" ${d.teacher_missing?'disabled':''} onclick="trainLabel('${jsq(x.id)}',${left})">Have the teacher answer</button>`:''}
+          <button class="pact" ${(!d.ready||x.answers<(lim.min_rows||9))?'disabled':''} onclick="trainStartOn('${jsq(x.id)}')">Train on it</button>
+          <button class="endbtn trn-x" title="Delete this dataset" aria-label="Delete ${esc(x.name)}" onclick="trainDelDs('${jsq(x.id)}')">✕</button>`}</div>
+      ${working?`<div class="trn-prog"><div class="bar"><i style="width:${pr.want?Math.round(100*pr.done/pr.want):3}%"></i></div>
+        <span class="mut">${esc(x.teacher||'The teacher')} is ${x.state==='writing'?'writing':'answering'}: ${pr.done|0} of ${pr.want|0}</span></div>`:''}
+      ${x.note?`<div class="mut">${esc(x.note)}</div>`:''}
+      ${open?trainDsOpen(TRAIN.ds):''}
+    </article>`}).join('');
+  return h;
+}
+function trainDsOpen(x){
+  return `<div class="trn-open${x.source==='devices'?' trn-mono':''}">
+    <label class="trn-l" for="trn-ds-task">The instruction the model is trained under</label>
+    <div class="trn-row"><textarea id="trn-ds-task" data-keep rows="2">${esc(x.system||'')}</textarea>
+      <button class="endbtn" onclick="trainDo('save',()=>trainApi('/api/train/datasets/${jsq(x.id)}','PUT',{system:$('#trn-ds-task').value}))">Save</button></div>
+    <div class="trn-tw"><table class="trn-t trn-pairs"><thead><tr><th>Prompt</th><th>Answer</th></tr></thead><tbody>
+      ${(x.sample||[]).map(r=>`<tr><td data-l="Prompt">${esc(r.prompt)}</td><td data-l="Answer">${r.response?esc(r.response):'<span class="mut">no answer yet</span>'}</td></tr>`).join('')}
+    </tbody></table></div>
+    <div class="mut">The first ${(x.sample||[]).length} of ${x.rows}.</div></div>`;
+}
+async function trainOpenDs(id){
+  if(TRAIN.ds&&TRAIN.ds.id===id){TRAIN.ds=null;return trainPaint()}
+  try{TRAIN.ds=await trainApi('/api/train/datasets/'+id+'?rows=20')}catch(e){toast(e.message,{kind:'err'})}
+  trainPaint();
+}
+async function trainHub(){
+  TRAIN.hubQ=($('#trn-hubq')||{}).value||'';
+  if(!TRAIN.hubQ.trim())return;
+  await trainDo('hub',async()=>{TRAIN.hub=(await trainApi('/api/train/hub?q='+encodeURIComponent(TRAIN.hubQ))).results||[];
+    if(!TRAIN.hub.length)toast('Nothing on the Hub for those words.')});
+}
+async function trainImport(repo){
+  const n=await osPrompt('Import '+repo,{message:'How many rows to take (the first of its training split).',value:'1000',confirmText:'Import'});
+  if(n===null||n===undefined)return;
+  await trainDo('import',async()=>{const ds=await trainApi('/api/train/datasets/hub','POST',{repo,max_rows:+n||1000});
+    toast(`Imported ${ds.rows} rows. Read as: prompt = ${ds.how.prompt}, answer = ${ds.how.response||'none'}.`);TRAIN.hub=[]});
+}
+async function trainSynth(){
+  const task=($('#trn-task')||{}).value||'',n=+($('#trn-n')||{}).value||100;
+  if(!task.trim())return toast('Say what the job is.');
+  const calls=Math.ceil(n/(((TRAIN.d||{}).limits||{}).batch||10));
+  if(!await osConfirm('Have the teacher write '+n+' examples?',`${TRAIN.d.teacher} is asked about ${calls} times. The calls are counted in Usage.`,{confirmText:'Write them'}))return;
+  await trainDo('synth',async()=>{await trainApi('/api/train/datasets/synth','POST',{task,n,name:task.split(/\s+/).slice(0,4).join(' ')});$('#trn-task').value=''});
+}
+async function trainLabel(id,left){
+  if(!await osConfirm('Have the teacher answer '+left+' prompts?',`${TRAIN.d.teacher} is asked once for each. The calls are counted in Usage.`,{confirmText:'Answer them'}))return;
+  await trainDo('label',()=>trainApi('/api/train/datasets/'+id+'/label','POST',{}));
+}
+async function trainFile(inp){
+  const f=inp.files&&inp.files[0];if(!f)return;
+  await trainDo('file',async()=>{const ds=await trainApi('/api/train/datasets/file?filename='+encodeURIComponent(f.name),'POST',undefined,f);
+    toast(`Imported ${ds.rows} rows from ${f.name}.`)});
+}
+async function trainDelDs(id){
+  if(!await osConfirm('Delete this dataset?','Models trained on it stay.',{confirmText:'Delete'}))return;
+  await trainDo('del',()=>trainApi('/api/train/datasets/'+id,'DELETE'));
+}
+async function trainStartOn(id){
+  const d=TRAIN.d,x=(d.datasets_list||[]).find(y=>y.id===id);if(!x)return;
+  const base=await osPrompt('Train on “'+x.name+'”',{message:'The student, as owner/name on the Hugging Face Hub. This machine: '+((d.hardware||{}).words||''),value:d.suggested_base,confirmText:'Train'});
+  if(!base)return;
+  await trainDo('start',async()=>{const j=await trainApi('/api/train/jobs','POST',{dataset:id,base:base.trim(),name:x.name});
+    TRAIN.job=j.id;TRAIN.logOff=0;TRAIN.logText='';TRAIN.jobd=null;TRAIN.tab='runs'});
+}
+
+/* ---- Runs: a fine-tune as it happens ---- */
+function trainRuns(d){
+  const list=d.jobs_list||[];
+  if(!list.length)return '<div class="trn-empty">'+trnIc('runs')+'<span>No runs yet. Start one from a dataset, or from Make.</span></div>';
+  const j=TRAIN.jobd&&TRAIN.jobd.id===TRAIN.job?TRAIN.jobd:null;
+  const mark=x=>x.state==='running'?'<i class="trn-live"></i>':x.state==='done'?'✓':x.state==='failed'?'!':'·';
+  return `<div class="trn-split"><div class="trn-list">${list.map(x=>`
+      <button class="trn-li ${x.id===TRAIN.job?'on':''}" onclick="trainPickJob('${jsq(x.id)}')"><b><span class="trn-mk" aria-hidden="true">${mark(x)}</span>${esc(x.name)}</b>
+        <span class="mut">${esc(x.state==='running'?x.phase:x.state)} · ${esc(trainShort(x.base))}</span></button>`).join('')}</div>
+    <div class="trn-detail">${j?trainJobHTML(j):'<div class="mut">loading…</div>'}</div></div>`;
+}
+function trainJobHTML(j){
+  const pct=j.total?Math.round(100*j.step/j.total):0,m=j.metrics||{},curve=j.curve||[];
+  const ev=j.eval||{},lossNow=curve.length?curve[curve.length-1].loss:null;
+  const tile=(k,v,s)=>`<div class="trn-tile"><span>${k}</span><b>${v}</b>${s?`<small>${s}</small>`:''}</div>`;
+  const on=j.device==='cpu'?'the processor':j.device==='mps'?'the Apple GPU':'the GPU';
+  return `<div class="trn-row"><div class="grow"><h2 class="trn-jt">${esc(j.name)}</h2>
+      <div class="mut">${esc(j.base)}${j.device?' · on '+on:''}</div></div>
+      ${j.state==='running'?`<button class="endbtn" onclick="trainDo('stop',()=>trainApi('/api/train/jobs/${jsq(j.id)}/stop','POST',{}))">Stop</button>`
+        :`${j.state==='done'?`<button class="pact" onclick="trainOpenModel('${jsq(j.id)}')">Open the model</button>`:''}
+          <button class="endbtn" onclick="trainDelJob('${jsq(j.id)}')">Remove</button>`}</div>
+    ${j.state==='running'?`<div class="trn-prog"><div class="bar"><i style="width:${pct||3}%"></i></div><span class="mut">${esc(j.phase)}${j.total?` · ${j.step} of ${j.total}`:''}</span></div>`:''}
+    ${j.state==='failed'?`<div class="errmsg">${esc(j.error||'It failed. The log says why.')}</div>`:''}
+    ${j.state==='stopped'?'<div class="mut">Stopped.</div>':''}
+    <div class="trn-tiles">${tile('Learned from',j.rows|0,'examples')}${tile('Held back',j.held|0,'never trained on')}
+      ${tile('Loss',lossNow==null?'–':lossNow<.01?lossNow.toFixed(3):lossNow.toFixed(2),curve.length>1?'from '+curve[0].loss.toFixed(2):'')}
+      ${tile('Took',m.seconds?(m.seconds>=90?Math.round(m.seconds/60)+' min':Math.round(m.seconds)+' s'):j.state==='running'?'…':'–',m.trainable_params?(100*m.trainable_params/m.params).toFixed(1)+'% of weights trained':'')}</div>
+    ${j.verdict?`<div class="trn-result">${trainScore(ev,true)}<div class="trn-rside">${trainWord(j.verdict)}</div></div>
+      <div class="mut">${esc(j.verdict.words)}</div>`:''}
+    ${trainCurve(curve)}
+    ${ev.items?trainExamples(ev.items.slice(0,8)):''}
+    <details class="trn-log" ${j.state==='failed'?'open':''}><summary>Log</summary><pre>${esc(TRAIN.logText||'')}</pre></details>`;
+}
+/* The loss, one series: a thin line, a recessive axis, the first and last value written
+   out, a crosshair that reads any point, and the numbers as a table for whoever can't
+   use the picture. */
+function trainCurve(pts){
+  pts=pts.filter(p=>typeof p.loss==='number');
+  if(pts.length<2)return '';
+  const W=560,H=150,L=38,R=46,T=12,B=22;
+  const xs=pts.map(p=>p.step),ys=pts.map(p=>p.loss);
+  const x0=Math.min(...xs),x1=Math.max(...xs),y1=Math.max(...ys),y0=Math.min(0,Math.min(...ys));
+  const X=s=>L+(W-L-R)*(x1===x0?0:(s-x0)/(x1-x0)),Y=v=>T+(H-T-B)*(1-(y1===y0?0:(v-y0)/(y1-y0)));
+  const path=pts.map((p,i)=>(i?'L':'M')+X(p.step).toFixed(1)+' '+Y(p.loss).toFixed(1)).join(' ');
+  const f=pts[0],l=pts[pts.length-1];
+  return `<figure class="trn-fig"><figcaption>Training loss by step <span class="mut">Lower means the examples were learned. The held-back check says whether the job was.</span></figcaption>
+    <div class="trn-chart" data-pts='${esc(JSON.stringify(pts.map(p=>[p.step,+p.loss.toFixed(4)])))}' data-geo='${JSON.stringify({W,H,L,R,T,B,x0,x1,y0,y1})}'>
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Training loss fell from ${f.loss.toFixed(2)} at step ${f.step} to ${l.loss.toFixed(2)} at step ${l.step}">
+      <line class="ax" x1="${L}" y1="${H-B}" x2="${W-R}" y2="${H-B}"/>
+      <line class="gr" x1="${L}" y1="${Y(y1)}" x2="${W-R}" y2="${Y(y1)}"/>
+      <text class="tk" x="${L-6}" y="${Y(y1)+4}" text-anchor="end">${y1.toFixed(1)}</text>
+      <text class="tk" x="${L-6}" y="${H-B+4}" text-anchor="end">${y0.toFixed(0)}</text>
+      <text class="tk" x="${L}" y="${H-6}">step ${x0}</text><text class="tk" x="${W-R}" y="${H-6}" text-anchor="end">${x1}</text>
+      <path class="ln" d="${path}"/>
+      <circle class="dot" cx="${X(l.step)}" cy="${Y(l.loss)}" r="4"/>
+      <text class="lb" x="${X(l.step)+8}" y="${Y(l.loss)+4}">${l.loss.toFixed(2)}</text>
+      <line class="cross" x1="0" x2="0" y1="${T}" y2="${H-B}" visibility="hidden"/><circle class="hov" r="4" visibility="hidden"/>
+    </svg><div class="trn-tip" hidden></div></div>
+    <details class="trn-tbl"><summary>The numbers</summary><div class="trn-tw"><table class="trn-t"><thead><tr><th>Step</th><th>Loss</th></tr></thead><tbody>
+      ${pts.map(p=>`<tr><td>${p.step}</td><td>${p.loss.toFixed(4)}</td></tr>`).join('')}</tbody></table></div></details></figure>`;
+}
+function trainCurveWire(){
+  const box=(trainBody()||document).querySelector('.trn-chart');if(!box)return;
+  const pts=JSON.parse(box.dataset.pts),g=JSON.parse(box.dataset.geo),svg=box.querySelector('svg');
+  const cross=svg.querySelector('.cross'),hov=svg.querySelector('.hov'),tip=box.querySelector('.trn-tip');
+  const X=s=>g.L+(g.W-g.L-g.R)*(g.x1===g.x0?0:(s-g.x0)/(g.x1-g.x0)),Y=v=>g.T+(g.H-g.T-g.B)*(1-(g.y1===g.y0?0:(v-g.y0)/(g.y1-g.y0)));
+  const show=i=>{const p=pts[Math.max(0,Math.min(pts.length-1,i))],x=X(p[0]),y=Y(p[1]);
+    cross.setAttribute('x1',x);cross.setAttribute('x2',x);cross.setAttribute('visibility','visible');
+    hov.setAttribute('cx',x);hov.setAttribute('cy',y);hov.setAttribute('visibility','visible');
+    tip.hidden=false;tip.textContent='step '+p[0]+' · loss '+p[1];
+    const r=svg.getBoundingClientRect();tip.style.left=Math.min(r.width-110,Math.max(0,x/g.W*r.width+8))+'px';tip.style.top=Math.max(0,y/g.H*r.height-28)+'px';box._i=i};
+  const hide=()=>{cross.setAttribute('visibility','hidden');hov.setAttribute('visibility','hidden');tip.hidden=true};
+  const near=cx=>{const r=svg.getBoundingClientRect(),sx=(cx-r.left)/r.width*g.W;let b=0,bd=1e9;pts.forEach((p,i)=>{const dd=Math.abs(X(p[0])-sx);if(dd<bd){bd=dd;b=i}});return b};
+  svg.onpointermove=e=>show(near(e.clientX));svg.onpointerdown=e=>show(near(e.clientX));svg.onpointerleave=hide;
+  svg.tabIndex=0;svg.onkeydown=e=>{if(e.key==='ArrowRight'||e.key==='ArrowLeft'){e.preventDefault();show(Math.max(0,Math.min(pts.length-1,(box._i==null?pts.length-1:box._i)+(e.key==='ArrowRight'?1:-1))))}else if(e.key==='Escape')hide()};
+  svg.onblur=hide;
+}
+async function trainJobLoad(){
+  const list=((TRAIN.d||{}).jobs_list)||[];
+  if(!TRAIN.job&&list.length)TRAIN.job=list[0].id;      /* the newest, when none was picked */
+  if(!TRAIN.job)return;
+  try{
+    const j=await trainApi('/api/train/jobs/'+TRAIN.job+'?offset='+(TRAIN.logOff|0));
+    TRAIN.logText=(TRAIN.logText+((j.log||{}).content||'')).slice(-20000);TRAIN.logOff=(j.log||{}).offset||0;TRAIN.jobd=j;
+  }catch(e){TRAIN.jobd=null;TRAIN.job=null}
+}
+async function trainPickJob(id){TRAIN.job=id;TRAIN.logOff=0;TRAIN.logText='';TRAIN.jobd=null;await trainJobLoad();trainPaint()}
+async function trainDelJob(id){
+  if(!await osConfirm('Remove this run?','Its log and held-back examples go. The model it made stays.',{confirmText:'Remove'}))return;
+  await trainDo('del',async()=>{await trainApi('/api/train/jobs/'+id,'DELETE');TRAIN.job=null;TRAIN.jobd=null});
+}
+function trainExamples(items){
+  return `<h3 class="trn-sec">Held-back examples <span class="mut">it never trained on these</span></h3>
+    <div class="trn-tw"><table class="trn-t trn-ex"><thead><tr><th>Prompt</th><th>Wanted</th><th>Base model</th><th>Yours</th></tr></thead><tbody>
+    ${items.map(i=>`<tr><td data-l="Prompt">${esc(i.prompt)}</td><td data-l="Wanted">${esc(i.want)}</td><td data-l="Base model" class="was">${esc(i.before)}</td>
+      <td data-l="Yours"><div class="trn-mine"><span class="trn-hit ${i.exact_after?'y':''}" aria-label="${i.exact_after?'matches':'differs'}">${i.exact_after?'✓':'·'}</span><span>${esc(i.after)}</span></div></td></tr>`).join('')}
+    </tbody></table></div>`;
+}
+
+/* ---- Models ---- */
+function trainModels(d){
+  const list=d.models_list||[];
+  let h='';
+  if(!list.length)h+='<div class="trn-empty">'+trnIc('models')+'<span>No models yet. A finished run puts one here.</span></div>';
+  h+=`<div class="trn-mgrid">`+list.map(m=>{
+    const open=TRAIN.model&&TRAIN.model.id===m.id;
+    return `<article class="trn-card trn-model${open?' open':''}">
+      <header><div class="grow"><button class="trn-name" onclick="trainOpenModel('${jsq(m.id)}')" aria-expanded="${open?'true':'false'}">${esc(m.name)}</button>
+        <div class="mut">${esc(trainShort(m.base))} · ${trainMB(m.bytes)} · ${esc(trainAgo(m.created))}</div></div>${trainWord(m.verdict)}</header>
+      ${trainScore(m.eval)}
+      ${m.ollama?`<div class="trn-where">${trnIc('check')}In Ollama as <b>${esc(m.ollama)}</b></div>`:''}
+      ${m.published?`<div class="trn-where">${trnIc('check')}Published as <b>${esc(m.published)}</b></div>`:''}
+      ${open?trainModelOpen(TRAIN.model,d):`<button class="endbtn trn-openbtn" onclick="trainOpenModel('${jsq(m.id)}')">Try it, use it</button>`}</article>`}).join('')+'</div>';
+  h+=`<div class="trn-card trn-token"><h2 class="trn-h">Hugging Face token</h2>
+    <div class="mut">${d.token?'A token is saved in your vault.':'Only needed to publish a model, or to import a private or gated dataset.'}${pInfo('Kept in your vault on this machine. It is handed to the one upload that needs it and never shown again.')}</div>
+    <div class="trn-row">${secretField('trn-tok',d.token?'Replace it':'hf_…')}<button class="endbtn" onclick="trainToken()">Save</button>
+      ${d.token?`<button class="endbtn" onclick="trainToken(true)">Remove</button>`:''}</div></div>`;
+  return h;
+}
+function trainModelOpen(m,d){
+  const t=TRAIN.tried&&TRAIN.tried.id===m.id?TRAIN.tried:null;
+  const noOllama=!d.ollama?'Ollama is not installed on this machine.':!d.admin?'Adding a model to Ollama is an admin\'s: every account can then choose it.':'';
+  return `<div class="trn-open">
+    <div class="mut">${esc((m.verdict||{}).words||'')}</div>
+    ${m.system?`<div class="trn-sys"><span>It works under</span>${esc(m.system)}</div>`:''}
+    <div class="trn-try"><label class="trn-vh" for="trn-try">Try it</label>
+      <textarea id="trn-try" data-keep rows="2" placeholder="Give it something to answer"></textarea>
+      <button class="pact" ${TRAIN.busy?'disabled':''} onclick="trainTry('${jsq(m.id)}')">${TRAIN.busy==='try'?'Thinking…':'Ask'}</button></div>
+    ${t?`<div class="trn-ans"><div class="mut">${esc(t.prompt)}</div><div>${esc(t.answer)}</div><div class="mut">${t.seconds} s on ${esc(t.device==='cpu'?'the processor':t.device)}, after loading.</div></div>`:''}
+    <div class="trn-row trn-acts">
+      <button class="pact" ${noOllama||TRAIN.busy?'disabled':''} onclick="trainOllama('${jsq(m.id)}','${jsq(m.ollama_name||'')}')">${m.ollama?'Add to Ollama again':'Add to Ollama'}</button>
+      <button class="endbtn" ${d.token&&!TRAIN.busy?'':'disabled'} onclick="trainPublish('${jsq(m.id)}','${jsq(m.name)}')">Publish…</button>
+      <span class="sp"></span><button class="endbtn" onclick="trainDelModel('${jsq(m.id)}')">Delete</button></div>
+    ${noOllama?`<div class="mut">${esc(noOllama)}</div>`:`<div class="mut">Then it can be this machine's brain, or one agent's.${pInfo('Ollama converts the weights itself. It imports the common small architectures; when it can\'t take one, it says so and you see what it said.')}</div>`}
+    ${!d.token?'<div class="mut">Publishing needs your Hugging Face token, below.</div>':''}
+    ${(m.examples||[]).length?trainExamples(m.examples.slice(0,12)):''}</div>`;
+}
+async function trainOpenModel(id){
+  TRAIN.tab='models';
+  if(TRAIN.model&&TRAIN.model.id===id&&trainBody()&&trainBody().querySelector('.trn-model .trn-open')){TRAIN.model=null;return trainPaint()}
+  try{TRAIN.model=await trainApi('/api/train/models/'+id)}catch(e){toast(e.message,{kind:'err'})}
+  trainPaint();
+}
+async function trainTry(id){
+  const p=($('#trn-try')||{}).value||'';if(!p.trim())return;
+  await trainDo('try',async()=>{const r=await trainApi('/api/train/models/'+id+'/try','POST',{prompts:[p]});
+    const a=(r.answers||[])[0]||{};TRAIN.tried={id,prompt:a.prompt,answer:a.answer,seconds:r.seconds,device:r.device}});
+}
+async function trainOllama(id,name){
+  if(!await osConfirm('Add this model to Ollama?',`Ollama converts the weights and keeps a copy as ${name}. Every account on this machine can then choose it. It can take a few minutes.`,{confirmText:'Add it'}))return;
+  await trainDo('ollama',async()=>{const m=await trainApi('/api/train/models/'+id+'/ollama','POST',{});toast('✓ In Ollama as '+m.ollama);
+    if(TRAIN.model&&TRAIN.model.id===id)TRAIN.model.ollama=m.ollama});
+}
+async function trainPublish(id,name){
+  const repo=await osPrompt('Publish “'+name+'” to the Hugging Face Hub',{message:'The repository, as your-name/model-name. It is uploaded private; you can make it public on the Hub.',placeholder:'your-name/model-name',confirmText:'Next'});
+  if(!repo)return;
+  if(!await osConfirm('Upload it to '+repo.trim()+'?','The model leaves this machine. Its examples may have come from your own data, and a model can repeat what it was trained on.',{confirmText:'Upload'}))return;
+  await trainDo('publish',async()=>{const m=await trainApi('/api/train/models/'+id+'/publish','POST',{repo:repo.trim(),private:true});toast('✓ Published as '+m.published)});
+}
+async function trainDelModel(id){
+  if(!await osConfirm('Delete this model?','Its weights are removed from this machine. A copy already in Ollama or on the Hub stays there.',{confirmText:'Delete'}))return;
+  await trainDo('del',async()=>{await trainApi('/api/train/models/'+id,'DELETE');TRAIN.model=null});
+}
+async function trainToken(remove){
+  const v=remove?'':(($('#trn-tok')||{}).value||'').trim();
+  if(!remove&&!v)return;
+  await trainDo('token',async()=>{await trainApi('/api/train/token','PUT',{token:v});toast(remove?'Removed.':'Saved in your vault.')});
 }
 /* ================= terminal app ================= */
 let xtermLoading=null;

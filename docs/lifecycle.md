@@ -7,7 +7,7 @@ with deep links into each surface.
 
 | Pillar | What it means | Where it lives |
 |---|---|---|
-| 🧬 **Train** | Fine-tune and evaluate your own models, locally | The **Train** app (TrainForge) · `train_*` agent tools |
+| 🧬 **Train** | Make a small language model of your own, locally | The **Train** app · `bento train` · `train_*` agent tools |
 | 🧪 **Test** | Prove things work before they ship or go live | `tests/` suite · `run_tests` tool · the self-modification test gate |
 | ⚙ **Operate** | Keep things running unattended | **Missions** (Run, Schedule, Build), **Team** (fabric observability), **Logs**, Telegram alerts |
 | 🔨 **Build** | Make software: apps, projects, the OS itself | **App Studio**, `create_app`, `develop_agentos` |
@@ -16,19 +16,16 @@ with deep links into each surface.
 
 ## Train
 
-The Train pillar is powered by **TrainForge**, a self-hosted training platform managed by
-AgentOS as a local service (loopback-only). From the **Train** app — or by just asking the
-agent — you can:
+The Train pillar makes a small language model of your own, for one narrow job, on this
+machine. From the **Train** app, with `bento train`, or by asking the agent, you can:
 
-- import datasets (Hugging Face Hub search, URL, upload),
-- fine-tune models: tabular (sklearn), text classification (Transformers), and
-  **causal-lm — LoRA fine-tunes of language models on your own GPU**,
-- watch live loss curves and logs,
-- call every trained model as a live endpoint (that's your Test loop for models),
-- publish to the Hugging Face Hub.
+- get examples: from the Hugging Face Hub, from a file, or written by a teacher (this
+  machine's brain),
+- fine-tune a small open model on them with LoRA,
+- check it on examples it never saw, against the base model's own answers,
+- try it, put it in Ollama so an agent can run on it, or publish it.
 
-See [training.md](training.md) for the full guide, including the loop that matters most:
-*your data → a LoRA fine-tune → an Ollama model → your agent answering with it.*
+See [training.md](training.md) for the full guide.
 
 ## Test
 

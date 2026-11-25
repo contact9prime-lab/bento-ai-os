@@ -141,12 +141,11 @@ _NO_SKILL_INSTALL = [("skill.install", "*")]
 # tool's own jail is what bounds that; nothing from outside the team has business there.
 MACHINE_TOOLS = ("share_folder", "set_engine", "update_agentos", "power_action", "create_theme",
                  "wifi", "bluetooth", "power_profile", "lock_screen", "manage_models",
-                 "trainforge_service", "create_theme_shell")
+                 "create_theme_shell")
 _NO_MACHINE = [("folder.share", "*"), ("system.engine", "*"), ("system.update", "*"),
                ("system.power", "*"), ("tool.use", "tool:create_theme*"), ("tool.use", "tool:wifi*"),
                ("tool.use", "tool:bluetooth*"), ("tool.use", "tool:power_profile*"),
-               ("tool.use", "tool:lock_screen*"), ("tool.use", "tool:manage_models*"),
-               ("tool.use", "tool:trainforge_service*")]
+               ("tool.use", "tool:lock_screen*"), ("tool.use", "tool:manage_models*")]
 OUTSIDER_TOOLS = ("run_tests", "run_evals")
 _NO_OUTSIDER = [("tool.use", "tool:run_tests*"), ("tool.use", "tool:run_evals*")]
 # And a page drawn over the whole desktop: the person's, and nobody else's to ask for.
@@ -167,10 +166,14 @@ _NO_HUDDLE = [("agent.huddle", "*")]
 # team: a flow already has `delegate` for its roster, and anything else messaging an
 # agent would be starting work under that agent's name with nobody's consent.
 _NO_MESSAGE = [("agent.message", "*")]
+# Training a model spends a teacher's calls and then hours of this machine (slm.py). The
+# person's agent and their team may ask for it; an app, a peer, a linked team or a machine
+# of the community never: none of them is somebody this machine's GPU works for.
+_NO_TRAIN = [("model.train", "*")]
 BUILTIN_DENY = {
-    "app": [("tool.use", p) for p in _SELF_MOD] + _NO_OUTSIDER + _DEFINE + _NO_HUDDLE + _NO_MESSAGE + _NO_CAPABILITY + _NO_COMPANY,
+    "app": [("tool.use", p) for p in _SELF_MOD] + _NO_OUTSIDER + _DEFINE + _NO_HUDDLE + _NO_MESSAGE + _NO_CAPABILITY + _NO_COMPANY + _NO_TRAIN,
     "subagent": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE + _NO_COMPANY,
-    "workflow": [("tool.use", p) for p in _SELF_MOD] + _NO_OUTSIDER + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE + _NO_MESSAGE + _NO_CAPABILITY + _NO_COMPANY,
+    "workflow": [("tool.use", p) for p in _SELF_MOD] + _NO_OUTSIDER + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE + _NO_MESSAGE + _NO_CAPABILITY + _NO_COMPANY + _NO_TRAIN,
     # A flow's master orchestrator is the one principal in the OS that exists to invoke
     # other agents, so the blanket agent.invoke deny above would defeat its purpose. It
     # is still barred from rewriting the OS, and delegation is not free: `_default` gives
@@ -184,17 +187,17 @@ BUILTIN_DENY = {
     # when its key is minted, revoked with it — and `_default` denies a peer
     # everything ungranted, so these rows are belt on top of braces: even a
     # hand-written grant must never let a peer near the OS or another agent.
-    "peer": [("tool.use", p) for p in _SELF_MOD] + _NO_OUTSIDER + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE + _NO_MESSAGE + _NO_CAPABILITY + _NO_COMPANY,
+    "peer": [("tool.use", p) for p in _SELF_MOD] + _NO_OUTSIDER + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE + _NO_MESSAGE + _NO_CAPABILITY + _NO_COMPANY + _NO_TRAIN,
     # A linked team's agent (another machine over mTLS, or another account here). Its
     # whole legitimate reach is asking one of YOUR agents a question — agent.message,
     # granted cell by cell — and `_default` refuses everything else before any model
     # default. These rows are belt on top of braces, as for a peer.
-    "team": [("tool.use", p) for p in _SELF_MOD] + _NO_OUTSIDER + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE + _NO_CAPABILITY + _NO_COMPANY,
+    "team": [("tool.use", p) for p in _SELF_MOD] + _NO_OUTSIDER + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE + _NO_CAPABILITY + _NO_COMPANY + _NO_TRAIN,
     # A machine of this machine's community (pool.py): on a leader, a member that thinks
     # with the leader's brain (model.use, granted at admission); on a member, the
     # community handing it work (pool.work, granted at joining). `_default` refuses a
     # pool principal everything else; these rows are the belt on top, as for a peer.
-    "pool": [("tool.use", p) for p in _SELF_MOD] + _NO_OUTSIDER + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE + _NO_MESSAGE + _NO_CAPABILITY + _NO_COMPANY,
+    "pool": [("tool.use", p) for p in _SELF_MOD] + _NO_OUTSIDER + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE + _NO_MESSAGE + _NO_CAPABILITY + _NO_COMPANY + _NO_TRAIN,
 }
 
 # tool name -> (action, resource template); anything unlisted is plain tool.use
@@ -472,6 +475,13 @@ def action_of(name: str, args: dict, mcp=None, ocp=None) -> tuple[str, str]:
         return ("memory.read" if name == "community_recall" else "memory.write"), "memory:community"
     if name == "pool_task":
         return "pool.task", f"pool:{str(args.get('machine') or '').strip() or '*'}"
+    # Training a small model (slm.py): its own action for the calls that spend something, a
+    # teacher's model calls or this machine's hours, so "may read my datasets" and "may
+    # start a training" are grantable apart. Reading stays plain tool.use.
+    if name == "train_autopilot" or (name == "train_job" and args.get("action") == "start") or \
+            (name == "train_datasets" and args.get("action") in ("write", "answer")):
+        what = "run" if name == "train_autopilot" else "job" if name == "train_job" else "teach"
+        return "model.train", f"train:{what}"
     if name in _MEM:
         action = _MEM[name][0]
         # Space-qualified so a grant can say "this subagent may write memory in the

@@ -80,6 +80,9 @@ GOALS = {
     "set_engine": "Change the machine's brain",
     "launch_native_app": "Open an app on this machine",
     "pool_task": "Hand work to the community",
+    "train_autopilot": "Make a small model from a goal",
+    "train_job": "Train a model on this machine",
+    "train_datasets": "Get or write training examples",
     "llm_generate": "Use the AI",
     "appAgent": "Ask your agent",
 }
