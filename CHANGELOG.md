@@ -1,6 +1,16 @@
 # Changelog
 
 
+## 0.100.3 — 2026-11-25
+
+- An approval card says what it means for you. It names who is asking (an app by its name, or your agent),
+  says in plain words what the step would do, and decodes a command that hides its script in base64, so you
+  read the script that would really run. Under the buttons, *What do these buttons do?* says what each one
+  does, including exactly what *1 hour* and *Always* would let it do next time. Telegram, WhatsApp and the
+  terminal say the same.
+- *Always* on a command that pipes code into python, a shell or node now covers only that exact command.
+  On `echo … | base64 -d | python3` it used to cover any script piped into python3.
+
 ## 0.100.2 — 2026-11-25
 
 No release notes were written for this one; the commits since 0.100.1 are what changed (`bento update` lists them).
