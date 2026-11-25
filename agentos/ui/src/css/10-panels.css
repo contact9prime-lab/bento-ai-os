@@ -12,6 +12,9 @@ label{display:block;font-size:var(--fs-sm);color:var(--dim);margin:12px 0 5px;fo
 .item .sub{color:var(--dim2);font-size:var(--fs-xs);margin-top:2px}
 .item button{color:var(--dim2);font-size:var(--fs-base)}
 .item button:hover{color:var(--err)}
+/* A primary button in a row keeps its own text colour: `.item button` (0,1,1) outranked
+   `.pact` and drew MCP Servers' Sign in and Bring in as grey on violet. */
+.item .pact,.item .pact:hover{color:var(--on-acc)}
 .mut{color:var(--dim2);font-size:var(--fs-sm)}
 
 /* ================= task manager ================= */

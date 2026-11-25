@@ -2103,6 +2103,12 @@ def capability_note(prefix: str = "mcp__bento__") -> str:
             f"{prefix}install_skill or {prefix}install_mcp_server; they confirm it on a card. "
             f"Never set a capability up yourself through your own MCP settings, your own "
             f"skills folder or a package install: this machine could not check or record it. "
+            f"Every service you act on is connected through this machine, here and in every "
+            f"department, mission and schedule; you have no connectors of your own in this run. "
+            f"When a job needs a service that isn't connected (Supermetrics, Gmail, Canva…), call "
+            f"{prefix}find_tools for it and offer to connect it with {prefix}install_mcp_server, "
+            f"or tell the person they can bring their Claude connectors in from MCP Servers. "
+            f"Never build a replacement for a service. "
             f"When nobody on the team can do a step, build a specialist for it with "
             f"{prefix}create_subagent (exactly the tools it needs; temporary: true for a one-off "
             f"job), or ask the person for an ability someone lacks with "
@@ -2439,9 +2445,15 @@ def _settings_flags(env: Envelope) -> list[str]:
     folder's settings, its local settings and `.mcp.json` and keeps the person's own;
     `--setting-sources ""` drops those too, and `--strict-mcp-config` then drops their MCP
     servers. A folder never gets a say, because one gated write there would be a program
-    for every later turn."""
+    for every later turn.
+
+    `--strict-mcp-config` on EVERY run, the person's own chat included: Bento is where what a
+    run acts on is decided. Measured on 2.1.331: without it the claude.ai connectors
+    (Supermetrics, Gmail, Canva…) load a few seconds into a run, and their calls never reach the
+    vault, the gate or the ledger; with it, none load and the bridge is the only server.
+    claudeconn.py carries each connector into Bento, where it is signed in again."""
     if env.person:
-        return ["--setting-sources", "user"]
+        return ["--setting-sources", "user", "--strict-mcp-config"]
     return ["--setting-sources", "", "--strict-mcp-config"]
 
 
@@ -2506,8 +2518,8 @@ def build_command(task: str, env: Envelope) -> list[str]:
     if env.team_mcp:
         # The person's specialists, reachable from a forwarded chat: ONE extra MCP
         # server (the bridge, bound to this turn), allowed by name so a headless
-        # permission mode does not refuse it. Not --strict-mcp-config: this is the
-        # person's own chat session, and what their Claude Code already had stays.
+        # permission mode does not refuse it. _settings_flags has made it the ONLY one: what the
+        # person's Claude Code had elsewhere is connected in Bento (claudeconn), not here.
         url, token = env.team_mcp
         cmd += ["--mcp-config", _mcp_file(scratch, url, token),
                 "--allowedTools", f"mcp__{BRIDGE_SERVER}"]
@@ -2682,10 +2694,13 @@ def bridge_parts(engine: str, url: str, token: str, scratch: str = "",
     if engine == "gemini-cli":
         settings: dict = {"mcpServers": {BRIDGE_SERVER: {
             "httpUrl": url, "headers": {"Authorization": f"Bearer {token}"}, "trust": True}}}
+        # The bridge is its only server, fenced or not: a chat's tools come through Bento.
+        # Not measured on a chat (Gemini CLI isn't installed where this changed); the same two
+        # settings are what the fenced runs were measured with.
+        settings["mcp"] = {"allowed": [BRIDGE_SERVER]}
+        argv += ["--allowed-mcp-server-names", BRIDGE_SERVER]
         if fence:
             settings["tools"] = {"core": []}
-            settings["mcp"] = {"allowed": [BRIDGE_SERVER]}
-            argv += ["--allowed-mcp-server-names", BRIDGE_SERVER]
         path = Path(scratch) / "gemini-settings.json"
         path.write_text(json.dumps(settings))
         os.chmod(path, 0o600)

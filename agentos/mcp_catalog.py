@@ -54,11 +54,28 @@ CATEGORIES = [
     ("media", "Media & creative"),
     ("productivity", "Productivity"),
     ("developer", "Developer"),
+    ("marketing", "Marketing & analytics"),
 ]
 
 #: Curated first-party servers. `remote_url` + `auth: "oauth"` is the whole config —
 #: no keys, no env, no package to install.
 CATALOG: list[dict] = [
+    {
+        # Probed live 2026-11-25: initialize answers 401 with resource_metadata, and
+        # api.supermetrics.com advertises a registration_endpoint (DCR) and S256 PKCE.
+        # Added so a mission can reach the same Supermetrics a person already uses as a
+        # Claude connector, through Bento's own gate: a mission run on Claude Code sees
+        # only Bento's tools, so the connector never reaches it.
+        "key": "supermetrics",
+        "title": "Supermetrics",
+        "registry_name": "com.supermetrics/supermetrics",
+        "category": "marketing",
+        "vendor": "Supermetrics",
+        "homepage": "https://supermetrics.com",
+        "remote_url": "https://mcp.supermetrics.com/mcp",
+        "description": "Marketing data from Instagram, Facebook, Google Ads, GA4, LinkedIn, TikTok "
+                       "and more: insights, reports, and publishing posts to social accounts.",
+    },
     {
         "key": "higgsfield",
         "title": "Higgsfield",

@@ -193,6 +193,39 @@ everywhere; scoped rules only apply on their gates, and blocked IO is denied and
 
 ---
 
+### Your Claude connectors
+
+Bento decides what every run acts on. When Claude Code answers for Bento (in chat, a department,
+a mission or a schedule) it has only Bento's own tools: the connectors you added in Claude
+(Supermetrics, Gmail, Canva…) are switched off in those runs, so each service goes through Bento's
+vault, permissions, ethics and ledger.
+
+To bring them over, open **MCP Servers → From your Claude → Look at my Claude connectors**, or run
+`bento mcp claude`. Bento asks Claude Code for the list (names and addresses only; Claude's own
+sign-ins never leave it) and shows each one:
+
+- **Ready**: press **Bring in** (or **Bring in all**), then sign in once in your browser. Its tokens
+  are Bento's, in your vault.
+- **Ready, private address**: some connectors are an address with a token in it (a personal
+  server, a CRM's per-user address). That address goes into your vault and is masked everywhere.
+- **Runs a program**: a local server is a command on this machine. Add it in MCP Servers, where the
+  command is shown before it runs.
+- **Not answering**: it doesn't work in Claude either, or uses the older SSE connection Bento
+  doesn't speak.
+
+```
+$ bento mcp claude
+  + supermetrics            https://mcp.supermetrics.com/mcp   Sign in once in your browser.
+  + solarplay               https://solar-play.onrender.com/mcp/t/…   Its address holds a private token, so it goes into your vault.
+  ✗ invideo                 https://mcp.invideo.io/sse         Uses the older SSE connection, which Bento doesn't speak.
+$ bento mcp claude all
+```
+
+![From your Claude: each connector with what bringing it in does](screenshots/mcp-from-claude.png)
+![From your Claude on a 390px phone, with Bring in all](screenshots/mcp-from-claude-phone.png)
+
+Only an admin can do this: the Claude Code on the machine is signed in as its owner.
+
 ## MCP tool servers ("channels")
 
 The **Model Context Protocol** lets AgentOS connect to external tool servers, giving the agent new
@@ -250,8 +283,12 @@ Servers app. Every entry was probed live before being added, and
 | Figma | Media & creative | read designs and components to build from |
 | Notion | Productivity | pages and databases |
 | Linear | Productivity | issues, projects, cycles |
+| Supermetrics | Marketing & analytics | social and ad numbers (Instagram, Facebook, Google Ads, GA4 and more), and posting to social accounts |
 
-All seven sign in with **OAuth in your browser** — there is no key to paste. Two rules keep
+![Supermetrics in the MCP Servers app](screenshots/mcp-supermetrics.png)
+![Supermetrics in the MCP Servers app on a 390px phone](screenshots/mcp-supermetrics-phone.png)
+
+All eight sign in with **OAuth in your browser** — there is no key to paste. Two rules keep
 the list honest, and both are enforced by review rather than by hope:
 
 - **Nothing goes in unprobed.** The endpoint must answer an MCP `initialize`.
@@ -323,7 +360,7 @@ bento mcp disconnect canva     # forget the tokens and the registration
   config entry) — the catalog prompts you and stores them in `~/.agentos/config.json`.
 - **http servers** authenticate with **request headers**, typically
   `"headers": {"Authorization": "Bearer <token>"}`.
-- **Curated OAuth servers** (Canva, Higgsfield, Notion, Linear, Figma, Replicate, fal)
+- **Curated OAuth servers** (Canva, Higgsfield, Notion, Linear, Figma, Replicate, fal, Supermetrics)
   authenticate **natively** — AgentOS speaks OAuth 2.1 itself (`agentos/mcp_oauth.py`):
   it discovers the authorisation server from the `401`, registers itself dynamically,
   runs the code+PKCE exchange and refreshes the token when it expires. No Node, no

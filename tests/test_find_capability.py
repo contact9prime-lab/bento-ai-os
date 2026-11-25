@@ -287,3 +287,18 @@ def test_find_tools_points_to_the_open_when_nothing_is_here(tmp_path, monkeypatc
     c, store, tb = _world(tmp_path)
     out = asyncio.run(tb.find_tools("knit a sweater pattern"))
     assert "discover_skills" in out and "discover_mcp_servers" in out
+
+
+def test_a_claude_connector_has_a_bento_twin_for_missions():
+    """Reported as "connecting to Supermetrics, it's not using the Claude connectors and builds it
+    in the system": in chat the lead used the claude.ai Supermetrics connector, then for a daily
+    post handed the job to a department, which can't see connectors (a bridged run sees only
+    Bento's tools), and went looking for another Instagram server. The same Supermetrics is now
+    a one-click sign-in here, found by the words the lead used, and the note says why."""
+    from agentos import company, mcp_catalog
+    assert [c["key"] for c in mcp_catalog.search("instagram publish post")] == ["supermetrics"]
+    sm = mcp_catalog.get("supermetrics")
+    assert sm["remote_url"] == "https://mcp.supermetrics.com/mcp" and sm["auth"] == "oauth"
+    assert company.KIT_MCP["supermetrics"]["curated"] == sm["registry_name"]
+    note = executors.capability_note()
+    assert "no connectors of your own" in note and "Never build a replacement" in note

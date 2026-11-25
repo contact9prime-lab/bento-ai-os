@@ -1766,6 +1766,33 @@ Five rules:
   is not a connected server's tool. `capability_note` tells it not to use its own MCP
   settings, skills folder or a package install.
 
+## What a run acts on is Bento's: no CLI brings its own connectors
+
+`--strict-mcp-config` on EVERY Claude Code run Bento starts, the person's own chat included
+(`executors._settings_flags`), and Gemini CLI's `mcp.allowed`/`--allowed-mcp-server-names` naming only
+the bridge (`bridge_parts`). The owner's words: "Claude is just the middleware … Bento is the ultimate
+truth for execution if executed from its environment". Measured on 2.1.331: without the flag the
+claude.ai connectors load a few seconds into a run (a quick `-p` answers before they arrive, so a fast
+probe proves nothing; read the run's `deferred_tools_delta` or sleep first); with it, only `bento`.
+Last night's Supermetrics calls from a Bento chat left no ledger row, and a department that couldn't
+see the connector set out to build a replacement. Codex is not measured (not installed here).
+
+`agentos/claudeconn.py` + `/api/mcp/claude` + `/api/mcp/claude/bring` + MCP Servers → From your Claude
++ `bento mcp claude [all|NAME]`; `tests/test_claude_connectors.py`. Four rules:
+- **Names and addresses only** from `claude mcp list`; Claude's sign-ins are never read. Each server is
+  signed in to again in Bento (OAuth, DCR), so its tokens are Bento's. Admin only: the CLI on the
+  machine is signed in as its owner.
+- **An address with a token in it is a secret** (`private`: a query, a user part, or a random-looking
+  path segment or host label, e.g. Zoho's per-person host): config holds `vault:mcp.<key>.url`,
+  `mcp_client.opened_url` opens it at connect time (off the loop; `refusal` runs in a thread), every
+  listing shows `masked`.
+- **A program is never brought in**; the MCP app's form shows its command first. SSE (`/sse`) isn't
+  spoken. The bring route reads the list again rather than trusting the page.
+- **The lead is told** (`capability_note`): no connectors of its own; find_tools, offer to connect,
+  never build a replacement for a service.
+
+`.item .pact` keeps `--on-acc`: `.item button` (0,1,1) greyed every primary button in a list row.
+
 ## OpenClaw plugins: the lifecycle is ours, the runtime is not
 
 `agentos/ocplugins.py` installs OpenClaw's plugins through this OS's review — scan,

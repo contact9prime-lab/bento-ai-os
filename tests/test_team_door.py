@@ -96,7 +96,7 @@ def test_a_forwarded_turn_hands_over_through_the_gate(tmp_path, monkeypatch):
     assert "[denied] no tool called 'run_command'" in seen["bad"]
     argv = seen["argv"]
     assert "--allowedTools" in argv and "mcp__bento" in argv and "--mcp-config" in argv
-    assert "--strict-mcp-config" not in argv, "the person's own chat keeps its MCP config"
+    assert "--strict-mcp-config" in argv, "a chat acts only through Bento's servers (claudeconn)"
     assert mcpbridge.get(seen["token"]) is None, "closed when the turn ends"
     # the hand-over is in the ledger, as any built-in delegate would be
     rows = store.db.execute("SELECT action, resource FROM audit ORDER BY id DESC LIMIT 20").fetchall()

@@ -1,9 +1,17 @@
 # Changelog
 
-## 0.99.10 — 2026-11-25
+## 0.99.11 — 2026-11-25
 
 - An approval card nobody answered no longer says it was answered. The desktop's card timed out first, and every phone's card was closed with "Answered on another screen". Each card now says how it ended: allowed or denied, and where (on a screen, on Telegram, on WhatsApp); nobody answered within 5 minutes; or stopped. The desktop's copy said "✕ Denied" when a phone allowed, and now says "✓ Allowed on Telegram".
 - The agent is told the same thing. It used to hear "not approved at the current autonomy level" for a no, a timeout and a Stop alike, and told people their autonomy setting had blocked a step nobody had answered.
+
+## 0.99.10 — 2026-11-25
+
+- Bento decides what every run acts on. Claude Code no longer uses its own claude.ai connectors in any
+  run Bento starts, chat included, so every service goes through Bento's vault, permissions and ledger.
+  MCP Servers → From your Claude (and `bento mcp claude`) lists those connectors and brings each one in
+  with one sign-in; an address holding a private token goes into your vault.
+- Supermetrics is a one-click sign-in in the MCP Servers app and in a marketing department's kit, so missions and departments can use it. A Claude connector only works in a chat: Bento's own runs can't see it, and the lead now says so and offers the Bento copy instead of building one.
 
 ## 0.99.9 — 2026-11-25
 
