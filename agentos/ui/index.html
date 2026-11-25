@@ -1027,6 +1027,9 @@ label{display:block;font-size:var(--fs-sm);color:var(--dim);margin:12px 0 5px;fo
 .item .sub{color:var(--dim2);font-size:var(--fs-xs);margin-top:2px}
 .item button{color:var(--dim2);font-size:var(--fs-base)}
 .item button:hover{color:var(--err)}
+/* A primary button in a row keeps its own text colour: `.item button` (0,1,1) outranked
+   `.pact` and drew MCP Servers' Sign in and Bring in as grey on violet. */
+.item .pact,.item .pact:hover{color:var(--on-acc)}
 .mut{color:var(--dim2);font-size:var(--fs-sm)}
 
 /* ================= task manager ================= */
@@ -31375,6 +31378,8 @@ async function renderMCP(body){
     <div class="sect" style="display:flex;align-items:center;gap:10px">Connected channels
       <button class="endbtn" style="font-size:10.5px;margin-left:auto" onclick="STORE_TAB='discover';openApp('store');refreshApp('store')">🔭 Discover more — search the worldwide MCP registry</button></div>
     ${items||emptyBox('No MCP servers yet','Pick one from the catalog below, or use Store → Discover to search the worldwide MCP registry — the agent instantly gains every tool the server exposes.','','mcp','Find me a useful MCP server and set it up.')}
+    <div class="sect" style="display:flex;align-items:center;gap:10px">From your Claude ${pInfo('Connectors you added in Claude work only inside Claude. Bento runs every service through its own permissions and ledger, so bring each one in here and sign in once.')}</div>
+    <div id="mcp-claude">${mcpClaudeHTML()}</div>
     ${CURCATS.map(cat=>{
       const es=CUR.filter(e=>e.category===cat.id);
       if(!es.length)return '';
@@ -31510,6 +31515,38 @@ async function mcpPreset(key){
 }
 function mcpToggle(name){if(MCPCFG[name]){MCPCFG[name].enabled=!MCPCFG[name].enabled;mcpSave()}}
 function mcpDel(name){delete MCPCFG[name];mcpSave()}
+/* ---- from your Claude (claudeconn.py) ------------------------------------------
+   Claude's connectors don't reach Bento's runs (every Claude Code run is
+   --strict-mcp-config), so this brings each one in, to be signed in again here. The list
+   is the server's answer; `var`, because a repaint of the app must keep it.
+   TUI: bento mcp claude [all|NAME]. */
+var MCPCLAUDE={items:null,busy:false,msg:''};
+function mcpClaudeHTML(){
+  const C=MCPCLAUDE;
+  if(C.busy)return '<div class="mut">Asking Claude Code for its connectors… it checks each one, so this takes a few seconds.</div>';
+  if(!C.items)return `<div class="item"><div class="grow mut">See the connectors you set up in Claude, and bring them into Bento.</div><button class="pact" onclick="mcpClaudeLook()">Look at my Claude connectors</button></div>${C.msg?`<div class="sub">${esc(C.msg)}</div>`:''}`;
+  const ready=C.items.filter(i=>i.state==='ready');
+  const mark={ready:'',  'in-bento':'✓ ', program:'', 'not-answering':''};
+  const rows=C.items.map(i=>`<div class="item"><div class="grow"><b>${mark[i.state]||''}${esc(i.name)}</b> <span class="mut">· ${esc(i.shown)}</span><div class="sub">${esc(i.why)}</div></div>${i.state==='ready'?`<button class="pact" onclick="mcpClaudeBring(['${jsq(i.key)}'])">Bring in</button>`:''}</div>`).join('');
+  return `${ready.length>1?`<div class="item"><div class="grow">${ready.length} ready to bring in</div><button class="pact" onclick="mcpClaudeBring(null)">Bring in all ${ready.length}</button></div>`:''}${rows}${C.msg?`<div class="sub">${esc(C.msg)}</div>`:''}`;
+}
+function mcpClaudePaint(){const b=document.getElementById('mcp-claude');if(b)b.innerHTML=mcpClaudeHTML()}
+async function mcpClaudeLook(){
+  MCPCLAUDE.busy=true;MCPCLAUDE.msg='';mcpClaudePaint();
+  try{const d=await apiJSON('/api/mcp/claude');MCPCLAUDE.items=d.items||[];if(!d.ok)MCPCLAUDE.msg=d.why||'Claude Code gave no answer.'}
+  catch(e){MCPCLAUDE.items=null;MCPCLAUDE.msg=e.message||String(e)}
+  MCPCLAUDE.busy=false;mcpClaudePaint();
+}
+async function mcpClaudeBring(keys){
+  MCPCLAUDE.busy=true;mcpClaudePaint();
+  try{
+    const d=await apiJSON('/api/mcp/claude/bring',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(keys?{keys}:{all:true})});
+    const n=(d.added||[]).length,signin=(d.added||[]).filter(a=>a.oauth).length;
+    toast(n?`Brought in ${n}.`+(signin?` Sign in to ${signin===1?'it':'each'} below.`:''):'Nothing was brought in.');
+    MCPCLAUDE.busy=false;await mcpClaudeLook();refreshApp('mcp');
+  }catch(e){MCPCLAUDE.busy=false;MCPCLAUDE.msg=e.message||String(e);mcpClaudePaint()}
+}
+
 /* ---- curated (OAuth) servers -------------------------------------------------
    Install and sign-in are one gesture: a curated entry has nothing to fill in, so
    stopping to say "added — now press Sign in" would be a step that asks the user to
