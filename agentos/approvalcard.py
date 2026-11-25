@@ -95,6 +95,7 @@ GOALS = {
     "launch_native_app": "Open an app on this machine",
     "pool_task": "Hand work to the community",
     "schedule_app_job": "Run an app's script on a clock, with no model",
+    "send_to_channel": "Send a message from an app to a chat",
     "train_autopilot": "Make a small model from a goal",
     "train_job": "Train a model on this machine",
     "train_datasets": "Get or write training examples",
@@ -191,7 +192,13 @@ def body(name: str, args: dict) -> str:
         # the script IS what is approved: the yes is a grant for exactly these bytes
         return (f"Every {args.get('interval_minutes')} minutes, with no model, as the app: run "
                 f"this script and save what it prints under \"{args.get('key')}\" in the app's "
-                f"data.\n\n{args.get('script') or ''}")
+                f"data."
+                + (f" When it prints a \"_message\", send it to {args['_send_labels']}."
+                   if args.get("_send_labels") else "")
+                + f"\n\n{args.get('script') or ''}")
+    if name == "send_to_channel":
+        return (f"To: {args.get('_dest_label') or args.get('to') or 'a chat'}\n\n"
+                f"{str(args.get('text') or '')}")
     if name == "install_mcp_server":
         # the command that will run, with its version: the name alone says nothing about that
         from . import mcp_store
@@ -347,6 +354,23 @@ def choices(offer: dict | None, who: str) -> dict:
     return out
 
 
+# A yes that sets something up, rather than running one step: Allow's line says what it starts.
+# "This kind of step asks you every time" read as if the job would ask on every run.
+_SETS_UP = {
+    "schedule_app_job": lambda a: (f"The job starts and runs every {a.get('interval_minutes')} minutes "
+                                   f"without asking again, until you remove it in Missions → Schedule. "
+                                   f"A changed script asks again."),
+}
+
+
+def _choices_for(name: str, args: dict, offer: dict | None, who: str) -> dict:
+    out = choices(offer, who)
+    if name in _SETS_UP and not offer:
+        out["allow"] = _SETS_UP[name](args if isinstance(args, dict) else {})
+        out["deny"] = f"Nothing is set up, and {_lc(who)} is told you said no."
+    return out
+
+
 def _lc(who: str) -> str:
     return who[:1].lower() + who[1:] if who.startswith(("Your", "One", "The")) else who
 
@@ -375,7 +399,15 @@ def meaning(name: str, args: dict, who: str, hidden: list[dict]) -> list[str]:
         found = does(str(args.get("script") or ""))
         if found:
             lines.append("Read from its text, the script " + _join(found) + ". That is a reading, not a check.")
+        if args.get("_send_labels"):
+            lines.append(f"When a run has something to say, it also sends it to "
+                         f"{args['_send_labels']}, starting with the app's name.")
         lines.append("If the script changes, you're asked again.")
+    elif name == "send_to_channel":
+        lines.append(f"{who} wants to send this message to "
+                     f"{args.get('_dest_label') or 'a chat'}. It starts with the app's name, so "
+                     f"whoever reads it knows an app sent it. Always lets this app send there "
+                     f"again without asking, including from its schedules.")
     elif name == "run_python":
         lines.append(f"{who} wants to run Python code on this computer.")
         found = does(str(args.get("code") or ""))
@@ -419,7 +451,7 @@ def card(name: str, args: dict, said: str = "", offer: dict | None = None,
     return {"goal": goal, "said": from_agent, "body": text,
             "lines": text.count("\n") + 1 if text else 0, "chars": len(full), "cut": cut,
             "who": who, "means": meaning(name, args, who, hidden), "hidden": bool(hidden),
-            "choices": choices(offer, who)}
+            "choices": _choices_for(name, args, offer, who)}
 
 
 def preview(c: dict, lines: int = PREVIEW_LINES, chars: int = PREVIEW_CHARS) -> str:

@@ -1045,7 +1045,8 @@ class Store:
             ("tasks", (("app_id", "TEXT DEFAULT ''"),)),
             # An app job (appjobs.py): the script a schedule runs with no model, and the key
             # in the app's data its output is saved under. '' for every other schedule.
-            ("tasks", (("script", "TEXT DEFAULT ''"), ("data_key", "TEXT DEFAULT ''"))),
+            ("tasks", (("script", "TEXT DEFAULT ''"), ("data_key", "TEXT DEFAULT ''"),
+                       ("send_to", "TEXT DEFAULT ''"))),
             ("grants", (("source_ref", "TEXT DEFAULT ''"),)),
             ("subagents", (("memory_scope", "TEXT DEFAULT 'inherit'"),
                            ("skills_locked", "INTEGER DEFAULT 1"),
@@ -3436,15 +3437,16 @@ class Store:
                  at_time: str | None, next_run: float | None, trigger: str = "",
                  trigger_config: str = "{}", cooldown_secs: int = 300,
                  flow: str = "", space_id: str = "", weekday: int = -1, app_id: str = "",
-                 script: str = "", data_key: str = "") -> str:
+                 script: str = "", data_key: str = "", send_to: str = "") -> str:
         tid = uuid.uuid4().hex[:12]
         self.db.execute(
             'INSERT INTO tasks (id, prompt, schedule_type, interval_seconds, at_time, next_run, '
             'created_at, "trigger", trigger_config, cooldown_secs, flow, space_id, weekday, app_id, '
-            'script, data_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+            'script, data_key, send_to) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
             (tid, prompt, schedule_type, interval_seconds, at_time, next_run, time.time(),
              trigger, trigger_config or "{}", int(cooldown_secs), flow or "", space_id or "",
-             int(weekday if weekday is not None else -1), app_id or "", script or "", data_key or ""),
+             int(weekday if weekday is not None else -1), app_id or "", script or "", data_key or "",
+             send_to or ""),
         )
         self.db.commit()
         return tid

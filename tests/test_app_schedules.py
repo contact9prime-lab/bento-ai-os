@@ -100,8 +100,10 @@ def test_the_app_is_the_callers_never_the_models():
     assert 'args["_app"] = self.app_id' in agent
     # fetch_url: an app's fetch never gets the person's allow-list of local addresses (netguard.py)
     # schedule_app_job / app_jobs: an app's own jobs (appjobs.py), filed under the calling app
+    # send_to_channel / channel_destinations: a message from the app to a chat (appchannels.py)
     assert set(APP_BOUND_TOOLS) == {"schedule_task", "create_trigger", "update_app_data", "fetch_url",
-                                    "desktop_state", "schedule_app_job", "app_jobs"}
+                                    "desktop_state", "schedule_app_job", "app_jobs",
+                                    "send_to_channel", "channel_destinations"}
     tools = (ROOT / "agentos/tools.py").read_text()
     assert '{"_app"} if name in APP_BOUND_TOOLS' in tools
     # an app's own appTool call is filed under that app, after the `_` strip
@@ -160,7 +162,9 @@ def test_a_forwarded_schedule_gets_a_door_with_the_apps_two_tools(tmp_path):
     token = execmod.open_app_door(env, c, tb, aid, approver)
     assert token and "--mcp-config" in execmod.build_command("hi", env)
     _, listed = asyncio.run(mcpbridge.handle(token, {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}))
-    assert sorted(t["name"] for t in listed["result"]["tools"]) == ["read_app_data", "update_app_data"]
+    # and the two that let a judgement schedule report in a chat (appchannels.py)
+    assert sorted(t["name"] for t in listed["result"]["tools"]) == [
+        "channel_destinations", "read_app_data", "send_to_channel", "update_app_data"]
 
     def call(name, args):
         _, r = asyncio.run(mcpbridge.handle(token, {"jsonrpc": "2.0", "id": 2, "method": "tools/call",

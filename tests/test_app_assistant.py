@@ -85,7 +85,7 @@ def test_a_workspace_that_is_the_home_is_never_offered(tmp_path):
 
 def test_the_assistant_is_handed_its_apps_code_data_and_screen():
     agent = SERVER[SERVER.index('@app.post("/api/apps/agent")'):SERVER.index('@app.get("/api/apps/context")')]
-    assert 'about = bool(body.get("about_app"))' in agent and "_app_about(principal.id" in agent
+    assert 'about=bool(body.get("about_app"))' in agent and "_app_about(principal.id" in agent
     assert "APP_ABOUT_STEPS if about else 5" in agent
     about = SERVER[SERVER.index("def _app_about"):SERVER.index('@app.post("/api/apps/agent")')]
     for part in ("<app_code>", "<app_saved_data>", "<app_screen_now>", "not a file on this computer",

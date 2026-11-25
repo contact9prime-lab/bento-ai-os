@@ -321,6 +321,54 @@ fetches or runs code from a page timer, or runs `run_command` itself.
 
 ![The same Crypto Prices app on a 390px phone, showing the saved Bitcoin price](screenshots/app-job-app-phone.png)
 
+#### Report in your chats, and reach your apps from the phone
+
+An app can post to your own Telegram or WhatsApp, or to a person or group you already let in there.
+It can never message a chat you haven't allowed.
+
+```js
+const chats = await appChannel.list();          // [{id, label, kind: 'you'|'person'|'group'}]
+await appChannel.send('BTC is above 100k', { to: 'telegram' });   // or a group's name, or an id
+```
+
+Every message starts with the app's name (`▦ Signal Desk`), so a group knows an app sent it. The
+first message to a chat asks you, on the usual card; *Always* lets that app send there again,
+including from its schedules. The permission is the app's and covers that one chat.
+
+An app job can report too. Name the chats with `send_to`, and have the script print a JSON
+object with a `"_message"` string when there is something to say:
+
+```js
+await appJob.ensure({ title: 'Watch BTC', script: PY, every: 5, key: 'prices', send_to: ['telegram', 'Traders'] });
+// PY prints {"btc": 101000, "_message": "BTC is above 100k"}; "_message" is sent, not saved
+```
+
+A run is handed what the job saved last time, so a script can compare with it and keep a short
+history without a file of its own:
+
+```python
+import json, sys
+last = json.load(open(sys.argv[1]))["previous"] if len(sys.argv) > 1 else None
+```
+
+The job's card names those chats, so one yes covers the script and where it reports. A run with no
+`_message` sends nothing, which is how a price watch alerts only when a line is crossed. Missions →
+Schedule shows *reports to …* under the job. An agent schedule for an app (judgement) uses the
+`send_to_channel` tool for the same thing.
+
+On the phone, the owner's Telegram has **/apps**, a list of your apps with a button each, and
+**/app &lt;name&gt;**, which shows what the app's jobs last saved and when. **/app &lt;name&gt;
+&lt;question&gt;** asks the app's own assistant, which answers as the app with its code and data in
+front of it, as the ✦ inside the app does. WhatsApp has the same two commands for its owner.
+
+![An app job's card naming the two chats it will report to: you on Telegram and the group Traders](screenshots/app-channels-card.png)
+
+![Missions, Schedule tab: the job says "reports to Piyush on Telegram, Traders on Telegram" and its last run sent to both](screenshots/app-channels-missions.png)
+
+![The owner's Telegram on a phone: the app's report, /apps with a button for the app, and its latest numbers](screenshots/app-channels-phone.png)
+
+![The Traders group got the same report, starting with the app's name](screenshots/app-channels-group.png)
+
 When an app asks to run a read-only command on files in your workspace (`ls`, `cat`, `head`,
 `grep`…), the card's *1 hour* and *Always* cover every such read for that one app. Hidden files,
 anything outside the workspace and anything that writes still ask.

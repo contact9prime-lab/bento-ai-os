@@ -508,6 +508,11 @@ def action_of(name: str, args: dict, mcp=None, ocp=None) -> tuple[str, str]:
         if not res:
             res = f"media:{args.get('asset_id') or args.get('kind') or '*'}"
         return action, res
+    if name == "send_to_channel":
+        # one chat, resolved by the OS into `_dest` (agent.gate_fields): a grant is "this app
+        # may post to that group", never "may post anywhere"
+        chan, _, chat = str(args.get("_dest") or "").partition(":")
+        return "channel.send", (f"channel:{chan}/{chat}" if chat else "channel:none")
     if name in TOOL_ACTIONS:
         action, res = TOOL_ACTIONS[name]
         if name == "mail_send":
@@ -775,7 +780,7 @@ PARANOID_FREE = {
 # SAFE call through, and the shell's "safe" commands include `cat ~/.ssh/id_rsa`.
 APP_FREE_ACTIONS = {"net.fetch", "media.read", "flow.read", "space.read"}
 APP_FREE_TOOLS = {"system_info", "notify", "search_docs", "list_themes", "desktop_state",
-                  "app_jobs"}      # an app reading its own jobs (appjobs.summary: no grant, no script)
+                  "app_jobs", "channel_destinations"}      # an app reading its own jobs (appjobs.summary: no grant, no script)
 
 
 # How fast a principal may spend what it has been granted.

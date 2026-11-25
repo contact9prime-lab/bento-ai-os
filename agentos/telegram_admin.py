@@ -41,6 +41,8 @@ COMMANDS = [
     ("/agents", "", "the specialists this machine has"),
     ("/office", "", "the office right now — who is at work, as a picture"),
     ("/run", "<agent> <task>", "hand a task to one of them"),
+    ("/apps", "", "your apps; tap one for its latest numbers"),
+    ("/app", "<name> [question]", "an app's latest numbers, or ask the app a question"),
     ("/flows", "", "standing missions, and whether they are armed"),
     ("/flow", "<name> [input]", "run one now"),
     ("/tools", "[search]", "what the agent can do"),
@@ -660,6 +662,40 @@ class Console:
         left = (f"\n{was} no longer answers; turns run on this model now."
                 if ex["kind"] != "agent" and was != "aria" else "")
         return f"▲ answering with {msg}{left}"
+
+    async def _cmd_apps(self, chat_id: int, arg: str) -> str:
+        """Your apps, with a button each (appphone.py): a tap shows its latest numbers."""
+        from . import appphone
+        rows = appphone.listing(self.tg.store)
+        text = appphone.apps_text(self.tg.store)
+        buttons = [[{"text": r["name"][:40], "callback_data": f"apx:{r['id']}"[:64]}] for r in rows[:20]]
+        if buttons:
+            with contextlib.suppress(Exception):
+                await self.tg._api("sendMessage", chat_id=chat_id, text=text[:4000],
+                                   reply_markup={"inline_keyboard": buttons})
+                return ""
+        return text
+
+    async def _cmd_app(self, chat_id: int, arg: str) -> str:
+        """An app's latest numbers, or a question for the app's own assistant, which runs as
+        the app and asks here when a step needs a yes (appphone.answer)."""
+        from . import appphone
+        app, rest = appphone.find(self.tg.store, arg)
+        if app is not None and rest:
+            await self.tg.send(f"▶ asking {app.get('name')}…", chat_id)
+
+        async def approver(name, args, reason, offer=None):
+            door = getattr(self.tg.toolbox, "approve", None)
+            if callable(door):
+                return bool(await door(name, args, reason, offer=offer))
+            return await self.tg.ask_approval(chat_id, name, args, reason, offer=offer)
+        return await appphone.answer(self.tg.store, arg, "telegram", approver)
+
+    async def show_app(self, app_id: str) -> str:
+        """An app's Open button under /apps."""
+        from . import appphone
+        app = self.tg.store.get_app(app_id)
+        return appphone.glance(self.tg.store, app) if app else "▲ That app is gone."
 
     async def _cmd_run(self, chat_id: int, arg: str) -> str:
         name, _, task = arg.partition(" ")

@@ -75,7 +75,7 @@ def hub_for(cfg: dict) -> dict | None:
         return None
 
 
-def local_command(py: str, path: str, cwd: str = "") -> str:
+def local_command(py: str, path: str, cwd: str = "", arg: str = "") -> str:
     """The edge's run, held to the edge's limits. `ulimit -v` is the memory, `timeout`
     the clock (GNU's says 124, uutils' 125, a KILL 137); `stopped_by_limit` reads them."""
     import shlex
@@ -83,7 +83,8 @@ def local_command(py: str, path: str, cwd: str = "") -> str:
     # TERM at the limit and KILL two seconds on: uutils' timeout (Ubuntu 25.10) ignored a bare
     # `-s KILL` and let the run go on to its end
     clock = f"timeout -k 2 {EDGE_SECONDS} " if shutil.which("timeout") else ""
-    return f"{lead}ulimit -v {EDGE_MEMORY_MB * 1024}; exec {clock}{shlex.quote(py)} {shlex.quote(path)}"
+    tail = f" {shlex.quote(arg)}" if arg else ""
+    return f"{lead}ulimit -v {EDGE_MEMORY_MB * 1024}; exec {clock}{shlex.quote(py)} {shlex.quote(path)}{tail}"
 
 
 def stopped_by_limit(out: str) -> str:

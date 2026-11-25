@@ -8144,6 +8144,8 @@ try{
 //                                             app — risky tools raise the OS's normal approval card
 //   appContext()                              {app_id, app_name, agent_name, model, theme}
 //   appCopilot.mount({starters,system,act})   the standard in-app agent widget (✦ corner button)
+//   appChannel.list() / .send(text, {to})     the person's Telegram/WhatsApp chats and groups,
+//                                             and a message to one (asked once, Remember)
 // Every call is authenticated with the app token and gated by the app's permission grants.
 window.appData = {
   async get(){ try{ return await (await fetch('/api/apps/'+window.APP_ID+'/data',{headers:{'X-App-Token':window.APP_TOKEN}})).json(); }catch(e){ return {}; } },
@@ -8166,12 +8168,36 @@ window.appJob = {
   async ensure(o){
     o = o || {}; const every = Math.max(1, parseInt(o.every || o.interval_minutes || 5, 10));
     const have = (await window.appJob.list()).find(j => j.title === o.title);
+    const to = o.send_to ? await window.appChannel._ids([].concat(o.send_to)) : [];
     if (have && have.every_minutes === every && have.key === o.key
+        && JSON.stringify(have.send_to || []) === JSON.stringify(to)
         && have.script_sha === await window.appJob._sha(String(o.script || ''))) return {ok:true, job:have, asked:false};
-    const r = await window.appTool('schedule_app_job', {title:o.title, script:o.script, interval_minutes:every, key:o.key});
+    const args = {title:o.title, script:o.script, interval_minutes:every, key:o.key};
+    if (o.send_to) args.send_to = [].concat(o.send_to);
+    const r = await window.appTool('schedule_app_job', args);
     const out = String((r && (r.output || r.error)) || '');
     return {ok: !/^\\[error\\]|not approved|denied|needs approval/i.test(out), asked:true, message: out};
   },
+};
+// appChannel: report on the person's phone. list() gives the chats they already let in
+// ({id, channel, label, kind: you|person|group}); send(text, {to}) posts one message there,
+// starting with this app's name. `to` is an id, 'telegram'/'whatsapp' (their own chat) or a
+// group's name. The first send to a chat asks the person; Always lets it send there again.
+// For a report on a clock, give appJob.ensure a send_to and print {"_message": "..."}.
+window.appChannel = {
+  async list(){ const r = await window.appTool('channel_destinations', {});
+    try { return JSON.parse((r && r.output) || '[]'); } catch(e){ return []; } },
+  async _ids(names){ const all = await window.appChannel.list(); const out = [];
+    for (const n of names){ const w = String(n || '').trim().toLowerCase();
+      const d = all.find(x => x.id.toLowerCase() === w)
+        || ((w === 'telegram' || w === 'whatsapp') ? all.find(x => x.channel === w && x.kind === 'you') : null)
+        || all.find(x => String(x.name || '').toLowerCase().replace(/^@/, '') === w.replace(/^@/, ''));
+      if (d && !out.includes(d.id)) out.push(d.id); }
+    return out; },
+  async send(text, o){ o = o || {};
+    const r = await window.appTool('send_to_channel', {text: String(text || ''), to: o.to || ''});
+    const out = String((r && (r.output || r.error)) || '');
+    return {ok: /^sent/i.test(out), message: out}; },
 };
 async function _appStream(body, onDelta){
   let r;
@@ -9203,11 +9229,16 @@ DATA — every app has its OWN data store (its "MCP"), pre-injected as page glob
   The user's interface wishes are the spec; the registry is what makes them possible.
 
 ALERTS & CHANNELS — bake delivery in; the user should not have to keep the window open:
-- appTool('notify',{title,message}) shows a desktop notification; appTool('telegram_send',{message})
-  reaches the user's phone when Telegram is paired (configured channels are listed in the registry).
-- For anything the user wants tracked/monitored, ALSO wire background checking:
-  appTool('schedule_task',{prompt:'check <thing>; if <condition>, send the user a telegram_send alert',
-  schedule_type:'interval', interval_minutes:N}) — this keeps working with the app closed.
+- appTool('notify',{title,message}) shows a desktop notification. To reach the person's phone, or a
+  Telegram/WhatsApp group they let in, use appChannel: await appChannel.list() gives the chats
+  ({id, label, kind: you|person|group}), await appChannel.send(text, {to:'telegram'}) posts one
+  message starting with this app's name (to: an id, 'telegram'/'whatsapp' for their own chat, or
+  a group's name). The first send to a chat asks the person once. Offer the chats from list() in
+  the app's settings; never type a chat id in.
+- For anything the user wants tracked/monitored, ALSO wire background checking so it keeps working
+  with the app closed: an app job with send_to (below) when a rule decides, or appTool(
+  'schedule_task',{prompt:'check <thing>; if <condition>, send_to_channel the alert to telegram',
+  schedule_type:'interval', interval_minutes:N}) when it needs judgement.
   A schedule the app creates is linked to it: it is listed with the app in Missions → Schedule
   and in App Studio, and asking twice for the same schedule keeps one.
 - To keep the app's NUMBERS fresh while it is closed, the schedule's prompt saves them into the
@@ -9228,7 +9259,13 @@ WORK ON A CLOCK — the framework runs it, the page shows it:
     where PY is the Python that prints the result (one JSON value). Bento runs it as this app
     every 5 minutes, saves it under appData 'scan', and lists it in Missions. The person
     approves the script once; ensure asks again only when the script changes. Put the logic in
-    the script, never in a page timer or appTool('run_command'/'run_python').
+    the script, never in a page timer or appTool('run_command'/'run_python'). To report on the
+    phone too, add send_to:['telegram'] (or chats from appChannel.list()) and have the script
+    print a JSON object with a "_message" string when there is something to say (an alert, a
+    summary); "_message" is sent and not saved, and no "_message" sends nothing. The script is
+    handed what it saved last time: last = json.load(open(sys.argv[1]))['previous'] if
+    len(sys.argv) > 1 else None. Keep anything it must remember (the last price, a history, past
+    alerts) in what it prints, never in a file of its own.
   · Judgement (read the news and decide, write a summary, choose whom to alert): appTool(
     'schedule_task', {prompt, schedule_type:'interval', interval_minutes:N}) — an agent run.
 - The page reads appData on open, redraws on window.addEventListener('appdata', …), and shows when
@@ -10995,7 +11032,7 @@ async def api_run_tool(body: dict, request: Request):
     args = strip_forged(name, args, source=principal.label)
     # what only the OS can say (the site, the terminal's foreground, who asked): the same
     # fields the agent loop fills, so the gate decides the same thing for both
-    args = gate_fields(name, args, principal.id or principal.label)
+    args = gate_fields(name, args, principal.id or principal.label, toolbox=toolbox)
     level, reason = toolbox.risk_of(name, args)
     # apps render inside the desktop, so their calls arrive via the GUI gate
     surface = "gui" if principal.kind == "app" else "api"
@@ -14946,36 +14983,46 @@ async def api_app_agent(body: dict, request: Request):
         if not state["clients"] or not await request_approval(
                 "appAgent", {"prompt": prompt[:200]}, why, offer=adec.grant_offer):
             return JSONResponse({"error": f"not approved: {why}"}, status_code=403)
-    named = str(body.get("model") or "").strip()
+    tools = body.get("tools")
+
+    async def approver(name, args, reason, offer=None):
+        if not state["clients"]:   # headless: nobody to ask
+            return False
+        return await request_approval(name, args, reason, offer=offer)
+    got = await _app_agent_run(principal, prompt, approver, surface="gui",
+                               named=str(body.get("model") or "").strip(),
+                               tool_filter=[str(t) for t in tools][:24] if isinstance(tools, list) else None,
+                               about=bool(body.get("about_app")), page=str(body.get("page") or ""))
+    if got.pop("denied", False):
+        return JSONResponse({"error": got["output"].removeprefix("[error] ")}, status_code=403)
+    return got
+
+
+async def _app_agent_run(principal: Principal, prompt: str, approver, surface: str = "gui",
+                         named: str = "", tool_filter=None, about: bool = False, page: str = "") -> dict:
+    """appAgent's run, after its door was decided: the app's mini agent on the app's brain, every
+    tool the app's. The page's ✦ assistant and a phone's `/app <name> <question>` share it."""
     # the machine's brain when it can run with only this OS's tools, else the provider
     # model: either way every tool call below is the APP's, decided by the PDP
     engine, model, why = _app_model_label(named)
     if why:
         return {"output": f"[error] {why}", "steps": 0}
     label = model if engine == "aria" else engine
-    mdec = state["pdp"].decide(principal, "model.use", f"model:{label}", {"surface": "gui"})
+    mdec = state["pdp"].decide(principal, "model.use", f"model:{label}", {"surface": surface})
     if mdec.effect == "deny":
-        return JSONResponse({"error": f"denied: this app may not use {label}"}, status_code=403)
-    tools = body.get("tools")
-    tool_filter = [str(t) for t in tools][:24] if isinstance(tools, list) else None
-    about = bool(body.get("about_app"))
+        return {"output": f"[error] denied: this app may not use {label}", "steps": 0, "denied": True}
     if about:
         # The ✦ assistant inside an app. It used to get only the question, so asked
         # "explain me the setup" it went looking for the app with `ls` in the workspace
         # (each one a card), never found it (an app lives in the database), and ran out
         # of steps. It now gets the app's own code, saved data and screen up front.
-        prompt = _app_about(principal.id, str(body.get("page") or "")) + "\n\n" + prompt
+        prompt = _app_about(principal.id, page) + "\n\n" + prompt
 
     async def emit(_ev):
         pass
 
-    async def approver(name, args, reason, offer=None):
-        if not state["clients"]:   # headless: nobody to ask
-            return False
-        return await request_approval(name, args, reason, offer=offer)
-
     agent = Agent({**state["cfg"], "max_steps": APP_ABOUT_STEPS if about else 5}, state["toolbox"], model, emit, approver,
-                  tool_filter=tool_filter, principal=principal, surface="gui")
+                  tool_filter=tool_filter, principal=principal, surface=surface)
     if engine == "aria":
         result = await agent.run([{"role": "user", "content": prompt}])
     else:
@@ -14983,15 +15030,36 @@ async def api_app_agent(body: dict, request: Request):
         # (built-in and MCP, as the PDP lets THIS app see them) arrive over the run
         # bridge, each call through Agent.call_tool: the same gate, the same ledger.
         result = await state["toolbox"].fabric._run_on_executor(
-            agent, prompt, "", engine, surface="gui", kind="app")
+            agent, prompt, "", engine, surface=surface, kind="app")
     errors = [st.get("message") for st in result.get("steps") or [] if st.get("type") == "error"]
     state["store"].log("tool", "app→appAgent",
-                       {"via": "user_app", "principal": principal.label,
+                       {"via": "user_app" if surface == "gui" else surface, "principal": principal.label,
                         "app_id": principal.id, "steps": len(result["steps"]), "brain": label})
     out = result.get("content") or ""
     if not out.strip() and errors:
         out = f"[error] {errors[0]}"
     return {"output": out, "steps": len(result["steps"]), "brain": label}
+
+
+async def app_ask_from_phone(app_id: str, question: str, surface: str, approver) -> str:
+    """A phone's `/app <name> <question>` (appphone.py): the app's own assistant answers, as
+    the app, with its code and saved data in front of it. The same doors as the page's ✦: a
+    quarantined app is refused, calling the agent is `agent.invoke agent:main` for the app
+    (asked on the phone, with Remember), and every step is the app's."""
+    principal = Principal("app", app_id)
+    row = state["store"].get_app(app_id) or {}
+    if row.get("suspended_at"):
+        return (f"[error] this app is quarantined: {row.get('suspended_reason') or 'it was calling too fast'}. "
+                f"Let it out in Permissions → Quarantine.")
+    adec = state["pdp"].decide(principal, "agent.invoke", "agent:main", {"surface": surface})
+    if adec.effect == "deny":
+        return f"[error] denied: {adec.reason or 'this app may not call the agent'}"
+    if adec.effect == "ask":
+        why = adec.reason or "This app wants to ask your agent to answer a question about it."
+        if not await approver("appAgent", {"prompt": question[:200]}, why, adec.grant_offer):
+            return f"[error] not approved: {why}"
+    got = await _app_agent_run(principal, question, approver, surface=surface, about=True)
+    return got.get("output") or "(no answer)"
 
 
 @app.get("/api/apps/context")
@@ -23670,8 +23738,10 @@ async def _run_build(data: dict):
             "update_app_data, which the app reads on open (and hears as the `appdata` event "
             "while open). Write the app to read that key. Numbers on a clock (fetching, "
             "computing) are an app job instead, with no model: the app calls appJob.ensure({{title, "
-            "script, every, key}}) at startup and the person approves the script once. A page "
-            "timer only redraws. Say in one line which you set up.\n")
+            "script, every, key}}) at startup and the person approves the script once. To report "
+            "on their phone or a group, add send_to:['telegram'] and print a JSON object with a "
+            "\"_message\" string when there is something to say; a schedule's run uses "
+            "send_to_channel. A page timer only redraws. Say in one line which you set up.\n")
 
         def persona_for(use_model: str) -> str:
             """Full API registry for capable cloud models; trimmed for local ones —
