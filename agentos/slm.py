@@ -264,6 +264,35 @@ def mapping(columns: list[str], want: dict | None = None) -> dict:
     return {"prompt": "", "response": ""}
 
 
+_ANSWER_WORDS = ("label", "labels", "answer", "output", "response", "target", "class", "category",
+                 "sentiment", "intent", "tag", "y")
+
+
+def guess(records: list[dict], labels: dict | None = None) -> dict:
+    """When no column has a conventional name (`sms` and `label`, say), read the values:
+    the prompt is the text column with the longest cells, the answer a class-label column,
+    else one named like an answer, else a short text column with few distinct values."""
+    labels = labels or {}
+    recs = [r for r in records if isinstance(r, dict)][:200]
+    cols = sorted({str(k) for r in recs for k in r})
+    def texts(c):
+        return [v for r in recs if isinstance(v := r.get(c), str) and v.strip()]
+    text = {c: texts(c) for c in cols}
+    long = sorted((c for c in cols if len(text[c]) >= max(1, len(recs) // 2)),
+                  key=lambda c: -sum(len(v) for v in text[c]) / max(1, len(text[c])))
+    if not long:
+        return {"prompt": "", "response": ""}
+    p = long[0]
+    rest = [c for c in cols if c != p]
+    low = {c.lower(): c for c in rest}
+    r = next((c for c in rest if c in labels), "") or next((low[w] for w in _ANSWER_WORDS if w in low), "")
+    if not r:
+        few = [c for c in rest if text[c] and len(set(text[c])) <= max(2, len(text[c]) // 5)
+               and max(len(v) for v in text[c]) <= 40]
+        r = few[0] if few else ""
+    return {"prompt": p, "response": r}
+
+
 def _cell(v, names: list | None = None) -> str:
     if v is None:
         return ""
@@ -285,6 +314,8 @@ def pairs_from(records: list[dict], want: dict | None = None, labels: dict | Non
     out, seen = [], set()
     chat = next((c for c in ("messages", "conversations") if c in cols), "")
     m = {"prompt": "", "response": ""} if (chat and not (want or {}).get("prompt")) else mapping(cols, want)
+    if not m["prompt"] and not chat:
+        m = guess(recs, labels)
     how.update(prompt=m["prompt"] or chat, response=m["response"] or chat)
     for r in recs:
         system = ""
@@ -541,6 +572,25 @@ def hub_rows(repo: str, config: str = "", split: str = "", max_rows: int = 2000,
         if len(recs) >= int(got.get("num_rows_total") or 0):
             break
     return recs[:want], labels, pick
+
+
+PREVIEW_ROWS = 8          # rows shown before an import
+PREVIEW_CELL = 300        # characters of a cell in a preview
+
+
+def hub_preview(repo: str, config: str = "", split: str = "", n: int = PREVIEW_ROWS, token: str = "",
+                want: dict | None = None) -> dict:
+    """The first rows of a Hub dataset as they are, its splits, and which columns an import
+    would read as the prompt and the answer, so a person can look before taking anything."""
+    splits = hub_splits(repo, token)
+    recs, labels, where = hub_rows(repo, config, split, max(1, min(int(n or PREVIEW_ROWS), 50)), token)
+    pairs, how = pairs_from(recs, want, labels)
+    cols = how["columns"]
+    rows_ = [{c: plain(_cell(r.get(c), labels.get(c)), PREVIEW_CELL) for c in cols} for r in recs]
+    return {"repo": repo, "config": where["config"], "split": where["split"], "splits": splits,
+            "columns": cols, "labels": labels, "rows": rows_,
+            "read_as": {"prompt": how.get("prompt") or "", "response": how.get("response") or ""},
+            "pairs": pairs[:3]}
 
 
 def import_hub(base: Path, repo: str, name: str = "", config: str = "", split: str = "",

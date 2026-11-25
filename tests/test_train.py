@@ -221,6 +221,14 @@ class _Hub(BaseHTTPRequestHandler):
             code, body = 404, {"error": "nope"}
         elif u.path == "/splits":
             body = {"splits": [{"config": "default", "split": "test"}, {"config": "default", "split": "train"}]}
+        elif u.path == "/rows" and q.get("dataset") == "acme/sms":
+            off, n = int(q["offset"]), int(q["length"])
+            rows = [{"row": {"sms": f"message number {i} with some words", "label": int(i % 3 == 0), "id": i}}
+                    for i in range(off, min(off + n, 40))]
+            body = {"features": [{"name": "sms", "type": {"dtype": "string", "_type": "Value"}},
+                                 {"name": "label", "type": {"names": ["ham", "spam"], "_type": "ClassLabel"}},
+                                 {"name": "id", "type": {"dtype": "int64", "_type": "Value"}}],
+                    "rows": rows, "num_rows_total": 40}
         elif u.path == "/rows":
             off, n = int(q["offset"]), int(q["length"])
             rows = [{"row": {"text": f"review {i}", "label": i % 2}} for i in range(off, min(off + n, 250))]
@@ -262,6 +270,35 @@ def test_a_hub_dataset_is_imported_a_page_at_a_time_with_its_label_names(hub, tm
     assert [int(p["length"]) for p in pages] == [100, 100, 30]
     assert all(auth == "Bearer hf_secret" for _, _, auth in hub.seen)
     assert "hf_secret" not in json.dumps(slm.dataset(base, ds["id"])), "the token is used and kept nowhere"
+
+
+def test_a_hub_dataset_is_previewed_before_anything_is_taken(hub, tmp_path):
+    v = slm.hub_preview("acme/reviews")
+    assert [r["text"] for r in v["rows"]] == [f"review {i}" for i in range(slm.PREVIEW_ROWS)]
+    assert v["rows"][1]["label"] == "pos", "a class label shows as its name"
+    assert v["read_as"] == {"prompt": "text", "response": "label"} and v["split"] == "train"
+    assert [s["split"] for s in v["splits"]] == ["test", "train"]
+    assert [int(q["length"]) for p, q, _ in hub.seen if p == "/rows"] == [slm.PREVIEW_ROWS], "one small page"
+    assert not (tmp_path / "train").exists() and slm.datasets(slm.root(tmp_path)) == []
+    w = slm.hub_preview("acme/reviews", split="test", want={"prompt": "label", "response": "text"})
+    assert w["split"] == "test" and w["read_as"] == {"prompt": "label", "response": "text"}
+
+
+def test_columns_with_unusual_names_are_read_from_their_values(hub, tmp_path):
+    # ucirvine/sms_spam on the real Hub: `sms` and `label`, which no conventional pair names
+    v = slm.hub_preview("acme/sms")
+    assert v["read_as"] == {"prompt": "sms", "response": "label"}
+    ds = slm.import_hub(slm.root(tmp_path), "acme/sms", max_rows=40)
+    assert ds["rows"] == 40 and ds["answers"] == 40
+    assert slm.rows(slm.root(tmp_path), ds["id"], 1) == [{"prompt": "message number 0 with some words", "response": "spam"}]
+    mine = slm.import_hub(slm.root(tmp_path), "acme/sms", max_rows=5, want={"prompt": "sms", "response": ""})
+    assert mine["answers"] == 0, "a person's choice of columns wins"
+
+
+def test_the_train_app_previews_and_imports_what_it_showed():
+    js = (Path(slm.__file__).parent / "ui/src/js/27b-train.js").read_text()
+    assert "/api/train/hub/preview?" in js and "trainPreview(" in js
+    assert "columns:{prompt:ra.prompt" in js and "split:p.split" in js, "the import takes the previewed columns and split"
 
 
 def test_a_dataset_the_hub_does_not_have_is_a_sentence(hub, tmp_path):

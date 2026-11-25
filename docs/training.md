@@ -71,11 +71,17 @@ can type any other `owner/name`:
 
 ![Datasets: the Hub, a teacher, or a file](screenshots/train-datasets.png)
 
+![A Hub dataset previewed before it is imported](screenshots/train-hub-preview.png)
+
 Four ways in, all ending as prompt and answer pairs:
 
-- **The Hugging Face Hub.** Search public datasets and import the first rows of one. A
-  class label arrives as its name (`pos`), not its number. Nothing from the dataset's
-  repository runs here: rows are asked of the Hub's own rows service.
+- **The Hugging Face Hub.** Search public datasets, press **Preview** to see the first rows,
+  and import the first rows of one. The preview shows which column will be the prompt and
+  which the answer, and you can change either, or the split, before importing. When no column
+  has a usual name (`sms` and `label`, say), the columns are read from their values: the
+  longest text is the prompt and a label column is the answer. A class label arrives as its
+  name (`pos`), not its number. Nothing from the dataset's repository runs here: rows are
+  asked of the Hub's own rows service.
 - **A teacher writes them.** Describe the job and say how many.
 - **Your devices.** Sensor readings, with the alarms that followed as the answers. See below.
 - **A file.** CSV, TSV, JSON or JSONL. A file of prompts with no answers is fine: have the
@@ -83,7 +89,9 @@ Four ways in, all ending as prompt and answer pairs:
 
 ```
 bento train search sms spam
+bento train preview ucirvine/sms_spam          # its first rows, and how they would be read
 bento train import ucirvine/sms_spam --rows 1000 --task "Say spam or ham."
+bento train import owner/name --prompt question --answer category --split validation
 bento train file inbox.csv --task "Sort into billing, bug or other."
 bento train write "Sort support mail into billing, bug or other." --count 200
 bento train answer DATASET

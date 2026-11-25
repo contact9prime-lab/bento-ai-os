@@ -3,6 +3,11 @@
 
 ## 0.100.3 — 2026-11-25
 
+- Train: a Hugging Face Hub dataset can be previewed before it is imported. Preview shows its
+  first rows and which column will be the prompt and which the answer, and you can change
+  either, or the split. `bento train preview OWNER/NAME` does the same in a terminal.
+- Train: a Hub dataset whose columns have unusual names (`sms` and `label`) is read from its
+  values, so `ucirvine/sms_spam` imports.
 - An approval card says what it means for you. It names who is asking (an app by its name, or your agent),
   says in plain words what the step would do, and decodes a command that hides its script in base64, so you
   read the script that would really run. Under the buttons, *What do these buttons do?* says what each one
