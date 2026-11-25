@@ -1,6 +1,14 @@
 # Changelog
 
 
+## 0.100.3 — 2026-11-25
+
+- Train: a Hugging Face Hub dataset can be previewed before it is imported. Preview shows its
+  first rows and which column will be the prompt and which the answer, and you can change
+  either, or the split. `bento train preview OWNER/NAME` does the same in a terminal.
+- Train: a Hub dataset whose columns have unusual names (`sms` and `label`) is read from its
+  values, so `ucirvine/sms_spam` imports.
+
 ## 0.100.2 — 2026-11-25
 
 No release notes were written for this one; the commits since 0.100.1 are what changed (`bento update` lists them).
