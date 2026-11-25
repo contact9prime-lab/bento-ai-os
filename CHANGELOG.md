@@ -1,6 +1,10 @@
 # Changelog
 
 
+## 0.100.2 — 2026-11-25
+
+No release notes were written for this one; the commits since 0.100.1 are what changed (`bento update` lists them).
+
 ## 0.100.1 — 2026-11-25
 
 **The phone's menu bar and dock fit.** With Reduce Motion on, the brain chip ran over the clock and the
