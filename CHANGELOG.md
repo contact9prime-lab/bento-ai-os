@@ -1,6 +1,18 @@
 # Changelog
 
 
+## 0.100.7 — 2026-11-26
+
+- Your agent hands independent parts of a job to several specialists at once. Ask for a market,
+  its competitors and their prices, and the three researchers work at the same time instead of one
+  after another. This holds on the built-in agent and on Claude Code. Measured with three 15-second
+  hand-overs on Claude Code: 45 seconds of work before, 27 seconds now. A part that needs another
+  part's result still waits for it.
+- A mission's master was told to hand out one task at a time; now it hands out what doesn't depend
+  on anything else together. A mission on the built-in agent with nobody to answer still goes one
+  at a time, because only one waiting step is remembered per run.
+- Two department tasks started together each get their own card in Chat.
+
 ## 0.100.6 — 2026-11-26
 
 No release notes were written for this one; the commits since 0.100.5 are what changed (`bento update` lists them).
