@@ -1,6 +1,10 @@
 # Changelog
 
 
+## 0.100.5 — 2026-11-26
+
+- Chat's Channels tab shows your Telegram and WhatsApp chats again. Each tab now lists its own newest 100, so a day of scheduled runs no longer pushes phone threads off the list, and each tab's number counts all of its chats.
+
 ## 0.100.4 — 2026-11-25
 
 No release notes were written for this one; the commits since 0.100.3 are what changed (`bento update` lists them).

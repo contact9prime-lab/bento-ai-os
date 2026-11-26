@@ -248,7 +248,7 @@ async function loadConvs(){
   if(!$('#convs'))return;
   const all=d.conversations||[],tabs=d.tabs||[];
   const tb=$('#ctabs');
-  if(tb){tb.innerHTML=tabs.map(t=>{const n=all.filter(c=>(c.tabs||[c.tab]).includes(t.id)).length;
+  if(tb){tb.innerHTML=tabs.map(t=>{const n=d.counts?d.counts[t.id]:all.filter(c=>(c.tabs||[c.tab]).includes(t.id)).length;
       return `<button role="tab" class="ctab${CONVTAB===t.id?' on':''}" aria-selected="${CONVTAB===t.id}" data-tab="${esc(t.id)}">${esc(t.name)}${n?` <small>${n}</small>`:''}</button>`}).join('');
     tb.querySelectorAll('.ctab').forEach(b=>b.onclick=()=>convTab(b.dataset.tab))}
   box.innerHTML='';

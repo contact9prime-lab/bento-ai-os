@@ -20,6 +20,12 @@ import re
 TABS = ("desktop", "channels", "devices", "huddles", "apps")
 NAMES = {"desktop": "Desktop", "channels": "Channels", "devices": "Devices", "huddles": "Huddles",
          "apps": "App builder"}
+# The list is read whole and cut PER TAB. Cut once at the newest 100 overall, a busy machine's
+# schedules (147 on the owner's, firing all day) pushed every Telegram thread out of the list,
+# and Channels read "Telegram and WhatsApp chats show here" over chats that were there.
+PER_TAB = 100
+SCAN = 5000
+_CHUNK = 500        # SQLite's variable limit can be 999 on an older build
 _PHONE = re.compile(r"^(✈ )?(Telegram|WhatsApp) · ")
 
 
@@ -40,15 +46,19 @@ def marks(store, ids: list[str]) -> tuple[set, set]:
     """(conversations with a huddle in them, conversations that built an app), among `ids`."""
     if not ids:
         return set(), set()
-    q = ",".join("?" * len(ids))
-    hud = {r[0] for r in store.db.execute(
-        f"SELECT DISTINCT conversation_id FROM messages WHERE conversation_id IN ({q}) "
-        f"AND meta LIKE '%\"huddle\"%'", ids).fetchall()}
-    try:
-        apps = {r[0] for r in store.db.execute(
-            f"SELECT DISTINCT conversation_id FROM app_versions WHERE conversation_id IN ({q})", ids).fetchall()}
-    except Exception:
-        apps = set()
+    hud, apps = set(), set()
+    for i in range(0, len(ids), _CHUNK):
+        part = ids[i:i + _CHUNK]
+        q = ",".join("?" * len(part))
+        hud |= {r[0] for r in store.db.execute(
+            f"SELECT DISTINCT conversation_id FROM messages WHERE conversation_id IN ({q}) "
+            f"AND meta LIKE '%\"huddle\"%'", part).fetchall()}
+        try:
+            apps |= {r[0] for r in store.db.execute(
+                f"SELECT DISTINCT conversation_id FROM app_versions WHERE conversation_id IN ({q})",
+                part).fetchall()}
+        except Exception:
+            pass
     return hud, apps
 
 
@@ -62,6 +72,32 @@ def tag(store, convs: list[dict]) -> list[dict]:
         if c.get("channel_ref") and "channels" not in tabs:
             tabs.append("channels")     # a desktop chat carried on from a phone is found there too
         out.append({**c, "tab": home, "tabs": tabs})
+    return out
+
+
+def counts(convs: list[dict]) -> dict:
+    """How many conversations each tab holds, over the tagged list before it is cut."""
+    out = {t: 0 for t in TABS}
+    for c in convs:
+        for t in c.get("tabs") or [c.get("tab")]:
+            if t in out:
+                out[t] += 1
+    return out
+
+
+def newest_per_tab(convs: list[dict], n: int = PER_TAB) -> list[dict]:
+    """The newest `n` of EACH tab, in the order given (newest first). A conversation listed
+    under two tabs stays if either keeps it."""
+    seen = {t: 0 for t in TABS}
+    out = []
+    for c in convs:
+        keep = False
+        for t in c.get("tabs") or [c.get("tab")]:
+            if t in seen and seen[t] < n:
+                seen[t] += 1
+                keep = True
+        if keep:
+            out.append(c)
     return out
 
 
