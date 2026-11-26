@@ -25,6 +25,11 @@ NAMES = {"desktop": "Desktop", "channels": "Channels", "devices": "Devices", "hu
 # and Channels read "Telegram and WhatsApp chats show here" over chats that were there.
 PER_TAB = 100
 SCAN = 5000
+# What ran on its own (a schedule's run, the day's Brief) is kept apart from what a person said:
+# a 5-minute scan made 98 of the newest 100 Desktop chats, and yesterday's chats fell off. They
+# get their own small share and their own group; Missions -> History has every one.
+AUTO = ("schedule", "brief")
+PER_AUTO = 30
 _CHUNK = 500        # SQLite's variable limit can be 999 on an older build
 _PHONE = re.compile(r"^(✈ )?(Telegram|WhatsApp) · ")
 
@@ -86,15 +91,20 @@ def counts(convs: list[dict]) -> dict:
 
 
 def newest_per_tab(convs: list[dict], n: int = PER_TAB) -> list[dict]:
-    """The newest `n` of EACH tab, in the order given (newest first). A conversation listed
-    under two tabs stays if either keeps it."""
-    seen = {t: 0 for t in TABS}
+    """The newest `n` of EACH tab, in the order given (newest first), and apart from them the
+    newest PER_AUTO runs that started on their own (AUTO). A conversation listed under two tabs
+    stays if either keeps it."""
+    seen: dict = {}
     out = []
     for c in convs:
         keep = False
+        c_auto = str(c.get("origin") or "") in AUTO
         for t in c.get("tabs") or [c.get("tab")]:
-            if t in seen and seen[t] < n:
-                seen[t] += 1
+            if t not in TABS:
+                continue
+            key, cap = ((t, "auto"), min(n, PER_AUTO)) if c_auto else (t, n)
+            if seen.get(key, 0) < cap:
+                seen[key] = seen.get(key, 0) + 1
                 keep = True
         if keep:
             out.append(c)

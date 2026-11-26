@@ -3,7 +3,7 @@
 
 ## 0.100.5 — 2026-11-26
 
-- Chat's Channels tab shows your Telegram and WhatsApp chats again. Each tab now lists its own newest 100, so a day of scheduled runs no longer pushes phone threads off the list, and each tab's number counts all of its chats.
+- Chat shows yesterday's chats and your Telegram and WhatsApp threads again. A schedule that runs every few minutes had filled the list. Scheduled runs and the Brief now sit in their own group at the bottom of Desktop (the newest 30; Missions → History has them all), and each tab lists its own newest 100 with a count of all of its chats.
 
 ## 0.100.4 — 2026-11-25
 

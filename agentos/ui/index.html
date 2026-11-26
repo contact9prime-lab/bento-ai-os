@@ -21075,6 +21075,8 @@ function removeWorking(){
    tab it happened in. Search reads titles and every message. */
 var CONVTAB=(()=>{try{return localStorage.getItem('chat.tab')||'desktop'}catch(e){return 'desktop'}})();
 var CONVQ='';
+// chattabs.AUTO: runs that started on their own sit in their own group, after your chats
+var CONV_AUTO=['schedule','brief'];
 function convTab(t){CONVTAB=t;try{localStorage.setItem('chat.tab',t)}catch(e){}loadConvs()}
 async function loadConvs(){
   const box=$('#convs'); if(!box)return;
@@ -21110,7 +21112,9 @@ async function loadConvs(){
   // inside a tab, the threads that came from one place stay together
   const groups=CONVTAB==='desktop'?[['From the prompt bar',c=>c.origin==='omni'],
       ['Copilots',c=>(c.origin||'').startsWith('copilot:')],
-      [items.some(c=>c.origin==='omni'||(c.origin||'').startsWith('copilot:'))?'Chats':'',c=>c.origin!=='omni'&&!(c.origin||'').startsWith('copilot:')]]
+      [items.some(c=>c.origin==='omni'||(c.origin||'').startsWith('copilot:')||CONV_AUTO.includes(c.origin))?'Chats':'',
+        c=>c.origin!=='omni'&&!(c.origin||'').startsWith('copilot:')&&!CONV_AUTO.includes(c.origin)],
+      ['Scheduled runs',c=>CONV_AUTO.includes(c.origin)]]
     :CONVTAB==='huddles'?[['Your agents talking',c=>c.origin==='freetalk'],['Huddles in a chat',c=>c.origin!=='freetalk']]
     :CONVTAB==='devices'?[['Zeros',c=>c.origin==='zero'],['Linked teams',c=>c.origin!=='zero']]
     :[['',()=>true]];

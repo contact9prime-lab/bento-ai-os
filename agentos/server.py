@@ -5714,9 +5714,8 @@ async def api_conversations(q: str = "", tab: str = ""):
     convs = chattabs.tag(state["store"], convs)
     counts = chattabs.counts(convs)
     if tab in chattabs.TABS:
-        convs = [c for c in convs if tab in c["tabs"]][:chattabs.PER_TAB]
-    else:
-        convs = chattabs.newest_per_tab(convs)           # each tab its own newest, never one cut
+        convs = [c for c in convs if tab in c["tabs"]]
+    convs = chattabs.newest_per_tab(convs)               # each tab its own newest, never one cut
     from . import phoneforward
     convs = phoneforward.mark(state["store"], convs)     # a phone chat's sessions, each named
     return {"conversations": convs, "counts": counts,
