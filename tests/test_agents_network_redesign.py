@@ -198,7 +198,7 @@ def test_a_conversation_has_one_home_tab_and_a_huddle_is_also_under_huddles(tmp_
     assert {k: tagged[v]["tab"] for k, v in ids.items()} == want
     assert tagged[ids["desk"]]["tabs"] == ["desktop", "huddles"], "a huddle is found under Huddles and where it was"
     assert chattabs.search(st, "Northwind") == {ids["tg"]}
-    assert set(chattabs.TABS) == {"desktop", "channels", "devices", "huddles", "apps"}
+    assert set(chattabs.TABS) == {"desktop", "missions", "channels", "devices", "huddles", "apps"}
 
 
 def _tab(name: str) -> str:

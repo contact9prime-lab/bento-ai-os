@@ -1,4 +1,4 @@
-"""Which tab of Chat a conversation is under: Desktop, Channels, Devices, Huddles, App builder.
+"""Which tab of Chat a conversation is under: Desktop, Missions, Channels, Devices, Huddles, App builder.
 
 Asked for as "the huddle must be recorded in the chat as a separate section, and the chat must
 have tabs and search: Desktop, Channels, Devices, Huddles, App builder". One function decides it
@@ -9,7 +9,10 @@ for the page and the terminal, from what the conversation row and its messages a
   * App builder: App Studio, or a chat that built or changed an app (app_versions names it);
   * Huddles: a free talk, or a conversation where agents huddled (a message with `huddle` meta).
     A huddle is ALSO listed under the tab it happened in, so it is never found in one place only;
-  * Desktop: everything else (Chat, the prompt bar, copilots, the kiosk, schedules).
+  * Missions: what ran on its own, a scheduled prompt's run or the day's Brief. Asked for as
+    "the prompt based chats are also coming in, that should have a separate section": a 5-minute
+    scan made 98 of the newest 100 Desktop chats. Missions -> History has every run as well;
+  * Desktop: everything a person started (Chat, the prompt bar, copilots, the kiosk).
 
 Free of HTTP and asyncio.
 """
@@ -17,19 +20,17 @@ from __future__ import annotations
 
 import re
 
-TABS = ("desktop", "channels", "devices", "huddles", "apps")
-NAMES = {"desktop": "Desktop", "channels": "Channels", "devices": "Devices", "huddles": "Huddles",
+TABS = ("desktop", "missions", "channels", "devices", "huddles", "apps")
+NAMES = {"desktop": "Desktop", "missions": "Missions", "channels": "Channels", "devices": "Devices", "huddles": "Huddles",
          "apps": "App builder"}
 # The list is read whole and cut PER TAB. Cut once at the newest 100 overall, a busy machine's
 # schedules (147 on the owner's, firing all day) pushed every Telegram thread out of the list,
 # and Channels read "Telegram and WhatsApp chats show here" over chats that were there.
 PER_TAB = 100
 SCAN = 5000
-# What ran on its own (a schedule's run, the day's Brief) is kept apart from what a person said:
-# a 5-minute scan made 98 of the newest 100 Desktop chats, and yesterday's chats fell off. They
-# get their own small share and their own group; Missions -> History has every one.
-AUTO = ("schedule", "brief")
-PER_AUTO = 30
+# What ran on its own: the scheduler's OS_ORIGINS (a scheduled prompt, a trigger, "while you were
+# away", a suggestion) and the day's Brief. Its home is Missions.
+AUTO = ("schedule", "trigger", "briefing", "suggestion", "brief")
 _CHUNK = 500        # SQLite's variable limit can be 999 on an older build
 _PHONE = re.compile(r"^(✈ )?(Telegram|WhatsApp) · ")
 
@@ -44,6 +45,8 @@ def home_of(c: dict, apps: set) -> str:
         return "apps"
     if origin == "freetalk":
         return "huddles"
+    if origin in AUTO:
+        return "missions"
     return "desktop"
 
 
@@ -91,20 +94,15 @@ def counts(convs: list[dict]) -> dict:
 
 
 def newest_per_tab(convs: list[dict], n: int = PER_TAB) -> list[dict]:
-    """The newest `n` of EACH tab, in the order given (newest first), and apart from them the
-    newest PER_AUTO runs that started on their own (AUTO). A conversation listed under two tabs
-    stays if either keeps it."""
+    """The newest `n` of EACH tab, in the order given (newest first). A conversation listed under
+    two tabs stays if either keeps it."""
     seen: dict = {}
     out = []
     for c in convs:
         keep = False
-        c_auto = str(c.get("origin") or "") in AUTO
         for t in c.get("tabs") or [c.get("tab")]:
-            if t not in TABS:
-                continue
-            key, cap = ((t, "auto"), min(n, PER_AUTO)) if c_auto else (t, n)
-            if seen.get(key, 0) < cap:
-                seen[key] = seen.get(key, 0) + 1
+            if t in TABS and seen.get(t, 0) < n:
+                seen[t] = seen.get(t, 0) + 1
                 keep = True
         if keep:
             out.append(c)
