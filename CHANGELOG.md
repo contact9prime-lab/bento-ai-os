@@ -1,6 +1,10 @@
 # Changelog
 
 
+## 0.100.6 — 2026-11-26
+
+No release notes were written for this one; the commits since 0.100.5 are what changed (`bento update` lists them).
+
 ## 0.100.5 — 2026-11-26
 
 - Chat shows yesterday's chats and your Telegram and WhatsApp threads again. A schedule that runs every few minutes had filled the list. What runs on its own (scheduled prompts, triggers, the Brief, "while you were away") now has its own Missions tab, so Desktop holds only the chats you started. Each tab lists its own newest 100 and counts all of its chats.
