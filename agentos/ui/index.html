@@ -21069,8 +21069,8 @@ function removeWorking(){
   // …and let the ticker stop itself now that this row is gone.
   if(typeof actSync==='function')actSync();
 }
-/* The list is in tabs (chattabs.py decides each conversation's): Desktop, Channels, Devices,
-   Huddles, App builder. Asked for as "the huddle must be recorded in the chat as a separate
+/* The list is in tabs (chattabs.py decides each conversation's): Desktop, Missions, Channels,
+   Devices, Huddles, App builder. Asked for as "the huddle must be recorded in the chat as a separate
    section, and the chat must have tabs and searches". A huddle is listed under Huddles AND the
    tab it happened in. Search reads titles and every message. */
 var CONVTAB=(()=>{try{return localStorage.getItem('chat.tab')||'desktop'}catch(e){return 'desktop'}})();
@@ -21085,7 +21085,7 @@ async function loadConvs(){
   if(!$('#convs'))return;
   const all=d.conversations||[],tabs=d.tabs||[];
   const tb=$('#ctabs');
-  if(tb){tb.innerHTML=tabs.map(t=>{const n=all.filter(c=>(c.tabs||[c.tab]).includes(t.id)).length;
+  if(tb){tb.innerHTML=tabs.map(t=>{const n=d.counts?d.counts[t.id]:all.filter(c=>(c.tabs||[c.tab]).includes(t.id)).length;
       return `<button role="tab" class="ctab${CONVTAB===t.id?' on':''}" aria-selected="${CONVTAB===t.id}" data-tab="${esc(t.id)}">${esc(t.name)}${n?` <small>${n}</small>`:''}</button>`}).join('');
     tb.querySelectorAll('.ctab').forEach(b=>b.onclick=()=>convTab(b.dataset.tab))}
   box.innerHTML='';
@@ -21110,7 +21110,10 @@ async function loadConvs(){
   // inside a tab, the threads that came from one place stay together
   const groups=CONVTAB==='desktop'?[['From the prompt bar',c=>c.origin==='omni'],
       ['Copilots',c=>(c.origin||'').startsWith('copilot:')],
-      [items.some(c=>c.origin==='omni'||(c.origin||'').startsWith('copilot:'))?'Chats':'',c=>c.origin!=='omni'&&!(c.origin||'').startsWith('copilot:')]]
+      [items.some(c=>c.origin==='omni'||(c.origin||'').startsWith('copilot:'))?'Chats':'',
+        c=>c.origin!=='omni'&&!(c.origin||'').startsWith('copilot:')]]
+    :CONVTAB==='missions'?[['Scheduled prompts',c=>c.origin==='schedule'],['Triggers',c=>c.origin==='trigger'],
+      ['Briefs',c=>c.origin==='brief'||c.origin==='briefing'],['Suggestions',c=>c.origin==='suggestion']]
     :CONVTAB==='huddles'?[['Your agents talking',c=>c.origin==='freetalk'],['Huddles in a chat',c=>c.origin!=='freetalk']]
     :CONVTAB==='devices'?[['Zeros',c=>c.origin==='zero'],['Linked teams',c=>c.origin!=='zero']]
     :[['',()=>true]];
@@ -21135,7 +21138,7 @@ async function loadConvs(){
     its.forEach(c=>box.appendChild(row(c)));
   });
   if(!items.length){const p=document.createElement('p');p.className='mut conv-none';
-    p.textContent=CONVQ?'Nothing here says that.':({channels:'Telegram and WhatsApp chats show here.',
+    p.textContent=CONVQ?'Nothing here says that.':({missions:'Runs of your scheduled prompts and the Brief show here.',channels:'Telegram and WhatsApp chats show here.',
       devices:'Chats from your Zeros and linked teams show here.',huddles:'When your agents huddle, it shows here.',
       apps:'Chats that built an app show here.'}[CONVTAB]||'No chats yet.');box.appendChild(p)}
 }

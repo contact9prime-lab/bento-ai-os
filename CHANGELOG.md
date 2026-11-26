@@ -3,6 +3,7 @@
 
 ## 0.100.5 — 2026-11-26
 
+- Chat shows yesterday's chats and your Telegram and WhatsApp threads again. A schedule that runs every few minutes had filled the list. What runs on its own (scheduled prompts, triggers, the Brief, "while you were away") now has its own Missions tab, so Desktop holds only the chats you started. Each tab lists its own newest 100 and counts all of its chats.
 - The installer works on a new Mac. A new Mac has a `git` that is only a stub until Apple's
   Command Line Tools are installed. The installer took it for git, and the clone then "broke"
   three times with no reason, on a network that was fine. Now git has to run. On a Mac the
