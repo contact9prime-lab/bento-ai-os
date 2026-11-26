@@ -488,7 +488,8 @@ def problems(c: dict) -> list[str]:
 # checks that every `say` in install.sh lands in one of these.
 STAGES = (
     ("network", "Checking its network", ("checking the network",)),
-    ("get", "Getting Bento", ("installing uv", "cloning AgentOS", "updating AgentOS", "reset ")),
+    ("get", "Getting Bento", ("installing uv", "cloning AgentOS", "updating AgentOS", "reset ",
+                            "a macOS window asks")),
     ("deps", "Installing what it needs", ("installing the build tools", "installing dependencies")),
     ("setup", "Setting it up", ("this machine", "checking what this machine needs", "run 'bento installer'",
                                 "installed the 'bento' command", "added ", "turning on remote access",
