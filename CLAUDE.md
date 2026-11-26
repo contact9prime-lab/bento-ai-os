@@ -4035,6 +4035,7 @@ nothing, not restart, and leave the button on "Updating…".
 **Chat's list is in tabs, decided once** (`chattabs.home_of`/`tag`/`search`, `/api/conversations?q=&tab=`,
 `10-chat.js` `CONVTAB`/`chatNewHuddle`). Desktop, Missions, Channels, Devices, Huddles, App builder.
 Missions holds what ran on its own (a scheduled prompt's run, the Brief): a 5-minute scan once filled Desktop.
+It is one row per schedule (`chattabs.missions`, from `task_runs`), each keeping its newest `PER_MISSION`.
 The route reads every conversation and keeps the newest `PER_TAB` of EACH tab, with `counts` over all of them. A conversation has one home tab,
 and one with a `huddle` message is ALSO listed under Huddles. Search reads titles and message content.
 

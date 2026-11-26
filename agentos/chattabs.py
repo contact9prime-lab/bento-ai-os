@@ -31,6 +31,11 @@ SCAN = 5000
 # What ran on its own: the scheduler's OS_ORIGINS (a scheduled prompt, a trigger, "while you were
 # away", a suggestion) and the day's Brief. Its home is Missions.
 AUTO = ("schedule", "trigger", "briefing", "suggestion", "brief")
+# Under Missions the runs are grouped by the schedule that made them ("group these into individual
+# missions"), and each group keeps its own newest PER_MISSION, so a 5-minute scan can't push a
+# daily schedule out of the tab.
+PER_MISSION = 30
+_FIXED = {"brief": "Your Brief", "briefing": "While you were away", "suggestion": "Suggestions"}
 _CHUNK = 500        # SQLite's variable limit can be 999 on an older build
 _PHONE = re.compile(r"^(✈ )?(Telegram|WhatsApp) · ")
 
@@ -83,6 +88,58 @@ def tag(store, convs: list[dict]) -> list[dict]:
     return out
 
 
+def _name(text: str) -> str:
+    """A schedule's name, from the start of what it asks: up to the first bracket, colon or full stop."""
+    t = re.sub(r"^\[[^\]]*\]\s*", "", str(text or "").strip().lstrip("⏱⚡ ").strip())
+    t = t.splitlines()[0] if t else ""
+    t = re.split(r"\s\(|:\s|\.\s|…", t, maxsplit=1)[0].strip()
+    if len(t) > 60:
+        t = t[:60].rsplit(" ", 1)[0] + "…"
+    return t or "A scheduled prompt"
+
+
+def missions(store, convs: list[dict]) -> list[dict]:
+    """Each conversation under Missions gets `mission` = {key, name}: the schedule it is a run of
+    (task_runs names it), else one group per kind (the Brief) or per title."""
+    ids = [c["id"] for c in convs if "missions" in (c.get("tabs") or [])]
+    task_of: dict = {}
+    for i in range(0, len(ids), _CHUNK):
+        part = ids[i:i + _CHUNK]
+        q = ",".join("?" * len(part))
+        try:
+            for cid, tid, prompt in store.db.execute(
+                    f"SELECT r.conversation_id, r.task_id, COALESCE(t.prompt, r.prompt) FROM task_runs r "
+                    f"LEFT JOIN tasks t ON t.id = r.task_id WHERE r.conversation_id IN ({q})", part).fetchall():
+                task_of[cid] = (tid, prompt)
+        except Exception:
+            pass
+    out = []
+    for c in convs:
+        if "missions" in (c.get("tabs") or []):
+            origin = str(c.get("origin") or "")
+            if origin in _FIXED:
+                m = {"key": origin, "name": _FIXED[origin]}
+            elif c["id"] in task_of and task_of[c["id"]][0]:
+                tid, prompt = task_of[c["id"]]
+                m = {"key": "task:" + str(tid), "name": _name(prompt or c.get("title"))}
+            else:
+                n = _name(c.get("title"))
+                m = {"key": "title:" + n, "name": n}
+            c = {**c, "mission": {**m, "kind": origin}}
+        out.append(c)
+    return out
+
+
+def mission_counts(convs: list[dict]) -> dict:
+    """How many runs each mission group has, before the list is cut."""
+    out: dict = {}
+    for c in convs:
+        k = (c.get("mission") or {}).get("key")
+        if k:
+            out[k] = out.get(k, 0) + 1
+    return out
+
+
 def counts(convs: list[dict]) -> dict:
     """How many conversations each tab holds, over the tagged list before it is cut."""
     out = {t: 0 for t in TABS}
@@ -94,15 +151,20 @@ def counts(convs: list[dict]) -> dict:
 
 
 def newest_per_tab(convs: list[dict], n: int = PER_TAB) -> list[dict]:
-    """The newest `n` of EACH tab, in the order given (newest first). A conversation listed under
-    two tabs stays if either keeps it."""
+    """The newest `n` of EACH tab, in the order given (newest first); under Missions, the newest
+    PER_MISSION of each mission. A conversation listed under two tabs stays if either keeps it."""
     seen: dict = {}
     out = []
     for c in convs:
         keep = False
         for t in c.get("tabs") or [c.get("tab")]:
-            if t in TABS and seen.get(t, 0) < n:
-                seen[t] = seen.get(t, 0) + 1
+            if t not in TABS:
+                continue
+            key, cap = t, n
+            if t == "missions" and c.get("mission"):
+                key, cap = (t, c["mission"]["key"]), min(n, PER_MISSION)
+            if seen.get(key, 0) < cap:
+                seen[key] = seen.get(key, 0) + 1
                 keep = True
         if keep:
             out.append(c)

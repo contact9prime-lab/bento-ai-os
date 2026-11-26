@@ -3,7 +3,7 @@
 
 ## 0.100.5 — 2026-11-26
 
-- Chat shows yesterday's chats and your Telegram and WhatsApp threads again. A schedule that runs every few minutes had filled the list. What runs on its own (scheduled prompts, triggers, the Brief, "while you were away") now has its own Missions tab, so Desktop holds only the chats you started. Each tab lists its own newest 100 and counts all of its chats.
+- Chat shows yesterday's chats and your Telegram and WhatsApp threads again. A schedule that runs every few minutes had filled the list. What runs on its own (scheduled prompts, triggers, the Brief, "while you were away") now has its own Missions tab, so Desktop holds only the chats you started. Missions shows one row per schedule with how many runs it has; tap it to list its runs by time. Every chat in the list shows when its last message was sent. Each tab lists its own newest 100 and counts all of its chats.
 
 ## 0.100.4 — 2026-11-25
 
