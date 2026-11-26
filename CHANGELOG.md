@@ -1,6 +1,14 @@
 # Changelog
 
 
+## 0.100.5 — 2026-11-26
+
+- The installer works on a new Mac. A new Mac has a `git` that is only a stub until Apple's
+  Command Line Tools are installed. The installer took it for git, and the clone then "broke"
+  three times with no reason, on a network that was fine. Now git has to run. On a Mac the
+  installer opens Apple's install window, waits for you to click Install, and carries on.
+- A failed clone always says why, in git's own words.
+
 ## 0.100.4 — 2026-11-25
 
 No release notes were written for this one; the commits since 0.100.3 are what changed (`bento update` lists them).

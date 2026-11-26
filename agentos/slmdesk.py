@@ -265,7 +265,7 @@ class Desk:
                 if len(made) < slm.MIN_ROWS + 1:
                     raise RuntimeError("The teacher wrote too few examples to train on" +
                                        (": " + got["why"] if got["why"] and got["why"] != "stopped" else "."))
-                await step("Wrote examples", f"{len(made)} examples in {got["calls"]} calls to the teacher.", same=True)
+                await step("Wrote examples", f"{len(made)} examples in {got['calls']} calls to the teacher.", same=True)
             if stopped():
                 raise asyncio.CancelledError()
             job = slm.start_job(base, plan["name"], ds["id"], plan["base"], {"epochs": plan["epochs"]},
