@@ -409,7 +409,11 @@ done
 # rather than assumed. GIT_TERMINAL_PROMPT=0 because a repo git cannot see is a
 # CREDENTIAL PROMPT, not an error (the note at the top of this file is the whole
 # story), and a prompt here would hang an unattended install forever.
-if [ -z "$net_ok" ] && command -v git >/dev/null 2>&1; then
+# Finding git on the PATH is not enough on a Mac: a new Mac has /usr/bin/git, and it is a stub that asks
+# for Apple's Command Line Tools and fails ("xcrun: error: invalid active developer path"). Every
+# clone then "broke" three times with no reason given, on a network that was fine. git has to RUN.
+git_runs() { git --version >/dev/null 2>&1; }
+if [ -z "$net_ok" ] && git_runs; then
   GIT_TERMINAL_PROMPT=0 git ls-remote --heads "$REPO" >/dev/null 2>&1 && net_ok=1
 fi
 
@@ -440,14 +444,27 @@ if [ -z "$net_ok" ]; then
 fi
 ok "network is up"
 
-if ! command -v git >/dev/null 2>&1; then
-  # macOS has git behind the Command Line Tools, and the prompt is Apple's own.
+if ! git_runs; then
+  # macOS has git behind the Command Line Tools, and the prompt is Apple's own. Somebody at a
+  # terminal is waited for: they click Install and this carries on. `xcode-select -p` is what is
+  # polled, because running the stub git again can open Apple's window a second time.
   if [ "$(uname -s)" = "Darwin" ]; then
-    warn "git is missing — macOS provides it through the Command Line Tools."
+    warn "git isn't ready yet. macOS installs it with Apple's Command Line Tools."
     xcode-select --install >/dev/null 2>&1 || true
-    die "accept the macOS install prompt, wait for it to finish, then run this again"
+    if [ -n "$INTERACTIVE" ]; then
+      say "a macOS window asks to install the Command Line Tools. Click Install; this carries on when it's done"
+      _waited=0
+      until _dev="$(xcode-select -p 2>/dev/null)" && [ -x "$_dev/usr/bin/git" ] && git_runs; do
+        [ "$_waited" -ge 3600 ] && die "the Command Line Tools still aren't installed. Finish the macOS install, then run this line again"
+        sleep 10; _waited=$((_waited + 10))
+      done
+      ok "git is ready"
+    else
+      die "accept the macOS install prompt, wait for it to finish, then run this line again"
+    fi
+  else
+    die "git is required. Install it first (sudo apt install git), then run this line again"
   fi
-  die "git is required — install it first (sudo apt install git)"
 fi
 
 # ---------------------------------------------------------------------------
@@ -549,6 +566,9 @@ else
   # git's own words go to a file, so a failure says WHY ("clone failed" alone was all a
   # person installing from the hub ever saw, with git's reason scrolled into stderr).
   clone_err="${TMPDIR:-/tmp}/bento-clone.$$"
+  # The reason is the last line naming an error ANYWHERE in it ("xcrun: error: …" is not "error: …"),
+  # else git's last line: a failure is never reported with no reason at all.
+  clone_why() { { grep -iE '(^|: )(fatal|error)' "$clone_err" || grep -v '^[[:space:]]*$' "$clone_err"; } 2>/dev/null | tail -n 1 | cut -c1-200; }
   # Three tries at the small clone, a pause between them, each failure said. It used to fall
   # straight back to the full 205 MB clone on any failure: on a Pi 3 on weak Wi-Fi the small
   # one broke once and the big one then broke too ("fetch-pack: invalid index-pack output").
@@ -562,7 +582,7 @@ else
       cloned=1; break
     fi
     rm -rf "$DIR"
-    why=$(grep -E '^(fatal|error):' "$clone_err" | tail -n 1 | cut -c1-200)
+    why=$(clone_why)
     grep -qiE "filter|unknown option|sparse-checkout" "$clone_err" && ! grep -qiE "^fatal: (unable to access|early EOF|fetch-pack)" "$clone_err" && break
     [ "$try" -lt 3 ] && { warn "the download broke${why:+ ($why)}; trying again ($((try + 1)) of 3)"; sleep $((try * 10)); }
   done
@@ -571,12 +591,12 @@ else
   elif grep -qiE "filter|unknown option|sparse-checkout" "$clone_err" && ! grep -qiE "^fatal: (unable to access|early EOF|fetch-pack)" "$clone_err"; then
     # a git too old for a partial clone: the whole thing, once
     if ! git clone "$REPO" "$DIR" 2>>"$clone_err"; then
-      why=$(grep -E '^(fatal|error):' "$clone_err" | tail -n 1 | cut -c1-200)
+      why=$(clone_why)
       rm -f "$clone_err"
       die "clone failed${why:+ ($why)}. Check its network and try again"
     fi
   else
-    why=$(grep -E '^(fatal|error):' "$clone_err" | tail -n 1 | cut -c1-200)
+    why=$(clone_why)
     rm -f "$clone_err"
     die "the download broke three times${why:+ ($why)}. A weak Wi-Fi signal or a power supply that's too small does this; try again"
   fi

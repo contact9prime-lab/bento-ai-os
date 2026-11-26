@@ -646,3 +646,70 @@ def test_a_32bit_pi_skips_sqlcipher_rather_than_compiling_it():
     assert "sqlcipher3>=" in deps and "platform_machine != 'armv7l'" in deps
     upd = (REPO / "agentos" / "updates.py").read_text()
     assert '["--no-install-package", "sqlcipher3"]' in upd and 'oldpi.facts()["arm32"]' in upd
+
+
+# ------------------------------- a new Mac: /usr/bin/git is a stub until the Command Line Tools
+
+XCRUN = ("xcrun: error: invalid active developer path (/Library/Developer/CommandLineTools), "
+         "missing xcrun at: /Library/Developer/CommandLineTools/usr/bin/xcrun")
+
+
+def _git_block():
+    return SRC[SRC.index("git_runs() {"):SRC.index("# 2. uv, the repo, the dependencies")]
+
+
+def _run_mac(tmp_path, interactive):
+    """The installer's git check on a stand-in new Mac. `git` fails as Apple's stub does until
+    `xcode-select --install` has "finished" (a marker file), and `-p` then names a folder with git."""
+    import subprocess
+    bin_, dev = tmp_path / "bin", tmp_path / "dev"
+    bin_.mkdir(exist_ok=True)
+    mark = tmp_path / "installed"
+    stubs = {
+        "uname": "echo Darwin",
+        "git": f'[ -e "{mark}" ] && {{ echo "git version 2.39.5"; exit 0; }}\necho "{XCRUN}" >&2; exit 1',
+        "xcode-select": (f'case "$1" in --install) echo "$1" >> "{tmp_path}/asked"; mkdir -p "{dev}/usr/bin"; '
+                         f'printf "#!/bin/sh\\n" > "{dev}/usr/bin/git"; chmod +x "{dev}/usr/bin/git"; touch "{mark}";; '
+                         f'-p) [ -e "{mark}" ] && echo "{dev}" || exit 2;; esac'),
+    }
+    for name, body in stubs.items():
+        f = bin_ / name
+        f.write_text(f"#!/bin/sh\n{body}\n")
+        f.chmod(0o755)
+    script = ('say(){ echo "SAY $*"; }; warn(){ echo "WARN $*"; }; ok(){ echo "OK $*"; }\n'
+              'die(){ echo "DIE $*"; exit 1; }; sleep(){ :; }\n'
+              f'INTERACTIVE="{interactive}"; net_ok=1\n' + _git_block() + '\necho "PAST"\n')
+    return subprocess.run(["sh", "-c", script], capture_output=True, text=True,
+                          env={**os.environ, "PATH": f"{bin_}:{os.environ['PATH']}"}).stdout
+
+
+def test_a_new_macs_git_stub_is_not_taken_for_git(tmp_path):
+    """Reported from a new MacBook: "cloning AgentOS … the download broke; trying again (2 of 3)" on a
+    network that was fine, with no reason. `command -v git` found Apple's stub, which fails until the
+    Command Line Tools are installed, and its "xcrun: error:" matched none of the clone's patterns."""
+    out = _run_mac(tmp_path, interactive="1")
+    assert "Command Line Tools" in out and "OK git is ready" in out and "PAST" in out, out
+    assert (tmp_path / "asked").read_text().count("--install") == 1, "Apple's window is asked for once"
+    assert "command -v git" not in SRC, "git has to run, not only be on the PATH"
+
+
+def test_with_nobody_at_the_terminal_the_mac_says_what_to_do(tmp_path):
+    out = _run_mac(tmp_path, interactive="")
+    assert "DIE accept the macOS install prompt" in out and "PAST" not in out
+
+
+def test_a_failed_clone_always_says_why(tmp_path):
+    """The reason is read from anywhere in git's words, so an error not starting "fatal:" is said too."""
+    import subprocess
+    fn = re.search(r"^\s*(clone_why\(\) \{.*\})\s*$", SRC, re.M).group(1)
+    err = tmp_path / "err"
+
+    def why(text):
+        err.write_text(text)
+        return subprocess.run(["sh", "-c", f'clone_err="{err}"\n{fn}\nclone_why'],
+                              capture_output=True, text=True).stdout.strip()
+    assert why(f"Cloning into 'x'...\n{XCRUN}\n").startswith("xcrun: error: invalid active developer path")
+    assert why("Cloning into 'x'...\nfatal: unable to access 'https://github.com/': Could not resolve host\n") \
+        .startswith("fatal: unable to access")
+    assert why("Cloning into 'x'...\nsomething else went wrong\n\n") == "something else went wrong"
+    assert SRC.count("why=$(clone_why)") == 3
