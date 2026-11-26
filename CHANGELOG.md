@@ -3,18 +3,11 @@
 
 ## 0.100.6 — 2026-11-26
 
-- Your agent hands independent parts of a job to several specialists at once. Ask for a market,
-  its competitors and their prices, and the three researchers work at the same time instead of one
-  after another. This holds on the built-in agent and on Claude Code. Measured with three 15-second
-  hand-overs on Claude Code: 45 seconds of work before, 27 seconds now. A part that needs another
-  part's result still waits for it.
-- A mission's master was told to hand out one task at a time; now it hands out what doesn't depend
-  on anything else together. A mission on the built-in agent with nobody to answer still goes one
-  at a time, because only one waiting step is remembered per run.
-- Two department tasks started together each get their own card in Chat.
+No release notes were written for this one; the commits since 0.100.5 are what changed (`bento update` lists them).
 
 ## 0.100.5 — 2026-11-26
 
+- Chat shows yesterday's chats and your Telegram and WhatsApp threads again. A schedule that runs every few minutes had filled the list. What runs on its own (scheduled prompts, triggers, the Brief, "while you were away") now has its own Missions tab, so Desktop holds only the chats you started. Each tab lists its own newest 100 and counts all of its chats.
 - The installer works on a new Mac. A new Mac has a `git` that is only a stub until Apple's
   Command Line Tools are installed. The installer took it for git, and the clone then "broke"
   three times with no reason, on a network that was fine. Now git has to run. On a Mac the
