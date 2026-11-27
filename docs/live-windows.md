@@ -19,6 +19,12 @@ and a bar across the page says it in the agent's words.
 
 ![The shared browser asking you to sign in, with the agent's note above the page](screenshots/live-browser-needs-you.png)
 
+Chat shows the same wait under the agent's message, with a button that opens the browser for you.
+
+![Chat while the agent waits for you to sign in to Instagram, with Open the browser](screenshots/chat-browser-wait.png)
+
+<img src="screenshots/chat-browser-wait-phone.png" alt="The same waiting card in Chat on a 390px phone, with Open the browser" width="300">
+
 You sign in in that window, as you would in any browser. Type the code when it asks.
 
 ![The verification code page, in the same window, still waiting for you](screenshots/live-browser-code.png)

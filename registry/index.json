@@ -3,6 +3,66 @@
  "format": "bento-registry-index/1",
  "apps": [
   {
+   "id": "daily-planner",
+   "name": "Daily Planner",
+   "description": "Plan today as time blocks around your top three priorities, see what's now and next, and carry unfinished priorities to tomorrow. The AI drafts the day's blocks for you to keep or change.",
+   "icon": "",
+   "version": "1",
+   "checksum": "sha256:3652b5cfb8cfa6331ca1a3bf9163a183b9d254d1943340aaf62453a0ec0d97a1",
+   "verified": false,
+   "security": {
+    "verdict": "pass",
+    "scanner": "static/1"
+   },
+   "permissions": [
+    "agent.invoke",
+    "app.data.read",
+    "app.data.write",
+    "tool.use"
+   ],
+   "url": "https://raw.githubusercontent.com/contact9prime-lab/bento-app-registry/main/apps/daily-planner/daily-planner.agentapp.json"
+  },
+  {
+   "id": "focus-sessions",
+   "name": "Focus Sessions",
+   "description": "A focus timer with short and long breaks, a daily goal, a streak and a chart of your week. The AI plans a session's steps and looks back on where your time went.",
+   "icon": "",
+   "version": "1",
+   "checksum": "sha256:4b7b9f0f0f10dbd543deea8dd92b26420fa1404c8427f3c0f747f0d7214471e1",
+   "verified": false,
+   "security": {
+    "verdict": "pass",
+    "scanner": "static/1"
+   },
+   "permissions": [
+    "agent.invoke",
+    "app.data.read",
+    "app.data.write",
+    "tool.use"
+   ],
+   "url": "https://raw.githubusercontent.com/contact9prime-lab/bento-app-registry/main/apps/focus-sessions/focus-sessions.agentapp.json"
+  },
+  {
+   "id": "habit-tracker",
+   "name": "Habit Tracker",
+   "description": "Tick off daily habits, keep your streaks and see the last four weeks at a glance. The AI coach reads your history and suggests one small change.",
+   "icon": "",
+   "version": "1",
+   "checksum": "sha256:c327a03babbd71f6f8be7ca1f01de9abdf319374e276139b64434ae27167f607",
+   "verified": false,
+   "security": {
+    "verdict": "pass",
+    "scanner": "static/1"
+   },
+   "permissions": [
+    "agent.invoke",
+    "app.data.read",
+    "app.data.write",
+    "tool.use"
+   ],
+   "url": "https://raw.githubusercontent.com/contact9prime-lab/bento-app-registry/main/apps/habit-tracker/habit-tracker.agentapp.json"
+  },
+  {
    "id": "hello-notes",
    "name": "Hello Notes",
    "description": "The registry's example app: a private notepad. It asks for nothing beyond its own data store, which is the point.",
@@ -19,6 +79,46 @@
     "app.data.write"
    ],
    "url": "https://raw.githubusercontent.com/contact9prime-lab/bento-app-registry/main/apps/hello-notes/hello-notes.agentapp.json"
+  },
+  {
+   "id": "kanban-board",
+   "name": "Kanban Board",
+   "description": "A three-column board for your tasks, with due dates, priorities and a limit on work in progress. Type a task in plain words and the AI fills in the details, or ask it to break a card into steps.",
+   "icon": "",
+   "version": "1",
+   "checksum": "sha256:052a69d592f0561e049d775cc4c72e0ab9d3bd3f634e642e1942c9b524b79273",
+   "verified": false,
+   "security": {
+    "verdict": "pass",
+    "scanner": "static/1"
+   },
+   "permissions": [
+    "agent.invoke",
+    "app.data.read",
+    "app.data.write",
+    "tool.use"
+   ],
+   "url": "https://raw.githubusercontent.com/contact9prime-lab/bento-app-registry/main/apps/kanban-board/kanban-board.agentapp.json"
+  },
+  {
+   "id": "meeting-notes",
+   "name": "Meeting Notes",
+   "description": "Keep each meeting's agenda, notes, decisions and action items with owners and dates. The AI writes the summary and pulls the actions out of your notes; every open action is in one list.",
+   "icon": "",
+   "version": "1",
+   "checksum": "sha256:db19851a48edd9ac29b6e2f20f188d8d113ea74b4be986481925c38ec2f6970a",
+   "verified": false,
+   "security": {
+    "verdict": "pass",
+    "scanner": "static/1"
+   },
+   "permissions": [
+    "agent.invoke",
+    "app.data.read",
+    "app.data.write",
+    "tool.use"
+   ],
+   "url": "https://raw.githubusercontent.com/contact9prime-lab/bento-app-registry/main/apps/meeting-notes/meeting-notes.agentapp.json"
   }
  ]
 }

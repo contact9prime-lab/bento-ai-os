@@ -2519,6 +2519,23 @@ email sign in". Six rules:
 - **No agent tool publishes or installs from it.** A model that could publish could be talked into
   it by a fetched page (the agent-sharing rule). If one is ever added it must be ALWAYS_ASK.
 
+**Bento publishes its own apps as "bento", and that name is kept** (`agentos/sampleapps`, `registry/apps/<slug>/`,
+`bento studio samples [list|build|check]`, migration `003_reserved_handles.sql`, `registryhub.RESERVED`/`OFFICIAL`,
+the Store's Bento mark; `docs/registry.md`, `tests/test_sample_apps.py`, live run `packaging/dev/sample-apps-e2e/run.py`).
+Asked for as "the apps that we build in Bento should be pushed to the registry; build some sample productivity apps".
+Five rules:
+- **A sample is an ordinary app package**: one HTML file to App Studio's bar (appcheck clean, both surfaces, appData,
+  an AI feature, the assistant, an example to try), packaged by `sampleapps.package` with the real scan and checksum.
+  No second format and no install path of its own: Store → Import and `bento registry push app FILE`.
+- **Generated and checked in**, like the UI bundle: edit the HTML, run `bento studio samples build`; the test fails on
+  a stale package. `scanned_at` is kept while the findings are the same, so an unchanged source writes the same bytes.
+- **The assistant mounts on the desktop surface only** (`if(appSurface.desktop)`): on a widget it covered the one fact.
+- **The phone rule skips a bare digit run and a 2026-12-04 date** (`registryhub._NOT_A_PHONE`): every app package's
+  `scanned_at` read as "a phone number", so every app's publish report asked about personal details it didn't have.
+- **A reserved name is the registry's to give** (a trigger, `public.is_admin()`): the client tries it and says so in
+  words when refused. The list is in the migration and in `RESERVED`; the test compares them. A name taken before the
+  migration ran stays, and the docs say how to find one.
+
 ## The agent itself is shareable, and the leak scan has no override
 
 `agentos/agentbundle.py` (format `agentos-agent/1`, file `bento.agent.json`, topic

@@ -1,6 +1,18 @@
 # Changelog
 
 
+## 0.100.13 — 2026-11-27
+
+- Five productivity apps by Bento, ready for the Bento Registry: Focus Sessions, Habit Tracker, Kanban Board,
+  Meeting Notes and Daily Planner. Each works as a window and as a widget, keeps its data in the app's own store,
+  has an AI feature and the ✦ assistant, and offers an example to try. Install one from its file in Store → Import,
+  or see them with `bento studio samples`.
+- The publisher name **bento** is kept for the registry's admins, so a listing by bento is Bento's own. The Store
+  marks those listings.
+- An app's publish report no longer says it carries "a phone number". It was reading the scan's own timestamp
+  (and any date like 2026-12-04) as one, so every app asked you to look at personal details it didn't have.
+- `bento registry push app FILE` without `--summary` gives the listing the first sentence of the app's description.
+
 ## 0.100.12 — 2026-11-27
 
 No release notes were written for this one; the commits since 0.100.11 are what changed (`bento update` lists them).

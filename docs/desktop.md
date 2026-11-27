@@ -613,6 +613,11 @@ there; they just take a different amount of room.
 | Tab strips (Settings, Store) | scroll sideways; Settings' rail moves above the content | as desktop | a rail beside the content |
 | Copilot ✦ | not offered — its panel needs a second column | in the title bar | in the title bar |
 
+On a phone, Chat's list of conversations opens as a drawer from the ☰ button and closes again when
+you pick one.
+
+<img src="screenshots/chat-drawer-phone.png" alt="Chat's list of conversations open as a drawer on a 390px phone" width="300">
+
 The classification is on the **viewport**, not the user agent, so a narrow browser window on a
 laptop gets the phone layout too — which is what you want when AgentOS is docked beside an editor.
 Touch is tracked separately (`body.dev-touch`), so a touchscreen laptop gets larger hit targets at
