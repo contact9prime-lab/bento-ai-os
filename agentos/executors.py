@@ -329,6 +329,31 @@ class Run:
     engine: str = "claude-code"    # whose stream this is: decides how a line is read
     stdin: object = None           # the CLI's input, while a steerable run is open
     steer_open: bool = False
+    # Messages handed to the running turn, and the ones the CLI has read back to us
+    # (--replay-user-messages echoes each input message as it takes it). A message the
+    # CLI never read is `unread()` when the run ends, and the caller runs it as its own
+    # turn: found on a phone, where a turn that ended mid-step lost the message it said
+    # it had "taken in".
+    steered: list = field(default_factory=list)
+    read: list = field(default_factory=list)
+
+    def unread(self) -> list:
+        """What was handed to this turn and never read by the CLI, in the order sent."""
+        left, seen = [], list(self.read)
+        for t in self.steered:
+            if t in seen:
+                seen.remove(t)
+            else:
+                left.append(t)
+        return left
+
+    def mid_step(self) -> str:
+        """The step the CLI is inside right now, in words, or '' between steps. Claude
+        Code reads its input only between steps, so a message sent now waits for it."""
+        if not self.calls:
+            return ""
+        name, detail = list(self.calls.values())[-1]
+        return f"{name}{' · ' + detail if detail else ''}"
 
     def steer(self, text: str) -> bool:
         """Hand a message the person typed to the running turn, as their own message.
@@ -340,6 +365,7 @@ class Run:
         try:
             self.stdin.write((json.dumps({"type": "user", "message": {"role": "user",
                               "content": text}}) + "\n").encode())
+            self.steered.append(text)
             return True
         except Exception:
             self.steer_open = False
@@ -2500,7 +2526,8 @@ def build_command(task: str, env: Envelope) -> list[str]:
     scratch = _scratch(env)
     # A steerable turn sends its prompt as a message and keeps its input open (Run.steer);
     # any other run writes the prompt on the input and closes it
-    cmd = [exe, "--print", *(("--input-format", "stream-json") if env.steerable else ()),
+    cmd = [exe, "--print", *(("--input-format", "stream-json", "--replay-user-messages")
+                             if env.steerable else ()),
            "--output-format", "stream-json", "--verbose",
            *_settings_flags(env),
            "--add-dir", env.workspace,
@@ -2967,8 +2994,14 @@ def translate(event: dict, run: Run) -> list[dict]:
                             "step": run.steps, "pending_approval": False})
 
     elif kind == "user":
+        # A message from the input, read back (--replay-user-messages): the CLI has taken
+        # it. Its content is a string; a tool result's is a list of blocks.
+        content = (event.get("message") or {}).get("content")
+        if isinstance(content, str):
+            run.read.append(content)
+            return out
         # The CLI reports tool results as a user turn carrying tool_result blocks.
-        for block in (event.get("message") or {}).get("content", []):
+        for block in (content or []):
             if block.get("type") == "tool_result":
                 content = block.get("content")
                 if isinstance(content, list):

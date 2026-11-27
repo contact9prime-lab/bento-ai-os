@@ -149,6 +149,7 @@ class BaileysTransport:
         self.store = store
         self.proc: asyncio.subprocess.Process | None = None
         self.task: asyncio.Task | None = None
+        self._inflight: set = set()       # messages being handled (kept, or the loop drops them)
         self.qr = ""                      # latest unscanned pairing payload
         self.qr_svg = ""                  # the same code, drawn for a browser
         self.qr_ascii = ""                # and for a terminal
@@ -285,7 +286,13 @@ class BaileysTransport:
             if self.store:
                 self.store.log("error", f"whatsapp bridge: {self.error}")
         elif kind == "message":
-            await self._inbound(ev)
+            # Each message is its own task, as on Telegram and the Cloud API's webhook.
+            # Awaited here, a turn held this loop for minutes: the next message waited
+            # without a word, and a "1" typed to approve that turn's own question could
+            # not be read until the turn gave up waiting for it.
+            t = asyncio.create_task(self._inbound(ev))
+            self._inflight.add(t)
+            t.add_done_callback(self._inflight.discard)
         if self.on_event:
             try:
                 await self.on_event({"type": "whatsapp_link", "state": self.state,

@@ -85,7 +85,7 @@ def test_a_whatsapp_group_waits_for_the_owner_and_stays_quiet(tmp_path, monkeypa
     b, said, events, _ = _wa(tmp_path, monkeypatch, tg)
     turns = []
 
-    async def turn(chat, wa_id, text):
+    async def turn(chat, wa_id, text, **kw):
         turns.append((wa_id, text))
     monkeypatch.setattr(b, "_turn", turn)
     _group(b, 1, "who is playing on sunday?")

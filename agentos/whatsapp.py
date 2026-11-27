@@ -61,6 +61,7 @@ from . import config as cfgmod
 from .agent import Agent
 from . import users as usersmod
 from . import constcmp
+from . import phonelive
 
 GRAPH = "https://graph.facebook.com/v21.0"
 CHUNK = 3900              # WhatsApp's body limit is 4096
@@ -202,7 +203,13 @@ class WhatsAppBridge(usersmod.Scoped):
         self.status = "off"        # off | needs | ready | error
         self.error = ""
         self._live: dict = {}      # conversation -> its turn's steps on the phone (phonelive.Live)
-        self._busy = False
+        self._busy = False         # any chat working (phonesessions reads it)
+        # One turn per chat at a time, the others side by side, as on Telegram: a message
+        # while its chat works goes into the running Claude Code turn or waits its turn.
+        # A bot-wide flag answered "Still working…" to everybody and dropped the message.
+        self._busy_chats: set = set()
+        self._runs: dict = {}
+        self._waiting: dict = {}
         self._pending: dict[str, asyncio.Future] = {}
         self._seen: dict[str, float] = {}   # message id -> when, for redelivery
         #: The Baileys child process, when this channel is running in that mode.
@@ -780,22 +787,52 @@ class WhatsAppBridge(usersmod.Scoped):
             await self.send(f"▶ {flow['name']} started — I'll report back here.", wa_id)
             return
 
-        if self._busy:
-            await self.send("⏳ Still working on your previous message…", wa_id)
+        await self._take(chat, wa_id, text, wall=True)
+
+    async def _take(self, chat: dict, wa_id: str, text: str, wall: bool = False) -> None:
+        """A message for the agent: its turn now, or into the turn its chat is working on,
+        or next in line (Telegram's rule, `TelegramBridge._handle`)."""
+        if wa_id in self._busy_chats:
+            run = self._runs.get(wa_id)
+            if run is not None and run.steer(text):
+                with contextlib.suppress(Exception):
+                    self.store.add_message(self._conversation(chat), "user", text, {"steered": True})
+                await self.send(phonelive.steer_words(run), wa_id)
+            else:
+                self._waiting.setdefault(wa_id, []).append((chat, text, wall, False))
+                n = len(self._waiting[wa_id])
+                await self.send("⏳ Got it. I'll do this right after the current one"
+                                + (f" ({n} waiting)." if n > 1 else "."), wa_id)
             return
+        await self._serve(chat, wa_id, text, wall)
+
+    async def _serve(self, chat: dict, wa_id: str, text: str, wall: bool, steered: bool = False) -> None:
+        self._busy_chats.add(wa_id)
         self._busy = True
         # a sign-in wall met during this turn is asked here, on the phone
         from . import cdpbrowser as _cdpb
         _wall_uid = usersmod.current() or ""
-        _cdpb.reach(_wall_uid, f"wa:{wa_id}", lambda att, png: self.ask_wall(wa_id, att, png),
-                    say=lambda text, buttons: self.say_wall(wa_id, text, buttons))
+        if wall:
+            _cdpb.reach(_wall_uid, f"wa:{wa_id}", lambda att, png: self.ask_wall(wa_id, att, png),
+                        say=lambda text, buttons: self.say_wall(wa_id, text, buttons))
         try:
-            await self._turn(chat, wa_id, text)
+            await self._turn(chat, wa_id, text, steered=steered)
         except Exception as e:
             await self.send(f"[error] {type(e).__name__}: {e}", wa_id)
         finally:
-            _cdpb.unreach(_wall_uid, f"wa:{wa_id}")
-            self._busy = False
+            if wall:
+                _cdpb.unreach(_wall_uid, f"wa:{wa_id}")
+            self._busy_chats.discard(wa_id)
+            run = self._runs.pop(wa_id, None)
+            self._busy = bool(self._busy_chats)
+            # handed to the turn and never read by the CLI: its own turn, first
+            late = [(chat, t, wall, True) for t in (run.unread() if run is not None else [])]
+            queue = late + (self._waiting.pop(wa_id, None) or [])
+            if queue:
+                nxt, rest = queue[0], queue[1:]
+                if rest:
+                    self._waiting[wa_id] = rest
+                asyncio.create_task(self._serve(nxt[0], wa_id, nxt[1], nxt[2], steered=nxt[3]))
 
     def _addressed(self, g: dict, text: str) -> bool:
         """Was the agent spoken to in a group: @mentioned, replied to, or named?"""
@@ -835,16 +872,7 @@ class WhatsAppBridge(usersmod.Scoped):
             return
         if not self._addressed(g, text):
             return
-        if self._busy:
-            await self.send("⏳ Still working on the last message…", gid)
-            return
-        self._busy = True
-        try:
-            await self._turn(chat, gid, f"[{pname}, in the WhatsApp group {subject}] {text}")
-        except Exception as e:
-            await self.send(f"[error] {type(e).__name__}: {e}", gid)
-        finally:
-            self._busy = False
+        await self._take(chat, gid, f"[{pname}, in the WhatsApp group {subject}] {text}")
 
     async def ask_wall(self, wa_id: str, att: dict, png: bytes) -> None:
         """The shared browser met a page only a person can get past during this chat's
@@ -956,7 +984,7 @@ class WhatsAppBridge(usersmod.Scoped):
         chat["conversation_id"] = cid
         return cid
 
-    async def _turn(self, chat: dict, wa_id: str, text: str):
+    async def _turn(self, chat: dict, wa_id: str, text: str, steered: bool = False):
         cid = self._conversation(chat)
         # agents talking inside this turn come back as a comic strip after the reply,
         # as on Telegram (playground.listen; closed in `finally`)
@@ -972,7 +1000,7 @@ class WhatsAppBridge(usersmod.Scoped):
             live = phonelive.Live(phonelive.listen(cid), _live_send, every=6.0, first=4.0)
         self._live[cid] = live
         try:
-            await self._turn_in(chat, wa_id, text, cid)
+            await self._turn_in(chat, wa_id, text, cid, steered=steered)
             await self.send_talk(list(tap), wa_id)
         finally:
             _pg.close(cid, tap)
@@ -980,7 +1008,7 @@ class WhatsAppBridge(usersmod.Scoped):
             if live:
                 await live.end()
 
-    async def _turn_in(self, chat: dict, wa_id: str, text: str, cid: str):
+    async def _turn_in(self, chat: dict, wa_id: str, text: str, cid: str, steered: bool = False):
         from . import history as _history
         from . import knowledge as _k
         from . import usage as _usage
@@ -990,7 +1018,8 @@ class WhatsAppBridge(usersmod.Scoped):
         # itself.
         # Saved and shown first; the rebuild (which may compact with a model call) only for
         # the built-in loop, which reads it. Telegram's reason, measured there.
-        self.store.add_message(cid, "user", text)
+        if not steered:                # a message handed to the last turn is in the thread
+            self.store.add_message(cid, "user", text)
         exec_meta: dict = {}          # the executor session a forwarded reply was given in
         await self.broadcast({"type": "whatsapp_in", "conversation_id": cid,
                               "text": text[:160]})
@@ -1043,7 +1072,8 @@ class WhatsAppBridge(usersmod.Scoped):
             await self.send("↪ " + line, wa_id)
         out = await phoneturn.answer(
             self.store, self.cfg, self.toolbox, cid=cid, text=text, surface="whatsapp",
-            emit=emit, approver=approver, note=note, tell=tell)
+            emit=emit, approver=approver, note=note, tell=tell,
+            on_run=lambda run: self._runs.__setitem__(wa_id, run), steerable=True)
         reply = out["reply"]
         live = self._live.get(cid)
         if live:

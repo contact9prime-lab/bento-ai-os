@@ -205,3 +205,144 @@ def test_both_channels_have_a_switch():
     assert '("/steps", "[on|off]"' in adm and "async def _cmd_steps(" in adm
     wa = (ROOT / "agentos" / "whatsapp.py").read_text()
     assert 'low.startswith("/steps")' in wa and '["live_steps"]' in wa
+
+
+# --- a message sent while a turn works, and a turn that goes quiet ----------------------
+# Reported as "if I send another chat when it's processing it is not queuing or taking it in"
+# and "it takes a long time to come up with answers without getting to know what's
+# happening". Measured with real Claude Code 2.1.332 over a stand-in Telegram: two messages
+# sent during a hand-over were told "Taken into what I'm working on" and were read only when
+# the hand-over ended; "typing…" was sent once and is gone after five seconds.
+
+def test_claude_code_reads_back_what_it_takes_and_the_rest_is_unread():
+    run = executors.Run(engine="claude-code")
+    run.steered = ["what is 17 times 3?", "name a colour"]
+    # the CLI echoes an input message as it takes it (--replay-user-messages)
+    executors.translate({"type": "user", "message": {"role": "user", "content": "what is 17 times 3?"}}, run)
+    # a tool result is a user turn too, with blocks, and is not a message the person sent
+    executors.translate({"type": "user", "message": {"content": [
+        {"type": "tool_result", "tool_use_id": "t1", "content": "ok"}]}}, run)
+    assert run.read == ["what is 17 times 3?"]
+    assert run.unread() == ["name a colour"]
+    run.steered.append("name a colour")         # the same words twice count twice
+    assert run.unread() == ["name a colour", "name a colour"]
+
+
+def test_a_steerable_command_asks_for_its_input_back():
+    env = executors.Envelope(workspace="/tmp", steerable=True)
+    cmd = executors.build_command("hi", env)
+    assert "--replay-user-messages" in cmd and "stream-json" in cmd
+    assert "--replay-user-messages" not in executors.build_command("hi", executors.Envelope(workspace="/tmp"))
+
+
+def test_the_phone_is_told_when_its_message_waits_for_a_step():
+    run = executors.Run(engine="claude-code")
+    assert phonelive.steer_words(run) == "↪ Got it. I'm adding this to what I'm working on."
+    run.calls["t1"] = ("mcp__bento__department_task", "Research")
+    said = phonelive.steer_words(run)
+    assert "a hand-over to a department" in said and "as soon as that's done" in said
+    assert "its own answer" in said
+
+
+def test_a_quiet_turn_shows_a_timer_and_what_it_is_doing():
+    assert phonelive.text_of([], took=75, now="Thinking it through") == "⏳ Working on it · 1m 15s\nThinking it through…"
+    assert phonelive.text_of(["• a"], took=5).startswith("⚙ Steps so far\n• a")
+    t = phonelive.text_of(["• a"], took=130, now="Writing the answer")
+    assert t.startswith("⚙ Steps so far · 2m 10s") and t.endswith("… Writing the answer")
+    assert phonelive.text_of([], done=True, took=42) == "✓ Worked on it for 42s"
+
+
+def test_telegram_keeps_a_quiet_turn_alive(monkeypatch):
+    sent, edits = [], []
+
+    async def send(text):
+        sent.append(text)
+        return 9
+
+    async def edit(mid, text):
+        edits.append(text)
+    monkeypatch.setattr(phonelive.Live, "BEAT", 0.05)
+    monkeypatch.setattr(phonelive.Live, "QUIET_AFTER", 0.1)
+    script = [(0, {"type": "thinking_delta", "conversation_id": "c1", "text": "hm"}), (0.4, None)]
+    _run_live(lambda tap: phonelive.Live(tap, send, edit, every=0.05, first=0), script)
+    assert sent and sent[0].startswith("⏳ Working on it") and "Thinking it through" in sent[0]
+    assert edits[-1].startswith("✓ Worked on it for")
+
+
+def test_whatsapp_hears_once_that_a_quiet_turn_is_working(monkeypatch):
+    sent = []
+
+    async def send(text):
+        sent.append(text)
+    monkeypatch.setattr(phonelive.Live, "BEAT", 0.05)
+    monkeypatch.setattr(phonelive.Live, "QUIET_AFTER", 0.1)
+    _run_live(lambda tap: phonelive.Live(tap, send, every=0.05, first=0), [(0.5, None)])
+    assert len(sent) == 1 and sent[0].startswith("⏳ Still working on it (")
+
+
+def test_typing_is_said_again_until_the_turn_ends():
+    n = []
+
+    async def go():
+        async def send():
+            n.append(1)
+        t = asyncio.create_task(phonelive.keep_typing(send, every=0.02))
+        await asyncio.sleep(0.11)
+        t.cancel()
+    asyncio.run(go())
+    assert len(n) >= 4
+
+
+def test_a_message_the_cli_never_read_gets_its_own_turn(tmp_path, monkeypatch):
+    from agentos import phoneturn
+    from agentos.memory import Store
+    from agentos.telegram import TelegramBridge
+    from agentos.tools import Toolbox
+    cfg = {"agent_name": "Aria", "autonomy": "full",
+           "telegram": {"enabled": True, "bot_token": "1:T", "owner_chat_id": 5, "live_steps": False}}
+    store = Store(tmp_path / "a.db")
+
+    async def bc(ev):
+        pass
+    b = TelegramBridge(cfg, store, Toolbox(cfg, store), bc)
+    store.tg_upsert_chat(5, "PC", "", "private")
+    store.tg_set_allowed(5, 1)
+    said = []
+
+    async def api(method, **kw):
+        if method == "sendMessage":
+            said.append(kw.get("text", ""))
+        return {"message_id": 1}
+    b._api = api
+    asked = []
+
+    async def fake_answer(store, cfg, toolbox, *, cid, text, on_run=None, **kw):
+        asked.append(text)
+        if len(asked) == 1:
+            run = executors.Run(engine="claude-code")
+            run.stdin, run.steer_open = type("W", (), {"write": lambda self, b: None})(), True
+            on_run(run)
+            await asyncio.sleep(0.3)        # the second message arrives here and is steered
+            run.steer_open = False           # the turn ends inside its step: nothing was read
+        return {"reply": f"answer to {text}", "steps": [], "meta": {}}
+    monkeypatch.setattr(phoneturn, "answer", fake_answer)
+
+    def msg(t):
+        return {"chat": {"id": 5, "type": "private"}, "from": {"first_name": "PC"}, "text": t}
+
+    async def go():
+        first = asyncio.create_task(b._handle(msg("write the essay")))
+        await asyncio.sleep(0.1)
+        await b._handle(msg("and what is 17 times 3?"))
+        await first
+        for _ in range(50):
+            if len(asked) == 2 and not b._busy_chats:
+                break
+            await asyncio.sleep(0.05)
+    asyncio.run(go())
+    assert asked == ["write the essay", "and what is 17 times 3?"]
+    assert "answer to and what is 17 times 3?" in said
+    cid = b._conversation_for_chat(5)
+    users = [m["content"] for m in store.get_messages(cid) if m["role"] == "user"]
+    assert users.count("and what is 17 times 3?") == 1, "a steered message is saved once"
+    assert any("as soon as" in t or "adding this" in t for t in said), "the phone was told it was taken"

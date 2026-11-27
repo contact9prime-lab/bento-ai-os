@@ -639,6 +639,7 @@ body.immersive.dev-mobile #omnilist,body.immersive.dev-mobile #omnicards{left:12
 /* the phone hides the chat sidebar outright (15-responsive); here it is the
    drawer, so it comes back only while the drawer is open */
 body.immersive.dev-mobile .chatwrap.drawer .cside{display:flex!important}
+body.immersive.dev-mobile #cs-toggle{width:var(--tap);min-height:var(--tap)}   /* a fingertip, not 34px */
 body.immersive.dev-mobile .win{border-radius:0}
 /* A phone's window is the whole screen, so there is nothing behind it worth showing: the
    sheet under it (Settings' words through Files) and the dock through the setup wizard read

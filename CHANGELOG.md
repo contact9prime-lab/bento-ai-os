@@ -1,6 +1,14 @@
 # Changelog
 
 
+## 0.100.11 — 2026-11-27
+
+- A message you send on Telegram while Bento is working is never lost. If Claude Code is in the middle of a step, such as handing work to a department, the phone says it will read the message when that step ends. A message it never got to read gets its own answer right after.
+- Telegram keeps showing "typing…" for the whole turn, and a long quiet turn shows how long it has been working and what it is doing (thinking, writing the answer, waiting on the provider).
+- WhatsApp works like Telegram: each chat queues its own messages instead of answering "Still working…" and dropping them, and a linked phone reads a new message (or a "1" to approve) while a turn runs.
+- When the agent waits for you to sign in somewhere in the shared browser, its row in Chat says what it is waiting for and has an Open the browser button.
+- On a phone, Chat's list of conversations opens from its button in either look, and the home screen's small buttons are big enough to tap.
+
 ## 0.100.10 — 2026-11-27
 
 No release notes were written for this one; the commits since 0.100.9 are what changed (`bento update` lists them).

@@ -4779,6 +4779,8 @@ steerable=)`; `tests/test_task_desktops.py`. Four rules:
   goes through the server's steering like any other.
 - **Telegram is per chat.** One bot-wide busy flag refused everybody while one chat worked. Now a second chat runs
   at once; within a chat, a message steers the running Claude Code turn or waits in `_waiting` and runs next.
+- **WhatsApp too.** WhatsApp keeps the same per-chat queue (`WhatsAppBridge._take`/`_serve`), and the linked device hands each message over as its own task (`wa_baileys`), or a "1" to approve a turn's own question could not be read until the turn gave up.
+- **A steered message is tracked until Claude Code reads it** (`--replay-user-messages`, `Run.steered`/`read`/`unread`/`mid_step`, `phonelive.steer_words`; `tests/test_phone_steps.py`). Measured on 2.1.332 over a stand-in Telegram: the CLI reads input only between steps, so a message sent during a hand-over waits for it, and the phone was told "taken in". The phone now says which step it waits for; what the CLI never read runs as the next turn and is not saved twice (`_steered`). A quiet phone turn shows a timer and `Tap.now` (`Live.BEAT`, `QUIET_AFTER`), and Telegram's typing is sent again every 4.5 s (`keep_typing`).
 
 ## Window chrome: the rules that keep a stack readable
 
