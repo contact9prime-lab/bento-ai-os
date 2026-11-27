@@ -649,6 +649,31 @@ def _step_look(cfg, store) -> None:
           "Personalize app.")
 
 
+def _step_registry(cfg, store) -> None:
+    """The Bento Registry: browsing needs nothing, publishing needs a sign-in and this machine."""
+    from . import registryhub as hub
+    st = hub.status()
+    if st["registered"]:
+        print(f"\n  ✓ publishing as {st['handle']} from {st['machine']}")
+        return
+    print(_wrap("Anyone can browse and install from the Bento Registry (`bento registry browse`). "
+                "To publish your own, sign in with your email and register this machine."))
+    if not _yes("Sign in to publish?", False):
+        return
+    try:
+        if not st["signed_in"]:
+            email = _ask("Your email", "")
+            out = hub.start_login(email)
+            print(f"  a code is on its way to {out['to']}")
+            st = hub.finish_login(_ask("The code from the email", ""), email)
+        if not st["handle"]:
+            st = hub.set_handle(_ask("Publisher name (lower case, shown on what you publish)", ""))
+        st = hub.register_machine(_ask("A name for this machine", ""))
+        print(f"  ✓ publishing as {st['handle']} from {st['machine']}")
+    except hub.HubError as e:
+        print(f"  {e}. You can do it later: bento registry login")
+
+
 def _step_copy(cfg, store) -> None:
     """A copy somewhere else (offsite.py): said, and made here if the person wants a file now."""
     from . import offsite
@@ -743,7 +768,7 @@ HANDLERS = {
     "fork": _step_fork, "app": _step_app,
     "agent": _step_agent, "crew": _step_crew, "screen": _step_screen, "voice": _step_voice,
     "flow": _step_flow, "schedule": _step_schedule,
-    "channel": _step_channel, "look": _step_look, "copy": _step_copy, "account": _step_account,
+    "channel": _step_channel, "look": _step_look, "registry": _step_registry, "copy": _step_copy, "account": _step_account,
 }
 
 

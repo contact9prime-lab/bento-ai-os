@@ -179,6 +179,15 @@ STEPS: list[Step] = [
          blurb="A theme, a wallpaper, and whether it speaks out loud.",
          produces="a desktop that looks like your machine",
          panel="look"),
+    # Asked for as "when the Bento is set up the first time, if it needs to talk to the
+    # registry, the user logs in and registers their Bento". Browsing the registry needs no
+    # account, so this is optional: it is for somebody who will publish. Evidence is this
+    # machine registered to a signed-in person (registryhub.status, local files only).
+    Step("registry", "Join the Bento registry", icon="⬡",
+         blurb="Browse apps, agents, skills, souls and tools freely. To publish your own, "
+               "sign in with your email and register this machine.",
+         produces="this machine registered to you, so what you publish is signed by it",
+         panel="store"),
     # Near the end, once there is something worth keeping. Asked for after a reel of
     # incidents (ransomware at seventeen hospitals in a day): a backup on the same disk is lost
     # with it. Evidence is a copy somewhere else (offsite.done): a cloud standby, a bucket, or
@@ -210,9 +219,10 @@ SHAPES = ("one", "company")
 #: shows every step, and each one still lives in Settings. Kept as data so the wizard,
 #: `bento setup` and the tests read one table.
 PLANS = {
-    "one": ("shape", "name", "model", "hello", "app", "schedule", "channel", "look", "copy"),
+    "one": ("shape", "name", "model", "hello", "app", "schedule", "channel", "look", "registry",
+            "copy"),
     "company": ("shape", "name", "model", "hello", "company", "crew", "schedule",
-                "channel", "look", "copy", "account"),
+                "channel", "look", "registry", "copy", "account"),
 }
 #: Added to either plan when the machine has a screen of its own (a kiosk, a Pi).
 SCREEN_STEPS = ("crew", "screen", "voice")
@@ -408,6 +418,15 @@ def state(cfg: dict, store=None, show_all: bool = False) -> dict:
             if h:
                 return "done", f"heard “{h.get('word') or ''}”" + (" · voice print saved" if vp else "")
             return ("done", "voice print saved") if vp else ("todo", "")
+        if sid == "registry":
+            try:
+                from . import registryhub
+                st = registryhub.status()
+            except Exception:
+                return "todo", ""
+            if st.get("registered"):
+                return "done", f"publishing as {st.get('handle') or st.get('email')}"
+            return ("todo", "signed in, not registered yet") if st.get("signed_in") else ("todo", "")
         if sid == "copy":
             try:
                 from . import users as usersmod

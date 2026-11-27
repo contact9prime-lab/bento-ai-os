@@ -2472,6 +2472,157 @@ def _remote_desktop_cli(args):
         print("  (sign in with your AgentOS passphrase; the VNC port stays on 127.0.0.1)")
 
 
+_HUB_ACTIONS = ("whoami", "login", "logout", "handle", "register", "revoke", "browse",
+                "versions", "get", "report", "push")
+
+
+def _hub_cli(args):
+    """`bento registry whoami|login|…|push`: the Bento Registry at bentoboxos.com.
+
+    Browsing and getting need no account. Pushing needs a sign-in, a publisher name
+    and this machine registered, and always shows the sensitive-data report first.
+    Run from a terminal this acts as the machine's own home, not an account's.
+    """
+    from . import config as cfgmod
+    from . import memory
+    from . import registryhub as hub
+
+    act, target = args.action, (args.target or "").strip()
+
+    def show_status(st):
+        if not st["signed_in"]:
+            print("not signed in to the Bento registry. Browsing needs no account.")
+            print("  sign in to publish:  bento registry login you@example.com")
+            return
+        print(f"signed in as {st['email']}" + (f", publishing as {st['handle']}" if st["handle"] else ""))
+        print(f"this machine: {st['machine'] + ' (' + st['key_id'] + ')' if st['registered'] else 'not registered'}")
+        if st["next"]:
+            print("next: " + st["next"])
+
+    def show_report(rep):
+        mark = {"blocked": "✗", "review": "!", "caution": "!", "pass": "✓"}.get(rep["verdict"], "·")
+        words = {"blocked": "can't be published as it is", "review": "has personal details, look at them first",
+                 "caution": "the app scan has notes", "pass": "nothing personal or secret found"}
+        print(f"{mark} {words.get(rep['verdict'], rep['verdict'])}  ({rep['bytes']:,} bytes)")
+        for b in rep["blocking"]:
+            print(f"  ✗ {b['what']}" + (f", line {b['line']}" if b["line"] else "") +
+                  (f"  {b['excerpt']}" if b["excerpt"] else ""))
+        for w in rep["warnings"]:
+            print(f"  ! {w['what']}" + (f", line {w['line']}" if w["line"] else "") +
+                  (f"  {w['excerpt']}" if w["excerpt"] else ""))
+        for f in (rep.get("security") or {}).get("findings") or []:
+            print(f"  · line {f.get('line')}: {f.get('note')}")
+        if rep["permissions"]:
+            print("  asks for: " + ", ".join(rep["permissions"][:12]) +
+                  (" …" if len(rep["permissions"]) > 12 else ""))
+        if rep["blocking"]:
+            print("  Remove what's marked ✗ and try again. There is no way to publish it as it is.")
+
+    def build(kind, item):
+        if kind == "app":
+            if not item or not Path(item).is_file():
+                raise hub.HubError("an app is pushed from its .agentapp.json file: "
+                                   "bento registry package \"Your App\" makes one")
+            pkg = json.loads(Path(item).read_text())
+            return pkg, (pkg.get("manifest") or {}).get("name") or Path(item).stem
+        cfg = cfgmod.load_config()
+        store = memory.Store()
+        if kind in ("skill", "tool") and not item:
+            raise hub.HubError(f"name the {kind}: bento registry push {kind} NAME")
+        pkg = hub.package(kind, store, cfg, name=item)
+        return pkg, pkg.get("name") or item or kind
+
+    try:
+        if act == "whoami":
+            show_status(hub.status())
+        elif act == "login":
+            if args.code:
+                show_status(hub.finish_login(args.code, target))
+                return
+            out = hub.start_login(target)
+            print(f"a sign-in code is on its way to {out['to']}.")
+            try:
+                code = input("code from the email: ").strip()
+            except EOFError:
+                print(f"then: bento registry login {target} --code 123456")
+                return
+            show_status(hub.finish_login(code, target))
+        elif act == "logout":
+            show_status(hub.logout())
+        elif act == "handle":
+            show_status(hub.set_handle(target))
+        elif act == "register":
+            if args.new_key:
+                hub.new_key()
+            show_status(hub.register_machine(target))
+        elif act == "revoke":
+            if input("stop this machine publishing for you? type revoke: ").strip() != "revoke":
+                print("left as it was")
+                return
+            show_status(hub.revoke_machine())
+        elif act == "browse":
+            rows = hub.search(target, args.kind)
+            if not rows:
+                print("nothing in the registry matches" + (f" '{target}'" if target else ""))
+            for r in rows:
+                print(f"  {r['kind'] + '/' + r['slug']:<34} {r.get('latest') or '-':<9} "
+                      f"↓{r.get('downloads') or 0:<6} {r.get('publisher') or '':<16} {r.get('name')}")
+            if rows:
+                print("\n  bento registry get KIND/NAME   checks it and saves it here")
+        elif act == "versions":
+            kind, slug, _v = hub.parse_ref(target)
+            for v in hub.versions(kind, slug):
+                print(f"  {v['version']:<10} ↓{v.get('downloads') or 0:<6} {v['created_at'][:10]}"
+                      f"{'  (withdrawn)' if v.get('yanked') else ''}  {v.get('notes') or ''}")
+        elif act == "get":
+            kind, slug, ver = hub.parse_ref(target)
+            cfg = cfgmod.load_config()
+            got = hub.fetch(kind, slug, ver, cfg)
+            print(f"✓ {kind}/{slug} {got['version']} by {got['publisher']}: hash and signature check out")
+            if got["revoked"]:
+                print("  ! the publisher has since revoked the machine that signed it")
+            print(f"  {got['pin_note']}")
+            show_report(got["local"])
+            out = Path(args.out or ".") / f"{kind}-{slug}-{got['version']}.json"
+            out.write_text(got["text"])
+            print(f"  saved {out}")
+            door = {"app": "Store → Import in the desktop",
+                    "agent": f"bento agent fork {out}",
+                    "skill": "Store → Registry in the desktop (it never replaces a skill you have)",
+                    "soul": "Profile → Soul in the desktop, read it before you adopt it",
+                    "tool": "MCP Servers in the desktop (it arrives switched off)"}[kind]
+            print(f"  to install it: {door}")
+        elif act in ("report", "push"):
+            kind = target
+            if kind not in hub.KINDS:
+                print("usage: bento registry " + act + " app|agent|skill|soul|tool [NAME or FILE]")
+                sys.exit(2)
+            pkg, name = build(kind, args.item)
+            text = hub.text_of(pkg)
+            rep = hub.report(kind, text, pkg)
+            show_report(rep)
+            if act == "report" or not rep["ok"]:
+                return
+            version = args.version or "1.0.0"
+            slug = args.slug or hub.slug_of(name)
+            print(f"\npublish {kind}/{slug} {version} as {hub.status()['handle'] or '(no name yet)'} "
+                  f"to {hub.SITE} — anyone will be able to download it.")
+            if rep["warnings"]:
+                print("it carries the personal details marked ! above.")
+            if input("type publish to go ahead: ").strip() != "publish":
+                print("nothing was sent")
+                return
+            out = hub.publish(kind, slug, version, text, ack=rep["ack"], name=name,
+                              summary=args.summary, notes=args.notes)
+            print(f"✓ published {kind}/{slug} {out['version']}  {out['page']}")
+    except hub.HubError as e:
+        print(f"✗ {e}")
+        leaks = e.extra.get("leaks")
+        if leaks:
+            print("  found: " + ", ".join(map(str, leaks)))
+        sys.exit(1)
+
+
 def _registry_cli(args):
     """`agentos registry` — the app store's supply chain, from a terminal.
 
@@ -2479,6 +2630,9 @@ def _registry_cli(args):
     receiving side runs. Everything here is also what the registry's CI runs, so a
     package that passes locally passes there.
     """
+    if args.action in _HUB_ACTIONS:
+        _hub_cli(args)
+        return
     import urllib.request
 
     from . import appregistry as reg
@@ -11446,13 +11600,27 @@ def main():
     p_reg = verb("registry", help="the app registry — package, scan, sign and verify apps")
     p_reg.add_argument("action", nargs="?", default="verify",
                        choices=["keygen", "package", "scan", "sign", "verify", "publish",
-                                "search"])
+                                "search",
+                                # the Bento Registry at bentoboxos.com (registryhub.py)
+                                "whoami", "login", "logout", "handle", "register", "revoke",
+                                "browse", "versions", "get", "report", "push"])
     p_reg.add_argument("target", nargs="?", default="",
                        help="app name (package/publish), a .agentapp.json path/URL, "
                             "owner/repo[@ref], or a search term")
     p_reg.add_argument("-o", "--out", default=".", help="where package writes the file")
     p_reg.add_argument("--ai", action="store_true",
                        help="with `scan`: also read the code with this machine's brain")
+    p_reg.add_argument("item", nargs="?", default="",
+                       help="with `report`/`push`: the skill, tool or agent name, or an "
+                            ".agentapp.json file for an app")
+    p_reg.add_argument("--kind", default="", help="with `browse`: app, agent, skill, soul or tool")
+    p_reg.add_argument("--version", default="", help="with `push`: the version, like 1.0.0")
+    p_reg.add_argument("--slug", default="", help="with `push`: the address name (from the name if left out)")
+    p_reg.add_argument("--summary", default="", help="with `push`: one line on what it does")
+    p_reg.add_argument("--notes", default="", help="with `push`: what changed in this version")
+    p_reg.add_argument("--code", default="", help="with `login`: the code from the email")
+    p_reg.add_argument("--new-key", action="store_true", dest="new_key",
+                       help="with `register`: retire this machine's key and make a new one")
 
     p_agent = verb("agent",
                    help="share this agent as a bundle, or fork somebody else's — "

@@ -212,6 +212,8 @@ def test_everything_answered_counts_as_finished(store):
     ob.skip(cfg, "voice")
     # and somebody who keeps no copy elsewhere has said so (offsite.py says it again in Settings)
     ob.skip(cfg, "copy")
+    # and somebody who will never publish passes over the registry (browsing needs no account)
+    ob.skip(cfg, "registry")
     # one agent, on a machine with its own screen: every step it keeps is answered
     ob.set_shape(cfg, "one", "everyone", screen=True)
     store.create_conversation("hi")

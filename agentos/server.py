@@ -8870,6 +8870,291 @@ async def api_store_federated(q: str = ""):
     return {"apps": hits, "topic": regmod.DISCOVERY_TOPIC}
 
 
+# ---- the Bento Registry at bentoboxos.com (registryhub.py) -----------------------
+# Browsing is open to anyone; publishing is the signed-in person's, from a machine they
+# registered, after they read the report for these exact bytes. Each account keeps its
+# own sign-in and its own key in its own home, so these are account routes.
+
+_HUB_PENDING: dict = {}          # (account, ack) -> what was reported, kept 30 minutes
+_HUB_GOT: dict = {}              # (account, sha256) -> a verified download waiting for its install
+
+
+def _hub_audit(action: str, detail: str, resource: str = "registry") -> None:
+    try:
+        state["store"].audit_add(principal_kind="user", principal_id=usersmod.current() or "owner",
+                                 surface="desktop", action=action, resource=resource,
+                                 effect="allow", rule="person", outcome="ok", detail=detail[:300])
+    except Exception:
+        pass
+
+
+async def _hub(fn, *a, **kw):
+    """Run a registry call off the loop, its refusal as a sentence."""
+    from . import registryhub as hub
+    try:
+        return await asyncio.to_thread(fn, *a, **kw)
+    except hub.HubError as e:
+        out = {"ok": False, "error": str(e)}
+        out.update({k: v for k, v in e.extra.items() if k in ("report", "leaks")})
+        return JSONResponse(out, status_code=e.status if 400 <= e.status < 500 else 400)
+
+
+def _hub_app_package(aid: str) -> tuple[dict, str]:
+    """An app as its export makes it, built in process."""
+    a = state["store"].get_app(aid) or next((x for x in state["store"].list_apps()
+                                             if x["name"].lower() == (aid or "").lower()), None)
+    if not a:
+        from . import registryhub as hub
+        raise hub.HubError(f"there is no app called '{aid}' here")
+    man = _app_manifest(a)
+    if not man.get("permissions") and (a.get("manifest_status") or "none") == "none":
+        man = _propose_manifest(a["id"]) or man
+    from . import appregistry as _reg
+    man["description"] = man.get("description") or (a.get("description") or "")
+    man["author"] = {**(man.get("author") or {}),
+                     "kind": _reg.authorship([v.get("note") or "" for v in state["store"].app_versions(a["id"])])}
+    man.setdefault("security", _reg.scan_block(a.get("html") or ""))
+    html = a.get("html") or ""
+    return ({"format": "agentos-app/1", "manifest": man, "html": html,
+             "checksum": _package_checksum(man, html), "signature": None}, a["name"])
+
+
+@app.get("/api/store/registry/status")
+async def api_hub_status():
+    from . import registryhub as hub
+    return await _hub(hub.status)
+
+
+@app.post("/api/store/registry/login")
+async def api_hub_login(body: dict):
+    from . import registryhub as hub
+    return await _hub(hub.start_login, str(body.get("email") or ""))
+
+
+@app.post("/api/store/registry/verify")
+async def api_hub_verify(body: dict):
+    from . import registryhub as hub
+    out = await _hub(hub.finish_login, str(body.get("code") or ""), str(body.get("email") or ""))
+    if isinstance(out, dict):
+        _hub_audit("registry.signin", f"signed in to the Bento registry as {out.get('email')}")
+    return out
+
+
+@app.post("/api/store/registry/logout")
+async def api_hub_logout():
+    from . import registryhub as hub
+    _hub_audit("registry.signout", "signed out of the Bento registry")
+    return await _hub(hub.logout)
+
+
+@app.post("/api/store/registry/handle")
+async def api_hub_handle(body: dict):
+    from . import registryhub as hub
+    return await _hub(hub.set_handle, str(body.get("handle") or ""))
+
+
+@app.post("/api/store/registry/register")
+async def api_hub_register(body: dict):
+    from . import registryhub as hub
+    if body.get("new_key"):
+        await asyncio.to_thread(hub.new_key)
+    out = await _hub(hub.register_machine, str(body.get("name") or ""))
+    if isinstance(out, dict):
+        _hub_audit("registry.register", f"registered this machine with the Bento registry ({out.get('key_id')})")
+    return out
+
+
+@app.post("/api/store/registry/revoke")
+async def api_hub_revoke():
+    from . import registryhub as hub
+    out = await _hub(hub.revoke_machine)
+    if isinstance(out, dict):
+        _hub_audit("registry.revoke", "this machine may no longer publish to the Bento registry")
+    return out
+
+
+@app.get("/api/store/registry/search")
+async def api_hub_search(q: str = "", kind: str = ""):
+    from . import registryhub as hub
+    rows = await _hub(hub.search, q, kind)
+    return rows if not isinstance(rows, list) else {"items": rows, "site": hub.SITE}
+
+
+@app.get("/api/store/registry/versions")
+async def api_hub_versions(kind: str, slug: str):
+    from . import registryhub as hub
+    rows = await _hub(hub.versions, kind, slug)
+    return rows if not isinstance(rows, list) else {"versions": rows}
+
+
+@app.get("/api/store/registry/publishables")
+async def api_hub_publishables():
+    """What this account could publish, kind by kind."""
+    st = state["store"]
+    return {
+        "app": [{"id": a["id"], "name": a["name"]} for a in st.list_apps()],
+        "agent": [{"id": "", "name": "this agent's team, skills and flows"}],
+        "skill": [{"id": s["name"], "name": s["name"]} for s in st.list_skills()],
+        "soul": [{"id": "", "name": "this agent's soul"}],
+        "tool": [{"id": n, "name": n} for n in sorted((state["cfg"].get("mcp_servers") or {}))],
+    }
+
+
+@app.post("/api/store/registry/report")
+async def api_hub_report(body: dict):
+    """Build the package and say what it carries. Nothing is sent anywhere."""
+    from . import registryhub as hub
+    kind, item = str(body.get("kind") or ""), str(body.get("item") or "")
+
+    def build():
+        if kind == "app":
+            pkg, name = _hub_app_package(item)
+        else:
+            pkg = hub.package(kind, state["store"], state["cfg"], name=item,
+                              with_soul=bool(body.get("with_soul")), apps="none")
+            name = pkg.get("name") or item or kind
+        text = hub.text_of(pkg)
+        return pkg, name, text, hub.report(kind, text, pkg)
+    out = await _hub(build)
+    if not isinstance(out, tuple):
+        return out
+    pkg, name, text, rep = out
+    now = time.time()
+    for k in [k for k, v in _HUB_PENDING.items() if v["at"] < now - 1800]:
+        _HUB_PENDING.pop(k, None)
+    _HUB_PENDING[(usersmod.current() or "", rep["ack"])] = {"kind": kind, "text": text, "name": name, "at": now}
+    latest = ""
+    try:
+        rows = await asyncio.to_thread(hub.versions, kind, hub.slug_of(name))
+        latest = rows[0]["version"] if rows else ""
+    except Exception:
+        pass
+    return {**rep, "name": name, "slug": hub.slug_of(name), "latest": latest,
+            "preview": text[:4000], "status": hub.status()}
+
+
+@app.post("/api/store/registry/publish")
+async def api_hub_publish(body: dict):
+    """Publish what the person was shown the report for: the bytes are looked up by
+    the report's hash, never taken from the page."""
+    from . import registryhub as hub
+    got = _HUB_PENDING.get((usersmod.current() or "", str(body.get("ack") or "")))
+    if not got:
+        return JSONResponse({"ok": False, "error": "check it again: the report has expired or changed"},
+                            status_code=409)
+    if got["kind"] and not body.get("understood") and hub.report(got["kind"], got["text"])["warnings"]:
+        return JSONResponse({"ok": False, "error": "tick that you've read the personal details first"},
+                            status_code=400)
+    out = await _hub(hub.publish, got["kind"], str(body.get("slug") or ""), str(body.get("version") or ""),
+                     got["text"], ack=str(body.get("ack")), name=str(body.get("name") or got["name"]),
+                     summary=str(body.get("summary") or ""), icon=str(body.get("icon") or ""),
+                     notes=str(body.get("notes") or ""))
+    if isinstance(out, dict) and out.get("ok"):
+        _HUB_PENDING.pop((usersmod.current() or "", str(body.get("ack"))), None)
+        _hub_audit("registry.publish", f"published {got['kind']}/{out.get('slug')} {out.get('version')} "
+                   f"to the Bento registry", resource=f"registry:{got['kind']}/{out.get('slug')}")
+    return out
+
+
+@app.post("/api/store/registry/get")
+async def api_hub_get(body: dict):
+    """Download and check one listing here. An app goes on to the Import door's consent
+    screen and an agent to the fork preview; a skill, soul or tool is shown first."""
+    from . import registryhub as hub
+    try:
+        kind, slug, ver = hub.parse_ref(str(body.get("ref") or ""))
+    except hub.HubError as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+    got = await _hub(hub.fetch, kind, slug, str(body.get("version") or ver), state["cfg"])
+    if not isinstance(got, dict):
+        return got
+    _HUB_GOT[(usersmod.current() or "", got["sha256"])] = {**got, "at": time.time()}
+    out = {k: got[k] for k in ("kind", "slug", "version", "name", "publisher", "revoked", "sha256",
+                               "notes", "report", "permissions", "pin_status", "pin_note", "local")}
+    if kind in ("app", "agent"):
+        out["package"] = got["package"]
+    elif kind == "skill":
+        p = got["package"]
+        out["preview"] = {"name": p.get("name"), "description": p.get("description"),
+                          "content": (p.get("content") or "")[:20000],
+                          "exists": bool(state["store"].get_skill(p.get("name") or ""))}
+    elif kind == "soul":
+        out["preview"] = {"content": (got["package"].get("content") or "")[:20000]}
+    else:
+        out["preview"] = {"mcp": got["package"].get("mcp") or {},
+                          "exists": (got["package"].get("name") or "") in (state["cfg"].get("mcp_servers") or {})}
+    return out
+
+
+@app.post("/api/store/registry/install")
+async def api_hub_install(body: dict):
+    """Install a checked skill, soul or tool. A skill never replaces one by the same
+    name, a soul is saved beside the agent's and never adopted here, and a tool lands
+    switched off with its keys to fill in."""
+    from . import config as cfgmod
+    from . import registryhub as hub
+    got = _HUB_GOT.pop((usersmod.current() or "", str(body.get("sha256") or "")), None)
+    if not got or got["at"] < time.time() - 1800:
+        return JSONResponse({"ok": False, "error": "get it again: the checked download has expired"},
+                            status_code=409)
+    p, kind, ref = got["package"], got["kind"], f"{got['kind']}/{got['slug']}@{got['version']}"
+    where = ""
+    if kind == "skill":
+        nm = (p.get("name") or got["slug"]).strip()[:80]
+        if state["store"].get_skill(nm):
+            return JSONResponse({"ok": False, "error": f"you already have a skill called '{nm}'; it was left as it is"},
+                                status_code=409)
+        state["store"].save_skill(nm, str(p.get("description") or "")[:300], str(p.get("content") or ""),
+                                  source="bento-registry:" + ref)
+        where = f"skill '{nm}'"
+    elif kind == "soul":
+        from . import users as _u
+        d = _u.home_for(usersmod.current() or "") / "registry" / "souls"
+        d.mkdir(parents=True, exist_ok=True)
+        f = d / f"{got['slug']}-{got['version']}.md"
+        f.write_text(str(p.get("content") or ""))
+        where = str(f)
+    elif kind == "tool":
+        mcp = p.get("mcp") or {}
+        nm = re.sub(r"[^A-Za-z0-9_-]", "-", str(p.get("name") or got["slug"]))[:40]
+        servers = state["cfg"].setdefault("mcp_servers", {})
+        if nm in servers:
+            return JSONResponse({"ok": False, "error": f"you already have a tool called '{nm}'; it was left as it is"},
+                                status_code=409)
+        conf = {k: mcp[k] for k in ("transport", "command", "args", "url") if mcp.get(k)}
+        if mcp.get("env_template"):
+            conf["env"] = {k: "" for k in mcp["env_template"]}
+        if mcp.get("headers_template"):
+            conf["headers"] = {k: "" for k in mcp["headers_template"]}
+        conf["enabled"] = False
+        servers[nm] = conf
+        cfgmod.save_config(state["cfg"])
+        where = f"tool '{nm}', switched off"
+    else:
+        return JSONResponse({"ok": False, "error": "apps and agents install through the Store's own screens"},
+                            status_code=400)
+    hub.pin(state["cfg"], got)
+    cfgmod.save_config(state["cfg"])
+    _hub_audit("registry.install", f"installed {ref} from the Bento registry as {where}",
+               resource=f"registry:{kind}/{got['slug']}")
+    return {"ok": True, "installed": where}
+
+
+@app.post("/api/store/registry/pin")
+async def api_hub_pin(body: dict):
+    """After an app or agent from the registry went through its own consent screen."""
+    from . import config as cfgmod
+    from . import registryhub as hub
+    got = _HUB_GOT.pop((usersmod.current() or "", str(body.get("sha256") or "")), None)
+    if not got:
+        return {"ok": False}
+    hub.pin(state["cfg"], got)
+    cfgmod.save_config(state["cfg"])
+    _hub_audit("registry.install", f"installed {got['kind']}/{got['slug']}@{got['version']} from the Bento registry",
+               resource=f"registry:{got['kind']}/{got['slug']}")
+    return {"ok": True}
+
+
 @app.post("/api/apps/import")
 async def api_app_import(body: dict):
     """Stage an app package (inline or from a URL) for install: verify integrity and diff
