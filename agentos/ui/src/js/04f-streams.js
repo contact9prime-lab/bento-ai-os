@@ -157,6 +157,17 @@ function browserPaint(w,m){
   winNeedsYou('browser',!!a,a&&(a.site||''));
   const who=q('.bw-who');if(who)who.textContent=m.title?m.title:'';
 }
+/* What a chat's step row says while the agent waits for the person in the browser.
+   Reported with a screenshot: "browser_wait_for_person … running 1m 57s" and nothing else,
+   "it's stuck on this where it doesn't have anything". The toast that said so was gone after
+   seven seconds and the dock's pulse is easy to miss, so the row itself says what it waits
+   for and has the door. The window's own bar has Done. */
+function browserNeedHTML(name,args){
+  if(String(name||'').replace(/^mcp__bento__/,'')!=='browser_wait_for_person')return '';
+  const why=String((args||{}).reason||'').trim();
+  return `<div class="tool-need" role="status"><span>🔐 Waiting for you in the browser${why?': '+esc(why):''}. Do it there, then press Done.</span>`
+    +`<button type="button" class="pact" onclick="event.stopPropagation();openApp('browser')">Open the browser</button></div>`;
+}
 /* The browser needs the person and its window may not be open: open it, or offer to. */
 function browserAttention(ev){
   const open=winsOf('browser').length>0;

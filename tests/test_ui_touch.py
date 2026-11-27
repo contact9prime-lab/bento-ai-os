@@ -31,7 +31,8 @@ from reading the CSS.
 import pathlib
 import re
 
-CSS = pathlib.Path(__file__).resolve().parents[1] / "agentos" / "ui" / "src" / "css"
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+CSS = ROOT / "agentos" / "ui" / "src" / "css"
 SRC = (CSS / "15-responsive.css").read_text()
 #: The same file with comments removed. The comments here carry the measurements
 #: that justify each rule, and they contain commas and braces — parsing rules out
@@ -187,3 +188,20 @@ def test_the_immersive_look_never_shrinks_a_segment_below_the_floor():
     imm = (CSS / "20-immersive.css").read_text()
     rule = next(r for r in imm.split("}") if r.strip().startswith("body.immersive .seg button{"))
     assert "var(--tap" in rule, rule
+
+
+def test_a_phone_can_open_chats_list_in_either_look():
+    """Reported as "when I go on the chat in the mobile it is not opening the left panel": with the
+    immersive look off, a phone hid the list and had no button to open it (measured at 390px)."""
+    css = (ROOT / "agentos/ui/src/css/15-responsive.css").read_text()
+    assert "body.dev-mobile #cs-toggle{display:inline-flex" in css
+    assert "body.dev-mobile .chatwrap.drawer .cside{display:flex!important" in css
+    assert "body.dev-touch .deck-fold{opacity:1" in css, "a fold button that shows only on hover is no button to a finger"
+
+
+def test_a_wait_for_the_person_has_its_door_in_the_chat():
+    js = (ROOT / "agentos/ui/src/js/04f-streams.js").read_text()
+    ws = (ROOT / "agentos/ui/src/js/09-websocket.js").read_text()
+    assert "function browserNeedHTML" in js and "openApp('browser')" in js
+    assert ws.count("browserNeedHTML(ev.name,ev.args)") == 2, "the live card and the buffer both carry it"
+    assert ".tool-need')?.remove()" in ws

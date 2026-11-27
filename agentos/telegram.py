@@ -18,6 +18,7 @@ import httpx
 
 from . import channels as chanmod
 from . import config as cfgmod
+from . import phonelive
 from . import telegram_admin
 from .agent import Agent
 from . import users as usersmod
@@ -721,7 +722,7 @@ class TelegramBridge(usersmod.Scoped):
             if run is not None and run.steer(text):
                 with contextlib.suppress(Exception):
                     self.store.add_message(self._conversation(chat), "user", text, {"steered": True})
-                await self.send("↪ Taken into what I'm working on.", chat_id)
+                await self.send(phonelive.steer_words(run), chat_id)
             else:
                 self._waiting.setdefault(chat_id, []).append(msg)
                 n = len(self._waiting[chat_id])
@@ -735,10 +736,10 @@ class TelegramBridge(usersmod.Scoped):
         _wall_uid = usersmod.current() or ""
         _cdpb.reach(_wall_uid, f"tg:{chat_id}", lambda att, png: self.ask_wall(chat_id, att, png),
                     say=lambda text, buttons: self.say_wall(chat_id, text, buttons))
-        try:
-            await self._api("sendChatAction", chat_id=chat_id, action="typing")
-        except Exception:
-            pass
+        # "typing…" lasts five seconds on Telegram, so it is said again until the turn ends.
+        # Sent once, a turn of a few minutes showed nothing after the first five seconds.
+        typing = asyncio.create_task(phonelive.keep_typing(
+            lambda: self._api("sendChatAction", chat_id=chat_id, action="typing")))
         live = None                  # the turn's steps on the phone (phonelive), ended in `finally`
         try:
             cid = self._conversation(chat)
@@ -749,7 +750,6 @@ class TelegramBridge(usersmod.Scoped):
             # what the turn is doing, on the phone while it works: hand-overs to a department,
             # who its desk gave each piece to, a boss's sign-off (phonelive.py), one message
             # edited in place
-            from . import phonelive
             if phonelive.on(self.cfg, "telegram"):
                 async def _live_send(text):
                     r = await self._api("sendMessage", chat_id=chat_id, text=text, disable_notification=True)
@@ -770,7 +770,8 @@ class TelegramBridge(usersmod.Scoped):
             # A photo comes with the message: fetched only now, for a chat that is let in,
             # and handed to whichever brain answers. It was ignored without a word.
             images = await self._photos(msg)
-            self.store.add_message(cid, "user", text, {"images": images} if images else None)
+            if not msg.get("_steered"):          # a steered message is in the thread already
+                self.store.add_message(cid, "user", text, {"images": images} if images else None)
             await self.broadcast({"type": "telegram_in", "conversation_id": cid, "text": text[:160]})
             note = ("[Message arriving via Telegram — the user is away from the machine. "
                     "Reply in plain text (no markdown tables). No one can click approval "
@@ -846,12 +847,19 @@ class TelegramBridge(usersmod.Scoped):
         except Exception as e:
             await self.send(f"[error] {type(e).__name__}: {e}", chat_id)
         finally:
+            typing.cancel()
             with contextlib.suppress(Exception):
                 await end_turn()
             _cdpb.unreach(_wall_uid, f"tg:{chat_id}")
             self._busy_chats.discard(chat_id)
-            self._runs.pop(chat_id, None)
+            run = self._runs.pop(chat_id, None)
             self._busy = bool(self._busy_chats)
+            # A message handed to the turn that the CLI never read (the turn ended inside a
+            # step) runs as its own turn, first: it was sent before anything still waiting.
+            # It is already in the conversation, so it is not saved twice.
+            late = [dict(msg, text=t, _steered=True) for t in (run.unread() if run is not None else [])]
+            if late:
+                self._waiting[chat_id] = late + (self._waiting.get(chat_id) or [])
             # what waited for this turn runs next, one at a time, in the order it came
             queue = self._waiting.get(chat_id) or []
             if queue:
