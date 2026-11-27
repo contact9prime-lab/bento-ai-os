@@ -2642,6 +2642,16 @@ body.dev-mobile .win .cp-btn{display:none}
 
 /* ---- in-app rails collapse: a phone shows one pane ---- */
 body.dev-mobile .cside{display:none!important}   /* App Studio's explorer is a pane of its own there (41-studio-ide.css) */
+/* Chat's list is a drawer on a phone in either look. Reported as "when I go on the chat in the mobile it
+   is not opening the left panel": with the immersive look off (it is per browser), the list was hidden
+   above and the button that opens the drawer existed only in the immersive look, so a phone had no way
+   to its chats at all. Raised above the drawer it opens, or it could never close it (20-immersive). */
+body.dev-mobile #cs-toggle{display:inline-flex;align-items:center;justify-content:center;flex:none;
+  min-width:var(--tap);min-height:var(--tap);position:relative;z-index:4}
+body.dev-mobile .chatwrap{position:relative}
+body.dev-mobile .chatwrap.drawer .cside{display:flex!important;position:absolute;left:0;top:0;bottom:0;
+  width:min(300px,86%);z-index:3;padding-top:calc(var(--tap) + 12px);background:var(--bg2);
+  box-shadow:0 20px 60px rgba(0,0,0,.45)}
 /* Settings' rail is 188px of a 390px screen, and it was the one rail nobody
    collapsed — so the pane beside it was 202px wide and its rows ran off the
    edge of the phone. Measured: the brain and model pickers, the model refresh,
@@ -2869,6 +2879,15 @@ body.dev-mobile #topbar>select{flex:1 1 34%}
 body.dev-mobile #tb-more{flex:0 0 var(--tap)}
 /* Chat's tabs and search are taps on a phone (10-chat.js) */
 body.dev-mobile .ctab,body.dev-mobile #conv-q{min-height:var(--tap)}
+
+/* Small targets left on a touch screen, found by sweeping every visible button on a 390px phone
+   (reported as "the buttons to cross or touch are not working on the mobile"). The deck's fold
+   arrow showed only on hover, so a finger never saw it, and it was 14x16. */
+body.dev-touch .deck-fold{opacity:1;min-width:var(--tap);min-height:var(--tap);display:inline-flex;
+  align-items:center;justify-content:center}
+body.dev-touch #deck-toggle,body.dev-touch.deck-full #deck-toggle{width:var(--tap);height:var(--tap)}
+body.dev-touch #mb-brand{min-height:var(--tap);min-width:var(--tap)}
+body.dev-touch .deck-gname{min-height:var(--tap)}
 /* ================= glass quality =================
    Loads last so it out-orders the themes, which inject their own <style>.
    See 04d-glass.js for why this knob exists and what picks a level.
@@ -4104,6 +4123,7 @@ body.immersive.dev-mobile #omnilist,body.immersive.dev-mobile #omnicards{left:12
 /* the phone hides the chat sidebar outright (15-responsive); here it is the
    drawer, so it comes back only while the drawer is open */
 body.immersive.dev-mobile .chatwrap.drawer .cside{display:flex!important}
+body.immersive.dev-mobile #cs-toggle{width:var(--tap);min-height:var(--tap)}   /* a fingertip, not 34px */
 body.immersive.dev-mobile .win{border-radius:0}
 /* A phone's window is the whole screen, so there is nothing behind it worth showing: the
    sheet under it (Settings' words through Files) and the dock through the setup wizard read
@@ -5049,6 +5069,12 @@ body.dev-touch .fc-act{min-width:var(--tap)}
 #mediaview .mv-err{margin:0;font-size:var(--fs-sm);color:var(--dim)}
 body.dev-touch #mediaview .mv-acts button{min-height:var(--tap);min-width:var(--tap)}
 @media (max-width:520px){#mediaview .mv-top{flex-wrap:wrap}#mediaview .mv-name{flex-basis:100%}#mediaview .mv-acts{margin-left:auto}}
+/* A step waiting for the person in the shared browser says so, with the door (browserNeedHTML). */
+.tool .tool-need{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 10px 8px;padding:8px 10px;
+  border-radius:10px;border:1px solid color-mix(in srgb,var(--acc) 45%,transparent);
+  background:color-mix(in srgb,var(--acc) 12%,transparent);font-size:var(--fs-sm);color:var(--txt)}
+.tool .tool-need span{flex:1;min-width:180px}
+body.dev-touch .tool .tool-need .pact{min-height:var(--tap)}
 /* ================= the World scene (experimental, 01e-world.js) =================
    The 3D world fills the wallpaper layer; its name tags, the lead's question and an
    agent's card sit in the desktop layer above it, below every window. Like the home
@@ -17312,6 +17338,17 @@ function browserPaint(w,m){
   winNeedsYou('browser',!!a,a&&(a.site||''));
   const who=q('.bw-who');if(who)who.textContent=m.title?m.title:'';
 }
+/* What a chat's step row says while the agent waits for the person in the browser.
+   Reported with a screenshot: "browser_wait_for_person … running 1m 57s" and nothing else,
+   "it's stuck on this where it doesn't have anything". The toast that said so was gone after
+   seven seconds and the dock's pulse is easy to miss, so the row itself says what it waits
+   for and has the door. The window's own bar has Done. */
+function browserNeedHTML(name,args){
+  if(String(name||'').replace(/^mcp__bento__/,'')!=='browser_wait_for_person')return '';
+  const why=String((args||{}).reason||'').trim();
+  return `<div class="tool-need" role="status"><span>🔐 Waiting for you in the browser${why?': '+esc(why):''}. Do it there, then press Done.</span>`
+    +`<button type="button" class="pact" onclick="event.stopPropagation();openApp('browser')">Open the browser</button></div>`;
+}
 /* The browser needs the person and its window may not be open: open it, or offer to. */
 function browserAttention(ev){
   const open=winsOf('browser').length>0;
@@ -20419,7 +20456,7 @@ function handle(ev){
       if(_s){ // mirror into the buffer so switching chats mid-turn is lossless
         if(_s.text.trim())_s.html+='<div class="body">'+md(_s.text)+'</div>';
         _s.text='';
-        _s.html+=`<div class="tool" data-buf="1"><div class="head"><span class="tname2">${esc(ev.name)}</span><span class="targ">${esc(argStr)}</span><span class="tstat run" data-b="${ev.call_id}" data-t0="${Date.now()}">running</span></div><div class="out"></div></div>`;}
+        _s.html+=`<div class="tool" data-buf="1"><div class="head"><span class="tname2">${esc(ev.name)}</span><span class="targ">${esc(argStr)}</span><span class="tstat run" data-b="${ev.call_id}" data-t0="${Date.now()}">running</span></div>${browserNeedHTML(ev.name,ev.args)}<div class="out"></div></div>`;}
       if(typeof agentHands==='function')agentHands(ev);   // visible hands: glow the affected app
       if(_sk&&_sk.toolStart)_sk.toolStart(ev,argStr);
       if(!_cur)break;
@@ -20429,7 +20466,7 @@ function handle(ev){
       const card=document.createElement('div');card.className='tool';card.id='tc-'+ev.call_id;
       // data-t0 is what makes a four-minute call look different from a four-second
       // one: actPaintTimers ages every open call once a second, wherever it is drawn
-      card.innerHTML=`<div class="head">${ev.name==='delegate'?avatarImg((ev.args||{}).subagent,'av-tool'):''}<span class="tname2">${esc(ev.name)}</span><span class="targ" title="${esc(argFull)}">${esc(argStr)}</span><span class="tstat run"${ev.pending_approval?'':` data-t0="${Date.now()}"`}>${ev.pending_approval?'awaiting approval':'running'}</span></div><div class="out"></div>`;
+      card.innerHTML=`<div class="head">${ev.name==='delegate'?avatarImg((ev.args||{}).subagent,'av-tool'):''}<span class="tname2">${esc(ev.name)}</span><span class="targ" title="${esc(argFull)}">${esc(argStr)}</span><span class="tstat run"${ev.pending_approval?'':` data-t0="${Date.now()}"`}>${ev.pending_approval?'awaiting approval':'running'}</span></div>${browserNeedHTML(ev.name,ev.args)}<div class="out"></div>`;
       card.querySelector('.head').onclick=()=>card.classList.toggle('open');
       curBody.parentNode.insertBefore(card,curBody); scrollDown(); break;}
     case 'app_saved':{
@@ -20444,7 +20481,8 @@ function handle(ev){
       actMove(_cid,'after');
       if(_s)_s.html=_s.html.replace(
         new RegExp(`class="tstat run" data-b="${reEsc(ev.call_id)}"([^>]*)>running`),
-        `class="tstat ${ev.ok?'ok':'fail'}" data-b="${ev.call_id}"$1>${ev.ok?'done':'failed'}`);
+        `class="tstat ${ev.ok?'ok':'fail'}" data-b="${ev.call_id}"$1>${ev.ok?'done':'failed'}`)
+        .replace(new RegExp(`(data-b="${reEsc(ev.call_id)}"[^>]*>[^<]*</span></div>)<div class="tool-need"[\\s\\S]*?</button></div>`),'$1');
       if(_sk&&_sk.toolEnd)_sk.toolEnd(ev);
       // A turn that MADE something offers the door to it, in whichever surface
       // is showing the turn — chat feed, omnibar card, copilot panel.
@@ -20457,6 +20495,7 @@ function handle(ev){
         st.removeAttribute('data-t0');       // stop ageing it — this one is finished
         st.className='tstat '+(ev.ok?'ok':'fail');
         st.textContent=(ev.ok?'done':'failed')+(t0?' · '+actDur(Date.now()-t0):'');
+        card.querySelector('.tool-need')?.remove();   // the wait is over
         card.querySelector('.out').textContent=ev.output||'(no output)';
         // Content this machine did not write is marked where it lands, not only in
         // the approval card it later causes — you should be able to see which step

@@ -148,6 +148,16 @@ body.dev-mobile .win .cp-btn{display:none}
 
 /* ---- in-app rails collapse: a phone shows one pane ---- */
 body.dev-mobile .cside{display:none!important}   /* App Studio's explorer is a pane of its own there (41-studio-ide.css) */
+/* Chat's list is a drawer on a phone in either look. Reported as "when I go on the chat in the mobile it
+   is not opening the left panel": with the immersive look off (it is per browser), the list was hidden
+   above and the button that opens the drawer existed only in the immersive look, so a phone had no way
+   to its chats at all. Raised above the drawer it opens, or it could never close it (20-immersive). */
+body.dev-mobile #cs-toggle{display:inline-flex;align-items:center;justify-content:center;flex:none;
+  min-width:var(--tap);min-height:var(--tap);position:relative;z-index:4}
+body.dev-mobile .chatwrap{position:relative}
+body.dev-mobile .chatwrap.drawer .cside{display:flex!important;position:absolute;left:0;top:0;bottom:0;
+  width:min(300px,86%);z-index:3;padding-top:calc(var(--tap) + 12px);background:var(--bg2);
+  box-shadow:0 20px 60px rgba(0,0,0,.45)}
 /* Settings' rail is 188px of a 390px screen, and it was the one rail nobody
    collapsed — so the pane beside it was 202px wide and its rows ran off the
    edge of the phone. Measured: the brain and model pickers, the model refresh,
@@ -375,3 +385,12 @@ body.dev-mobile #topbar>select{flex:1 1 34%}
 body.dev-mobile #tb-more{flex:0 0 var(--tap)}
 /* Chat's tabs and search are taps on a phone (10-chat.js) */
 body.dev-mobile .ctab,body.dev-mobile #conv-q{min-height:var(--tap)}
+
+/* Small targets left on a touch screen, found by sweeping every visible button on a 390px phone
+   (reported as "the buttons to cross or touch are not working on the mobile"). The deck's fold
+   arrow showed only on hover, so a finger never saw it, and it was 14x16. */
+body.dev-touch .deck-fold{opacity:1;min-width:var(--tap);min-height:var(--tap);display:inline-flex;
+  align-items:center;justify-content:center}
+body.dev-touch #deck-toggle,body.dev-touch.deck-full #deck-toggle{width:var(--tap);height:var(--tap)}
+body.dev-touch #mb-brand{min-height:var(--tap);min-width:var(--tap)}
+body.dev-touch .deck-gname{min-height:var(--tap)}

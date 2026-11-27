@@ -548,7 +548,7 @@ function handle(ev){
       if(_s){ // mirror into the buffer so switching chats mid-turn is lossless
         if(_s.text.trim())_s.html+='<div class="body">'+md(_s.text)+'</div>';
         _s.text='';
-        _s.html+=`<div class="tool" data-buf="1"><div class="head"><span class="tname2">${esc(ev.name)}</span><span class="targ">${esc(argStr)}</span><span class="tstat run" data-b="${ev.call_id}" data-t0="${Date.now()}">running</span></div><div class="out"></div></div>`;}
+        _s.html+=`<div class="tool" data-buf="1"><div class="head"><span class="tname2">${esc(ev.name)}</span><span class="targ">${esc(argStr)}</span><span class="tstat run" data-b="${ev.call_id}" data-t0="${Date.now()}">running</span></div>${browserNeedHTML(ev.name,ev.args)}<div class="out"></div></div>`;}
       if(typeof agentHands==='function')agentHands(ev);   // visible hands: glow the affected app
       if(_sk&&_sk.toolStart)_sk.toolStart(ev,argStr);
       if(!_cur)break;
@@ -558,7 +558,7 @@ function handle(ev){
       const card=document.createElement('div');card.className='tool';card.id='tc-'+ev.call_id;
       // data-t0 is what makes a four-minute call look different from a four-second
       // one: actPaintTimers ages every open call once a second, wherever it is drawn
-      card.innerHTML=`<div class="head">${ev.name==='delegate'?avatarImg((ev.args||{}).subagent,'av-tool'):''}<span class="tname2">${esc(ev.name)}</span><span class="targ" title="${esc(argFull)}">${esc(argStr)}</span><span class="tstat run"${ev.pending_approval?'':` data-t0="${Date.now()}"`}>${ev.pending_approval?'awaiting approval':'running'}</span></div><div class="out"></div>`;
+      card.innerHTML=`<div class="head">${ev.name==='delegate'?avatarImg((ev.args||{}).subagent,'av-tool'):''}<span class="tname2">${esc(ev.name)}</span><span class="targ" title="${esc(argFull)}">${esc(argStr)}</span><span class="tstat run"${ev.pending_approval?'':` data-t0="${Date.now()}"`}>${ev.pending_approval?'awaiting approval':'running'}</span></div>${browserNeedHTML(ev.name,ev.args)}<div class="out"></div>`;
       card.querySelector('.head').onclick=()=>card.classList.toggle('open');
       curBody.parentNode.insertBefore(card,curBody); scrollDown(); break;}
     case 'app_saved':{
@@ -573,7 +573,8 @@ function handle(ev){
       actMove(_cid,'after');
       if(_s)_s.html=_s.html.replace(
         new RegExp(`class="tstat run" data-b="${reEsc(ev.call_id)}"([^>]*)>running`),
-        `class="tstat ${ev.ok?'ok':'fail'}" data-b="${ev.call_id}"$1>${ev.ok?'done':'failed'}`);
+        `class="tstat ${ev.ok?'ok':'fail'}" data-b="${ev.call_id}"$1>${ev.ok?'done':'failed'}`)
+        .replace(new RegExp(`(data-b="${reEsc(ev.call_id)}"[^>]*>[^<]*</span></div>)<div class="tool-need"[\\s\\S]*?</button></div>`),'$1');
       if(_sk&&_sk.toolEnd)_sk.toolEnd(ev);
       // A turn that MADE something offers the door to it, in whichever surface
       // is showing the turn — chat feed, omnibar card, copilot panel.
@@ -586,6 +587,7 @@ function handle(ev){
         st.removeAttribute('data-t0');       // stop ageing it — this one is finished
         st.className='tstat '+(ev.ok?'ok':'fail');
         st.textContent=(ev.ok?'done':'failed')+(t0?' · '+actDur(Date.now()-t0):'');
+        card.querySelector('.tool-need')?.remove();   // the wait is over
         card.querySelector('.out').textContent=ev.output||'(no output)';
         // Content this machine did not write is marked where it lands, not only in
         // the approval card it later causes — you should be able to see which step

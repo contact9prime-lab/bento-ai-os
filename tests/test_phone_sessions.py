@@ -168,7 +168,7 @@ def test_whatsapp_has_the_same_sessions(tmp_path, monkeypatch):
         said.append(text)
         return "sent"
 
-    async def turn(chat, wa_id, text):
+    async def turn(chat, wa_id, text, **kw):
         cid = b._conversation(chat)
         turns.append(cid)
         store.add_message(cid, "user", text)

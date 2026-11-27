@@ -45,11 +45,12 @@ def test_telegram_works_side_by_side(tmp_path):
     assert tb._busy_chats == set() and tb._waiting == {} and tb._runs == {}
     src = (ROOT / "agentos/telegram.py").read_text()
     h = src[src.index("        if chat_id in self._busy_chats:"):][:1400]
-    assert "run.steer(text)" in h and "Taken into what I'm working on" in h
+    assert "run.steer(text)" in h and "phonelive.steer_words(run)" in h
     assert "self._waiting.setdefault(chat_id, []).append(msg)" in h
     assert "Still working on your previous message" not in src
-    fin = src[src.index("self._busy_chats.discard(chat_id)"):][:600]
+    fin = src[src.index("self._busy_chats.discard(chat_id)"):][:1400]
     assert "asyncio.create_task(self._handle(nxt))" in fin, "what waited runs next"
+    assert "run.unread()" in fin, "a message the CLI never read gets its own turn"
     # the run is handed to the bridge by the one turn both phones share (phoneturn.py)
     assert "on_run=lambda run: self._runs.__setitem__(chat_id, run), steerable=True" in src
     assert "run=run, steerable=steerable" in (ROOT / "agentos/phoneturn.py").read_text()

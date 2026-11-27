@@ -44,6 +44,7 @@ class Tap:
         self.cid = cid
         self.runs: dict[str, str] = {}      # run id -> who works it (a desk, a person)
         self.lines: list[str] = []
+        self.now = ""                       # what the lead is doing between steps, in words
         self.changed = asyncio.Event()
         self.n = 0                          # lines ever added, so a sender knows what is new
 
@@ -89,6 +90,23 @@ def _hand(name: str, args: dict) -> str:
         head = head.split(" {")[0]
     what = args.get("task") or args.get("topic") or args.get("question") or args.get("input") or ""
     return head + (f": {_cut(what)}" if what else "")
+
+
+#: What the lead is doing when it is not on a step. Shown under a quiet turn's timer, so a
+#: wait of minutes says whether it is thinking, writing, or waiting on the provider.
+def _lead_now(event: dict) -> str | None:
+    t = event.get("type")
+    if t == "thinking_delta":
+        return "Thinking it through"
+    if t == "text_delta":
+        return "Writing the answer"
+    if t == "status" and event.get("message"):
+        return _cut(event.get("message"), 110)
+    if t == "steer":
+        return "Read your new message"
+    if t in ("tool_start", "tool_end"):
+        return ""
+    return None
 
 
 def _lead_line(event: dict) -> str:
@@ -193,6 +211,9 @@ def observe(event: dict) -> None:
                 tap.add(_run_line(tap, rid, ev, event))
         return
     for tap in _TAPS.get(str(event.get("conversation_id") or ""), ()):
+        now = _lead_now(event)
+        if now is not None:
+            tap.now = now
         tap.add(_lead_line(event))
 
 
@@ -202,7 +223,17 @@ class Live:
     new lines go as a short message every `every` seconds, at most `cap` of them a turn.
 
     Nothing is sent for a turn that ends within `first` seconds: a quick answer needs no
-    running commentary, and the reply follows at once."""
+    running commentary, and the reply follows at once.
+
+    A turn that goes quiet is still shown. Reported as "in Telegram it takes a long time to
+    come up with answers without getting to know what's happening": a turn with no steps (a
+    long think, a provider's rate limit, a hand-over that runs for minutes) sent nothing at
+    all. Past `QUIET_AFTER` seconds the Telegram message carries a timer and what the lead is
+    doing (`Tap.now`), refreshed every `BEAT` seconds; WhatsApp, which can't edit, gets one
+    "still working" line."""
+
+    BEAT = 15.0
+    QUIET_AFTER = 20.0
 
     def __init__(self, tap: Tap, send, edit=None, every: float = 2.5, first: float = 3.0,
                  cap: int = 8):
@@ -214,16 +245,25 @@ class Live:
         self.t0 = time.monotonic()
         self.task = asyncio.create_task(self._run())
 
-    async def _show(self, done: bool = False) -> None:
+    def took(self) -> float:
+        return time.monotonic() - self.t0
+
+    async def _show(self, done: bool = False, beat: bool = False) -> None:
         lines, n = list(self.tap.lines), self.tap.n
-        if not lines:
+        if not lines and not beat and not (done and self.mid is not None):
             return
         if self._edit is not None:
-            text = text_of(lines, done)
+            text = text_of(lines, done, took=self.took(), now=self.tap.now)
             if self.mid is None:
                 self.mid = await self._send(text)
             else:
                 await self._edit(self.mid, text)
+            return
+        if beat:
+            if not self.msgs:          # once a turn, and only when nothing was said yet
+                self.msgs += 1
+                await self._send(f"⏳ Still working on it ({_clock(self.took())})"
+                                 + (f": {self.tap.now.lower()}." if self.tap.now else "."))
             return
         new = lines[-min(n - self.sent_n, len(lines)):] if n > self.sent_n else []
         if not new or self.msgs > self.cap:
@@ -237,14 +277,21 @@ class Live:
 
     async def _run(self) -> None:
         while True:
-            await self.tap.changed.wait()
+            beat = False
+            try:
+                await asyncio.wait_for(self.tap.changed.wait(), self.BEAT)
+            except asyncio.TimeoutError:
+                # nothing new: past QUIET_AFTER the phone still hears the turn is alive
+                if self.took() < self.QUIET_AFTER:
+                    continue
+                beat = True
             wait = self.first - (time.monotonic() - self.t0)
             if wait > 0:
                 await asyncio.sleep(wait)
             self.tap.changed.clear()
             t = time.monotonic()
             try:
-                await self._show()
+                await self._show(beat=beat)
             except asyncio.CancelledError:
                 raise
             except Exception:
@@ -268,13 +315,56 @@ class Live:
         close(self.tap)
 
 
-def text_of(lines: list[str], done: bool = False) -> str:
-    """The live message: a header and the last SHOW lines."""
+def _clock(seconds: float) -> str:
+    s = int(max(0, seconds))
+    return f"{s // 60}m {s % 60:02d}s" if s >= 60 else f"{s}s"
+
+
+def text_of(lines: list[str], done: bool = False, took: float = 0.0, now: str = "") -> str:
+    """The live message: a header and the last SHOW lines. A turn that has run past
+    `Live.QUIET_AFTER` shows how long it has been working and what the lead is doing."""
     shown = lines[-SHOW:]
-    head = "⚙ Steps so far" + (f" (last {SHOW} of {len(lines)})" if len(lines) > SHOW else "")
+    more = f" (last {SHOW} of {len(lines)})" if len(lines) > SHOW else ""
+    timer = took >= Live.QUIET_AFTER
     if done:
-        head = "✓ Steps" + (f" (last {SHOW} of {len(lines)})" if len(lines) > SHOW else "")
-    return head + "\n" + "\n".join(shown)
+        if not lines:
+            return f"✓ Worked on it for {_clock(took)}"
+        return "✓ Steps" + more + "\n" + "\n".join(shown)
+    if not lines:
+        return f"⏳ Working on it · {_clock(took)}" + (f"\n{now}…" if now else "")
+    head = "⚙ Steps so far" + more + (f" · {_clock(took)}" if timer else "")
+    tail = f"\n… {now}" if timer and now else ""
+    return head + "\n" + "\n".join(shown) + tail
+
+
+#: Claude Code reads a new message between steps. Inside one (a hand-over to a department
+#: can run for many minutes) it waits for the step to end, and the phone says so.
+_STEP_WORDS = {"department_task": "a hand-over to a department", "delegate": "a hand-over",
+               "huddle": "a huddle", "run_flow": "a mission", "ask_agent": "a question to a colleague",
+               "WebSearch": "a web search", "WebFetch": "reading a page", "Bash": "a command"}
+
+
+def steer_words(run) -> str:
+    """What the phone is told when its message goes to the turn that is working."""
+    step = run.mid_step() if hasattr(run, "mid_step") else ""
+    if not step:
+        return "↪ Got it. I'm adding this to what I'm working on."
+    name = step.split(" · ")[0].removeprefix("mcp__bento__")
+    what = _STEP_WORDS.get(name) or f"a step ({name})"
+    return (f"↪ Got it. I'm in the middle of {what}, so I'll read this as soon as that's done. "
+            "If the turn ends first, it gets its own answer.")
+
+
+async def keep_typing(send, every: float = 4.5) -> None:
+    """Say "typing…" until cancelled: Telegram shows it for five seconds at a time."""
+    while True:
+        try:
+            await send()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            pass
+        await asyncio.sleep(every)
 
 
 def on(cfg: dict, channel: str) -> bool:

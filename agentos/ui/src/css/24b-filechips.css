@@ -34,3 +34,9 @@ body.dev-touch .fc-act{min-width:var(--tap)}
 #mediaview .mv-err{margin:0;font-size:var(--fs-sm);color:var(--dim)}
 body.dev-touch #mediaview .mv-acts button{min-height:var(--tap);min-width:var(--tap)}
 @media (max-width:520px){#mediaview .mv-top{flex-wrap:wrap}#mediaview .mv-name{flex-basis:100%}#mediaview .mv-acts{margin-left:auto}}
+/* A step waiting for the person in the shared browser says so, with the door (browserNeedHTML). */
+.tool .tool-need{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 10px 8px;padding:8px 10px;
+  border-radius:10px;border:1px solid color-mix(in srgb,var(--acc) 45%,transparent);
+  background:color-mix(in srgb,var(--acc) 12%,transparent);font-size:var(--fs-sm);color:var(--txt)}
+.tool .tool-need span{flex:1;min-width:180px}
+body.dev-touch .tool .tool-need .pact{min-height:var(--tap)}
