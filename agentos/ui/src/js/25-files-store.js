@@ -83,13 +83,14 @@ function openFile(rel,ext){
 /* ================= store ================= */
 let STORE_TAB='apps';
 async function renderStore(body,w){
-  const TABS=['apps','discover','extensions','skills','import','build'];
+  const TABS=['apps','discover','registry','extensions','skills','import','build'];
   const box=panelShell(body,{
     title:'Store',
-    search:STORE_TAB==='import'||STORE_TAB==='build'||STORE_TAB==='discover'?null:{id:'store-q',placeholder:'Search the catalog…'},
-    actions:segTabs('store-tabs',['Apps','Discover','Extensions','Skills','Import','Build with AI'],TABS.indexOf(STORE_TAB),'storeSetTab'),
+    search:STORE_TAB==='import'||STORE_TAB==='build'||STORE_TAB==='discover'||STORE_TAB==='registry'?null:{id:'store-q',placeholder:'Search the catalog…'},
+    actions:segTabs('store-tabs',['Apps','Discover','Registry','Extensions','Skills','Import','Build with AI'],TABS.indexOf(STORE_TAB),'storeSetTab'),
   });
   if(STORE_TAB==='discover'){renderStoreDiscover(box);return}
+  if(STORE_TAB==='registry'){renderStoreRegistry(box);return}
   if(STORE_TAB==='apps'){
     const d=await (await fetch('/api/store/templates')).json();
     box.innerHTML=`<p class="mut" style="margin-bottom:10px">One-click apps — install instantly, then open or pin them to the desktop.</p>
@@ -142,7 +143,7 @@ async function renderStore(body,w){
     $('#store-build').addEventListener('keydown',e=>{if(e.key==='Enter')storeBuild()});
   }
 }
-function storeSetTab(i){STORE_TAB=['apps','discover','extensions','skills','import','build'][i];refreshApp('store')}
+function storeSetTab(i){STORE_TAB=['apps','discover','registry','extensions','skills','import','build'][i];refreshApp('store')}
 
 /* ---- Discover: search the worldwide public MCP registry, install with consent,
    record in the local MCP Registry (+ generated docs), then build an app on top ---- */
@@ -327,7 +328,7 @@ async function storeImportFile(){
   let pkg; try{pkg=JSON.parse(await f.text())}catch(e){return toast('not a valid package file')}
   await storeImportStage({package:pkg});
 }
-async function storeImportStage(body){
+async function storeImportStage(body,onInstalled){
   const r=await fetch('/api/apps/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const d=await r.json();
   if(!r.ok)return toast(d.error||'import failed');
@@ -345,6 +346,7 @@ async function storeImportStage(body){
       body:JSON.stringify({granted,install_mcp:IMPORT_PREREQS.mcp,install_skills:IMPORT_PREREQS.skills})});
     const dd=await rr.json();
     toast(rr.ok?('installed '+d.manifest.name):(dd.error||'install failed'));
+    if(rr.ok&&onInstalled)try{await onInstalled()}catch(e){}
     refreshApp('store');refreshApp('permissions');
   },{status:d.signature_status,note:d.signature_note,security:d.security,
      drift:d.security_drift,pin:d.pin_status,pinNote:d.pin_note,

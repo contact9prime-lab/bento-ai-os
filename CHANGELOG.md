@@ -3,6 +3,9 @@
 
 ## 0.100.11 — 2026-11-27
 
+- The Bento Registry at bentoboxos.com/registry: browse and install apps, agents, skills, souls and tools from the Store's new Registry tab or `bento registry browse|get`, with no account. Every file is signed by the machine that published it and checked again by yours.
+- Publishing: sign in with a code by email, choose a publisher name and register this machine (`bento registry login|handle|register|push`). Before anything is sent, Bento reads the package: a credential stops it, and personal details are shown for you to tick. Versions only move forward and downloads are counted.
+- Setup has an optional step, Join the Bento registry, for people who will publish.
 - A message you send on Telegram while Bento is working is never lost. If Claude Code is in the middle of a step, such as handing work to a department, the phone says it will read the message when that step ends. A message it never got to read gets its own answer right after.
 - Telegram keeps showing "typing…" for the whole turn, and a long quiet turn shows how long it has been working and what it is doing (thinking, writing the answer, waiting on the provider).
 - WhatsApp works like Telegram: each chat queues its own messages instead of answering "Still working…" and dropping them, and a linked phone reads a new message (or a "1" to approve) while a turn runs.

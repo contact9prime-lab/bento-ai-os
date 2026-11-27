@@ -410,6 +410,9 @@ var OB_PANES={
       demo. All of it is changeable later in Settings → Appearance.</p>
     <div id="ob-look"><p class="mut">Reading the themes…</p></div>`,
 
+  registry:s=>`<p class="mut">The Bento Registry at bentoboxos.com lists apps, agents, skills, souls and tools
+      people have published. Browsing and installing need no account. Sign in here only if you want to publish.</p>
+    <div id="reg-acct" class="reg-acct"><p class="mut">Checking your registry sign-in…</p></div>`,
   copy:s=>`<div id="ob-copy"><p class="mut">Looking for a copy…</p></div>`,
 
   /* Deliberately the last step. Everything above is somebody setting this machine
@@ -463,6 +466,8 @@ var OB_CLOUD=[
 
 /* ---------- the wiring ---------- */
 var OB_WIRE={
+  /* The same account card as the Store's Registry tab (25b-registry.js). */
+  registry(){ if(typeof regAcct==='function') regAcct() },
   /* Where a copy of this machine is kept (offsite.py). Each door opens its card in Settings →
      System, and closing that window brings setup back, re-probed. */
   async copy(s){

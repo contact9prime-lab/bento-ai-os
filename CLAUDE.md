@@ -2492,6 +2492,33 @@ kind equally, and its checkable clauses are checked, not asked for.
 - **`unsigned` is not hostile** — your own exports are unsigned. Only `bad-signature` and
   `checksum-mismatch` say do-not-install, and the consent banner colours them so.
 
+## The Bento Registry: browse freely, publish signed in, from a registered machine
+
+`agentos/registryhub.py` + `packaging/registry-cloud` (the Supabase project: migrations, the
+`publish` and `download` functions) + Store → Registry (`25b-registry.js`) + `/api/store/registry/*`
++ `bento registry login|handle|register|browse|get|report|push` + the setup step `registry`;
+`docs/registry.md`, `tests/test_registry_cloud.py`, the site's `/registry/`. Asked for as "host the
+bento extensions on bentoboxos.com … checked by the local system and added to the registry …
+email sign in". Six rules:
+- **Reading needs nothing; publishing needs a person, a machine and a signature.** The publishable
+  key reads what row-level security allows and writes nothing. Every write goes through `publish`,
+  which runs as the service role and checks the session, the machine (registered to that account,
+  not revoked), the Ed25519 signature over the exact bytes, the format, the leak rules, a newer
+  version and the rate. Never add a policy that lets a person insert a listing or a version.
+- **The leak rules are agentbundle's**, copied into `leakrules.ts`; the test fails when they differ.
+  A credential refuses with no override, here and there.
+- **What was reported is what goes.** The desktop's publish sends the report's hash and the server
+  looks the bytes up (`_HUB_PENDING`); `registryhub.publish` refuses an `ack` that isn't the hash of
+  the text. Personal details need the tick. Never take a package from the page.
+- **The private key never leaves the home** (`registry/machine.key`, 0600); the refresh token is in
+  the vault, never in `hub.json`. No route returns either.
+- **An install is checked here and then goes through the existing doors**: hash, signature, the
+  publisher's key pinned per listing (`registry.hub` pins, `tofu_check`). An app goes to the Import
+  consent screen, an agent to the fork preview; a skill never replaces one by its name, a soul is
+  saved as a file and never adopted, a tool lands switched off.
+- **No agent tool publishes or installs from it.** A model that could publish could be talked into
+  it by a fetched page (the agent-sharing rule). If one is ever added it must be ALWAYS_ASK.
+
 ## The agent itself is shareable, and the leak scan has no override
 
 `agentos/agentbundle.py` (format `agentos-agent/1`, file `bento.agent.json`, topic
