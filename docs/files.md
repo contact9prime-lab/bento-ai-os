@@ -15,6 +15,11 @@ app that owns it (Keynote or PowerPoint for a deck, Preview for a PDF). From a p
 another computer, opening it on the machine would start an app in another room, so it shows
 the file in your browser when a browser can show it, and downloads it when it can't.
 
+A video or a sound plays right in Bento, wherever you are, with *Open in another app* and
+*Download* above it. Press Esc or tap outside it to close it.
+
+![A demo clip playing in Bento's own player over the chat, with Open in another app, Download and close](screenshots/chat-video-player.png)
+
 The same cards appear in the agent panel of every app and in the prompt bar's answer.
 
 ## On your phone
