@@ -15,6 +15,41 @@
    ones. Telegram and WhatsApp get the files themselves as documents after the reply
    (telegram.py / whatsapp.py send_files). `var`, not `let`: the bundle is one script. */
 var FILECHIP_INLINE=/^(png|jpe?g|gif|webp|svg|pdf|txt|md|csv|json|log|html?)$/;
+/* A video or a sound plays HERE, at the machine too. Reported as "when I try to launch the
+   video it doesn't work": Open handed the .mp4 to the host's player, which opened behind a
+   full-screen browser (or in another room, on SUI under the desktop's own layer), so nothing
+   seemed to happen. The player sits over the page; "Open in another app" is still one tap. */
+var FILECHIP_MEDIA=/^(mp4|m4v|webm|mov|ogv|mp3|m4a|aac|wav|ogg|oga|opus|flac)$/;
+function fileMediaClose(){
+  const o=document.getElementById('mediaview');if(!o)return;
+  const m=o.querySelector('video,audio');if(m){try{m.pause()}catch(e){}m.removeAttribute('src');try{m.load()}catch(e){}}
+  o.remove();document.removeEventListener('keydown',fileMediaKey,true);
+}
+function fileMediaKey(e){if(e.key==='Escape'){e.stopPropagation();fileMediaClose()}}
+function fileMediaView(path,ext){
+  fileMediaClose();
+  const name=path.split('/').pop(),audio=/^(mp3|m4a|aac|wav|ogg|oga|opus|flac)$/.test(ext||'');
+  const o=document.createElement('div');o.id='mediaview';o.setAttribute('role','dialog');
+  o.setAttribute('aria-modal','true');o.setAttribute('aria-label',name);
+  const here=!(typeof remoteClient==='function'&&remoteClient());
+  o.innerHTML=`<div class="mv-box${audio?' mv-audio':''}">
+    <div class="mv-top"><b class="mv-name"></b><span class="mv-acts">
+      ${here?'<button type="button" class="mv-host">Open in another app</button>':''}
+      <button type="button" class="mv-dl">Download</button>
+      <button type="button" class="mv-x" aria-label="Close">✕</button></span></div>
+    <${audio?'audio':'video'} class="mv-media" controls autoplay playsinline preload="metadata"></${audio?'audio':'video'}>
+    <p class="mv-err" hidden></p></div>`;
+  o.querySelector('.mv-name').textContent=name;
+  const m=o.querySelector('.mv-media');m.src=fileGetURL(path);
+  m.onerror=()=>{const e=o.querySelector('.mv-err');e.hidden=false;
+    e.textContent='This browser can\'t play this file.'+(here?' Open in another app plays it with this computer\'s player.':' Download it to play it on this device.')};
+  o.onclick=e=>{if(e.target===o)fileMediaClose()};
+  o.querySelector('.mv-x').onclick=fileMediaClose;
+  o.querySelector('.mv-dl').onclick=()=>fileDownload(path);
+  const h=o.querySelector('.mv-host');if(h)h.onclick=()=>{fileMediaClose();fileOpenHost(path)};
+  document.body.appendChild(o);document.addEventListener('keydown',fileMediaKey,true);
+  o.querySelector('.mv-x').focus();
+}
 function fileChipIcon(ext){
   const c={pptx:'#f97316',ppt:'#f97316',key:'#f97316',docx:'#3b82f6',doc:'#3b82f6',pages:'#3b82f6',
     xlsx:'#22c55e',xls:'#22c55e',csv:'#22c55e',numbers:'#22c55e',pdf:'#ef4444',png:'#14b8a6',jpg:'#14b8a6',
@@ -25,12 +60,16 @@ function fileChipIcon(ext){
 function fileChipSize(n){return n<1024?n+' B':n<1e6?Math.round(n/1024)+' KB':(n/1e6).toFixed(1)+' MB'}
 function fileGetURL(path,download){return '/api/files/get?path='+encodeURIComponent(path)+(download?'&download=1':'&view=1')}
 async function fileOpen(path,ext){
+  if(FILECHIP_MEDIA.test(ext||''))return fileMediaView(path,ext);
   if(typeof remoteClient==='function'&&remoteClient()){
     // opening on the host would start an app in another room: show it here instead
     if(FILECHIP_INLINE.test(ext||''))window.open(fileGetURL(path),'_blank','noopener');
     else fileDownload(path);
     return;
   }
+  return fileOpenHost(path);
+}
+async function fileOpenHost(path){
   try{
     const r=await fetch('/api/open',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file:path})});
     const d=await r.json().catch(()=>({}));

@@ -17,3 +17,20 @@ code.fc-link{cursor:pointer;text-decoration:underline;text-decoration-color:colo
 code.fc-link:hover{color:var(--acc)}
 body.dev-touch .fc-main,body.dev-touch .fc-act{min-height:var(--tap)}
 body.dev-touch .fc-act{min-width:var(--tap)}
+/* The player a video or a sound opens in (fileMediaView). Above windows and toasts' row, under nothing. */
+#mediaview{position:fixed;inset:0;z-index:9000;display:flex;align-items:center;justify-content:center;
+  padding:16px;background:color-mix(in srgb,#000 72%,transparent)}
+#mediaview .mv-box{display:flex;flex-direction:column;gap:8px;max-width:min(1100px,100%);max-height:100%;
+  background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:10px;box-shadow:0 20px 60px #0008}
+#mediaview .mv-audio{width:min(520px,100%)}
+#mediaview .mv-top{display:flex;align-items:center;gap:8px;min-width:0}
+#mediaview .mv-name{flex:1;min-width:0;font-size:var(--fs-sm);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--txt)}
+#mediaview .mv-acts{display:flex;gap:6px;flex-shrink:0}
+#mediaview .mv-acts button{border:1px solid var(--line);background:transparent;color:var(--txt);border-radius:8px;
+  font-size:var(--fs-xs);padding:5px 10px;cursor:pointer}
+#mediaview .mv-acts button:hover{background:color-mix(in srgb,var(--acc) 14%,transparent)}
+#mediaview video.mv-media{max-width:100%;max-height:calc(100vh - 110px);border-radius:8px;background:#000}
+#mediaview audio.mv-media{width:100%}
+#mediaview .mv-err{margin:0;font-size:var(--fs-sm);color:var(--dim)}
+body.dev-touch #mediaview .mv-acts button{min-height:var(--tap);min-width:var(--tap)}
+@media (max-width:520px){#mediaview .mv-top{flex-wrap:wrap}#mediaview .mv-name{flex-basis:100%}#mediaview .mv-acts{margin-left:auto}}

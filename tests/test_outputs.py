@@ -121,6 +121,11 @@ def test_every_chat_surface_offers_open_and_download():
     assert "/api/files/which" in fc and "fc-open" in fc and "fc-dl" in fc
     # from a phone, opening on the host would start an app in another room
     assert "remoteClient()" in fc.split("async function fileOpen(")[1][:400]
+    # a video or a sound plays in the page, at the machine too: the host's player opened
+    # behind a full-screen browser and read as "the video doesn't work"
+    open_fn = fc.split("async function fileOpen(")[1][:200]
+    assert "FILECHIP_MEDIA.test" in open_fn and "fileMediaView" in open_fn
+    assert "Open in another app" in fc and "fileOpenHost" in fc
     assert "fileChips(curBody)" in (js / "09-websocket.js").read_text()
     assert "fileChips(feed)" in (js / "10-chat.js").read_text()
     cp = (js / "04a-copilot.js").read_text()

@@ -12,6 +12,9 @@
   on anything else together. A mission on the built-in agent with nobody to answer still goes one
   at a time, because only one waiting step is remembered per run.
 - Two department tasks started together each get their own card in Chat.
+## 0.100.8 — 2026-11-27
+
+- A video or a sound a chat names now plays inside Bento when you tap Open, on the desktop and on a phone. Before, it went to this computer's own player, which could open behind a full-screen browser and look like nothing happened. Open in another app and Download are still on the player.
 
 ## 0.100.6 — 2026-11-26
 

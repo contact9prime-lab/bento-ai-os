@@ -1543,6 +1543,9 @@ and "what was made lately?" (`recent`). Chat's file chips (`10c-filechips.js`, t
 - **Open means where you are.** At the machine, the host app (`/api/open`); from a remote
   browser, the browser shows it or downloads it (`remoteClient()`), because the host app
   would open in another room. Full story in `docs/files.md`.
+- **A video or a sound plays in the page, everywhere** (`FILECHIP_MEDIA`, `fileMediaView`; video/audio are
+  inline in `/api/files/get`, which answers Range). Reported as "when I launch the video it doesn't work": the
+  host's player opened behind a full-screen browser. "Open in another app" (`fileOpenHost`) stays on the player.
 
 ## A channel is one AgentOS owns end to end
 

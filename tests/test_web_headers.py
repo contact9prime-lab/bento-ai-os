@@ -202,3 +202,21 @@ def test_the_session_bridge_only_obeys_the_top_frames_token():
     assert ok({"cmd": "quit", "token": "tok-1"}, "tok-1")
     for bad in ({"cmd": "quit"}, {"cmd": "quit", "token": "guess"}, {"cmd": "quit", "token": ""}, "quit", None, []):
         assert not ok(bad, "tok-1")
+
+
+def test_a_video_and_a_sound_play_inline_and_seek(api, tmp_path, monkeypatch):
+    """Reported as "when I try to launch the video it doesn't work": Open handed the .mp4 to
+    the host's player, behind a full-screen browser. The chip plays it in the page now, so the
+    file is sent inline, and a Range request is answered so the player can seek."""
+    ws = _workspace(tmp_path, monkeypatch)
+    (ws / "clip.mp4").write_bytes(b"\x00" * 4096)
+    (ws / "voice.mp3").write_bytes(b"\x00" * 1024)
+    for n in ("clip.mp4", "voice.mp3"):
+        r = api.get("/api/files/get", params={"path": str(ws / n), "view": 1})
+        assert r.status_code == 200 and "attachment" not in r.headers.get("content-disposition", ""), n
+        assert r.headers["content-type"].startswith(("video/", "audio/")), n
+    r = api.get("/api/files/get", params={"path": str(ws / "clip.mp4")}, headers={"Range": "bytes=0-99"})
+    assert r.status_code == 206 and len(r.content) == 100
+    # Download still downloads
+    r = api.get("/api/files/get", params={"path": str(ws / "clip.mp4"), "download": 1})
+    assert "attachment" in r.headers.get("content-disposition", "")
