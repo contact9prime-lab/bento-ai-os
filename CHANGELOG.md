@@ -1,6 +1,10 @@
 # Changelog
 
 
+## 0.100.10 — 2026-11-27
+
+No release notes were written for this one; the commits since 0.100.9 are what changed (`bento update` lists them).
+
 ## 0.100.7 — 2026-11-27
 
 - Chat's Missions tab shows one row per schedule, with how many runs it has and when it last ran. Tap a row to list its runs by time. Every chat in the list now shows when its last message was sent.
