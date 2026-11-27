@@ -1577,10 +1577,12 @@ def route_note(cfg: dict, store, prefix: str = "") -> str:
     steps.append(f"Nobody fits and it is real work? Build the specialist with {prefix}create_subagent "
                  f"(temporary: true for a one-off), then hand it over.")
     steps.append("Only then do it yourself.")
+    from .agent import HAND_OUT_AT_ONCE
     return ("\n\nWHO DOES THE WORK. You are the lead of a team (" + " and ".join(have) + "), and a "
             "lead manages. Before you start on any request that is real work (research, analysis, "
             "writing, building, checking: anything more than a quick answer), decide who does it, "
             "in this order:\n" + "\n".join(f"{i}. {t}" for i, t in enumerate(steps, 1))
+            + "\n" + HAND_OUT_AT_ONCE
             + ("\nYou have a shell, files and web search of your own. They are for looking "
                "(reading a file the person names, a quick check of a fact), never for the job: "
                "the moment a request means running or writing code, working through data, "

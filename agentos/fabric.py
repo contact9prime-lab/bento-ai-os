@@ -27,7 +27,7 @@ import re
 import secrets
 import time
 
-from .agent import Agent, PARK, fence
+from .agent import HAND_OUT_AT_ONCE, Agent, PARK, fence
 from .policy import Principal
 from . import users as usersmod
 
@@ -1550,6 +1550,7 @@ class ControlPlane(usersmod.Scoped):
             # what it had read before it parked is still in its context
             agent.taint.extend(resume.get("taint") or [])
             agent.steps_used = int(resume.get("steps_used") or 0)
+        agent.can_park = bool(can_park and not engine)
         if agent_slot is not None:
             agent_slot["agent"] = agent
         self.instances[run_id] = {"agent": agent, "ref": defn["name"], "parent": parent_run,
@@ -3152,12 +3153,12 @@ class ControlPlane(usersmod.Scoped):
             "Your roster — these are the only agents you may use:\n" + ("\n".join(lines) or "  (none)"),
             "How you work:\n"
             "  1. Decide what has to be true for the mission to be done.\n"
-            "  2. `delegate` one concrete task at a time to the right specialist: the one "
+            "  2. `delegate` one concrete task per call to the right specialist: the one "
             "whose job, as written above, that piece is. Split work that has parts across "
             "the people built for each part rather than handing the whole thing to one of "
             "them; a head plans and checks, the others do the work they are named for. Give "
             "each one everything it needs in the task text — it cannot see the mission, the "
-            "board, or anything you have not passed it.\n"
+            "board, or anything you have not passed it. " + HAND_OUT_AT_ONCE + "\n"
             "  3. Pass earlier work forward with `context_handles` rather than retyping it.\n"
             "  4. `read_handle` when you need to actually read an output; `note` anything worth "
             "keeping.\n"
@@ -3382,6 +3383,7 @@ class ControlPlane(usersmod.Scoped):
         agent.taint.extend(taint)
         agent.steps_used = int((resume or {}).get("steps_used") or 0)
         state["agent"] = agent          # so `finish` can end the turn (see t_finish)
+        agent.can_park = can_park       # a run that may park hands its work out one at a time
         if agent_slot is not None:
             agent_slot["agent"] = agent
         self.instances[run_id] = {"agent": agent, "ref": name, "parent": "",

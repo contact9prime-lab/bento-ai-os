@@ -21650,9 +21650,14 @@ function deptCardIs(c,want){
   return !!(n&&n.textContent==='department_task'&&st&&st.classList.contains('run')
     &&(!want||String(c.querySelector('.targ')&&c.querySelector('.targ').textContent||'').toLowerCase().includes(want)));
 }
+/* The first free card in each place it is drawn (Chat, an agent panel): the lead may hand two
+   tasks to one department at once (agent.PARALLEL_TOOLS), and binding every matching card to
+   the first run left the second run with none. Copies of the chat elsewhere still follow. */
 function deptCardFind(ev){
-  const want=String(ev.department||'').toLowerCase();
-  return [...document.querySelectorAll('.tool')].filter(c=>!c.dataset.deptRun&&deptCardIs(c,want));
+  const want=String(ev.department||'').toLowerCase(),seen=new Set();
+  return [...document.querySelectorAll('.tool')].filter(c=>{
+    if(c.dataset.deptRun||!deptCardIs(c,want)||seen.has(c.parentNode))return false;
+    seen.add(c.parentNode);return true});
 }
 function deptCardPaint(c,d){
   c.dataset.deptRun=d.top;

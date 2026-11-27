@@ -2127,6 +2127,11 @@ def workspace_note(prefix: str = "mcp__bento__") -> str:
             f"{prefix}app_window_open/look/act open and use an installed app in a window.")
 
 
+def _at_once() -> str:
+    from .agent import HAND_OUT_AT_ONCE   # agent imports this module
+    return HAND_OUT_AT_ONCE
+
+
 def team_note(subagents: list, prefix: str = "mcp__bento__",
               in_departments=()) -> str:
     """Who the person's specialists are, for a forwarded chat turn that can reach them.
@@ -2187,7 +2192,7 @@ def team_note(subagents: list, prefix: str = "mcp__bento__",
               f"it, hand that part over: call {prefix}delegate with {{\"subagent\": name, "
               f"\"task\": a self-contained brief with everything they need}}. Split work that has "
               f"parts, for example research to one and the write-up to another, and have a "
-              f"checker look at anything that matters. Then read what comes back, put it "
+              f"checker look at anything that matters. {_at_once()} Then read what comes back, put it "
               f"together, and tell the person who did what. {prefix}huddle has two to four of "
               "them talk a question through. Answer yourself only small talk and questions "
               "about this conversation, or when nobody fits or the person asks you to do it "
