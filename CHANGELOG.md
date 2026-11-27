@@ -1,6 +1,10 @@
 # Changelog
 
 
+## 0.100.9 — 2026-11-27
+
+No release notes were written for this one; the commits since 0.100.8 are what changed (`bento update` lists them).
+
 ## 0.100.7 — 2026-11-26
 
 - Your agent hands independent parts of a job to several specialists at once. Ask for a market,
