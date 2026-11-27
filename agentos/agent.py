@@ -3,6 +3,7 @@
 import asyncio
 import base64
 import contextlib
+import contextvars
 import json
 import re
 import time
@@ -36,6 +37,17 @@ TAINTED_REPLY = "[this reply carries content from an untrusted source]\n"   # = 
 # in the OS and teach people to click through the prompt — which is the failure
 # mode this is trying to avoid. A downloaded file is the gap that leaves, and
 # tracking that honestly needs provenance on the file, not on the tool.
+# Tools whose calls in one reply may run side by side (the loop gathers consecutive ones; the
+# run bridge tells a CLI it may). A hand-over's work is another agent's run, which passes this
+# gate step by step on its own, so two of them never share anything but the board.
+PARALLEL_TOOLS = frozenset({"delegate", "department_task"})
+# What every lead hears about it (team_note, company.route_note, the flow master's persona).
+# The master's persona said "delegate one concrete task at a time", and so it did.
+HAND_OUT_AT_ONCE = ("Parts that don't need each other's results go out together: make each "
+                    "hand-over its own call in the same reply, and they work at the same time. "
+                    "A part that needs another's result goes out once that result is back.")
+_CALL_SAID: "contextvars.ContextVar[str | None]" = contextvars.ContextVar("call_said", default=None)
+
 UNTRUSTED_TOOLS = {
     "fetch_url",          # any web page, and the most likely carrier
     "mail_search",        # anyone can send you a message; its text is not yours
@@ -696,6 +708,10 @@ class Agent:
         # "what it is trying to do" (approvalcard). Set by the loop before each call,
         # fed by the bridge's text for an executor, spent by the call.
         self._said = ""
+        # A run that may PARK (a mission's built-in run with nobody to ask; fabric sets it)
+        # runs its calls one at a time: a parked call is remembered one per agent
+        # (`parked`, `park_child`), and two parking side by side would lose one.
+        self.can_park = False
         self.partial_steps: list[dict] = []
         # What untrusted content this turn has read so far: [{tool, source}].
         # It only ever grows within a turn — once a web page is in the context
@@ -1110,6 +1126,11 @@ class Agent:
         self._said = ""
         return output, False, None, False
 
+    def _said_now(self) -> str:
+        """What the agent said in the reply that made the call now running (see call_tool)."""
+        v = _CALL_SAID.get()
+        return v if v is not None else (getattr(self, "_said", "") or "")
+
     async def call_tool(self, name: str, args: dict, call_id: str = "", offered: bool = False) -> tuple:
         """The turn's purpose for the ethics check (ethicsctx.py) around the call itself: the
         person's words, so a target nobody named is noticed, and the conversation whose ethics
@@ -1117,9 +1138,13 @@ class Agent:
         from . import ethicsctx
         tok = ethicsctx.enter(_plain(self._task_text), self.conversation_id or "",
                               self.root_run or getattr(self, "run_id", "") or self._turn_key)
+        # Each call keeps the words it was made with: calls run side by side (PARALLEL_TOOLS),
+        # and the first to finish clears `_said`, which left the next one's card with none.
+        tok_said = _CALL_SAID.set(self._said or "")
         try:
             return await self._call_tool(name, args, call_id, offered)
         finally:
+            _CALL_SAID.reset(tok_said)
             ethicsctx.leave(tok)
 
     async def _call_tool(self, name: str, args: dict, call_id: str = "", offered: bool = False) -> tuple:
@@ -1238,7 +1263,7 @@ class Agent:
             if zl:
                 args["machine"] = zl
             args = {**gate_fields(name, args, self.principal.id or self.cfg.get("agent_name") or "your agent",
-                                  getattr(self, "_said", "")),
+                                  self._said_now()),
                     **({"space_id": self.space_id} if self.space_id else {})}
         elif name == "brief_item":
             # which mission and run wrote it: injected from the agent, never an
@@ -1316,7 +1341,7 @@ class Agent:
             asked: dict = {}
             tok_asked = _ASKED.set(asked)
             # what the agent said it was doing, for the card's first line
-            tok_said = _SAID.set(getattr(self, "_said", "") or "")
+            tok_said = _SAID.set(self._said_now() or "")
             # An ethics caution (ethics.py): the card asks for the phrase, and only a screen that
             # had it typed confirms the token. Every other approver leaves it unconfirmed.
             eth_tok = eth_ctx = None
@@ -1516,7 +1541,7 @@ class Agent:
         if dec.effect == "ask":
             must = "after untrusted content" if dec.rule == "taint" else ""
             tok = _NEEDS_PERSON.set(must) if must else None
-            tok_said = _SAID.set(getattr(self, "_said", "") or "")
+            tok_said = _SAID.set(self._said_now() or "")
             try:
                 ok = bool(await self.approver("send_files", card, dec.reason, dec.grant_offer))
             except Exception:
@@ -1902,8 +1927,32 @@ class Agent:
                                for t in tool_calls],
             })
 
+            # Hand-overs in one reply that are next to each other run side by side: three
+            # specialists given three parts work at once, not one after another. Reported as
+            # "the main agent is only spawning work to one sub agent". Results still go back
+            # in the order the model asked, and every call still passes the gate on its own.
+            ahead: dict = {}
+            if not self.can_park:
+                i = 0
+                while i < len(tool_calls):
+                    j = i
+                    while j < len(tool_calls) and tool_calls[j]["name"] in PARALLEL_TOOLS:
+                        j += 1
+                    if j - i > 1:
+                        batch = tool_calls[i:j]
+                        self._said = text
+                        await self.emit({"type": "status", "message":
+                                         f"handing {len(batch)} pieces of work out at once"})
+                        outs = await asyncio.gather(
+                            *(self.call_tool(t["name"], t["args"], t["id"]) for t in batch),
+                            return_exceptions=True)
+                        for t, o in zip(batch, outs):
+                            ahead[t["id"]] = o if not isinstance(o, BaseException) else (
+                                f"[error] {type(o).__name__}: {o}", False, None, False)
+                    i = max(j, i + 1)
+
             for tc in tool_calls:
-                if self.aborted:
+                if self.aborted and tc["id"] not in ahead:
                     break
                 # Loop guard: the same tool with the same arguments, over and over,
                 # is never progress — it is a model stuck in a groove. Stop the turn
@@ -1920,7 +1969,8 @@ class Agent:
                     break
                 name, args, call_id = tc["name"], tc["args"], tc["id"]
                 self._said = text
-                output, ok, image_path, untrusted = await self.call_tool(name, args, call_id)
+                output, ok, image_path, untrusted = (ahead.pop(call_id) if call_id in ahead
+                                                     else await self.call_tool(name, args, call_id))
                 if self.parked:
                     # no result for this call, nor for any after it in the same reply:
                     # `resume` answers them all when a person has answered

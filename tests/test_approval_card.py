@@ -92,7 +92,7 @@ def test_the_agents_words_reach_the_approver(tmp_path):
     assert seen["card"]["goal"] == "I'll clean the cache folder." and seen["card"]["said"]
     assert policy.said() == ""
     src = (ROOT / "agentos/agent.py").read_text()
-    assert "tok_said = _SAID.set(getattr(self, \"_said\"" in src and "self._said = text" in src
+    assert "tok_said = _SAID.set(self._said_now()" in src and "self._said = text" in src, "every approver reads the words its own call was made with"
 
 
 def test_the_desktops_approval_event_carries_the_card():

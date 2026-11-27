@@ -146,13 +146,24 @@ def get(token: str) -> Session | None:
 
 
 def mcp_tools(schemas: list) -> list[dict]:
-    """Our tool schemas in MCP's shape: `parameters` becomes `inputSchema`."""
+    """Our tool schemas in MCP's shape: `parameters` becomes `inputSchema`.
+
+    A hand-over (agent.PARALLEL_TOOLS) is marked `readOnlyHint`, because that is what Claude
+    Code reads to decide whether calls in one reply may run at the same time. Measured on
+    2.1.332: three calls to an unmarked tool ran one after another (18 s for three 6 s calls),
+    three to a marked one at once (6.4 s). So a Claude Code lead's hand-overs queued behind
+    each other, reported as "the main agent is only spawning work to one sub agent". The hint
+    decides nothing here: these runs' --allowedTools already admit every bento tool, the
+    hand-over itself changes nothing in the CLI's folder, and the work it starts is another
+    agent's run, each of whose steps passes this OS's gate on its own."""
+    from .agent import PARALLEL_TOOLS
     out = []
     for t in schemas or []:
         params = t.get("parameters") or {"type": "object", "properties": {}}
         out.append({"name": t["name"],
                     "description": (t.get("description") or "")[:2000],
-                    "inputSchema": params})
+                    "inputSchema": params,
+                    **({"annotations": {"readOnlyHint": True}} if t["name"] in PARALLEL_TOOLS else {})})
     return out
 
 

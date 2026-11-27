@@ -1543,6 +1543,9 @@ and "what was made lately?" (`recent`). Chat's file chips (`10c-filechips.js`, t
 - **Open means where you are.** At the machine, the host app (`/api/open`); from a remote
   browser, the browser shows it or downloads it (`remoteClient()`), because the host app
   would open in another room. Full story in `docs/files.md`.
+- **A video or a sound plays in the page, everywhere** (`FILECHIP_MEDIA`, `fileMediaView`; video/audio are
+  inline in `/api/files/get`, which answers Range). Reported as "when I launch the video it doesn't work": the
+  host's player opened behind a full-screen browser. "Open in another app" (`fileOpenHost`) stays on the player.
 
 ## A channel is one AgentOS owns end to end
 
@@ -1708,6 +1711,16 @@ audit rows. Five things are load-bearing:
   for minutes: a Research desk on Claude Code saw every `delegate` "time out" while the
   specialists were still working, and the lead gave up on `department_task` the same way.
   Gemini CLI and Codex have their own keys and were not installed where this was measured.
+- **Hand-overs in one reply run side by side** (`agent.PARALLEL_TOOLS`: `delegate`, `department_task`;
+  `tests/test_parallel_handover.py`). Reported as "the main agent is only spawning work to one sub
+  agent". The built-in loop gathers consecutive ones and returns results in the order asked; the
+  bridge marks them `readOnlyHint`, because Claude Code runs MCP calls of one reply together only
+  for a marked tool (measured on 2.1.332: three 15 s hand-overs took 45 s unmarked, 27 s marked).
+  The hint decides nothing here: `--allowedTools` admits every bento tool and each step of the work
+  passes the gate. A run that can park (`Agent.can_park`) stays one at a time: `parked` and
+  `park_child` hold one call per agent. Each call keeps its own `_said` (`_CALL_SAID`), or the
+  first to finish blanked the next one's approval card. The flow master was told "delegate one
+  concrete task at a time"; every lead now hears `HAND_OUT_AT_ONCE`.
 - **Tool events come from the gate, not from the CLI's stream.** `_run_on_executor`'s sink
   forwards text, thinking, status and errors only; a second `tool_start` from the CLI's
   own stream counted every step twice.

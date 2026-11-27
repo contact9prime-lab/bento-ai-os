@@ -3538,7 +3538,9 @@ async def api_files_get(path: str, download: int = 0, view: int = 0):
     if p is None or _file_refused(p):
         return JSONResponse({"error": "not found, or not in a folder you can reach"}, status_code=404)
     mt, _ = mimetypes.guess_type(str(p))
-    inline = (mt or "").startswith(("text/", "image/")) or mt == "application/pdf"
+    # video and audio play in the page's own player (fileOpen), so they are sent inline too;
+    # FileResponse answers Range, which is what lets a player seek
+    inline = (mt or "").startswith(("text/", "image/", "video/", "audio/")) or mt == "application/pdf"
     if _active_doc(mt, p.name) and not view:
         inline = False
     headers = {}

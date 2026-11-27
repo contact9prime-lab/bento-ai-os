@@ -60,6 +60,29 @@ agent answers on its CLI, started with this OS's tools over the run bridge
 
 ![The roster: each agent's card shows the provider and model it answers on](screenshots/team-roster.png)
 
+## Several at once: handing parts out together
+
+When a request has parts that don't depend on each other, your agent hands them out together and
+the specialists work at the same time. Ask for a market, its competitors and their prices, and the
+three researchers start together rather than one waiting for the next. A part that needs another
+part's result still waits for it.
+
+This holds whatever answers as your agent:
+
+- **The built-in agent** runs every hand-over in one reply side by side (`delegate` and
+  `department_task`). The results go back in the order it asked.
+- **Claude Code** runs them side by side too. It does that only for tools marked as safe to run
+  together, so Bento marks its hand-over tools that way. Measured on Claude Code 2.1.332 with three
+  hand-overs of 15 seconds each: 45 seconds of work one after another before, 27 seconds after,
+  each starting as soon as its brief was written.
+- **A mission** hands its parts out together when it runs on Claude Code, or on the built-in
+  agent when somebody is there to answer. A mission on the built-in agent with nobody to answer still hands
+  them out one at a time, because a step there can wait for you in the Brief and only one waiting
+  step is remembered per run.
+
+Each hand-over still passes the permissions on its own, so two at once may mean two approval cards.
+Gemini CLI and Codex weren't measured, because neither is installed where this was tested.
+
 ## Huddles: agents talking to each other
 
 A **huddle** is two to four agents talking a question through in turns. Each one reads what the
@@ -888,6 +911,7 @@ the link's own name, which you chose, is what is verified.
 | Which brain an agent answers on | `fabric.agent_brain` — one answer for the run, the badge, Settings and the CLI |
 | Pinning a model | `fabric.set_agent_model` — `PUT /api/subagents/{name}/brain`, `set_agent_brain`, `bento team set` |
 | The switch | `team.own_brains` in config (a machine setting: it decides spend) |
+| Hand-overs at once | `agent.PARALLEL_TOOLS` (the loop gathers them), `mcpbridge.mcp_tools` (`readOnlyHint` for a CLI), `agent.HAND_OUT_AT_ONCE` (what every lead is told), `Agent.can_park` (one at a time) |
 | A huddle | `ControlPlane.huddle` — the `huddle` tool, a `@a @b …` chat message, `agent_say` events |
 | Free talk | `ControlPlane.start_free_talk` / `run_free_talk` / `stop_free_talk`, `fabric.free_talk_next` (the floor), `FREE_TALK_*` (the ceilings) — `/api/team/freetalk*`, `24f-freetalk.js`, `bento team freetalk` |
 | Every time they talked | `fabric.talk_log` (read from the runs) — `GET /api/team/talklog`, `bento team log` |
