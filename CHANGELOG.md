@@ -1,6 +1,10 @@
 # Changelog
 
 
+## 0.100.12 — 2026-11-27
+
+No release notes were written for this one; the commits since 0.100.11 are what changed (`bento update` lists them).
+
 ## 0.100.11 — 2026-11-27
 
 - The Bento Registry at bentoboxos.com/registry: browse and install apps, agents, skills, souls and tools from the Store's new Registry tab or `bento registry browse|get`, with no account. Every file is signed by the machine that published it and checked again by yours.
