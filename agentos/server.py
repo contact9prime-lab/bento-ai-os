@@ -5713,14 +5713,15 @@ async def api_conversations(q: str = "", tab: str = ""):
     if q:
         hit = chattabs.search(state["store"], q)
         convs = [c for c in convs if c["id"] in hit]
-    convs = chattabs.tag(state["store"], convs)
+    convs = chattabs.missions(state["store"], chattabs.tag(state["store"], convs))
     counts = chattabs.counts(convs)
+    runs = chattabs.mission_counts(convs)
     if tab in chattabs.TABS:
         convs = [c for c in convs if tab in c["tabs"]]
     convs = chattabs.newest_per_tab(convs)               # each tab its own newest, never one cut
     from . import phoneforward
     convs = phoneforward.mark(state["store"], convs)     # a phone chat's sessions, each named
-    return {"conversations": convs, "counts": counts,
+    return {"conversations": convs, "counts": counts, "mission_runs": runs,
             "tabs": [{"id": t, "name": chattabs.NAMES[t]} for t in chattabs.TABS]}
 
 

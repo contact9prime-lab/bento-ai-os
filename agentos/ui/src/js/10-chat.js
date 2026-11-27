@@ -238,6 +238,22 @@ function removeWorking(){
    tab it happened in. Search reads titles and every message. */
 var CONVTAB=(()=>{try{return localStorage.getItem('chat.tab')||'desktop'}catch(e){return 'desktop'}})();
 var CONVQ='';
+// Missions: one row per schedule, opened to list its runs (chattabs.missions groups them)
+var CONV_OPEN=(()=>{try{return new Set(JSON.parse(localStorage.getItem('chat.missions.open')||'[]'))}catch(e){return new Set()}})();
+function convMisToggle(k){CONV_OPEN.has(k)?CONV_OPEN.delete(k):CONV_OPEN.add(k);
+  try{localStorage.setItem('chat.missions.open',JSON.stringify([...CONV_OPEN]))}catch(e){}loadConvs()}
+/* When the last message was sent, short enough for the list: 14:05 today, Yesterday, Tue, 12 Nov. */
+function convWhen(ts,long){
+  if(!ts)return '';const d=new Date(ts*1000),now=new Date(),s=(now-d)/1000;
+  const hm=d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  if(s<60)return 'now';
+  const day=x=>new Date(x.getFullYear(),x.getMonth(),x.getDate()).getTime();
+  const days=Math.round((day(now)-day(d))/864e5);
+  if(days===0)return long?'Today '+hm:(s<3600?Math.floor(s/60)+'m':hm);
+  if(days===1)return 'Yesterday'+(long?' '+hm:'');
+  if(days<7)return d.toLocaleDateString([],{weekday:'short'})+(long?' '+hm:'');
+  return d.toLocaleDateString([],{day:'numeric',month:'short'})+(long?' '+hm:'');
+}
 function convTab(t){CONVTAB=t;try{localStorage.setItem('chat.tab',t)}catch(e){}loadConvs()}
 async function loadConvs(){
   const box=$('#convs'); if(!box)return;
@@ -255,10 +271,15 @@ async function loadConvs(){
   const items=all.filter(c=>(c.tabs||[c.tab]).includes(CONVTAB));
   const row=c=>{
     const el=document.createElement('div');el.className='conv'+(c.id===currentConv?' active':'');
-    el.innerHTML=`<span class="t"></span><button class="del">✕</button>`;
+    el.innerHTML=`<span class="t"></span><span class="when"></span><button class="del">✕</button>`;
+    const wh=el.querySelector('.when');wh.textContent=convWhen(c.updated_at);
+    if(c.updated_at)wh.title='Last message '+new Date(c.updated_at*1000).toLocaleString();
     // a phone chat's session is named for the session: its chat is the group's heading
     const ph=CONVTAB==='channels'&&c.phone;
-    el.querySelector('.t').textContent=(RUNNING.has(c.id)?'● ':'')+(ph?(c.phone.label||c.title||'untitled'):(c.title||'untitled'));
+    const run=CONVTAB==='missions'&&c.mission;
+    el.querySelector('.t').textContent=(RUNNING.has(c.id)?'● ':'')+(ph?(c.phone.label||c.title||'untitled')
+      :run?convWhen(c.created_at||c.updated_at,true):(c.title||'untitled'));
+    if(run){el.classList.add('convrun');el.title=c.title||''}
     if(ph&&c.phone.open){const o=document.createElement('span');o.className='onphone';o.textContent='on the phone';
       o.title='The session that chat is in now';el.insertBefore(o,el.querySelector('.del'))}
     if(chatFromMachine(c))el.classList.add('conv-machine',c.origin==='zero'?'zero':'team');
@@ -275,8 +296,6 @@ async function loadConvs(){
       ['Copilots',c=>(c.origin||'').startsWith('copilot:')],
       [items.some(c=>c.origin==='omni'||(c.origin||'').startsWith('copilot:'))?'Chats':'',
         c=>c.origin!=='omni'&&!(c.origin||'').startsWith('copilot:')]]
-    :CONVTAB==='missions'?[['Scheduled prompts',c=>c.origin==='schedule'],['Triggers',c=>c.origin==='trigger'],
-      ['Briefs',c=>c.origin==='brief'||c.origin==='briefing'],['Suggestions',c=>c.origin==='suggestion']]
     :CONVTAB==='huddles'?[['Your agents talking',c=>c.origin==='freetalk'],['Huddles in a chat',c=>c.origin!=='freetalk']]
     :CONVTAB==='devices'?[['Zeros',c=>c.origin==='zero'],['Linked teams',c=>c.origin!=='zero']]
     :[['',()=>true]];
@@ -293,6 +312,24 @@ async function loadConvs(){
         nb.onclick=()=>phoneNewSession(p.channel,p.to);h.append(s,nb);box.appendChild(h)}
       else if(seen.size>1){const h=document.createElement('div');h.className='convgrp';h.textContent='Other';box.appendChild(h)}
       its.forEach(c=>box.appendChild(row(c)))});
+  }
+  else if(CONVTAB==='missions'){
+    const by=new Map();
+    items.forEach(c=>{const k=c.mission?c.mission.key:'';if(!by.has(k))by.set(k,[]);by.get(k).push(c)});
+    by.forEach((its,k)=>{
+      const m=its[0].mission||{name:'Other'},open=CONV_OPEN.has(k)||its.some(c=>c.id===currentConv)||!!CONVQ;
+      const n=(d.mission_runs||{})[k]||its.length,live=its.some(c=>RUNNING.has(c.id));
+      const h=document.createElement('button');h.className='conv convmis'+(open?' open':'');
+      h.setAttribute('aria-expanded',open);
+      h.innerHTML='<span class="car"></span><span class="t"></span><span class="n"></span><span class="when"></span>';
+      h.querySelector('.car').textContent=open?'▾':'▸';
+      h.querySelector('.t').textContent=(live?'● ':'')+m.name;
+      h.querySelector('.n').textContent=n+(n===1?' run':' runs');
+      h.querySelector('.when').textContent=convWhen(its[0].updated_at);
+      h.title=m.name+': '+n+(n===1?' run':' runs')+(its.length<n?', the newest '+its.length+' listed. Missions → History has every one.':'');
+      h.onclick=()=>convMisToggle(k);box.appendChild(h);
+      if(open)its.forEach(c=>box.appendChild(row(c)));
+    });
   }
   else groups.forEach(([label,test])=>{
     const its=items.filter(test);
