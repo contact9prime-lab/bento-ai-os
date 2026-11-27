@@ -1,6 +1,10 @@
 # Changelog
 
 
+## 0.100.8 — 2026-11-27
+
+- A video or a sound a chat names now plays inside Bento when you tap Open, on the desktop and on a phone. Before, it went to this computer's own player, which could open behind a full-screen browser and look like nothing happened. Open in another app and Download are still on the player.
+
 ## 0.100.6 — 2026-11-26
 
 No release notes were written for this one; the commits since 0.100.5 are what changed (`bento update` lists them).
