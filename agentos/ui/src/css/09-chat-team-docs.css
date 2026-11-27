@@ -16,6 +16,14 @@
 .conv:hover{background:var(--bg3);color:var(--txt)}
 .conv.active{background:var(--bg4);color:var(--txt)}
 .conv .t{flex:1;overflow:hidden;text-overflow:ellipsis}
+.conv .when{flex:none;font-size:var(--fs-2xs);color:var(--dim2);font-variant-numeric:tabular-nums}
+.conv:hover:not(.convmis) .when{display:none}
+.convmis{width:100%;text-align:left;font:inherit;font-size:var(--fs-sm);background:none;border:0;color:var(--txt);font-weight:600;letter-spacing:0}
+body.immersive .convmis{font-size:var(--fs-sm);font-weight:600;background:none;box-shadow:none}
+.convmis .car{flex:none;width:12px;color:var(--dim2)}
+.convmis .n{flex:none;font-size:var(--fs-2xs);color:var(--dim2);font-weight:400}
+.convrun{padding-left:29px}
+.convrun .when{display:none}
 .conv .del{opacity:0;color:var(--dim2);font-size:var(--fs-base);padding:0 2px}
 .conv:hover .del{opacity:1}
 .conv .del:hover{color:var(--err)}
