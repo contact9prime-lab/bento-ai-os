@@ -8,6 +8,12 @@
   watch and switch it. A switch is still asked every time. A device that belongs to the machine (installed before
   Bento recorded who did it) still shows to every admin, with Make it mine on its card. `bento network share DEVICE
   ACCOUNT ro|rw|off --as OWNER` does the same from a terminal.
+- **Bento's own apps can be published from the Store.** Store → Registry → Publish listed only apps installed on this
+  machine, so the five apps in `registry/apps` (Focus Sessions, Habit Tracker, Kanban Board, Meeting Notes, Daily
+  Planner) were missing. They're now under "Bento's own apps", their one-line summary is filled in, and what goes is
+  the same package `bento registry push` sends.
+- **The publisher name can be changed on the page.** The signed-in strip has Change name, Sign out and Stop this
+  machine publishing as quiet buttons; the name box opens below it.
 
 ## 0.100.16 — 2026-11-28
 

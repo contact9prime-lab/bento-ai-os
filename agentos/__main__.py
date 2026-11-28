@@ -2519,15 +2519,9 @@ _HUB_ACTIONS = ("whoami", "login", "logout", "handle", "register", "revoke", "br
 
 
 def _app_summary(pkg: dict) -> str:
-    """The registry's one line for an app pushed without --summary: a sample app's own,
-    else the first sentence of what its manifest says it does."""
+    """The registry's one line for an app pushed without --summary (sampleapps.summary_of)."""
     from . import sampleapps
-    man = pkg.get("manifest") or {}
-    for a in sampleapps.APPS:
-        if a["name"] == man.get("name") and pkg.get("html") == sampleapps.html_of(a["slug"]):
-            return a["summary"]
-    about = (man.get("description") or "").strip()
-    return about.split(". ")[0].rstrip(".")[:280]
+    return sampleapps.summary_of(pkg)
 
 
 def _hub_cli(args):

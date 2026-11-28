@@ -85,6 +85,11 @@
 .reg-pub[open] .reg-chev{transform:rotate(90deg)}
 #reg-pub-body{padding:0 16px 16px}
 .reg-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;align-items:end}
+.reg-form:has(#rp-check){grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) auto}
+.reg-form #rp-check{padding:0 22px;white-space:nowrap}
+@media (max-width:520px){.reg-form:has(#rp-check){grid-template-columns:1fr}}
+#rp-rep .prow{justify-content:flex-end;gap:14px;margin-top:14px}
+#rp-rep .prow .grow{flex:1 1 auto;text-align:left}
 .reg-form label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--txt2,var(--mut));min-width:0}
 .reg-form label.wide{grid-column:1/-1}
 .reg-form select,.reg-form input{min-height:var(--tap,36px);min-width:0;width:100%}
@@ -122,3 +127,13 @@
   .reg-grid{grid-template-columns:1fr}
   .reg-mark{width:38px;height:38px;font-size:19px}
 }
+
+/* Signed in: who and where on the left, quiet actions on the right; renaming opens below. */
+.reg-ready .reg-acct-t b{display:flex;align-items:center;gap:8px}
+.reg-acct-acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.reg-acct-acts .reg-ghost,.reg-rename .reg-ghost{min-height:var(--tap,36px);padding:0 14px}
+.reg-rename{margin-top:14px;padding-top:14px;border-top:1px solid color-mix(in srgb,var(--line) 70%,transparent)}
+.reg-rename .reg-form-in{max-width:520px}
+.reg-rename p{margin:8px 0 0;font-size:var(--fs-sm,13px);color:var(--dim2)}
+.reg-hint:empty{display:none}
+.reg-hint{color:var(--warn,#d29922)}
