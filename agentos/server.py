@@ -22334,6 +22334,21 @@ class _FallingBack(Exception):
     """The turn goes to the next brain: nothing is saved for this one."""
 
 
+async def _mirror_to_phone(cid: str, asked: str, answer: str) -> None:
+    """Send a desk turn to the phone chat whose session this is. Never fails the turn."""
+    from . import phoneforward
+    try:
+        store = state["store"]
+        conv = store.get_conversation(cid)
+        if not (conv or {}).get("channel_ref"):
+            return
+        await phoneforward.mirror(store, state.get("telegram"), state.get("whatsapp"),
+                                  cid, asked, answer)
+    except Exception as e:
+        with contextlib.suppress(Exception):
+            state["store"].log("error", f"a desk turn wasn't sent to the phone: {e}"[:300])
+
+
 async def _run_chat(cid: str, data: dict):
     cfg, store, toolbox = state["cfg"], state["store"], state["toolbox"]
     turns = state["turns"]
@@ -22925,6 +22940,10 @@ async def _run_chat(cid: str, data: dict):
                             cost_usd=result.get("cost_usd"))
             knowledge.schedule_extraction(cfg, store, cid, text, result["content"],
                                           state.get("broadcast"))
+            # a phone chat's session answered at the desk: the phone sees it too
+            # (phoneforward.mirror), so going back to Telegram or WhatsApp carries on
+            if not (result.get("content") or "").lstrip().startswith("[error]"):
+                asyncio.create_task(_mirror_to_phone(cid, text, header + result["content"]))
         except _FallingBack:
             pass
         except Exception as e:

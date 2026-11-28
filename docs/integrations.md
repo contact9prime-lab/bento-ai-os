@@ -79,6 +79,11 @@ The list shows only your own account's chats: yours, people you let in, and grou
 row says everyone in it will see what you send. A WhatsApp chat whose 24-hour window is closed is greyed with
 the reason. Only you can do this; your agents can't. Each send is a row in the Ledger.
 
+A chat that belongs to your phone (started there, or carried on there) stays in step both ways. What you say on
+the phone shows on the desktop, and what you say at the desk in that chat goes to the phone too: "💻 You, at the
+desk:" with your question, then the answer. That only happens while the phone chat is on that session; after
+`/new` or `/resume` on the phone, the old session's desk turns stay on the desktop.
+
 ![The Phone button in Chat, sending a chat to Telegram or WhatsApp](screenshots/send-to-phone.png)
 
 Chat's **Channels** tab lists every session of a phone chat under that chat, marks the one open on the phone,
