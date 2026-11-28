@@ -62,7 +62,7 @@ let WIZ={agent_name:'Bento',autonomy:'balanced',default_model:'',providers:{},au
 async function checkSetup(){
   try{
     const s=await fetch('/api/setup').then(r=>r.json());
-    if(!s.first_run)return;
+    if(!s.first_run){setupNews();return}
     // the wizard branches on PLATFORM.mode (de vs hosted); init loads it in
     // parallel with us, so fetch it ourselves if it hasn't landed yet
     try{if(!Object.keys(PLATFORM.capabilities||{}).length)PLATFORM=await(await fetch('/api/platform')).json()}catch(e){}
@@ -71,6 +71,19 @@ async function checkSetup(){
     // for Settings → Run setup again, so the two can never drift.
     if(typeof obShow==='function'){obShow({});return}
     showWizard();
+  }catch(e){}
+}
+/* A machine set up before a step existed is offered it once, as soon as the page
+   loads after the update that brought it (onboarding.NEWS): the registry sign-in today.
+   Marked seen when shown, so closing it is an answer too; Settings → Run setup has it. */
+async function setupNews(){
+  try{
+    const d=await fetch('/api/onboarding/news').then(r=>r.json());
+    const s=((d&&d.steps)||[])[0];
+    if(!s||typeof obShow!=='function')return;
+    fetch('/api/onboarding/news/seen',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({step:s.id})}).catch(()=>{});
+    obShow({step:s.id});
   }catch(e){}
 }
 const WIZ_SAY_FALLBACK={

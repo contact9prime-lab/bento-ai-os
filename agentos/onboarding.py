@@ -479,6 +479,36 @@ def state(cfg: dict, store=None, show_all: bool = False) -> dict:
             "finished": all(d["status"] != "todo" for d in mine)}
 
 
+#: Steps a machine that finished setup is offered once, after the update that brought
+#: them. Asked for as "the registry login should be given at the time of initial setup or
+#: upgrading; it should show immediately after upgrade". A new machine meets them in the
+#: arc itself; this is for the machines that walked the arc before the step existed.
+NEWS = ("registry",)
+
+
+def news(cfg: dict, store=None) -> list[dict]:
+    """The NEWS steps still to do here and not offered yet, as `state()` draws them.
+
+    Empty until setup is complete (the arc asks), and a step that is done, skipped or
+    already offered once is never offered again: a prompt after every restart would be
+    one people learn to close."""
+    if not (cfg or {}).get("setup_complete"):
+        return []
+    seen = set(((cfg or {}).get("onboarding") or {}).get("news_seen") or [])
+    steps = state(cfg, store, show_all=True)["steps"]
+    return [d for d in steps if d["id"] in NEWS and d["id"] not in seen
+            and d["status"] == "todo"]
+
+
+def news_seen(cfg: dict, step_id: str) -> dict:
+    """Write down that a NEWS step was offered, whatever the answer was."""
+    if step_id not in NEWS:
+        raise ValueError(f"'{step_id}' is not a step offered after an update")
+    ob = cfg.setdefault("onboarding", {})
+    ob["news_seen"] = sorted(set(ob.get("news_seen") or []) | {step_id})
+    return {"ok": True, "news_seen": ob["news_seen"]}
+
+
 def _count(store, table: str) -> int:
     if store is None:
         return 0
@@ -576,6 +606,7 @@ def restart(cfg: dict) -> dict:
     # being asked again. Leaving them would tick the name step from a decision made
     # on a machine the user is now deliberately reconsidering.
     ob["confirmed"] = []
+    ob["news_seen"] = []
     # and the first question is asked again: "walk me through it" may well mean "I
     # want a company now", and the old answer would hide the steps for it
     for k in ("shape", "use", "screen"):

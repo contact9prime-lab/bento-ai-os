@@ -43,6 +43,10 @@ Each install is a `registry.install` row in the ledger.
 
 ## Publishing
 
+Setup asks about this near its end. A machine that was set up before the registry existed is asked once,
+right after the update that brought it: on the desktop when the page reloads, and in the terminal at the end of
+`bento update`. `bento setup --news` asks again.
+
 You need three things, and the Store's Registry tab walks you through them:
 
 1. **Sign in with your email.** You get a code (no password). In a terminal:
