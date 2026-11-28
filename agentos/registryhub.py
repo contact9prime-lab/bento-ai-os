@@ -1,6 +1,8 @@
 """The Bento Registry at bentoboxos.com: browse freely, publish signed in.
 
-The registry is a Supabase project (packaging/registry-cloud). Reading is open:
+The registry is a Supabase project; its server (migrations, the publish and
+download functions) lives in the website repo, bento-box-os-com, under
+supabase/. This module is only the client. Reading is open:
 the catalogue and the files are public, and a Bento that never signs in can
 still find and install things. Publishing needs three things, each checked by
 the registry's own `publish` function and never only here:

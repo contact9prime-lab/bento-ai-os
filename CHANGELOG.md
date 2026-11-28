@@ -12,6 +12,8 @@
 - An app's publish report no longer says it carries "a phone number". It was reading the scan's own timestamp
   (and any date like 2026-12-04) as one, so every app asked you to look at personal details it didn't have.
 - `bento registry push app FILE` without `--summary` gives the listing the first sentence of the app's description.
+- The registry's server (its Supabase migrations and the publish and download functions) moved to the website's
+  repo. Bento keeps only the client, so nothing you install changes.
 
 ## 0.100.12 — 2026-11-27
 

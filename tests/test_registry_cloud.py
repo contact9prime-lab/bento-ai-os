@@ -1,5 +1,10 @@
 """The Bento Registry client (agentos/registryhub.py) against a stand-in registry.
 
+The registry's server (Supabase migrations, the publish and download functions) is in
+the website repo, bento-box-os-com, under supabase/. Its tools/check_registry.py checks
+that its leak rules equal agentbundle._LEAK_RULES and its reserved names equal
+registryhub.RESERVED.
+
 Nothing here reaches the network: `_call` and `_fetch_bytes` are replaced by a
 fake that keeps what was published, so the same signature the real `publish`
 function checks is checked here on the way back.
@@ -16,7 +21,6 @@ import pytest
 from agentos import agentbundle, registryhub as hub
 
 ROOT = Path(__file__).resolve().parent.parent
-CLOUD = ROOT / "packaging" / "registry-cloud"
 
 
 class FakeHub:
@@ -86,17 +90,6 @@ def _signed_in(fake):
     hub.set_handle("ada")
     hub.register_machine("test box")
 
-
-def test_the_registry_refuses_what_a_bento_refuses():
-    """The publish function's leak rules are agentbundle's, read from both files."""
-    ts = (CLOUD / "functions" / "publish" / "leakrules.ts").read_text()
-    rows = re.findall(r'\["([^"]+)",\s*\n?\s*"((?:[^"\\]|\\.)*)",\s*"(i?)"\]', ts)
-    got = {label: (json.loads('"' + src + '"'), flag) for label, src, flag in rows}
-    want = {label: pat for label, pat in agentbundle._LEAK_RULES}
-    assert set(got) == set(want)
-    for label, pat in want.items():
-        src, flag = got[label]
-        assert ("(?i)" + src if flag else src) == pat, label
 
 
 def test_a_credential_blocks_and_personal_details_are_shown():
@@ -182,13 +175,6 @@ def test_names_and_versions_are_read_strictly():
             hub.parse_ref(bad)
     assert hub.slug_of("My Great App!") == "my-great-app"
 
-
-def test_every_registry_table_has_row_level_security():
-    sql = (CLOUD / "migrations" / "001_registry.sql").read_text()
-    tables = re.findall(r"create table public\.(\w+)", sql)
-    assert tables
-    for t in tables:
-        assert f"alter table public.{t} enable row level security" in sql, t
 
 
 def test_the_desktop_publishes_the_bytes_it_reported(fake, tmp_path):

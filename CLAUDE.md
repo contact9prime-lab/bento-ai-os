@@ -2494,8 +2494,7 @@ kind equally, and its checkable clauses are checked, not asked for.
 
 ## The Bento Registry: browse freely, publish signed in, from a registered machine
 
-`agentos/registryhub.py` + `packaging/registry-cloud` (the Supabase project: migrations, the
-`publish` and `download` functions) + Store → Registry (`25b-registry.js`) + `/api/store/registry/*`
+`agentos/registryhub.py` (the client only) + Store → Registry (`25b-registry.js`) + `/api/store/registry/*`
 + `bento registry login|handle|register|browse|get|report|push` + the setup step `registry`;
 `docs/registry.md`, `tests/test_registry_cloud.py`, the site's `/registry/`. Asked for as "host the
 bento extensions on bentoboxos.com … checked by the local system and added to the registry …
@@ -2505,7 +2504,10 @@ email sign in". Six rules:
   which runs as the service role and checks the session, the machine (registered to that account,
   not revoked), the Ed25519 signature over the exact bytes, the format, the leak rules, a newer
   version and the rate. Never add a policy that lets a person insert a listing or a version.
-- **The leak rules are agentbundle's**, copied into `leakrules.ts`; the test fails when they differ.
+- **The server is not in this repo.** The Supabase migrations and the `publish`/`download` functions
+  live in the website repo (`bento-box-os-com`, `supabase/`). Keep it that way: Bento ships the client.
+- **The leak rules are agentbundle's**, copied into the site's `leakrules.ts`; its
+  `tools/check_registry.py` (CI, and every Monday) fails when they differ, so change both together.
   A credential refuses with no override, here and there.
 - **What was reported is what goes.** The desktop's publish sends the report's hash and the server
   looks the bytes up (`_HUB_PENDING`); `registryhub.publish` refuses an `ack` that isn't the hash of
@@ -2520,7 +2522,7 @@ email sign in". Six rules:
   it by a fetched page (the agent-sharing rule). If one is ever added it must be ALWAYS_ASK.
 
 **Bento publishes its own apps as "bento", and that name is kept** (`agentos/sampleapps`, `registry/apps/<slug>/`,
-`bento studio samples [list|build|check]`, migration `003_reserved_handles.sql`, `registryhub.RESERVED`/`OFFICIAL`,
+`bento studio samples [list|build|check]`, the site repo's migration `003_reserved_handles.sql`, `registryhub.RESERVED`/`OFFICIAL`,
 the Store's Bento mark; `docs/registry.md`, `tests/test_sample_apps.py`, live run `packaging/dev/sample-apps-e2e/run.py`).
 Asked for as "the apps that we build in Bento should be pushed to the registry; build some sample productivity apps".
 Five rules:
@@ -2533,7 +2535,7 @@ Five rules:
 - **The phone rule skips a bare digit run and a 2026-12-04 date** (`registryhub._NOT_A_PHONE`): every app package's
   `scanned_at` read as "a phone number", so every app's publish report asked about personal details it didn't have.
 - **A reserved name is the registry's to give** (a trigger, `public.is_admin()`): the client tries it and says so in
-  words when refused. The list is in the migration and in `RESERVED`; the test compares them. A name taken before the
+  words when refused. The list is in the migration and in `RESERVED`; the site's `tools/check_registry.py` compares them. A name taken before the
   migration ran stays, and the docs say how to find one.
 
 ## The agent itself is shareable, and the leak scan has no override

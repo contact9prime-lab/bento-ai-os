@@ -119,13 +119,12 @@ def test_a_scan_time_or_a_date_is_not_a_phone_number():
         assert ("a phone number" in seen) is phone, text
 
 
-def test_bentos_reserved_names_match_the_registrys():
-    sql = (ROOT / "packaging/registry-cloud/migrations/003_reserved_handles.sql").read_text()
-    names = re.findall(r"'([a-z0-9-]+)'", sql.split("array[", 1)[1].split("]", 1)[0])
-    assert tuple(names) == hub.RESERVED and hub.OFFICIAL in names
-    assert all(hub.HANDLE.fullmatch(n) for n in names)
-    # the trigger lets an admin take one, and nobody else
-    assert "not public.is_admin()" in sql and "before insert or update of handle" in sql
+def test_bentos_reserved_names_are_well_formed():
+    """The registry's own list (the site repo's migration 003) is compared with this
+    one by its tools/check_registry.py. Here: every name is a name a person could type."""
+    assert hub.OFFICIAL in hub.RESERVED
+    assert all(hub.HANDLE.fullmatch(n) for n in hub.RESERVED)
+    assert len(set(hub.RESERVED)) == len(hub.RESERVED)
 
 
 def test_a_reserved_name_is_refused_in_words(monkeypatch):

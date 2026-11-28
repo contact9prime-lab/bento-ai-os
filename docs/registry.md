@@ -127,7 +127,8 @@ description).
 
 ## What the registry checks
 
-The registry is a Supabase project (`packaging/registry-cloud`). Reading is open to anyone through
+The registry is a Supabase project. Its server code lives with the website, in the
+`bento-box-os-com` repo under `supabase/`; Bento holds only the client. Reading is open to anyone through
 row-level security. Every write that matters goes through one function, `publish`, which checks
 again, whatever the Bento said:
 
@@ -157,14 +158,9 @@ own home. From a terminal, `bento registry` acts as the machine's own home.
 
 ## Setting up the registry project
 
-These are one-time steps for whoever runs the registry, not for people using it.
+The migrations, the two functions and the one-time project settings are in the website repo
+(`bento-box-os-com`, `supabase/` and its README), with the people who run the registry. Nobody
+using Bento needs them.
 
-1. Apply `packaging/registry-cloud/migrations/*.sql` in order.
-2. Deploy `functions/publish` and `functions/download` with JWT verification off: `publish` checks
-   the session itself, and `download` is public.
-3. **Authentication → Email Templates → Magic Link**: include `{{ .Token }}` so the email carries
-   a code. Bento signs in with the code, because a headless machine can't open a link.
-4. **Authentication → SMTP**: set your own sender before launch. Supabase's built-in sender is
-   limited to a few emails an hour.
-5. Add your account's id to `public.admins` to see and unhide reported listings. That also lets it
-   take a reserved publisher name such as `bento` (migration 003); nobody else can.
+An admin's account (in `public.admins`) can see and unhide reported listings, and is the only one
+that can take a reserved publisher name such as `bento`.
