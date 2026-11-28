@@ -140,3 +140,23 @@ def stale() -> list[str]:
         if not p.is_file() or p.read_text() != text_of(package(slug)):
             bad.append(slug)
     return bad
+
+
+def checked_in(slug: str) -> dict:
+    """The package as checked in under registry/apps, else built: the bytes `bento registry push`
+    sends, so the Store's Publish and the terminal publish the same thing."""
+    p = path_of(slug)
+    if p.is_file():
+        return json.loads(p.read_text())
+    return package(slug)
+
+
+def summary_of(pkg: dict) -> str:
+    """The registry's one line for an app: a sample app's own, else the first sentence of
+    what its manifest says it does."""
+    man = pkg.get("manifest") or {}
+    for a in APPS:
+        if a["name"] == man.get("name") and pkg.get("html") == html_of(a["slug"]):
+            return a["summary"]
+    about = (man.get("description") or "").strip()
+    return about.split(". ")[0].rstrip(".")[:280]

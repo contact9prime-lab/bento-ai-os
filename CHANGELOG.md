@@ -1,6 +1,15 @@
 # Changelog
 
 
+## 0.100.17 — 2026-11-28
+
+- **Bento's own apps can be published from the Store.** Store → Registry → Publish listed only apps installed on this
+  machine, so the five apps in `registry/apps` (Focus Sessions, Habit Tracker, Kanban Board, Meeting Notes, Daily
+  Planner) were missing. They're now under "Bento's own apps", their one-line summary is filled in, and what goes is
+  the same package `bento registry push` sends.
+- **The publisher name can be changed on the page.** The signed-in strip has Change name, Sign out and Stop this
+  machine publishing as quiet buttons; the name box opens below it.
+
 ## 0.100.16 — 2026-11-28
 
 - **A registry sign-in that fails says why, and stays on screen.** When the registry couldn't send the code

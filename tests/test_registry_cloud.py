@@ -247,3 +247,30 @@ def test_the_sign_in_card_keeps_its_error_and_never_sends_an_email_as_a_code():
     assert 'class="reg-err" role="alert"' in js
     assert "REG.err = 'The code was not sent: '" in js
     assert "That is your email" in js
+
+
+def test_the_store_can_publish_bentos_own_apps(fake, tmp_path):
+    """Asked as "in the UI I am not able to see these apps": Publish listed only apps installed
+    here, and Bento's own apps are package files in registry/apps that were never installed."""
+    from fastapi.testclient import TestClient
+
+    from agentos import sampleapps, server as servermod
+    _signed_in(fake)
+    with TestClient(servermod.app) as c:
+        can = c.get("/api/store/registry/publishables").json()
+        assert {x["id"] for x in can["samples"]} == {"sample:" + a["slug"] for a in sampleapps.APPS}
+        rep = c.post("/api/store/registry/report", json={"kind": "app", "item": "sample:kanban-board"}).json()
+        assert rep["ok"] and rep["slug"] == "kanban-board"
+        assert rep["summary"] == sampleapps.BY_SLUG["kanban-board"]["summary"], "the one line is filled in"
+        r = c.post("/api/store/registry/publish", json={"ack": rep["ack"], "slug": "kanban-board", "version": "1.0.0",
+                                                        "summary": rep["summary"], "understood": True}).json()
+        assert r["ok"], r
+        sent = json.loads(fake.files[fake.versions[("app", "kanban-board")]["url"]])
+        assert sent == sampleapps.checked_in("kanban-board"), "the same bytes the terminal pushes"
+        bad = c.post("/api/store/registry/report", json={"kind": "app", "item": "sample:nope"})
+        assert bad.status_code == 400 and "no Bento app" in bad.json()["error"]
+
+
+def test_the_publisher_name_can_be_changed_from_the_page():
+    js = (ROOT / "agentos/ui/src/js/25b-registry.js").read_text()
+    assert "reg-rename" in js and "regCall('handle'" in js
