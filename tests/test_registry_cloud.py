@@ -274,3 +274,16 @@ def test_the_store_can_publish_bentos_own_apps(fake, tmp_path):
 def test_the_publisher_name_can_be_changed_from_the_page():
     js = (ROOT / "agentos/ui/src/js/25b-registry.js").read_text()
     assert "reg-rename" in js and "regCall('handle'" in js
+
+
+def test_app_studio_publishes_through_the_registrys_own_check():
+    """Asked for as "can I share it on the registry directly from App Studio": the Studio's ⋯
+    opens the Store's Publish card with the app chosen and checked; Publish is still pressed there."""
+    ui = Path(__file__).parent.parent / "agentos" / "ui" / "src" / "js"
+    studio = (ui / "26-studio.js").read_text()
+    reg = (ui / "25b-registry.js").read_text()
+    assert "regPublishFrom('app',aid)" in studio
+    body = reg[reg.index("function regPublishFrom"):reg.index("async function regPubPaint")]
+    assert "REG.open = true" in body and "'registry'" in body and "regPublish(" not in body
+    paint = reg[reg.index("async function regPubPaint"):reg.index("async function regCheck")]
+    assert "REG.want" in paint and "regCheck()" in paint

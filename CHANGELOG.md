@@ -1,6 +1,11 @@
 # Changelog
 
 
+## 0.100.19 — 2026-11-28
+
+- App Studio's ⋯ menu has **Publish to the Bento Registry…**. It opens the Store's Registry with the publish card open and your app chosen and checked. You still press Publish there.
+- The "Bento badge" line in the publish card shows only while one of Bento's own apps is chosen.
+
 ## 0.100.18 — 2026-11-28
 
 No release notes were written for this one; the commits since 0.100.17 are what changed (`bento update` lists them).

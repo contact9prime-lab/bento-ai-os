@@ -263,6 +263,13 @@ async function regGet(it, version){
 }
 
 /* ---- publishing ---- */
+/* App Studio's ⋯ → Publish lands here: the Store opens on the Registry with the publish card
+   open, that app chosen and checked. Checking only reads it here; Publish is still pressed by you. */
+function regPublishFrom(kind, item){
+  REG.open = true; REG.want = {kind, item: String(item)};
+  if(typeof STORE_TAB!=='undefined') STORE_TAB = 'registry';
+  openApp('store'); refreshApp('store');
+}
 async function regPubPaint(){
   const el = document.getElementById('reg-pub-body'); if(!el) return;
   const st = REG.st || await regCall('status');
@@ -289,13 +296,27 @@ async function regPubPaint(){
                       + (list.length?`<optgroup label="Your apps">${opts(list)}</optgroup>`:'')
                     : opts(list))
       : '<option value="">nothing of this kind here yet</option>';
-    const hint = el.querySelector('#rp-hint');
-    if(hint) hint.textContent = own.length && st.handle!=='bento'
-      ? `Bento's own apps get the Bento badge when published as bento. You publish as ${st.handle}.` : '';
+    hintFor();
     el.querySelector('#rp-rep').innerHTML='';
   };
+  // The badge line is about Bento's own apps, so it shows only while one of them is chosen.
+  const hintFor = ()=>{
+    const hint = el.querySelector('#rp-hint'), v = el.querySelector('#rp-item').value;
+    if(hint) hint.textContent = v.startsWith('sample:') && st.handle!=='bento'
+      ? `Bento's own apps get the Bento badge when published as bento. You publish as ${st.handle}.` : '';
+  };
+  el.querySelector('#rp-item').onchange = ()=>{hintFor(); el.querySelector('#rp-rep').innerHTML=''};
+  // Kept until its check has drawn: opening the Store paints this card more than once,
+  // and a later paint replaced the first one's report.
+  const want = REG.want;
+  if(want) el.querySelector('#rp-kind').value = want.kind;
   el.querySelector('#rp-kind').onchange = fill; fill();
   el.querySelector('#rp-check').onclick = regCheck;
+  if(want){
+    const sel = el.querySelector('#rp-item');
+    if([...sel.options].some(o=>o.value===want.item)){ sel.value = want.item; hintFor();
+      regCheck().then(()=>document.getElementById('reg-pub')?.scrollIntoView({block:'start'})) }
+  }
 }
 
 async function regCheck(){
@@ -303,6 +324,8 @@ async function regCheck(){
   const kind = document.getElementById('rp-kind').value, item = document.getElementById('rp-item').value;
   el.innerHTML = '<p class="mut">Reading it for anything secret or personal…</p>';
   const rep = REG.rep = await regCall('report',{kind, item});
+  if(!el.isConnected) return;
+  REG.want = null;
   if(rep.error && !rep.report){ el.innerHTML = `<div class="ghint" style="border-color:var(--err)">${esc(rep.error)}</div>`; return }
   const r = rep.report || rep;
   const next = rep.latest ? regBump(rep.latest) : '1.0.0';

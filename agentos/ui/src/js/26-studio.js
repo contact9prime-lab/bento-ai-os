@@ -345,6 +345,7 @@ function studioMore(e){
       fn:()=>setWidgetSize(aid,k)})),
     null,
     {label:'Export',fn:()=>window.open('/api/apps/'+aid+'/export')},
+    {label:'Publish to the Bento Registry…',fn:()=>regPublishFrom('app',aid)},
     ...((typeof USERS!=='undefined'&&(USERS.me||{}).multiuser&&app)?[{label:'Share…',fn:()=>usersShare('app',app.name)}]:[]),
     {label:'Delete app…',danger:true,fn:()=>studioDel(aid)},
   ];
