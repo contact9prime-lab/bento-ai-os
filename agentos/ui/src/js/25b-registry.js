@@ -12,24 +12,34 @@ var REG = REG || {kind:'', q:'', st:null, items:[], pub:null, rep:null, got:null
 var REG_KINDS = [['','All'],['app','Apps'],['agent','Agents'],['skill','Skills'],['soul','Souls'],['tool','Tools']];
 var REG_ICON = {app:'▦', agent:'◈', skill:'✎', soul:'☼', tool:'⚙'};
 
+var REG_KIND_ONE = {app:'App', agent:'Agent', skill:'Skill', soul:'Soul', tool:'Tool'};
+
 async function renderStoreRegistry(box){
   box.innerHTML = `<div class="reg">
+    <header class="reg-hero">
+      <span class="reg-mark" aria-hidden="true">◈</span>
+      <div class="reg-hero-t"><h2>Bento Registry</h2>
+        <p>Apps, agents, skills, souls and tools people share. Everything you get is checked again on this machine.</p></div>
+    </header>
     <div id="reg-acct" class="reg-acct"><p class="mut">Checking your registry sign-in…</p></div>
     <div class="reg-bar">
-      <div class="seg reg-kinds" role="tablist">${REG_KINDS.map(([k,l])=>
-        `<button role="tab" class="${REG.kind===k?'on':''}" data-k="${k}">${l}</button>`).join('')}</div>
-      <input id="reg-q" placeholder="Search the Bento Registry…" value="${esc(REG.q)}">
+      <label class="reg-search"><svg aria-hidden="true" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="reg-q" type="search" placeholder="Search the Bento Registry" value="${esc(REG.q)}" aria-label="Search the Bento Registry"></label>
+      <div class="reg-kinds" role="tablist">${REG_KINDS.map(([k,l])=>
+        `<button role="tab" class="${REG.kind===k?'on':''}" aria-selected="${REG.kind===k}" data-k="${k}">${l}</button>`).join('')}</div>
     </div>
-    <div id="reg-list" class="cat"><p class="mut">Loading the registry…</p></div>
+    <div id="reg-list" class="reg-grid"><p class="mut">Loading the registry…</p></div>
     <div id="reg-get"></div>
     <div id="ags-fork"></div>
     <details class="reg-pub" id="reg-pub" ${REG.open?'open':''}>
-      <summary><b>Publish to the registry</b> <span class="mut">an app, an agent, a skill, a soul or a tool</span></summary>
+      <summary><span class="reg-pub-ico" aria-hidden="true">⇪</span>
+        <span class="reg-pub-t"><b>Publish to the registry</b><span>Share an app, an agent, a skill, a soul or a tool. It's checked for secrets first.</span></span>
+        <span class="reg-chev" aria-hidden="true">›</span></summary>
       <div id="reg-pub-body"><p class="mut">Loading what you could publish…</p></div>
     </details>
   </div>`;
   box.querySelectorAll('.reg-kinds button').forEach(b=>b.onclick=()=>{REG.kind=b.dataset.k;
-    box.querySelectorAll('.reg-kinds button').forEach(x=>x.classList.toggle('on',x===b));regSearch()});
+    box.querySelectorAll('.reg-kinds button').forEach(x=>{x.classList.toggle('on',x===b);x.setAttribute('aria-selected',x===b)});regSearch()});
   const q = box.querySelector('#reg-q');
   let t = 0;
   q.oninput = ()=>{clearTimeout(t);t=setTimeout(()=>{REG.q=q.value.trim();regSearch()},300)};
@@ -56,15 +66,18 @@ async function regAcct(){
   if(!st.signed_in){
     const waiting = REG.step==='code';
     const to = st.pending||REG.email;
-    el.innerHTML = `<div class="reg-line">${waiting
-        ? `<b>Check your email.</b> <span class="mut">Type the code we sent to ${esc(to)}.</span>`
-        : `<b>Browse freely.</b> <span class="mut">Sign in with your email to publish.</span>`}</div>
-      <div class="row">${waiting
+    el.innerHTML = `<div class="reg-acct-in">
+      <div class="reg-acct-t">${waiting
+        ? `<b>Check your email</b><span>Type the code we sent to ${esc(to)}.</span>`
+        : `<b>Browse freely</b><span>Sign in with your email to publish your own.</span>`}</div>
+      <div class="reg-form-in">${waiting
         ? `<input id="reg-code" name="one-time-code" inputmode="numeric" autocomplete="one-time-code" maxlength="10" value="" placeholder="6-digit code" aria-label="Code from the email">
-           <button class="pact" id="reg-go">Sign in</button><button class="endbtn" id="reg-again">Send again</button><button class="endbtn" id="reg-back">Another email</button>`
+           <button class="pact" id="reg-go">Sign in</button>`
         : `<input id="reg-email" type="email" autocomplete="email" placeholder="you@example.com" value="${esc(REG.email)}" aria-label="Your email">
            <button class="pact" id="reg-go">Send a code</button>`}</div>
-      ${REG.err?`<p class="reg-err" role="alert">${esc(REG.err)}</p>`:''}`;
+      ${waiting?`<div class="reg-links"><button class="reg-link" id="reg-again">Send again</button><button class="reg-link" id="reg-back">Use another email</button></div>`:''}
+    </div>
+    ${REG.err?`<p class="reg-err" role="alert">${esc(REG.err)}</p>`:''}`;
     el.querySelector('#reg-go').onclick = waiting ? regVerify : regLogin;
     const inp = el.querySelector(waiting?'#reg-code':'#reg-email');
     inp.onkeydown = e=>{if(e.key==='Enter')(waiting?regVerify:regLogin)()};
@@ -146,17 +159,22 @@ async function regSearch(){
   const d = await regCall('search?q='+encodeURIComponent(REG.q)+'&kind='+encodeURIComponent(REG.kind));
   if(d.error){ el.innerHTML = `<p class="mut">${esc(d.error)}</p>`; return }
   REG.items = d.items || [];
-  if(!REG.items.length){ el.innerHTML = `<p class="mut">Nothing in the registry${REG.q?' matches that':' yet'}. Publish the first one below.</p>`; return }
-  el.innerHTML = REG.items.map((it,i)=>`<div class="catcard reg-card">
-      <span class="reg-kind">${REG_ICON[it.kind]||'·'} ${esc(it.kind)}</span>
-      <span class="cn">${esc(it.icon?it.icon+' ':'')}${esc(it.name)}</span>
-      <span class="cd">${esc(it.summary||'')}</span>
-      <span class="reg-meta">${it.publisher==='bento'?'<span class="badge ok" title="Published by Bento">Bento</span>':`<span>${esc(it.publisher||'')}</span>`}<span>v${esc(it.latest||'-')}</span>
-        <span title="downloads">↓ ${Number(it.downloads||0).toLocaleString()}</span>
-        ${it.verdict&&it.verdict!=='pass'?`<span class="reg-flag">${it.verdict==='review'?'has personal details':esc(it.verdict)}</span>`:''}</span>
-      <div class="reg-acts"><button class="save" data-get="${i}">Get…</button>
-        ${Number(it.version_count)>1?`<button class="endbtn" data-ver="${i}">${it.version_count} versions</button>`:''}</div>
-    </div>`).join('');
+  if(!REG.items.length){
+    el.innerHTML = `<div class="reg-empty"><span aria-hidden="true">◇</span><b>${REG.q?'Nothing matches that':'Nothing here yet'}</b>
+      <span>${REG.q?'Try another word, or look under All.':'Be the first: publish something below.'}</span></div>`; return }
+  el.innerHTML = REG.items.map((it,i)=>`<article class="reg-card">
+      <div class="reg-card-top"><span class="reg-ico" aria-hidden="true">${esc(it.icon||REG_ICON[it.kind]||'·')}</span>
+        <span class="reg-kind">${esc(REG_KIND_ONE[it.kind]||it.kind)}</span>
+        ${it.publisher==='bento'?'<span class="reg-badge" title="Published by Bento">Bento</span>':''}</div>
+      <h3 class="reg-name">${esc(it.name)}</h3>
+      <p class="reg-sum">${esc(it.summary||'No description yet.')}</p>
+      ${it.verdict&&it.verdict!=='pass'?`<span class="reg-flag">⚠ ${it.verdict==='review'?'Has personal details':esc(it.verdict)}</span>`:''}
+      <span class="reg-meta"><span>${esc(it.publisher||'')}</span><span>v${esc(it.latest||'-')}</span><span title="downloads">↓ ${Number(it.downloads||0).toLocaleString()}</span></span>
+      <div class="reg-foot">
+        ${Number(it.version_count)>1?`<button class="reg-link" data-ver="${i}">${it.version_count} versions</button>`:'<span></span>'}
+        <button class="pact" data-get="${i}">Get</button>
+      </div>
+    </article>`).join('');
   el.querySelectorAll('[data-get]').forEach(b=>b.onclick=()=>regGet(REG.items[+b.dataset.get]));
   el.querySelectorAll('[data-ver]').forEach(b=>b.onclick=()=>regVersions(REG.items[+b.dataset.ver]));
 }
