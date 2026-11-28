@@ -1,6 +1,12 @@
 # Changelog
 
 
+## 0.100.15 — 2026-11-28
+
+- A chat that started on Telegram or WhatsApp and carried on at the desk now shows on the phone too. Each desk
+  turn sends the phone "💻 You, at the desk:" with the question, then the answer, so going back to the phone
+  carries on where you left off. Only while the phone chat is on that session.
+
 ## 0.100.14 — 2026-11-28
 
 - The Bento Registry sign-in now shows up right after an update. A machine that finished setup before the registry

@@ -4,7 +4,8 @@ Asked for as "have a chat response to continue in the Telegram, send the stage t
 or WhatsApp … only users' chats to their own accounts. The user can decide which Telegram
 chat it needs to forward to, or to WhatsApp."
 
-Three things can leave, each to one chat the person picks:
+Three things can leave, each to one chat the person picks (and `mirror` sends a desk turn
+to the phone chat whose session it is, on its own, below):
 
   * `continue`: the chat becomes a session of that phone chat (phonesessions.py) and the
     phone is pointed at it, so the next message there carries on with its whole history
@@ -190,6 +191,50 @@ async def send(store, tg, wa, channel: str, to: str, what: str, cid: str,
               {"chat": str(key), "conversation_id": cid})
     return {"ok": True, "switched": True,
             "message": f"{tgt['name']} on {word} now carries this chat on. The session it had is kept."}
+
+
+def _chat_of(ref: str) -> tuple[str, str]:
+    """('telegram', '1145038494') from a session's channel_ref, or ('', '')."""
+    channel, _, to = (ref or "").partition(":")
+    return (channel, to) if channel in ("telegram", "whatsapp") and to else ("", "")
+
+
+async def mirror(store, tg, wa, cid: str, asked: str, answer: str) -> dict:
+    """A turn typed at the desk in a phone chat's session, sent to that phone chat too.
+
+    Asked for as "if the chat is initiated in Telegram and then I chat on the Bento OS
+    and then go back to Telegram, the experience is not seamless": the desktop showed
+    every phone message, the phone saw nothing of the desk. The owner chose every turn
+    live. Only when the phone chat is on this session right now (a session it has left
+    stays where it is), only to one of `targets()`, and a closed WhatsApp window is
+    said in the diary rather than tried. {"ok", "why"} for the log and the tests."""
+    conv = store.get_conversation(cid) if cid else None
+    channel, to = _chat_of((conv or {}).get("channel_ref") or "")
+    if not channel or not (answer or "").strip():
+        return {"ok": False, "why": "not a phone chat's session"}
+    rows = store.tg_list_chats() if channel == "telegram" else store.wa_list_chats()
+    row = next((c for c in rows if str(c.get("chat_id", c.get("wa_id"))) == to), None)
+    if not row or (row.get("conversation_id") or "") != cid:
+        return {"ok": False, "why": "the phone chat is on another session"}
+    tgt = next((t for t in targets(tg, wa) if t["channel"] == channel and t["to"] == to), None)
+    if not tgt:
+        return {"ok": False, "why": "that chat can't be sent to from here"}
+    if not tgt["ready"]:
+        store.log(channel, f"a desk turn wasn't sent to {tgt['name']}: {tgt['why']}"[:300],
+                  {"conversation_id": cid, "chat": to})
+        return {"ok": False, "why": tgt["why"]}
+    bridge = tg if channel == "telegram" else wa
+    key = int(to) if channel == "telegram" else to
+    text = answer
+    if len(text) > REPLY_MAX:
+        text = text[:REPLY_MAX].rsplit("\n", 1)[0] + "\n\n… (the rest is in the chat on your desktop)"
+    for part in (f"💻 You, at the desk:\n{_short(asked, TAIL)}", text):
+        res = await bridge.send(part, key)
+        if str(res).startswith("[error]"):
+            store.log(channel, f"a desk turn wasn't sent to {tgt['name']}: {res}"[:300],
+                      {"conversation_id": cid, "chat": to})
+            return {"ok": False, "why": str(res).replace("[error] ", "")}
+    return {"ok": True, "why": ""}
 
 
 def new_session(store, tg, wa, channel: str, to: str, name: str = "") -> dict:
