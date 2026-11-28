@@ -1,6 +1,14 @@
 # Changelog
 
 
+## 0.100.17 — 2026-11-28
+
+- **A device is yours until you share it.** Another account sees one of your devices only when you share it from its
+  card on the Devices board (Share…): to watch it (its readings, alarms and history, and its agents may read it) or to
+  watch and switch it. A switch is still asked every time. A device that belongs to the machine (installed before
+  Bento recorded who did it) still shows to every admin, with Make it mine on its card. `bento network share DEVICE
+  ACCOUNT ro|rw|off --as OWNER` does the same from a terminal.
+
 ## 0.100.16 — 2026-11-28
 
 - **A registry sign-in that fails says why, and stays on screen.** When the registry couldn't send the code

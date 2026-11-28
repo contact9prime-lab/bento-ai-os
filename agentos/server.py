@@ -1339,11 +1339,42 @@ def _board_machines(owner: str) -> list[dict]:
                             "tkey": "here", "things": things(here["hardware"]["items"])})
     for lk in teamlink._load()["links"]:
         if zeromod.ships_to(lk) and (lk.get("owner") or "") == owner:
-            items = ((tiesmod.inventory_row(lk) or {}).get("hardware") or {}).get("items") or []
-            out.append({"machine": lk["label"], "key": lk["id"], "here": False, "up": _TIE_UP.get(lk["id"]),
-                        "tkey": tiesmod.machine_of(lk),
-                        "live": time.time() - _DEV_LIVE.get(lk["label"].lower(), 0) < DEV_LIVE_S,
-                        "things": things(items)})
+            out.append(_link_machine(lk, things))
+    return out
+
+
+def _link_machine(lk: dict, things) -> dict:
+    """One machine a link reaches, as the board draws it (its things, up, live), with who it is
+    shared with (devshare) and, for the machine's own link, that it belongs to nobody yet."""
+    from . import devshare
+    from . import ties as tiesmod
+    items = ((tiesmod.inventory_row(lk) or {}).get("hardware") or {}).get("items") or []
+    return {"machine": lk["label"], "key": lk["id"], "here": False, "up": _TIE_UP.get(lk["id"]),
+            "tkey": tiesmod.machine_of(lk),
+            "live": time.time() - _DEV_LIVE.get(lk["label"].lower(), 0) < DEV_LIVE_S,
+            "things": things(items), "shares": devshare.shares_of(lk),
+            "machines_own": not (lk.get("owner") or "")}
+
+
+def _shared_machines(me: str) -> list[tuple[str, dict, str]]:
+    """(owner, machine row, level) for every device another account shared with this one. Drawn
+    as theirs: what it reads and its alarms, never their rules or a switch on the board."""
+    from . import devshare, devio, devtrig
+    from . import users as _u
+
+    def things(items):
+        return [{"id": i["id"], "name": i.get("name") or i["id"], "unit": i.get("unit") or "",
+                 "kind": devtrig.domain_of(i["id"]) or i.get("kind") or "", "onoff": devtrig.onoff(i["id"], ""),
+                 "group": ".".join(i["id"].split(".")[:2]) if i["id"].startswith("esp.") else "board",
+                 "group_name": "This board", **({"value": i["value"]} if isinstance(i.get("value"), (int, float, bool)) else {})}
+                for i in items if i.get("id") and devio.GET_ID.fullmatch(i["id"]) and devtrig.domain_of(i["id"]) != "text_sensor"]
+    out = []
+    for lk, lv in devshare.shared_with(me):
+        owner = lk.get("owner") or ""
+        row = _link_machine(lk, things)
+        row.update(shared=True, access=lv, shared_by=(_u.get(owner) or {}).get("name") or "another account",
+                   shares=[])
+        out.append((owner, row, lv))
     return out
 
 
@@ -3931,6 +3962,7 @@ async def api_platform(request: Request):
         from .demos import warehouse as _wh
         state_["device_hub"] = bool(_board_machines(usersmod.current() or "")
                                     or (usersmod.is_admin(usersmod.current() or "") and _board_machines(""))
+                                    or bool(_shared_machines(usersmod.current() or ""))
                                     or (_demo_shows(usersmod.current() or "") and _wh.status().get("phase") == "ready"))
     # The windows that are live streams of real processes: the shared browser, terminal
     # sessions that outlive their window, and native apps projected into a window. Each
@@ -17793,6 +17825,10 @@ def _device_zero(machine: str, space_id: str = "") -> tuple[dict | None, dict | 
     # your own Zeros; the machine's (made at the terminal) only for an admin, as Devices is
     whose = ("", me) if usersmod.is_admin(me) else (me,)
     zeros = [lk for lk in teamlink._load()["links"] if zeromod.ships_to(lk) and (lk.get("owner") or "") in whose]
+    # and what other accounts shared with this one (devshare), carrying how far it reaches
+    from . import devshare
+    zeros += [{**lk, "_access": lv} for lk, lv in devshare.shared_with(me)
+              if lk["label"].lower() not in {z["label"].lower() for z in zeros}]
     mine = ""
     if space_id:
         mine = next((e.get("label") or "" for e in (provision.load().get("enabled") or {}).values()
@@ -17827,6 +17863,8 @@ async def _device_tool(verb: str, machine: str, item: str = "", value=None, rang
         me = usersmod.current() or ""
         whose = ("", me) if usersmod.is_admin(me) else (me,)
         zeros = [lk for lk in teamlink._load()["links"] if zeromod.ships_to(lk) and (lk.get("owner") or "") in whose]
+        from . import devshare
+        zeros += [lk for lk, _lv in devshare.shared_with(me)]
         own = len((_here_row().get("hardware") or {}).get("items") or []) if usersmod.is_admin(me) else 0
         if not zeros and not own:
             return "No machine was set up from this hub and it holds no boards itself, so there's no hardware to use."
@@ -17837,6 +17875,9 @@ async def _device_tool(verb: str, machine: str, item: str = "", value=None, rang
     lk, row, err = _device_zero(machine, space_id)
     if err:
         return f"[error] {err}"
+    if verb == "set" and lk.get("_access") == "ro":
+        return (f"[error] {lk['label']} is shared with you to watch only, so nothing on it can be "
+                f"switched from here. Ask its owner to share it read-write.")
     item = str(item or "").strip().lower()
     if verb == "get" and not item:
         return devio.list_words(lk["label"], row)
@@ -17851,6 +17892,10 @@ async def _device_tool(verb: str, machine: str, item: str = "", value=None, rang
         it = next((i for i in ((row.get("hardware") or {}).get("items") or []) if i.get("id") == item), {})
         return telemetry.text(lk["label"], item, s, it.get("unit") or "")
     req = {"op": f"device_{verb}", "item": item, "who": who or "an agent", "why": (why or "")[:300]}
+    if lk.get("_access"):
+        # somebody else's device, shared with this account: the owner's diary names whose agent it was
+        me_name = (usersmod.get(usersmod.current() or "") or {}).get("name") or "another account"
+        req["who"] = f"{req['who']} ({me_name}'s)"
     if verb == "set":
         req["value"] = value
     got = await (_device_here(req) if lk.get("here") else tiesmod.device_call(lk, req))
@@ -18422,6 +18467,20 @@ async def api_device_board(company: str = ""):
                     t["value"], t["at"] = ev.get("value"), ev.get("at")
         alarms += await _alarms_judge(o, machines=ms)
         machines += [m for m in ms if m["machine"] not in {x["machine"] for x in machines}]
+    # devices other accounts shared with this one (devshare): their readings as last heard and the
+    # owner's alarms on them as they stand. Never judged from here: judging is the owner's, and a
+    # judge over part of their machines would clear the rest.
+    for o, m, _lv in _shared_machines(me):
+        if m["machine"] in {x["machine"] for x in machines}:
+            continue
+        ml = m["machine"].lower()
+        for t in m["things"]:
+            ev = _DEV_LAST.get((o, ml, t["id"]))
+            if ev:
+                t["value"], t["at"] = ev.get("value"), ev.get("at")
+        machines.append(m)
+        alarms += [{**a, "shared": True} for a in (_alarms().active.get(o) or {}).values()
+                   if str(a.get("machine") or "").lower() == ml]
     # the analytics: each number's last hour (telemetry.trend, kept a minute at a time on
     # this hub) and the alarms of the last day (the Events diary), read off the loop
     def _analyse():
@@ -18480,6 +18539,28 @@ async def api_device_board(company: str = ""):
             "company": company if company in cos else "",
             "elsewhere": len(hidden),          # machines left out because they are another company's
             "analytics": an, "at": time.time()}
+
+
+@app.put("/api/devices/share")
+async def api_device_share(body: dict):
+    """Share one of YOUR devices with another account here, to watch (ro) or to watch and
+    switch (rw), or end the share (level off). The other account's agent gets matching device
+    grants, so its gate decides as it does yours (devshare.py). No agent tool reaches this."""
+    from . import devshare
+    b = body or {}
+    me = usersmod.current() or ""
+    if not usersmod.enabled():
+        return JSONResponse({"error": "there's only one account here, so there is nobody to share with"}, 409)
+    label = str(b.get("machine") or "").strip()[:120]
+    try:
+        got = await asyncio.to_thread(devshare.set_share, label, me, str(b.get("account") or "").strip()[:64],
+                                      str(b.get("level") or "").strip().lower(), lambda _uid: state["store"])
+    except (ValueError, LookupError) as e:
+        return JSONResponse({"error": str(e)}, 400)
+    with usersmod.as_user(me):
+        fabricmod.audit_team(state["store"], "device.share", f"device:{label.lower()}/*",
+                             f"{label} {'shared with ' + got['account'] + ' (' + got['level'] + ')' if got['level'] else 'no longer shared with ' + got['account']}")
+    return got
 
 
 @app.put("/api/devices/company")
@@ -18619,6 +18700,8 @@ async def api_device_history(machine: str = "", item: str = "", range: str = "da
         return got
     whose = sorted({"", me}) if usersmod.is_admin(me) else [me]
     m = next((x for o in whose for x in _board_machines(o) if x["machine"].lower() == machine.lower()), None)
+    if not m:
+        m = next((x for _o, x, _lv in _shared_machines(me) if x["machine"].lower() == machine.lower()), None)
     if not m:
         return JSONResponse({"error": "no such machine on your board"}, 404)
     t = next((x for x in m["things"] if x["id"] == item), None)
@@ -19518,6 +19601,10 @@ async def _team_end_link(owner: str, lk: dict, why: str = "link ended") -> bool:
     if lk.get("kind") == "account":
         theirs = next((x for x in teamlink.links(lk.get("peer") or "")
                        if x.get("kind") == "account" and x.get("pair_id") == lk.get("pair_id")), None)
+    # a device's shares end with it: the other accounts' grants for it are revoked first
+    from . import devshare
+    with contextlib.suppress(Exception):
+        devshare.forget(lk["label"], owner, lambda _uid: state["store"])
     if not teamlink.remove(owner, lk["label"]):
         return False
     with usersmod.as_user(owner):
