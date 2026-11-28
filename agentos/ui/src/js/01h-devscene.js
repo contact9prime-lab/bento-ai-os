@@ -14,7 +14,7 @@
 
    Faces: GUI this. TUI: `bento network board` prints the same answer. SUI: the same page, in the
    BACKGROUND layer like every scene; native windows sit above it as they sit above the Town. */
-var DEVSCENE={on:false,d:null,el:null,t:0,busy:false,err:'',page:'board',rf:'all',rq:'',confirm:'',form:null,shown:0,view:'all',allPast:false,focus:''};
+var DEVSCENE={on:false,d:null,el:null,t:0,busy:false,err:'',sharing:'',shareErr:'',page:'board',rf:'all',rq:'',confirm:'',form:null,shown:0,view:'all',allPast:false,focus:''};
 var DEVSCENE_LEVEL={alarm:'Alarm',warning:'Warning'};
 
 function devSceneStart(){
@@ -178,6 +178,7 @@ function devScenePaint(){
         ${(d.companies||[]).length>1&&m.ckey?`<select class="dvs-co" data-ck="${esc(m.ckey)}" aria-label="Company ${esc(m.machine)} is for"
           title="Which of your companies this machine is for">
           <option value="">Every company</option>${d.companies.map(c=>`<option value="${esc(c.id)}"${c.id===m.company?' selected':''}>${esc(c.name)}</option>`).join('')}</select>`:''}</h2>
+      ${devShareHTML(m)}
       ${groups.map(g=>`<div class="dvs-g"><h3>${esc(g.name)}</h3>${g.list.map(t=>{
         const h=hot[ml+'|'+t.id]||'';
         return `<button type="button" class="dvs-t${h?' '+h:''}${t.onoff&&t.value?' lit':''}${t.trend?' has-tr':''}" data-dvs="hist"
@@ -278,7 +279,7 @@ function devSceneOpenRow(a){
     <td data-l="Status">${st}</td>
     <td data-l="Raised">${esc(devSceneClock(a.since))}</td>
     <td data-l="Open for">${devSceneAgo(a.held)}</td>
-    <td class="dvs-do">${a.state==='active'&&!a.ack?`<button class="endbtn" data-dvs="ack" data-id="${esc(a.id)}"${a.demo?' data-demo="1"':''}>Acknowledge</button>`:''}
+    <td class="dvs-do">${a.state==='active'&&!a.ack&&!a.shared?`<button class="endbtn" data-dvs="ack" data-id="${esc(a.id)}"${a.demo?' data-demo="1"':''}>Acknowledge</button>`:''}
       ${hasRule?`<button class="linkbtn" data-dvs="rule" data-id="${esc(a.id)}"${a.demo?' data-demo="1"':''}>Rule</button>`:''}</td></tr>`;
 }
 function devSceneEndedRow(a){
@@ -322,7 +323,50 @@ async function devSceneCompany(sel){
   }catch(e){toast('Could not change the company: '+(e.message||e),{kind:'err'})}
   sel.blur();devSceneLoad();
 }
+/* Sharing a device with another account here (devshare.py, PUT /api/devices/share). A device is
+   its owner's; another account sees it only when the owner shares it: to watch (ro) or to watch and
+   switch (rw). A machine-owned one (installed before Bento recorded who did it) offers Make it mine. */
+var DEV_SHARE_WORDS={ro:'can watch it',rw:'can watch and switch it'};
+function devShareHTML(m){
+  if(m.demo||m.here)return '';
+  if(m.shared)return `<p class="dvs-share is-shared"><span class="dvs-pill">Shared by ${esc(m.shared_by||'')}</span>
+      You ${esc(DEV_SHARE_WORDS[m.access]||'can watch it')}.</p>`;
+  if(m.machines_own)return `<p class="dvs-share is-machine">Belongs to this machine, so every admin sees it.
+      <button type="button" class="reg-ghost dvs-sbtn" data-dvs="mine" data-m="${esc(m.machine)}">Make it mine</button></p>`;
+  const open=DEVSCENE.sharing===m.machine,list=m.shares||[];
+  return `<div class="dvs-share">
+      <div class="dvs-share-row">${list.length?list.map(x=>`<span class="dvs-pill" title="${esc(x.name)} ${esc(x.words)}">${esc(x.name)} · ${x.level==='rw'?'watch and switch':'watch'}
+          <button type="button" aria-label="Stop sharing with ${esc(x.name)}" data-dvs="unshare" data-m="${esc(m.machine)}" data-u="${esc(x.uid)}">×</button></span>`).join('')
+        :'<span class="mut">Only you see it.</span>'}
+        <button type="button" class="reg-ghost dvs-sbtn" data-dvs="share" data-m="${esc(m.machine)}">${open?'Cancel':'Share…'}</button></div>
+      ${open?`<div class="dvs-share-form"><input data-sf="who" placeholder="Account name" aria-label="Share with which account">
+        <select data-sf="lv" aria-label="What they may do"><option value="ro">Watch it</option><option value="rw">Watch and switch it</option></select>
+        <button type="button" class="pact" data-dvs="sharego" data-m="${esc(m.machine)}">Share</button></div>
+        <p class="dvs-share-note">Their agents get the same say as yours: they're asked before every switch, and only what this device lends can be used.</p>`:''}
+      ${DEVSCENE.shareErr&&open?`<p class="reg-err" role="alert">${esc(DEVSCENE.shareErr)}</p>`:''}
+    </div>`;
+}
+async function devShareSend(machine,account,level){
+  const r=await fetch('/api/devices/share',{method:'PUT',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({machine,account,level})}).then(x=>x.json().then(j=>({ok:x.ok,j}))).catch(e=>({ok:false,j:{error:String(e)}}));
+  return r.ok?r.j:{error:(r.j&&r.j.error)||'it was not shared'};
+}
 async function devSceneAct(act,b){
+  if(act==='share'){DEVSCENE.sharing=DEVSCENE.sharing===b.dataset.m?'':b.dataset.m;DEVSCENE.shareErr='';return devScenePaint()}
+  if(act==='sharego'){
+    const box=b.closest('.dvs-share'),who=box.querySelector('[data-sf="who"]').value.trim(),lv=box.querySelector('[data-sf="lv"]').value;
+    if(!who){DEVSCENE.shareErr='Type the name of the account to share it with.';return devScenePaint()}
+    const d=await devShareSend(b.dataset.m,who,lv);
+    if(d.error){DEVSCENE.shareErr=d.error;return devScenePaint()}
+    DEVSCENE.sharing='';DEVSCENE.shareErr='';toast(`${b.dataset.m} shared with ${d.account}`);return devSceneLoad()}
+  if(act==='unshare'){
+    const d=await devShareSend(b.dataset.m,b.dataset.u,'off');
+    if(d.error)return toast(d.error,{kind:'err'});
+    toast(`${b.dataset.m} is no longer shared with ${d.account}`);return devSceneLoad()}
+  if(act==='mine'){
+    const r=await fetch(`/api/network/ties/${encodeURIComponent(b.dataset.m)}/adopt`,{method:'POST'}).then(x=>x.json()).catch(e=>({error:String(e)}));
+    if(r.error)return toast(r.error,{kind:'err'});
+    toast(`${b.dataset.m} is yours now`);return devSceneLoad()}
   if(act==='desk')return switchDesk(+b.dataset.n);
   if(act==='every'){DEVSCENE.every=b.dataset.v!=='0';return devSceneLoad()}
   if(act==='app')return openApp('devices');

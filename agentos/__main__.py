@@ -6054,6 +6054,35 @@ def _network_cli(args):
         except (TypeError, ValueError):
             return 22
 
+    if a == "share":
+        # devshare.py: a device is its owner's; another account sees it only when shared. At the
+        # terminal there is no sign-in, so the owner is named (--as), as `pool zero --for` names one.
+        from . import devshare
+        from . import users as _users
+        if len(rest) < 2:
+            sys.exit("  bento network share DEVICE ACCOUNT ro|rw|off --as OWNER")
+        owner_u = _users.get(getattr(args, "as_owner", "") or "") or _users.by_name(getattr(args, "as_owner", "") or "")
+        if owner_u is None:
+            sys.exit("  name the device's owner with --as ACCOUNT")
+        lv = rest[2] if len(rest) > 2 else "ro"
+
+        def store_for(uid):
+            return Store(str(_users.home_for(uid) / "agentos.db"))
+        try:
+            got = devshare.set_share(rest[0], owner_u["id"], rest[1], lv, store_for)
+        except (ValueError, LookupError) as e:
+            sys.exit(f"  {e}")
+        with contextlib.suppress(Exception):
+            store_for(owner_u["id"]).audit_add(
+                principal_kind="user", principal_id="", surface="cli", action="device.share",
+                resource=f"device:{rest[0].lower()}/*", effect="allow", rule="person", outcome="ok",
+                reason=f"{rest[0]} " + (f"shared with {got['account']} ({got['level']})" if got["level"]
+                                        else f"no longer shared with {got['account']}"))
+        if got["level"]:
+            print(f"  ✓ {rest[0]} is shared with {got['account']}: they {devshare.WORDS[got['level']]}.")
+        else:
+            print(f"  ✓ {rest[0]} is no longer shared with {got['account']}.")
+        return
     if a in ("look", "install"):
         from . import config as _cfgmod
         cfg = _cfgmod.load_config()
@@ -11942,7 +11971,8 @@ def main():
     p_net.add_argument("action", nargs="?", default="list",
                        choices=["list", "look", "install", "check", "secure", "letin", "disconnect", "label",
                                 "forget", "hide", "show", "rekey", "firewall", "controls", "switch", "remove", "update", "ties",
-                                "events", "map", "talks", "hardware", "readings", "board", "alarms", "company", "get", "set", "permit", "esp"],
+                                "events", "map", "talks", "hardware", "readings", "board", "alarms", "company", "get", "set", "permit", "esp",
+                                "share"],
                        metavar="ACTION",
                        help="list | ties [LINK [sessions|memory|knowledge|logs|update]] | events [MACHINE] | map | "
                             "talks [LINK [lead|DEPARTMENT --company ID]] | "
@@ -11959,9 +11989,11 @@ def main():
                             "readings MACHINE ITEM [--range day|week|month|quarter] (one sensor over time) | "
                             "board (every device live, with its alarms) | company [MACHINE COMPANY|none] | alarms [add MACHINE ITEM WHEN [VALUE] [for S] [warning] | remove N] | "
                             "get MACHINE [ITEM] (read it now) | set MACHINE ITEM 1|0 | permit MACHINE [ITEM read|set|off] | "
-                            "esp MACHINE [find | add NAME ADDRESS [PORT] [--user U] | look | remove NAME] (its ESP32 nodes)")
+                            "esp MACHINE [find | add NAME ADDRESS [PORT] [--user U] | look | remove NAME] (its ESP32 nodes) | "
+                            "share DEVICE ACCOUNT ro|rw|off --as OWNER (another account watches, or watches and switches, it)")
     p_net.add_argument("args", nargs="*", help="the machine (its address, name or MAC) and a value")
     p_net.add_argument("--user", default="", help="install / check / secure / disconnect: the user on that machine")
+    p_net.add_argument("--as", dest="as_owner", default="", help="share: the account the device belongs to")
     p_net.add_argument("--authorize", action="store_true", help="install: let this machine's key in from now on")
     p_net.add_argument("--kiosk", action="store_true",
                        help="install: open Bento on its own screen at start (the Office, listening)")

@@ -4318,6 +4318,22 @@ different desktops. Check if the devices are locked to the company". Six rules:
 - **Removing a desktop moves the later ones down** with windows, scene and company (`deskShift`). Before, a window on
   a later desktop kept a number that no longer existed.
 
+**A device is its owner's, and another account sees it only when shared** (`agentos/devshare.py`, `shares` on
+the link, `server._link_machine`/`_shared_machines`, `PUT /api/devices/share`, `devShareHTML` in 01h-devscene.js,
+`bento network share`; `tests/test_device_sharing.py`). Reported with two screenshots: the owner's three Pis showed on
+every admin's board, because they belonged to the machine. Four rules:
+- **A share is the link's `shares` AND grants in the other account** (source `share`, source_ref `share:<label>`):
+  `ro` writes `device.get` on `device:<label>/*`, `rw` adds `device.set`. So the gate decides a shared device's getters
+  and setters as it does the owner's, the Pi still answers only what it lends, and every set is still asked. Ending a
+  share, or removing the link (`_team_end_link` → `devshare.forget`), revokes only those rows.
+- **`ro` never switches**: `_device_tool` refuses a set on a link carrying `_access: ro` before any wire call, and the
+  owner's diary names whose agent read or switched (`who (bob's)`).
+- **Somebody else's device is drawn as theirs**: its readings and the owner's alarms as they stand, read from
+  `_alarms().active[owner]`, never judged from the viewer's board (a judge over part of the owner's machines clears
+  the rest). No Acknowledge, no rules. `device_hub` counts shared machines, or the viewer had no Devices screen.
+- **The machine's own device stays every admin's** and its card offers Make it mine (`ties.adopt`); only an owned
+  device can be shared. No agent tool reaches sharing; each change is a `device.share` row in the owner's account.
+
 **A Zero belongs to an account, and is light** (`provision.zero_key(owner)`, `enable(owner=)`,
 `server._zero_for`, `00k-zeroface.js`, `face.buddy`; `tests/test_zero_accounts.py`, live run
 `packaging/dev/provision-e2e/zero_accounts_run.py`). Asked as "integrations per user, each with their
