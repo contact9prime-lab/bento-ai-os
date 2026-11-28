@@ -1,6 +1,10 @@
 # Changelog
 
 
+## 0.100.18 — 2026-11-28
+
+No release notes were written for this one; the commits since 0.100.17 are what changed (`bento update` lists them).
+
 ## 0.100.17 — 2026-11-28
 
 - **A device is yours until you share it.** Another account sees one of your devices only when you share it from its
