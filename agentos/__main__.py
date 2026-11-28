@@ -2307,6 +2307,45 @@ def _apps_cli(args):
     sys.exit(0 if res.get("ok") else 1)
 
 
+def _samples_cli(act: str):
+    """`bento studio samples [list|build|check]`: Bento's own sample apps (agentos/sampleapps).
+
+    Each is an ordinary app package in registry/apps, so it installs through Store → Import
+    and publishes with `bento registry push app FILE`, like any app made on a machine."""
+    from . import appcheck
+    from . import registryhub as hub
+    from . import sampleapps
+    if act == "build":
+        for p in sampleapps.build():
+            print(f"✓ wrote {p.relative_to(sampleapps.REPO)}")
+        return
+    if act not in ("list", "check"):
+        print("usage: bento studio samples [list|build|check]")
+        sys.exit(2)
+    stale = set(sampleapps.stale())
+    bad = 0
+    for a in sampleapps.APPS:
+        pkg = sampleapps.package(a["slug"])
+        issues = [i for i in appcheck.check(pkg["html"]).issues if i.level in ("broken", "contract")]
+        rep = hub.report("app", hub.text_of(pkg), pkg)
+        notes = [f"{i.level}: {i.message}" for i in issues]
+        notes += [f"report: {w['what']}" for w in rep["blocking"] + rep["warnings"]]
+        if a["slug"] in stale:
+            notes.append("its package is out of date: bento studio samples build")
+        bad += bool(notes)
+        mark = "✗" if notes else "✓"
+        print(f"{mark} {a['name']:<16} {a['summary']}")
+        if act == "check" or notes:
+            for n in notes:
+                print(f"    {n}")
+    print(f"\n  packages: {sampleapps.OUT.relative_to(sampleapps.REPO)}/<name>/<name>.agentapp.json")
+    print("  install one: Store → Import, and pick the file")
+    print("  publish one: bento registry push app registry/apps/focus-sessions/focus-sessions.agentapp.json "
+          "--version 1.0.0")
+    if act == "check" and bad:
+        sys.exit(1)
+
+
 def _studio_cli(args):
     """`bento studio` — App Studio's code editor for a terminal.
 
@@ -2318,6 +2357,9 @@ def _studio_cli(args):
     import re
     import shlex
     import tempfile
+    if args.action == "samples":
+        _samples_cli((args.name or "list").strip())
+        return
     from . import appsource
     from . import users as usersmod
     _, store = _open_store(getattr(args, "user", ""))
@@ -2476,6 +2518,18 @@ _HUB_ACTIONS = ("whoami", "login", "logout", "handle", "register", "revoke", "br
                 "versions", "get", "report", "push")
 
 
+def _app_summary(pkg: dict) -> str:
+    """The registry's one line for an app pushed without --summary: a sample app's own,
+    else the first sentence of what its manifest says it does."""
+    from . import sampleapps
+    man = pkg.get("manifest") or {}
+    for a in sampleapps.APPS:
+        if a["name"] == man.get("name") and pkg.get("html") == sampleapps.html_of(a["slug"]):
+            return a["summary"]
+    about = (man.get("description") or "").strip()
+    return about.split(". ")[0].rstrip(".")[:280]
+
+
 def _hub_cli(args):
     """`bento registry whoami|login|…|push`: the Bento Registry at bentoboxos.com.
 
@@ -2566,7 +2620,9 @@ def _hub_cli(args):
                 print("nothing in the registry matches" + (f" '{target}'" if target else ""))
             for r in rows:
                 print(f"  {r['kind'] + '/' + r['slug']:<34} {r.get('latest') or '-':<9} "
-                      f"↓{r.get('downloads') or 0:<6} {r.get('publisher') or '':<16} {r.get('name')}")
+                      f"↓{r.get('downloads') or 0:<6} "
+                      f"{('Bento' if r.get('publisher') == hub.OFFICIAL else r.get('publisher') or ''):<16} "
+                      f"{r.get('name')}")
             if rows:
                 print("\n  bento registry get KIND/NAME   checks it and saves it here")
         elif act == "versions":
@@ -2612,8 +2668,9 @@ def _hub_cli(args):
             if input("type publish to go ahead: ").strip() != "publish":
                 print("nothing was sent")
                 return
+            summary = args.summary or (_app_summary(pkg) if kind == "app" else "")
             out = hub.publish(kind, slug, version, text, ack=rep["ack"], name=name,
-                              summary=args.summary, notes=args.notes)
+                              summary=summary, notes=args.notes)
             print(f"✓ published {kind}/{slug} {out['version']}  {out['page']}")
     except hub.HubError as e:
         print(f"✗ {e}")
@@ -12146,8 +12203,9 @@ def main():
     p_studio = verb("studio", help="your apps' source: list, check, pull, push or edit one "
                                    "from a terminal")
     p_studio.add_argument("action", nargs="?", default="list",
-                          choices=["list", "check", "pull", "push", "edit", "new"])
-    p_studio.add_argument("name", nargs="?", default="", help="the app's name")
+                          choices=["list", "check", "pull", "push", "edit", "new", "samples"])
+    p_studio.add_argument("name", nargs="?", default="",
+                          help="the app's name (with samples: list, build or check)")
     p_studio.add_argument("file", nargs="?", default="",
                           help="with pull/push/check: the .html file (pull prints when omitted)")
     p_studio.add_argument("--force", action="store_true",

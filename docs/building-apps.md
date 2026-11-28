@@ -189,6 +189,11 @@ The **Store** has four tabs:
 - **Skills** — install skills from a git repo or URL.
 - **Build with AI** — describe an app and hand off to App Studio.
 
+The **Registry** lists apps people publish, and Bento's own: Focus Sessions, Habit Tracker,
+Kanban Board, Meeting Notes and Daily Planner (see [registry.md](registry.md)). Their source in
+`agentos/sampleapps` is a good place to see an app that meets everything on this page: both
+surfaces, its own data, an AI feature, the assistant, and an example to try.
+
 ---
 
 ## What apps can do

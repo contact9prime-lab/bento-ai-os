@@ -1,0 +1,293 @@
+<style>
+  .ft-clock{display:grid;place-items:center;margin:6px auto 4px;width:min(260px,70vw);aspect-ratio:1;border-radius:50%;
+    background:conic-gradient(var(--acc) calc(var(--p,0)*1turn),color-mix(in srgb,var(--tx) 9%,transparent) 0)}
+  .ft-face{width:86%;aspect-ratio:1;border-radius:50%;background:var(--bg2);display:grid;place-items:center;text-align:center}
+  .ft-time{font:780 clamp(40px,11vw,58px)/1 Inter,system-ui,sans-serif;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+  .ft-mode{color:var(--mut);font-size:12.5px;margin-top:6px}
+  .ft-ctl{justify-content:center;flex-wrap:wrap}
+  .ft-ctl button svg,.ft-ic svg{width:16px;height:16px;vertical-align:-3px;margin-right:4px}
+  .ft-week{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;align-items:end;height:120px}
+  .ft-bar{display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px;height:100%;font-size:11px;color:var(--mut)}
+  .ft-bar i{display:block;width:100%;max-width:34px;border-radius:6px 6px 3px 3px;background:color-mix(in srgb,var(--acc) 70%,transparent);min-height:3px}
+  .ft-bar.today i{background:var(--acc)}
+  .ft-plan{white-space:pre-wrap;line-height:1.6}
+  .ft-w{display:flex;flex-direction:column;gap:6px}
+  .ft-w .ft-time{font-size:34px}
+  html.agentos-widget-s .ft-w .ft-time{font-size:30px}
+</style>
+
+<div class="widget-only">
+  <div class="ft-w">
+    <h3 id="w-mode">Focus</h3>
+    <div class="ft-time" id="w-time">25:00</div>
+    <div class="muted" id="w-today">0 min focused today</div>
+    <div class="row"><button class="sm" id="w-go" onclick="toggle()">Start</button></div>
+  </div>
+</div>
+
+<div class="desktop-only">
+  <div class="hero">
+    <div><h1>Focus Sessions</h1><div class="muted">Work in short, calm sessions and see where your time went.</div></div>
+    <button id="go" onclick="toggle()">Start focusing</button>
+  </div>
+
+  <div class="grid2">
+    <div class="card accent">
+      <div class="tabs" id="modes">
+        <button data-m="focus" class="on">Focus</button>
+        <button data-m="short">Short break</button>
+        <button data-m="long">Long break</button>
+      </div>
+      <div class="ft-clock" id="clock"><div class="ft-face"><div>
+        <div class="ft-time" id="time">25:00</div>
+        <div class="ft-mode" id="mode-label">Focus · session 1</div>
+      </div></div></div>
+      <label for="task">What are you working on?</label>
+      <div class="row">
+        <input id="task" placeholder="e.g. Draft the quarterly update" maxlength="120">
+      </div>
+      <div class="row ft-ctl" style="margin-top:10px">
+        <button class="ghost" onclick="reset()" id="reset"></button>
+        <button class="ghost" onclick="skip()" id="skip">Skip</button>
+        <button class="ghost" onclick="planIt()" id="plan-btn"></button>
+      </div>
+      <div id="plan-box" class="card" style="margin-top:12px" hidden>
+        <h3>A plan for this session</h3>
+        <div id="plan" class="ft-plan"></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="cols">
+        <div class="kpi"><b id="k-min">0</b><span>minutes today</span></div>
+        <div class="kpi"><b id="k-ses">0</b><span>sessions today</span></div>
+        <div class="kpi"><b id="k-streak">0</b><span>day streak</span></div>
+      </div>
+      <div class="card" style="margin-top:12px">
+        <div class="spread"><h2>This week</h2><span class="muted" id="goal-note"></span></div>
+        <div class="ft-week" id="week"></div>
+      </div>
+      <div class="card">
+        <div class="spread"><h2>Today's sessions</h2>
+          <span class="row"><button class="ghost sm" onclick="review()" id="review-btn"></button>
+          <button class="ghost sm" onclick="shareDay()" id="share-btn"></button></span></div>
+        <div id="review-box" class="ft-plan" hidden></div>
+        <div class="list" id="log"></div>
+      </div>
+    </div>
+  </div>
+
+  <details class="card">
+    <summary><b>Settings</b> <span class="muted">session lengths and your daily goal</span></summary>
+    <div class="cols" style="margin-top:10px">
+      <div><label for="s-focus">Focus (minutes)</label><input id="s-focus" type="number" min="5" max="120"></div>
+      <div><label for="s-short">Short break</label><input id="s-short" type="number" min="1" max="30"></div>
+      <div><label for="s-long">Long break</label><input id="s-long" type="number" min="5" max="60"></div>
+      <div><label for="s-goal">Daily goal (minutes)</label><input id="s-goal" type="number" min="15" max="720"></div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <label class="toggle"><input type="checkbox" id="s-auto"><span></span> Start the break on its own</label>
+      <label class="toggle"><input type="checkbox" id="s-notify"><span></span> Desktop notification at the end</label>
+    </div>
+    <div class="row" style="margin-top:10px"><button class="ghost sm" onclick="saveSettings()">Save settings</button>
+      <button class="ghost sm danger" onclick="clearLog()">Clear the history</button></div>
+  </details>
+</div>
+
+<script>
+const MODES = {focus:'Focus', short:'Short break', long:'Long break'};
+const DEF = {settings:{focus:25, short:5, long:15, goal:120, auto:false, notify:true},
+             sessions:[], run:null, mode:'focus', round:0};
+let S = JSON.parse(JSON.stringify(DEF)), tick = 0;
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const ymd = d => { d = new Date(d); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); };
+const today = () => ymd(Date.now());
+
+async function save(){ await appData.set(S); }
+function lengthOf(m){ return Math.max(1, Number(S.settings[m] || DEF.settings[m])) * 60; }
+function left(){
+  if(!S.run) return S.paused != null ? S.paused : lengthOf(S.mode);
+  return Math.max(0, Math.round((S.run.ends - Date.now()) / 1000));
+}
+
+function paint(){
+  const l = left(), total = lengthOf(S.mode), t = appFmt.dur(l);
+  $('time').textContent = t; $('w-time').textContent = t;
+  $('clock').style.setProperty('--p', String(1 - l / total));
+  const label = MODES[S.mode] + (S.mode === 'focus' ? ' · session ' + (S.round + 1) : '');
+  $('mode-label').textContent = label; $('w-mode').textContent = MODES[S.mode];
+  const running = !!S.run;
+  $('go').innerHTML = appIcon(running ? 'pause' : 'play') + ' ' + (running ? 'Pause' : (S.paused != null ? 'Carry on' : 'Start ' + MODES[S.mode].toLowerCase()));
+  $('w-go').textContent = running ? 'Pause' : 'Start';
+  document.querySelectorAll('#modes button').forEach(b => b.classList.toggle('on', b.dataset.m === S.mode));
+  document.title = (running ? t + ' · ' : '') + 'Focus Sessions';
+}
+
+function stats(){
+  const day = today(), todays = S.sessions.filter(s => ymd(s.at) === day);
+  const mins = todays.reduce((a, s) => a + s.mins, 0);
+  $('k-min').textContent = appFmt.num(mins, 0); $('k-ses').textContent = todays.length;
+  $('w-today').textContent = appFmt.num(mins, 0) + ' of ' + S.settings.goal + ' min focused today';
+  // streak: days in a row, ending today or yesterday, with any focus
+  const days = new Set(S.sessions.map(s => ymd(s.at)));
+  let streak = 0, d = new Date();
+  if(!days.has(ymd(d))) d.setDate(d.getDate() - 1);
+  while(days.has(ymd(d))){ streak++; d.setDate(d.getDate() - 1); }
+  $('k-streak').textContent = streak;
+  $('goal-note').textContent = mins >= S.settings.goal ? 'goal met today' : (S.settings.goal - mins) + ' min to today\'s goal';
+  // the week
+  const week = [];
+  for(let i = 6; i >= 0; i--){ const x = new Date(); x.setDate(x.getDate() - i);
+    const k = ymd(x); week.push({k, label: x.toLocaleDateString(undefined, {weekday:'short'}),
+      mins: S.sessions.filter(s => ymd(s.at) === k).reduce((a, s) => a + s.mins, 0)}); }
+  const top = Math.max(S.settings.goal, ...week.map(w => w.mins));
+  $('week').innerHTML = week.map(w => `<div class="ft-bar ${w.k === day ? 'today' : ''}" title="${w.mins} min">
+      <span>${w.mins || ''}</span><i style="height:${Math.round(w.mins / top * 100)}%"></i><span>${esc(w.label)}</span></div>`).join('');
+  // the log
+  $('log').innerHTML = todays.length ? todays.slice().reverse().map(s => `<div class="item">
+      <span class="ft-ic">${appIcon('check')}</span>
+      <div class="grow"><div class="title">${esc(s.task || 'Focus session')}</div>
+        <div class="muted">${s.mins} min · ${new Date(s.at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div></div></div>`).join('')
+    : `<div class="empty"><b>No sessions yet today</b>Name what you're working on and press Start. A session is ${S.settings.focus} minutes.
+        <div class="row" style="margin-top:8px;justify-content:center"><button class="ghost sm" onclick="example()">Try it with an example</button></div></div>`;
+}
+
+function startTick(){
+  clearInterval(tick);
+  tick = setInterval(() => { paint(); if(S.run && left() <= 0) finish(); }, 500);
+}
+
+async function toggle(){
+  if(S.run){                                 // pause
+    S.paused = left(); S.run = null;
+  }else{                                     // start or carry on
+    const l = S.paused != null ? S.paused : lengthOf(S.mode);
+    S.run = {ends: Date.now() + l * 1000, task: $('task').value.trim()};
+    S.paused = null;
+  }
+  paint(); startTick(); await save();
+}
+
+async function reset(){ S.run = null; S.paused = null; paint(); await save(); }
+
+async function finish(){
+  const was = S.mode, task = (S.run && S.run.task) || $('task').value.trim();
+  S.run = null; S.paused = null;
+  if(was === 'focus'){
+    const before = todayMinutes();
+    S.sessions.push({task, mins: Number(S.settings.focus), at: Date.now()});
+    if(S.sessions.length > 2000) S.sessions = S.sessions.slice(-2000);
+    S.round++;
+    S.mode = S.round % 4 === 0 ? 'long' : 'short';
+    appToast('Session done. Time for a ' + MODES[S.mode].toLowerCase() + '.', 'ok');
+    if(before < S.settings.goal && todayMinutes() >= S.settings.goal){ appCelebrate(); appToast('Daily goal reached', 'ok'); }
+  }else{
+    S.mode = 'focus';
+    appToast('Break over. Ready when you are.', 'info');
+  }
+  if(S.settings.notify){
+    try{ await appTool('notify', {title: 'Focus Sessions', message: was === 'focus' ? 'Session done: take a break.' : 'Break over: back to it.'}); }catch(e){}
+  }
+  if(S.settings.auto && was === 'focus') S.run = {ends: Date.now() + lengthOf(S.mode) * 1000, task: ''};
+  paint(); stats(); await save();
+}
+
+async function skip(){
+  if(!(await appConfirm('Skip to the next part without counting this one?'))) return;
+  S.run = null; S.paused = null;
+  S.mode = S.mode === 'focus' ? 'short' : 'focus';
+  paint(); await save();
+}
+
+function todayMinutes(){ const d = today(); return S.sessions.filter(s => ymd(s.at) === d).reduce((a, s) => a + s.mins, 0); }
+
+async function setMode(m){
+  if(S.run && !(await appConfirm('A session is running. Switch anyway?'))) return;
+  S.mode = m; S.run = null; S.paused = null; paint(); await save();
+}
+
+async function planIt(){
+  const task = $('task').value.trim();
+  if(!task){ appToast('Say what you are working on first', 'info'); $('task').focus(); return; }
+  $('plan-box').hidden = false;
+  const box = $('plan'); box.innerHTML = '<span class="spin"></span>';
+  const out = await appLLM.stream(
+    `I have one ${S.settings.focus}-minute focus session for: "${task}". Give me three small, concrete steps that fit in it, ` +
+    `as a numbered list with roughly how many minutes each, then one line on what "done" looks like. No preamble.`,
+    {system: 'You are a calm, practical focus coach. Short sentences.', onDelta: (_, all) => { box.textContent = all; }});
+  if(out.startsWith('[error]')) box.innerHTML = '<span class="err">The AI could not answer: ' + esc(out.slice(8)) + '</span>';
+}
+
+async function review(){
+  const box = $('review-box'); box.hidden = false;
+  const week = S.sessions.filter(s => s.at > Date.now() - 7 * 864e5);
+  if(!week.length){ box.textContent = 'Nothing to look back on yet: finish a session first.'; return; }
+  box.innerHTML = '<span class="spin"></span>';
+  const lines = week.map(s => ymd(s.at) + ' ' + s.mins + 'min ' + (s.task || '(untitled)')).join('\n');
+  const out = await appLLM.stream('Here are my focus sessions from the last 7 days:\n' + lines +
+    `\nMy daily goal is ${S.settings.goal} minutes. In four short bullet points: where my time went, my best day, ` +
+    'a pattern you notice, and one suggestion for tomorrow.', {onDelta: (_, all) => { box.textContent = all; }});
+  if(out.startsWith('[error]')) box.innerHTML = '<span class="err">The AI could not answer: ' + esc(out.slice(8)) + '</span>';
+}
+
+function shareDay(){
+  const d = today(), todays = S.sessions.filter(s => ymd(s.at) === d);
+  if(!todays.length){ appToast('No sessions to share yet today', 'info'); return; }
+  const by = {};
+  todays.forEach(s => { const k = s.task || 'Focus'; by[k] = (by[k] || 0) + s.mins; });
+  appShare({title: 'Focus today: ' + todayMinutes() + ' minutes in ' + todays.length + ' sessions',
+            text: Object.entries(by).map(([k, v]) => '• ' + k + ': ' + v + ' min').join('\n')});
+}
+
+async function saveSettings(){
+  const n = (id, lo, hi, d) => { const v = parseInt($(id).value, 10); return isNaN(v) ? d : Math.min(hi, Math.max(lo, v)); };
+  S.settings = {focus: n('s-focus', 5, 120, 25), short: n('s-short', 1, 30, 5), long: n('s-long', 5, 60, 15),
+                goal: n('s-goal', 15, 720, 120), auto: $('s-auto').checked, notify: $('s-notify').checked};
+  if(!S.run) S.paused = null;
+  paint(); stats(); await save(); appToast('Settings saved', 'ok');
+}
+
+function fillSettings(){
+  $('s-focus').value = S.settings.focus; $('s-short').value = S.settings.short; $('s-long').value = S.settings.long;
+  $('s-goal').value = S.settings.goal; $('s-auto').checked = !!S.settings.auto; $('s-notify').checked = S.settings.notify !== false;
+}
+
+async function clearLog(){
+  if(!(await appConfirm('Delete every recorded session? This can\'t be undone.', {danger: true, ok: 'Delete'}))) return;
+  S.sessions = []; S.round = 0; stats(); await save(); appToast('History cleared', 'ok');
+}
+
+async function example(){
+  const tasks = ['Draft the quarterly update', 'Inbox to zero', 'Review the design doc', 'Write tests for checkout', 'Plan next week'];
+  const now = Date.now();
+  for(let day = 6; day >= 0; day--){
+    const n = day === 0 ? 2 : 2 + (day * 3) % 4;
+    for(let i = 0; i < n; i++) S.sessions.push({task: tasks[(day + i) % tasks.length], mins: 25, at: now - day * 864e5 - (n - i) * 40 * 6e4});
+  }
+  stats(); await save(); appToast('Added a week of example sessions', 'ok');
+}
+
+document.querySelectorAll('#modes button').forEach(b => b.addEventListener('click', () => setMode(b.dataset.m)));
+$('task').addEventListener('keydown', e => { if(e.key === 'Enter' && !S.run) toggle(); });
+document.addEventListener('keydown', e => {
+  if(e.key === ' ' && !/INPUT|TEXTAREA|SELECT|BUTTON/.test(document.activeElement.tagName)){ e.preventDefault(); toggle(); }
+});
+$('reset').innerHTML = appIcon('refresh') + ' Reset';
+$('plan-btn').innerHTML = appIcon('sparkle') + ' Plan this session';
+$('review-btn').innerHTML = appIcon('chart') + ' Look back';
+$('share-btn').innerHTML = appIcon('share') + ' Share';
+
+(async () => {
+  const got = await appData.get();
+  if(got && typeof got === 'object' && got.settings) S = Object.assign(JSON.parse(JSON.stringify(DEF)), got);
+  if(S.run && S.run.task) $('task').value = S.run.task;
+  fillSettings();
+  if(S.run && left() <= 0) await finish();
+  paint(); stats(); startTick();
+  if(appSurface.desktop) $('task').focus();
+  if(appSurface.desktop) appCopilot.mount({starters: ['How much did I focus this week?', 'Plan three sessions for tomorrow', 'Which task took most of my time?']});
+})();
+window.addEventListener('appdata', async () => { const got = await appData.get(); if(got && got.settings){ S = Object.assign(S, got); paint(); stats(); } });
+</script>

@@ -88,9 +88,47 @@ Every publish is a new version, numbers with dots like `1.2.0`. Versions only mo
 every version stays downloadable. The name in the address (`skill/meeting-notes`) belongs to
 whoever published it first.
 
+## Bento's own apps
+
+Five productivity apps are published as **bento**: Focus Sessions, Habit Tracker, Kanban Board,
+Meeting Notes and Daily Planner. Each has a widget view, keeps its data in the app's own store,
+has an AI feature (a session plan, a habit coach, tasks typed in plain words, meeting minutes,
+a drafted day) and the ✦ assistant. In the Store their listings carry a **Bento** mark.
+
+![Kanban Board: a task typed in plain words, a card broken into steps, and what to do next](screenshots/sample-kanban-board.png)
+
+Their source is in `agentos/sampleapps`, and their packages are in `registry/apps`, so you can
+also install one from the file through **Store → Import**. From a terminal:
+
+```
+bento studio samples          # what they are, and whether each passes the checks
+bento studio samples build    # rebuild the packages after changing an app
+```
+
+### Publishing them as bento
+
+The name **bento** is kept for the registry's admins (along with a few others that read as
+Bento itself), so only an admin's account can take it. On the machine that publishes:
+
+```
+bento registry login you@example.com
+bento registry handle bento
+bento registry register "Bento release machine"
+bento registry push app registry/apps/focus-sessions/focus-sessions.agentapp.json --version 1.0.0
+bento registry push app registry/apps/habit-tracker/habit-tracker.agentapp.json --version 1.0.0
+bento registry push app registry/apps/kanban-board/kanban-board.agentapp.json --version 1.0.0
+bento registry push app registry/apps/meeting-notes/meeting-notes.agentapp.json --version 1.0.0
+bento registry push app registry/apps/daily-planner/daily-planner.agentapp.json --version 1.0.0
+```
+
+Each push shows the report first and asks you to type `publish`. Without `--summary`, an app's
+listing takes the sample's own one line (any other app takes the first sentence of its
+description).
+
 ## What the registry checks
 
-The registry is a Supabase project (`packaging/registry-cloud`). Reading is open to anyone through
+The registry is a Supabase project. Its server code lives with the website, in the
+`bento-box-os-com` repo under `supabase/`; Bento holds only the client. Reading is open to anyone through
 row-level security. Every write that matters goes through one function, `publish`, which checks
 again, whatever the Bento said:
 
@@ -120,13 +158,9 @@ own home. From a terminal, `bento registry` acts as the machine's own home.
 
 ## Setting up the registry project
 
-These are one-time steps for whoever runs the registry, not for people using it.
+The migrations, the two functions and the one-time project settings are in the website repo
+(`bento-box-os-com`, `supabase/` and its README), with the people who run the registry. Nobody
+using Bento needs them.
 
-1. Apply `packaging/registry-cloud/migrations/*.sql` in order.
-2. Deploy `functions/publish` and `functions/download` with JWT verification off: `publish` checks
-   the session itself, and `download` is public.
-3. **Authentication → Email Templates → Magic Link**: include `{{ .Token }}` so the email carries
-   a code. Bento signs in with the code, because a headless machine can't open a link.
-4. **Authentication → SMTP**: set your own sender before launch. Supabase's built-in sender is
-   limited to a few emails an hour.
-5. Add your account's id to `public.admins` to see and unhide reported listings.
+An admin's account (in `public.admins`) can see and unhide reported listings, and is the only one
+that can take a reserved publisher name such as `bento`.

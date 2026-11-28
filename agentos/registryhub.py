@@ -1,6 +1,8 @@
 """The Bento Registry at bentoboxos.com: browse freely, publish signed in.
 
-The registry is a Supabase project (packaging/registry-cloud). Reading is open:
+The registry is a Supabase project; its server (migrations, the publish and
+download functions) lives in the website repo, bento-box-os-com, under
+supabase/. This module is only the client. Reading is open:
 the catalogue and the files are public, and a Bento that never signs in can
 still find and install things. Publishing needs three things, each checked by
 the registry's own `publish` function and never only here:
@@ -266,11 +268,20 @@ def _profile(token: str, user_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
+# Names that read as Bento itself, kept for the registry's admins by the project's
+# migration 003 (the same list; a test compares them). A listing under one of these
+# is Bento's own, which is what the Store's mark says.
+RESERVED = ("bento", "bentobox", "bentoboxos", "bento-ai", "bentoai", "bento-os",
+            "bento-team", "official", "registry", "admin", "support")
+OFFICIAL = "bento"
+
+
 def set_handle(handle: str) -> dict:
     """The publisher name shown on every listing. The email is never shown."""
     handle = (handle or "").strip().lower()
     if not HANDLE.fullmatch(handle):
         raise HubError("a publisher name is 3 to 32 lower case letters, digits and dashes")
+    # a reserved name is tried anyway: the registry decides, and lets its admins have it
     st = _read_state()
     tok = _token()
     try:
@@ -281,6 +292,8 @@ def set_handle(handle: str) -> dict:
     except HubError as e:
         if "duplicate" in str(e) or e.status == 409:
             raise HubError(f"'{handle}' is taken; try another") from None
+        if "kept for Bento" in str(e):
+            raise HubError(f"'{handle}' is kept for Bento's own listings; choose another name") from None
         raise
     st["handle"] = handle
     _write_state(st)
@@ -461,6 +474,10 @@ _PERSONAL = (
     ("a local machine name", re.compile(r"\b[A-Za-z0-9-]{2,}\.(local|lan|internal|home\.arpa)\b")),
     ("a web address carrying a key", re.compile(r"https?://[^\s\"']*[?&](key|token|sig|signature|secret|auth|code)=[^\s\"'&]{6,}", re.I)),
 )
+# What the phone rule matches that is not a phone number: a bare run of digits (every app
+# package's scan time is ten of them, and so is any timestamp) and a date written
+# 2026-12-04. A number someone would ring has a + or a space, dash, dot or bracket in it.
+_NOT_A_PHONE = re.compile(r"\d+|\d{4}-\d{2}-\d{2}")
 _HARMLESS_EMAIL = re.compile(r"@(example\.(com|org|net)|users\.noreply\.github\.com|anthropic\.com)$|^(noreply|no-reply)@", re.I)
 
 
@@ -488,6 +505,8 @@ def report(kind: str, text: str, pkg: dict | None = None) -> dict:
             for m in rx.finditer(ln):
                 hit = m.group(0)
                 if label == "an email address" and _HARMLESS_EMAIL.search(hit):
+                    continue
+                if label == "a phone number" and _NOT_A_PHONE.fullmatch(hit.strip()):
                     continue
                 warnings.append({"what": label, "line": i, "excerpt": _mask(hit)})
                 break

@@ -1,0 +1,248 @@
+<style>
+  .dp-bar{display:flex;height:26px;border-radius:9px;overflow:hidden;background:color-mix(in srgb,var(--tx) 6%,transparent);margin:6px 0 4px}
+  .dp-bar span{display:block;height:100%;min-width:2px}
+  .dp-bar .k-focus{background:var(--acc)} .dp-bar .k-meet{background:color-mix(in srgb,var(--acc2) 75%,#38bdf8)}
+  .dp-bar .k-admin{background:color-mix(in srgb,var(--warnc) 80%,transparent)} .dp-bar .k-break{background:color-mix(in srgb,var(--okc) 70%,transparent)}
+  .dp-bar .free{background:transparent}
+  .dp-bar .nowmark{background:var(--tx);min-width:2px;max-width:2px}
+  .dp-hours{display:flex;justify-content:space-between;font-size:10.5px;color:var(--mut)}
+  .dp-key{display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px;color:var(--mut);margin-top:6px}
+  .dp-key i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:4px;vertical-align:0}
+  .dp-blk{display:grid;grid-template-columns:150px minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 10px;border-radius:11px;
+    border:1px solid var(--ln);margin-bottom:6px;background:var(--s)}
+  .dp-blk.now{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 12%,var(--s))}
+  .dp-blk.past{opacity:.55}
+  .dp-blk .t{font-variant-numeric:tabular-nums;font-size:12.5px;color:var(--mut)}
+  .dp-blk .n{font-weight:620;overflow-wrap:anywhere}
+  .dp-blk button{padding:4px 8px}
+  .dp-blk svg,.dp-ic svg{width:14px;height:14px;vertical-align:-2px}
+  .dp-top{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:center;margin-bottom:6px}
+  .dp-top input[type=checkbox]{width:18px;height:18px}
+  .dp-top.done input[type=text]{text-decoration:line-through;opacity:.6}
+  .dp-draft{white-space:pre-wrap}
+  .dp-form{display:grid;grid-template-columns:150px 150px minmax(0,1fr) 130px auto;gap:6px;align-items:end}
+  .dp-w .n{font-weight:650}
+  @media (max-width:720px){ .dp-form{grid-template-columns:1fr 1fr} .dp-form .wide{grid-column:1/-1} .dp-blk{grid-template-columns:118px minmax(0,1fr)} .dp-blk .acts{grid-column:1/-1} }
+</style>
+
+<div class="widget-only">
+  <div class="dp-w">
+    <h3 id="w-day">Today</h3>
+    <div class="muted">Now</div><div class="n" id="w-now">Nothing planned</div>
+    <div class="muted" style="margin-top:6px">Next</div><div id="w-next">Nothing after this</div>
+  </div>
+</div>
+
+<div class="desktop-only">
+  <div class="hero">
+    <div><h1>Daily Planner</h1><div class="muted" id="sub">Give today a shape: three priorities, then time for each.</div></div>
+    <button onclick="draft()" id="draft-btn"></button>
+  </div>
+
+  <div class="grid2">
+    <div class="card accent">
+      <h2>Today's top three</h2>
+      <div id="tops"></div>
+      <p class="muted" style="margin:6px 0 0">If only these get done, today was a good day.</p>
+    </div>
+    <div class="card">
+      <div class="spread"><h2>The day at a glance</h2><span class="muted" id="free"></span></div>
+      <div class="dp-bar" id="bar"></div>
+      <div class="dp-hours" id="hours"></div>
+      <div class="dp-key"><span><i class="k-focus" style="background:var(--acc)"></i>focus</span>
+        <span><i style="background:color-mix(in srgb,var(--acc2) 75%,#38bdf8)"></i>meeting</span>
+        <span><i style="background:color-mix(in srgb,var(--warnc) 80%,transparent)"></i>admin</span>
+        <span><i style="background:color-mix(in srgb,var(--okc) 70%,transparent)"></i>break</span></div>
+    </div>
+  </div>
+
+  <div class="card" id="draft-card" hidden>
+    <div class="spread"><h2>A draft for today</h2>
+      <span class="row"><button class="sm" onclick="keepDraft()" id="keep-btn">Use this plan</button><button class="ghost sm" onclick="dropDraft()">Not this one</button></span></div>
+    <label for="constraints">Anything fixed today? (optional)</label>
+    <div class="row"><input id="constraints" maxlength="300" placeholder="e.g. Standup at 9:30, lunch with Sam at 1, leave by 5:30">
+      <button class="ghost sm" onclick="draft()">Draft again</button></div>
+    <div id="draft" class="list" style="margin-top:10px"></div>
+  </div>
+
+  <div class="card">
+    <div class="spread"><h2>Time blocks</h2>
+      <span class="row"><button class="ghost sm" onclick="carry()" id="carry-btn"></button><button class="ghost sm" onclick="share()" id="share-btn"></button></span></div>
+    <div class="dp-form">
+      <div><label for="b-from">From</label><input id="b-from" type="time" step="900"></div>
+      <div><label for="b-to">To</label><input id="b-to" type="time" step="900"></div>
+      <div class="wide"><label for="b-name">What</label><input id="b-name" maxlength="120" placeholder="e.g. Write the proposal"></div>
+      <div><label for="b-kind">Kind</label><select id="b-kind"><option value="focus">Focus</option><option value="meet">Meeting</option><option value="admin">Admin</option><option value="break">Break</option></select></div>
+      <div><button onclick="addBlock()" id="add-btn">Add</button></div>
+    </div>
+    <div id="blocks" style="margin-top:12px"></div>
+  </div>
+
+  <div class="card">
+    <div class="spread"><h2>End of the day</h2><button class="ghost sm" onclick="lookBack()" id="look-btn"></button></div>
+    <div id="look" class="dp-draft muted">At the end of the day, the AI reads what you planned and what you ticked off, and writes three lines for tomorrow.</div>
+  </div>
+</div>
+
+<script>
+const DAY_START = 7 * 60, DAY_END = 21 * 60;
+const KIND = {focus:'Focus', meet:'Meeting', admin:'Admin', break:'Break'};
+let S = {days: {}}, pending = null;
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid = () => Math.random().toString(36).slice(2, 10);
+const ymd = d => { d = new Date(d); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); };
+const TODAY = () => ymd(new Date());
+const mins = t => { const m = /^(\d{1,2}):(\d{2})$/.exec(t || ''); return m ? Number(m[1]) * 60 + Number(m[2]) : NaN; };
+const hhmm = n => String(Math.floor(n / 60)).padStart(2, '0') + ':' + String(n % 60).padStart(2, '0');
+const label = n => new Date(2000, 0, 1, Math.floor(n / 60), n % 60).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
+const nowMin = () => { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); };
+
+function day(){ const k = TODAY(); if(!S.days[k]) S.days[k] = {tops: [{t:'',d:false},{t:'',d:false},{t:'',d:false}], blocks: []}; return S.days[k]; }
+async function save(){
+  // keep two months of days
+  const keep = Object.keys(S.days).sort().slice(-60); const next = {}; keep.forEach(k => next[k] = S.days[k]); S.days = next;
+  await appData.set(S);
+}
+
+function paint(){
+  const D = day(), now = nowMin();
+  $('sub').textContent = new Date().toLocaleDateString(undefined, {weekday:'long', month:'long', day:'numeric'}) + '. Three priorities, then time for each.';
+  $('w-day').textContent = new Date().toLocaleDateString(undefined, {weekday:'long'});
+  // top three
+  $('tops').innerHTML = D.tops.map((p, i) => `<div class="dp-top ${p.d ? 'done' : ''}">
+      <input type="checkbox" ${p.d ? 'checked' : ''} ${p.t ? '' : 'disabled'} aria-label="done" onchange="topDone(${i},this.checked)">
+      <input type="text" value="${esc(p.t)}" maxlength="120" placeholder="${['The one that matters most', 'Second', 'Third'][i]}" onchange="topText(${i},this.value)">
+      <button class="ghost sm" title="Plan time for it" onclick="planTop(${i})" ${p.t ? '' : 'disabled'}>${appIcon('clock')}</button></div>`).join('');
+  // blocks
+  const bl = D.blocks.slice().sort((a, b) => a.from - b.from);
+  $('blocks').innerHTML = bl.length ? bl.map(b => { const st = now >= b.to ? 'past' : now >= b.from ? 'now' : '';
+    return `<div class="dp-blk ${st}">
+      <span class="t">${label(b.from)}–${label(b.to)}</span>
+      <div><div class="n">${esc(b.name)}</div><div class="muted">${KIND[b.kind] || ''}${st === 'now' ? ' · now, ' + (b.to - now) + ' min left' : ''}</div></div>
+      <span class="acts"><button class="ghost sm" title="Edit" onclick="editBlock('${b.id}')">${appIcon('edit')}</button>
+        <button class="ghost sm" title="Remove" onclick="dropBlock('${b.id}')">${appIcon('x')}</button></span></div>`; }).join('')
+    : `<div class="empty"><b>No time blocks yet</b>Add one above, or write your top three and press Draft my day.
+        <div class="row" style="margin-top:8px;justify-content:center"><button class="ghost sm" onclick="example()">Try it with an example</button></div></div>`;
+  // the bar
+  const segs = []; let at = DAY_START;
+  bl.forEach(b => { const f = Math.max(DAY_START, b.from), t = Math.min(DAY_END, b.to);
+    if(t <= at) return; if(f > at) segs.push({w: f - at, c: 'free'}); segs.push({w: t - Math.max(f, at), c: 'k-' + b.kind, n: b.name}); at = t; });
+  if(at < DAY_END) segs.push({w: DAY_END - at, c: 'free'});
+  // a thin line for now, inside whichever segment it falls in
+  const out = []; let pos = DAY_START;
+  segs.forEach(s => { if(now > pos && now < pos + s.w){ out.push({w: now - pos, c: s.c, n: s.n}, {w: 0, c: 'nowmark', n: 'now'}, {w: pos + s.w - now, c: s.c, n: s.n}); }
+    else out.push(s); pos += s.w; });
+  $('bar').innerHTML = out.map(s => `<span class="${s.c}" style="flex:${s.w} 0 0" title="${esc(s.n || 'free')}"></span>`).join('');
+  $('hours').innerHTML = [7, 10, 13, 16, 19, 21].map(h => `<span>${label(h * 60)}</span>`).join('');
+  const used = bl.reduce((a, b) => a + Math.max(0, Math.min(DAY_END, b.to) - Math.max(DAY_START, b.from)), 0);
+  $('free').textContent = appFmt.num((DAY_END - DAY_START - used) / 60, 1) + ' h unplanned';
+  // widget
+  const cur = bl.find(b => now >= b.from && now < b.to), next = bl.find(b => b.from >= now && b !== cur);
+  $('w-now').textContent = cur ? cur.name + ', until ' + label(cur.to) : 'Nothing planned right now';
+  $('w-next').textContent = next ? label(next.from) + ' ' + next.name : 'Nothing after this';
+}
+
+async function topText(i, v){ const D = day(); D.tops[i].t = v.trim(); if(!D.tops[i].t) D.tops[i].d = false; paint(); await save(); }
+async function topDone(i, v){
+  const D = day(); D.tops[i].d = v; paint(); await save();
+  if(v && D.tops.filter(p => p.t).every(p => p.d)){ appCelebrate(); appToast('All three done. Good day.', 'ok'); }
+}
+function planTop(i){ const D = day(); $('b-name').value = D.tops[i].t; $('b-kind').value = 'focus';
+  const start = Math.max(DAY_START, Math.ceil(nowMin() / 15) * 15); $('b-from').value = hhmm(start); $('b-to').value = hhmm(Math.min(DAY_END, start + 90)); $('b-name').focus(); }
+
+async function addBlock(){
+  const f = mins($('b-from').value), t = mins($('b-to').value), n = $('b-name').value.trim();
+  if(!n){ $('b-name').focus(); return; }
+  if(isNaN(f) || isNaN(t) || t <= f){ appToast('Pick a start and an end after it', 'err'); return; }
+  const D = day();
+  const clash = D.blocks.find(b => b.from < t && f < b.to);
+  if(clash && !(await appConfirm('That overlaps "' + clash.name + '". Add it anyway?'))) return;
+  D.blocks.push({id: uid(), from: f, to: t, name: n, kind: $('b-kind').value});
+  $('b-name').value = ''; $('b-from').value = hhmm(t); $('b-to').value = hhmm(Math.min(DAY_END, t + 60));
+  paint(); await save(); appToast('Added ' + n, 'ok');
+}
+function editBlock(id){ const b = day().blocks.find(x => x.id === id); if(!b) return;
+  $('b-from').value = hhmm(b.from); $('b-to').value = hhmm(b.to); $('b-name').value = b.name; $('b-kind').value = b.kind;
+  day().blocks = day().blocks.filter(x => x !== b); paint(); $('b-name').focus(); appToast('Change it and press Add', 'info'); }
+async function dropBlock(id){ const D = day(); D.blocks = D.blocks.filter(b => b.id !== id); paint(); await save(); }
+
+async function draft(){
+  const D = day(), tops = D.tops.map(p => p.t).filter(Boolean);
+  if(!tops.length){ appToast('Write at least one priority first', 'info'); document.querySelector('.dp-top input[type=text]').focus(); return; }
+  $('draft-card').hidden = false;
+  const box = $('draft'); box.innerHTML = '<div class="muted"><span class="spin"></span> Drafting your day…</div>';
+  const start = Math.max(DAY_START, Math.ceil(nowMin() / 15) * 15);
+  const out = await appLLM('Priorities, most important first:\n' + tops.map((t, i) => (i + 1) + '. ' + t).join('\n') +
+    '\nFixed things today: ' + ($('constraints').value.trim() || 'none') +
+    '\nAlready planned: ' + (D.blocks.map(b => hhmm(b.from) + '-' + hhmm(b.to) + ' ' + b.name).join('; ') || 'nothing') +
+    '\nPlan from ' + hhmm(start) + ' to ' + hhmm(Math.min(DAY_END, Math.max(start + 120, 18 * 60))) + '.',
+    'You plan a realistic workday. Put the hardest priority in the first long block, add a lunch break and short breaks, keep fixed things where they are, ' +
+    'and do not repeat what is already planned. Reply with JSON only: [{"from":"HH:MM","to":"HH:MM","name":"...","kind":"focus|meet|admin|break"}].');
+  if(out.startsWith('[error]')){ box.innerHTML = '<div class="err">The AI could not draft a plan: ' + esc(out.slice(8)) + '</div>'; return; }
+  let got = null; const j = out.match(/\[[\s\S]*\]/); try{ got = j ? JSON.parse(j[0]) : null; }catch(e){}
+  pending = Array.isArray(got) ? got.map(b => ({id: uid(), from: mins(b.from), to: mins(b.to), name: String(b.name || '').slice(0, 120),
+    kind: KIND[b.kind] ? b.kind : 'focus'})).filter(b => !isNaN(b.from) && !isNaN(b.to) && b.to > b.from && b.name).slice(0, 16) : null;
+  if(!pending || !pending.length){ box.innerHTML = '<div class="err">The AI did not give a usable plan this time. Try Draft again.</div>'; pending = null; return; }
+  box.innerHTML = pending.map(b => `<div class="item"><span class="dp-ic">${appIcon(b.kind === 'break' ? 'heart' : b.kind === 'meet' ? 'user' : 'clock')}</span>
+    <div class="grow"><div class="title">${esc(b.name)}</div><div class="muted">${label(b.from)}–${label(b.to)} · ${KIND[b.kind]}</div></div></div>`).join('');
+}
+async function keepDraft(){
+  if(!pending) return; const D = day(); D.blocks = D.blocks.concat(pending); pending = null;
+  $('draft-card').hidden = true; paint(); await save(); appToast('Plan added to today', 'ok');
+}
+function dropDraft(){ pending = null; $('draft-card').hidden = true; }
+
+async function carry(){
+  const D = day(), left = D.tops.filter(p => p.t && !p.d);
+  if(!left.length){ appToast('Nothing unfinished to carry over', 'info'); return; }
+  const t = new Date(); t.setDate(t.getDate() + 1); const k = ymd(t);
+  const T = S.days[k] || (S.days[k] = {tops: [{t:'',d:false},{t:'',d:false},{t:'',d:false}], blocks: []});
+  let n = 0;
+  left.forEach(p => { const slot = T.tops.find(x => !x.t); if(slot && !T.tops.some(x => x.t === p.t)){ slot.t = p.t; n++; } });
+  await save(); appToast(n ? 'Carried ' + n + ' to tomorrow' : 'Tomorrow is already full', n ? 'ok' : 'info');
+}
+
+async function lookBack(){
+  const D = day(), box = $('look');
+  if(!D.blocks.length && !D.tops.some(p => p.t)){ box.textContent = 'Plan something first, then look back on it later.'; return; }
+  box.classList.remove('muted'); box.innerHTML = '<span class="spin"></span>';
+  const out = await appLLM.stream('Top three today: ' + (D.tops.filter(p => p.t).map(p => p.t + (p.d ? ' (done)' : ' (not done)')).join('; ') || 'none') +
+    '\nTime blocks: ' + (D.blocks.slice().sort((a, b) => a.from - b.from).map(b => hhmm(b.from) + '-' + hhmm(b.to) + ' ' + b.name).join('; ') || 'none') +
+    '\nIn three short lines: what went well, what slipped and why it might have, and the one thing to put first tomorrow.',
+    {system: 'You are a kind, practical planner. No headings.', onDelta: (_, all) => { box.textContent = all; }});
+  if(out.startsWith('[error]')) box.innerHTML = '<span class="err">The AI could not answer: ' + esc(out.slice(8)) + '</span>';
+}
+
+function share(){
+  const D = day(), bl = D.blocks.slice().sort((a, b) => a.from - b.from);
+  appShare({title: 'My plan for ' + new Date().toLocaleDateString(undefined, {weekday:'long'}),
+    text: (D.tops.filter(p => p.t).length ? 'Top three:\n' + D.tops.filter(p => p.t).map((p, i) => (i + 1) + '. ' + p.t + (p.d ? ' (done)' : '')).join('\n') + '\n\n' : '') +
+      (bl.map(b => label(b.from) + '–' + label(b.to) + '  ' + b.name).join('\n') || 'No blocks yet.')});
+}
+
+async function example(){
+  const D = day();
+  D.tops = [{t: 'Finish the proposal draft', d: false}, {t: 'Reply to the three client emails', d: false}, {t: 'Plan next week\'s sprint', d: false}];
+  D.blocks = [[540, 570, 'Standup', 'meet'], [570, 690, 'Finish the proposal draft', 'focus'], [690, 705, 'Walk', 'break'],
+    [705, 750, 'Client emails', 'admin'], [750, 810, 'Lunch', 'break'], [810, 900, 'Sprint planning', 'meet'], [915, 1005, 'Proposal: tidy and send', 'focus']]
+    .map(([from, to, name, kind]) => ({id: uid(), from, to, name, kind}));
+  paint(); await save(); appToast('Here is an example day', 'ok');
+}
+
+$('draft-btn').innerHTML = appIcon('sparkle') + ' Draft my day';
+$('carry-btn').innerHTML = appIcon('calendar') + ' Carry to tomorrow';
+$('share-btn').innerHTML = appIcon('share') + ' Share';
+$('look-btn').innerHTML = appIcon('sparkle') + ' Look back on today';
+$('b-name').addEventListener('keydown', e => { if(e.key === 'Enter') addBlock(); });
+(() => { const s = Math.max(DAY_START, Math.ceil(nowMin() / 15) * 15); $('b-from').value = hhmm(Math.min(s, DAY_END - 60)); $('b-to').value = hhmm(Math.min(DAY_END, s + 60)); })();
+
+(async () => {
+  const got = await appData.get();
+  if(got && got.days && typeof got.days === 'object') S = got;
+  paint();
+  if(appSurface.desktop) appCopilot.mount({starters: ['What is next on my plan?', 'Move my afternoon focus block to 4pm', 'How much free time do I have today?']});
+})();
+window.addEventListener('appdata', async () => { const got = await appData.get(); if(got && got.days){ S = got; paint(); } });
+setInterval(paint, 60000);
+</script>

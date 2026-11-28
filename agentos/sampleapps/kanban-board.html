@@ -1,0 +1,278 @@
+<style>
+  .kb-cols{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:start}
+  .kb-col{background:color-mix(in srgb,var(--tx) 4%,transparent);border:1px solid var(--ln);border-radius:var(--rad);padding:10px;min-height:160px}
+  .kb-col.over{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 10%,transparent)}
+  .kb-col h2{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+  .kb-card{background:var(--s2);border:1px solid var(--ln);border-radius:11px;padding:9px 10px;margin-bottom:8px;cursor:grab}
+  .kb-card:focus-visible{outline:2px solid var(--acc)}
+  .kb-card.dragging{opacity:.45}
+  .kb-card .title{font-weight:620;overflow-wrap:anywhere}
+  .kb-card .meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px;font-size:11.5px;color:var(--mut)}
+  .kb-card .acts{display:flex;gap:4px;margin-top:6px;flex-wrap:wrap}
+  .kb-card .acts button{padding:3px 7px}
+  .kb-card .acts svg,.kb-ic svg{width:13px;height:13px;vertical-align:-2px}
+  .kb-note{font-size:12.5px;color:var(--mut);margin-top:4px;white-space:pre-wrap;overflow-wrap:anywhere}
+  .kb-due.late{color:var(--errc)}
+  .kb-p-high{border-left:3px solid var(--errc)} .kb-p-med{border-left:3px solid var(--warnc)}
+  .kb-add input{font-size:13px}
+  .kb-edit .grid2{gap:8px}
+  .kb-w .row{gap:8px}
+  @media (max-width:720px){ .kb-cols{grid-template-columns:1fr} }
+</style>
+
+<div class="widget-only">
+  <div class="kb-w">
+    <h3>Board</h3>
+    <div class="row"><div class="kpi"><b id="w-todo">0</b><span>to do</span></div>
+      <div class="kpi"><b id="w-doing">0</b><span>doing</span></div>
+      <div class="kpi"><b id="w-done">0</b><span>done</span></div></div>
+    <div class="muted" id="w-now" style="margin-top:6px"></div>
+  </div>
+</div>
+
+<div class="desktop-only">
+  <div class="hero">
+    <div><h1>Kanban Board</h1><div class="muted">To do, doing, done. Type a task the way you'd say it.</div></div>
+    <button onclick="$('quick').focus()" id="new-btn"></button>
+  </div>
+
+  <div class="card accent">
+    <label for="quick">Add a task in plain words</label>
+    <div class="row">
+      <input id="quick" maxlength="300" placeholder="e.g. Send Sam the invoice by Friday, it's urgent">
+      <button onclick="quickAdd()" id="quick-btn">Add</button>
+    </div>
+    <div class="muted" id="quick-note" style="margin-top:6px">The AI reads the date and how urgent it is. Without AI the words become the title.</div>
+  </div>
+
+  <div class="row spread" style="margin:4px 0 10px">
+    <div class="row">
+      <input id="find" placeholder="Filter cards" style="max-width:240px">
+      <label class="toggle"><input type="checkbox" id="mine-late"><span></span> Only overdue</label>
+    </div>
+    <div class="row"><span class="muted">Doing limit</span>
+      <select id="wip" style="width:auto"><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="0">none</option></select>
+      <button class="ghost sm" onclick="clearDone()" id="clear-btn"></button>
+      <button class="ghost sm" onclick="share()" id="share-btn"></button></div>
+  </div>
+
+  <div class="kb-cols" id="board"></div>
+
+  <div class="card" style="margin-top:14px">
+    <div class="spread"><h2>What should I do next?</h2><button class="ghost sm" onclick="whatNext()" id="next-btn"></button></div>
+    <div id="next" class="kb-note">Asks the AI to read the board, weigh what is overdue and urgent, and pick your next one or two cards.</div>
+  </div>
+</div>
+
+<script>
+const COLS = [['todo', 'To do'], ['doing', 'Doing'], ['done', 'Done']];
+let S = {cards: [], wip: 3}, editing = '', dragId = '';
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid = () => Math.random().toString(36).slice(2, 10);
+const ymd = d => { d = new Date(d); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); };
+const TODAY = () => ymd(new Date());
+const late = c => c.due && c.col !== 'done' && c.due < TODAY();
+
+async function save(){ await appData.set(S); }
+
+function dueWords(due){
+  if(!due) return '';
+  const d = new Date(due + 'T12:00'), days = Math.round((d - new Date(TODAY() + 'T12:00')) / 864e5);
+  if(days === 0) return 'due today';
+  if(days === 1) return 'due tomorrow';
+  if(days === -1) return 'was due yesterday';
+  if(days < 0) return 'was due ' + appFmt.date(d.getTime());
+  return 'due ' + (days < 7 ? d.toLocaleDateString(undefined, {weekday:'long'}) : appFmt.date(d.getTime()));
+}
+
+function cardHTML(c){
+  const i = COLS.findIndex(x => x[0] === c.col);
+  if(c.id === editing) return `<div class="kb-card kb-edit" data-id="${c.id}">
+      <label>Title</label><input id="e-title" value="${esc(c.title)}" maxlength="140">
+      <label>Notes</label><textarea id="e-note" rows="3">${esc(c.note || '')}</textarea>
+      <div class="grid2"><div><label>Due</label><input id="e-due" type="date" value="${esc(c.due || '')}"></div>
+        <div><label>Priority</label><select id="e-pri">${['low','med','high'].map(p => `<option value="${p}" ${c.pri === p ? 'selected' : ''}>${{low:'Normal',med:'Soon',high:'Urgent'}[p]}</option>`).join('')}</select></div></div>
+      <div class="row" style="margin-top:8px"><button class="sm" onclick="saveEdit('${c.id}')">Save</button>
+        <button class="ghost sm" onclick="editing='';paint()">Cancel</button>
+        <button class="ghost sm danger" onclick="remove('${c.id}')">${appIcon('trash')} Delete</button></div></div>`;
+  return `<div class="kb-card ${c.pri === 'high' ? 'kb-p-high' : c.pri === 'med' ? 'kb-p-med' : ''}" draggable="true" tabindex="0" data-id="${c.id}">
+    <div class="title">${esc(c.title)}</div>
+    ${c.note ? `<div class="kb-note">${esc(c.note)}</div>` : ''}
+    <div class="meta">${c.pri === 'high' ? '<span class="badge err">urgent</span>' : c.pri === 'med' ? '<span class="badge warn">soon</span>' : ''}
+      ${c.due ? `<span class="kb-due ${late(c) ? 'late' : ''}">${esc(dueWords(c.due))}</span>` : ''}
+      ${c.from ? `<span>from “${esc(c.from)}”</span>` : ''}</div>
+    <div class="acts">
+      ${i > 0 ? `<button class="ghost sm" title="Move left" onclick="move('${c.id}',-1)">←</button>` : ''}
+      ${i < 2 ? `<button class="ghost sm" title="Move right" onclick="move('${c.id}',1)">→</button>` : ''}
+      <button class="ghost sm" title="Edit" onclick="editing='${c.id}';paint()">${appIcon('edit')}</button>
+      ${c.col !== 'done' ? `<button class="ghost sm" title="Break into steps" onclick="breakDown('${c.id}',this)">${appIcon('sparkle')} Steps</button>` : ''}
+    </div></div>`;
+}
+
+function paint(){
+  const q = ($('find').value || '').toLowerCase(), onlyLate = $('mine-late').checked;
+  const show = c => (!q || (c.title + ' ' + (c.note || '')).toLowerCase().includes(q)) && (!onlyLate || late(c));
+  $('board').innerHTML = COLS.map(([k, label]) => {
+    const all = S.cards.filter(c => c.col === k), cards = all.filter(show);
+    const over = k === 'doing' && S.wip && all.length > S.wip;
+    return `<div class="kb-col" data-col="${k}">
+      <h2><span>${label} <span class="muted">${all.length}</span></span>${over ? '<span class="badge warn">over the limit</span>' : ''}</h2>
+      ${cards.map(cardHTML).join('') || `<div class="empty">${k === 'todo' ? '<b>Nothing to do</b>Add a task above, or <a href="#" onclick="example();return false">try an example board</a>.'
+        : k === 'doing' ? 'Drag a card here when you start it.' : 'Finished cards land here.'}</div>`}
+      ${k === 'todo' ? `<div class="row kb-add"><input placeholder="Quick card" data-add="todo" maxlength="140"></div>` : ''}
+    </div>`; }).join('');
+  wire();
+  const n = k => S.cards.filter(c => c.col === k).length;
+  $('w-todo').textContent = n('todo'); $('w-doing').textContent = n('doing'); $('w-done').textContent = n('done');
+  const now = S.cards.find(c => c.col === 'doing') || S.cards.find(c => c.col === 'todo');
+  $('w-now').textContent = now ? (now.col === 'doing' ? 'Now: ' : 'Next: ') + now.title : 'The board is empty.';
+}
+
+function wire(){
+  document.querySelectorAll('.kb-card[draggable]').forEach(el => {
+    el.addEventListener('dragstart', e => { dragId = el.dataset.id; el.classList.add('dragging'); e.dataTransfer.setData('text/plain', dragId); });
+    el.addEventListener('dragend', () => el.classList.remove('dragging'));
+    el.addEventListener('keydown', e => {
+      if(e.key === 'ArrowRight') move(el.dataset.id, 1); if(e.key === 'ArrowLeft') move(el.dataset.id, -1);
+      if(e.key === 'Enter'){ editing = el.dataset.id; paint(); }
+    });
+  });
+  document.querySelectorAll('.kb-col').forEach(col => {
+    col.addEventListener('dragover', e => { e.preventDefault(); col.classList.add('over'); });
+    col.addEventListener('dragleave', () => col.classList.remove('over'));
+    col.addEventListener('drop', e => { e.preventDefault(); col.classList.remove('over');
+      const id = e.dataTransfer.getData('text/plain') || dragId; place(id, col.dataset.col); });
+  });
+  document.querySelectorAll('[data-add]').forEach(inp => inp.addEventListener('keydown', async e => {
+    if(e.key !== 'Enter' || !inp.value.trim()) return;
+    S.cards.push({id: uid(), title: inp.value.trim(), col: 'todo', pri: 'low', at: Date.now()});
+    paint(); await save(); const again = document.querySelector('[data-add]'); if(again) again.focus();
+  }));
+  if(editing){ const t = $('e-title'); if(t){ t.focus(); t.addEventListener('keydown', e => { if(e.key === 'Enter') saveEdit(editing); if(e.key === 'Escape'){ editing = ''; paint(); } }); } }
+}
+
+async function place(id, col){
+  const c = S.cards.find(x => x.id === id); if(!c || c.col === col) return;
+  const wasDoneAll = S.cards.length && S.cards.every(x => x.col === 'done');
+  c.col = col; c.moved = Date.now();
+  S.cards = S.cards.filter(x => x !== c).concat(c);
+  if(col === 'doing' && S.wip && S.cards.filter(x => x.col === 'doing').length > S.wip)
+    appToast('That is more than ' + S.wip + ' things at once. Finishing one first is usually faster.', 'info');
+  if(col === 'done'){ appToast('Done: ' + c.title, 'ok');
+    if(!wasDoneAll && S.cards.every(x => x.col === 'done')) appCelebrate(); }
+  paint(); await save();
+}
+function move(id, dir){ const c = S.cards.find(x => x.id === id); if(!c) return;
+  const i = COLS.findIndex(x => x[0] === c.col) + dir; if(i < 0 || i > 2) return; place(id, COLS[i][0]); }
+
+async function saveEdit(id){
+  const c = S.cards.find(x => x.id === id); if(!c) return;
+  const t = $('e-title').value.trim(); if(!t){ $('e-title').focus(); return; }
+  c.title = t; c.note = $('e-note').value.trim(); c.due = $('e-due').value || ''; c.pri = $('e-pri').value;
+  editing = ''; paint(); await save(); appToast('Saved', 'ok');
+}
+async function remove(id){
+  const c = S.cards.find(x => x.id === id); if(!c) return;
+  if(!(await appConfirm('Delete "' + c.title + '"?', {danger: true, ok: 'Delete'}))) return;
+  S.cards = S.cards.filter(x => x.id !== id); editing = ''; paint(); await save();
+}
+async function clearDone(){
+  const n = S.cards.filter(c => c.col === 'done').length;
+  if(!n){ appToast('Nothing in Done yet', 'info'); return; }
+  if(!(await appConfirm('Clear ' + n + ' finished card' + (n === 1 ? '' : 's') + '?', {ok: 'Clear'}))) return;
+  S.cards = S.cards.filter(c => c.col !== 'done'); paint(); await save();
+}
+
+function readJSON(text){
+  const m = String(text || '').match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+  if(!m) return null;
+  try{ return JSON.parse(m[0]); }catch(e){ return null; }
+}
+
+async function quickAdd(){
+  const words = $('quick').value.trim(); if(!words) return;
+  const btn = $('quick-btn'); btn.disabled = true; btn.innerHTML = '<span class="spin"></span>';
+  const out = await appLLM('Today is ' + TODAY() + ' (' + new Date().toLocaleDateString(undefined, {weekday:'long'}) + '). Task: "' + words + '"',
+    'Turn the task into JSON only: {"title": short imperative title, "due": "YYYY-MM-DD" or "", "priority": "low"|"med"|"high", "note": "" or one line}. ' +
+    'A weekday means the next one. Urgent, asap or today means high.');
+  const got = out.startsWith('[error]') ? null : readJSON(out);
+  const card = {id: uid(), col: 'todo', at: Date.now(), title: words.slice(0, 140), pri: 'low', due: '', note: ''};
+  if(got && typeof got.title === 'string' && got.title.trim()){
+    card.title = got.title.trim().slice(0, 140);
+    card.due = /^\d{4}-\d{2}-\d{2}$/.test(got.due || '') ? got.due : '';
+    card.pri = ['low', 'med', 'high'].includes(got.priority) ? got.priority : 'low';
+    card.note = typeof got.note === 'string' ? got.note.slice(0, 300) : '';
+    $('quick-note').textContent = 'Added "' + card.title + '"' + (card.due ? ', ' + dueWords(card.due) : '') + '.';
+  }else{
+    $('quick-note').innerHTML = out.startsWith('[error]') ? '<span class="err">The AI is not available, so the words became the title.</span>' : 'Added as written.';
+  }
+  S.cards.push(card); $('quick').value = '';
+  btn.disabled = false; btn.textContent = 'Add';
+  paint(); await save();
+}
+
+async function breakDown(id, btn){
+  const c = S.cards.find(x => x.id === id); if(!c) return;
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span>';
+  const out = await appLLM('Task: "' + c.title + '"' + (c.note ? '\nNotes: ' + c.note : ''),
+    'Break the task into 2 to 5 small next steps someone could each finish in under an hour. Reply with JSON only: ["step", "step"].');
+  const steps = out.startsWith('[error]') ? null : readJSON(out);
+  if(!Array.isArray(steps) || !steps.length){
+    btn.disabled = false; btn.innerHTML = appIcon('sparkle') + ' Steps';
+    appToast(out.startsWith('[error]') ? 'The AI is not available right now' : 'The AI did not give steps this time', 'err'); return;
+  }
+  steps.slice(0, 5).forEach(s => S.cards.push({id: uid(), col: 'todo', title: String(s).slice(0, 140), pri: c.pri, due: c.due, from: c.title, at: Date.now()}));
+  paint(); await save(); appToast('Added ' + Math.min(5, steps.length) + ' steps', 'ok');
+}
+
+async function whatNext(){
+  const open = S.cards.filter(c => c.col !== 'done');
+  const box = $('next');
+  if(!open.length){ box.textContent = 'Nothing open. Add a task first.'; return; }
+  box.innerHTML = '<span class="spin"></span>';
+  const list = open.map(c => `- [${c.col}] ${c.title}` + (c.due ? ` (${dueWords(c.due)})` : '') + (c.pri !== 'low' ? ` [${c.pri === 'high' ? 'urgent' : 'soon'}]` : '')).join('\n');
+  const out = await appLLM.stream('Today is ' + TODAY() + '. My open cards:\n' + list +
+    '\n\nPick the one or two I should do next and say why in a sentence each. If too much is in Doing, say which to finish first. Short.',
+    {system: 'You are a calm project lead. Be specific, use the card titles.', onDelta: (_, all) => { box.textContent = all; }});
+  if(out.startsWith('[error]')) box.innerHTML = '<span class="err">The AI could not answer: ' + esc(out.slice(8)) + '</span>';
+}
+
+function share(){
+  const lines = COLS.map(([k, label]) => { const cs = S.cards.filter(c => c.col === k);
+    return label + ' (' + cs.length + ')\n' + (cs.map(c => '• ' + c.title + (c.due ? ' (' + dueWords(c.due) + ')' : '')).join('\n') || '• nothing'); });
+  appShare({title: 'My board', text: lines.join('\n\n')});
+}
+
+async function example(){
+  const d = n => { const x = new Date(); x.setDate(x.getDate() + n); return ymd(x); };
+  S.cards = [
+    {title: 'Send Sam the March invoice', col: 'todo', pri: 'high', due: d(0)},
+    {title: 'Book the team offsite venue', col: 'todo', pri: 'med', due: d(4), note: 'Thirty people, somewhere near the station'},
+    {title: 'Draft the launch email', col: 'todo', pri: 'low', due: d(6)},
+    {title: 'Review the pricing page copy', col: 'doing', pri: 'med', due: d(1)},
+    {title: 'Fix the signup bug on mobile', col: 'doing', pri: 'high', due: d(-1)},
+    {title: 'Write up last week\'s interview notes', col: 'done', pri: 'low'},
+  ].map(c => ({id: uid(), at: Date.now(), ...c}));
+  paint(); await save(); appToast('Here is an example board', 'ok');
+}
+
+$('new-btn').innerHTML = appIcon('plus') + ' New task';
+$('clear-btn').innerHTML = appIcon('check') + ' Clear done';
+$('share-btn').innerHTML = appIcon('share') + ' Share';
+$('next-btn').innerHTML = appIcon('sparkle') + ' Ask';
+$('quick').addEventListener('keydown', e => { if(e.key === 'Enter') quickAdd(); });
+$('find').addEventListener('input', paint);
+$('mine-late').addEventListener('change', paint);
+$('wip').addEventListener('change', async () => { S.wip = Number($('wip').value); paint(); await save(); });
+
+(async () => {
+  const got = await appData.get();
+  if(got && Array.isArray(got.cards)) S = Object.assign({wip: 3}, got);
+  $('wip').value = String(S.wip);
+  paint();
+  if(appSurface.desktop) $('quick').focus();
+  if(appSurface.desktop) appCopilot.mount({starters: ['What should I do next?', 'Move everything overdue to Doing', 'Which cards are due this week?']});
+})();
+window.addEventListener('appdata', async () => { const got = await appData.get(); if(got && Array.isArray(got.cards)){ S = Object.assign({wip: 3}, got); paint(); } });
+</script>

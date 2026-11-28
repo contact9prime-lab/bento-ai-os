@@ -1,0 +1,230 @@
+<style>
+  .mn-wrap{display:grid;grid-template-columns:260px minmax(0,1fr);gap:14px;align-items:start}
+  .mn-side .item{cursor:pointer;border-radius:10px;padding:8px 10px}
+  .mn-side .item.on{background:color-mix(in srgb,var(--acc) 16%,transparent)}
+  .mn-side .title{overflow-wrap:anywhere;white-space:normal;overflow:visible;text-overflow:clip}
+  .mn-act{display:grid;grid-template-columns:auto minmax(0,1fr) 120px 140px auto;gap:6px;align-items:center;margin-bottom:6px}
+  .mn-act input[type=checkbox]{width:18px;height:18px}
+  .mn-act.done .t{text-decoration:line-through;opacity:.6}
+  .mn-act button{padding:4px 8px}
+  .mn-act svg,.mn-ic svg{width:14px;height:14px;vertical-align:-2px}
+  .mn-sum{white-space:pre-wrap;line-height:1.6}
+  .mn-dec{margin:0;padding-left:18px}
+  .mn-open .item{padding:7px 0}
+  textarea.mn-notes{min-height:180px;font:13.5px/1.6 Inter,system-ui,sans-serif}
+  @media (max-width:760px){ .mn-wrap{grid-template-columns:1fr} .mn-act{grid-template-columns:auto minmax(0,1fr) auto} .mn-act .wide{grid-column:2/3} }
+</style>
+
+<div class="widget-only">
+  <h3>Open actions</h3>
+  <div class="stat"><b id="w-open">0</b><span>waiting</span></div>
+  <div class="muted" id="w-next" style="margin-top:6px"></div>
+</div>
+
+<div class="desktop-only">
+  <div class="hero">
+    <div><h1>Meeting Notes</h1><div class="muted">Agenda, notes, decisions and who does what, in one place.</div></div>
+    <button onclick="newMeeting()" id="new-btn"></button>
+  </div>
+
+  <div class="mn-wrap">
+    <div class="mn-side">
+      <div class="card">
+        <input id="find" placeholder="Search meetings">
+        <div class="list" id="meetings" style="margin-top:8px"></div>
+      </div>
+      <div class="card mn-open">
+        <h2>Open actions <span class="muted" id="open-count"></span></h2>
+        <div class="list" id="open"></div>
+      </div>
+    </div>
+
+    <div id="main"></div>
+  </div>
+</div>
+
+<script>
+let S = {meetings: [], open: ''}, saveT = 0;
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid = () => Math.random().toString(36).slice(2, 10);
+const ymd = d => { d = new Date(d); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); };
+const TODAY = () => ymd(new Date());
+const cur = () => S.meetings.find(m => m.id === S.open);
+
+async function save(){ await appData.set(S); }
+function saveSoon(){ clearTimeout(saveT); saveT = setTimeout(save, 600); }
+
+function paintSide(){
+  const q = ($('find').value || '').toLowerCase();
+  const ms = S.meetings.filter(m => !q || (m.title + ' ' + m.people + ' ' + m.notes).toLowerCase().includes(q))
+                       .sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.at - a.at);
+  $('meetings').innerHTML = ms.length ? ms.map(m => `<div class="item ${m.id === S.open ? 'on' : ''}" onclick="openM('${m.id}')">
+      <div class="grow"><div class="title">${esc(m.title || 'Untitled meeting')}</div>
+      <div class="muted">${m.date ? esc(appFmt.date(new Date(m.date + 'T12:00').getTime())) : ''}${m.people ? ' · ' + esc(m.people) : ''}</div></div></div>`).join('')
+    : `<div class="empty">${q ? 'No meeting matches that.' : '<b>No meetings yet</b>Start one before the call and take notes as you go.'}</div>`;
+  // every open action across meetings
+  const open = [];
+  S.meetings.forEach(m => (m.actions || []).forEach(a => { if(!a.done) open.push({...a, mid: m.id, mt: m.title}); }));
+  open.sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999'));
+  $('open-count').textContent = open.length || '';
+  $('open').innerHTML = open.length ? open.slice(0, 12).map(a => `<div class="item"><div class="grow">
+      <div class="title">${esc(a.text)}</div>
+      <div class="muted">${esc(a.who || 'nobody yet')}${a.due ? ' · ' + (a.due < TODAY() ? '<span class="err">' : '<span>') + esc(appFmt.date(new Date(a.due + 'T12:00').getTime())) + '</span>' : ''} · <a href="#" onclick="openM('${a.mid}');return false">${esc(a.mt || 'meeting')}</a></div></div>
+      <button class="ghost sm" title="Mark done" onclick="doneAct('${a.mid}','${a.id}')">${appIcon('check')}</button></div>`).join('')
+    : '<div class="empty">No open actions. Nice.</div>';
+  $('w-open').textContent = open.length;
+  $('w-next').textContent = open.length ? 'Next: ' + open[0].text + (open[0].who ? ' (' + open[0].who + ')' : '') : 'Nothing waiting.';
+}
+
+function paintMain(){
+  const m = cur(), box = $('main');
+  if(!m){
+    box.innerHTML = `<div class="card"><div class="empty"><b>Pick a meeting, or start a new one</b>
+      Write the agenda before the call, notes during it, and let the AI turn them into a summary and actions after.
+      <div class="row" style="margin-top:8px;justify-content:center"><button class="sm" onclick="newMeeting()">New meeting</button>
+      <button class="ghost sm" onclick="example()">Try it with an example</button></div></div></div>`;
+    return;
+  }
+  box.innerHTML = `<div class="card accent">
+      <div class="grid2"><div><label for="m-title">Meeting</label><input id="m-title" maxlength="120" value="${esc(m.title)}" placeholder="e.g. Weekly product sync"></div>
+        <div><label for="m-date">Date</label><input id="m-date" type="date" value="${esc(m.date || '')}"></div></div>
+      <label for="m-people">Who was there</label><input id="m-people" maxlength="300" value="${esc(m.people || '')}" placeholder="Names, separated by commas">
+      <label for="m-agenda">Agenda</label><textarea id="m-agenda" rows="3" placeholder="One topic a line">${esc(m.agenda || '')}</textarea>
+      <label for="m-notes">Notes</label><textarea id="m-notes" class="mn-notes" placeholder="What was said. Rough is fine.">${esc(m.notes || '')}</textarea>
+      <div class="row" style="margin-top:10px">
+        <button onclick="summarise()" id="sum-btn">${appIcon('sparkle')} Summarise</button>
+        <button class="ghost" onclick="pullActions()" id="pull-btn">${appIcon('check')} Pull out actions</button>
+        <button class="ghost" onclick="shareM()">${appIcon('share')} Share the minutes</button>
+        <button class="ghost danger" onclick="removeM()">${appIcon('trash')} Delete</button>
+      </div>
+    </div>
+    <div class="card" id="sum-card" ${m.summary ? '' : 'hidden'}><h2>Summary</h2><div class="mn-sum" id="sum">${esc(m.summary || '')}</div></div>
+    <div class="card"><div class="spread"><h2>Decisions</h2></div>
+      ${(m.decisions || []).length ? `<ul class="mn-dec">${m.decisions.map((d, i) => `<li>${esc(d)} <a href="#" class="muted" onclick="dropDecision(${i});return false">remove</a></li>`).join('')}</ul>` : '<div class="muted">None yet. Summarise picks them out of your notes, or add one.</div>'}
+      <div class="row" style="margin-top:8px"><input id="dec-new" placeholder="Add a decision" maxlength="200"><button class="ghost sm" onclick="addDecision()">Add</button></div></div>
+    <div class="card"><h2>Actions</h2><div id="acts"></div>
+      <div class="row" style="margin-top:8px"><input id="act-new" placeholder="Add an action, e.g. Ana: send the deck by Friday" maxlength="200"><button class="ghost sm" onclick="addAct()">Add</button></div></div>`;
+  paintActs();
+  [['m-title','title'],['m-date','date'],['m-people','people'],['m-agenda','agenda'],['m-notes','notes']].forEach(([id, k]) =>
+    $(id).addEventListener('input', () => { m[k] = $(id).value; if(k !== 'notes' && k !== 'agenda') paintSide(); saveSoon(); }));
+  $('act-new').addEventListener('keydown', e => { if(e.key === 'Enter') addAct(); });
+  $('dec-new').addEventListener('keydown', e => { if(e.key === 'Enter') addDecision(); });
+}
+
+function paintActs(){
+  const m = cur(); if(!m) return;
+  const acts = m.actions || [];
+  $('acts').innerHTML = acts.length ? acts.map(a => `<div class="mn-act ${a.done ? 'done' : ''}">
+      <input type="checkbox" ${a.done ? 'checked' : ''} onchange="toggleAct('${a.id}',this.checked)" aria-label="done">
+      <input class="t" value="${esc(a.text)}" onchange="editAct('${a.id}','text',this.value)" maxlength="200">
+      <input class="wide" value="${esc(a.who || '')}" placeholder="Who" onchange="editAct('${a.id}','who',this.value)" maxlength="60">
+      <input class="wide" type="date" value="${esc(a.due || '')}" onchange="editAct('${a.id}','due',this.value)">
+      <button class="ghost sm" title="Remove" onclick="dropAct('${a.id}')">${appIcon('x')}</button></div>`).join('')
+    : '<div class="empty">No actions yet. Add one, or press Pull out actions after the meeting.</div>';
+}
+
+function openM(id){ S.open = id; paintSide(); paintMain(); save(); }
+async function newMeeting(){
+  const m = {id: uid(), title: '', date: TODAY(), people: '', agenda: '', notes: '', decisions: [], actions: [], at: Date.now()};
+  S.meetings.push(m); S.open = m.id; paintSide(); paintMain(); $('m-title').focus(); await save();
+}
+async function removeM(){
+  const m = cur(); if(!m) return;
+  if(!(await appConfirm('Delete "' + (m.title || 'this meeting') + '" and its actions?', {danger: true, ok: 'Delete'}))) return;
+  S.meetings = S.meetings.filter(x => x !== m); S.open = ''; paintSide(); paintMain(); await save();
+}
+
+function parseAct(line){
+  // "Ana: send the deck by 2026-12-04" or "send the deck (Ana)"
+  let who = '', text = line.trim(), due = '';
+  const m1 = text.match(/^([A-Z][\w .'-]{0,30}):\s*(.+)$/); if(m1){ who = m1[1].trim(); text = m1[2]; }
+  const m2 = text.match(/\(([^)]{1,30})\)\s*$/); if(!who && m2){ who = m2[1].trim(); text = text.slice(0, m2.index).trim(); }
+  const m3 = text.match(/\b(\d{4}-\d{2}-\d{2})\b/); if(m3) due = m3[1];
+  return {id: uid(), text, who, due, done: false};
+}
+async function addAct(){ const v = $('act-new').value.trim(); if(!v) return; const m = cur();
+  (m.actions = m.actions || []).push(parseAct(v)); $('act-new').value = ''; paintActs(); paintSide(); await save(); $('act-new').focus(); }
+async function toggleAct(id, v){ const a = (cur().actions || []).find(x => x.id === id); if(!a) return; a.done = v; paintActs(); paintSide(); await save();
+  if(v && (cur().actions || []).every(x => x.done)) appToast('Every action from this meeting is done', 'ok'); }
+async function editAct(id, k, v){ const a = (cur().actions || []).find(x => x.id === id); if(!a) return; a[k] = v.trim(); paintSide(); await save(); }
+async function dropAct(id){ const m = cur(); m.actions = (m.actions || []).filter(x => x.id !== id); paintActs(); paintSide(); await save(); }
+async function doneAct(mid, id){ const m = S.meetings.find(x => x.id === mid); const a = m && (m.actions || []).find(x => x.id === id); if(!a) return;
+  a.done = true; paintSide(); if(S.open === mid) paintActs(); await save(); appToast('Done: ' + a.text, 'ok'); }
+async function addDecision(){ const v = $('dec-new').value.trim(); if(!v) return; const m = cur(); (m.decisions = m.decisions || []).push(v); paintMain(); await save(); }
+async function dropDecision(i){ const m = cur(); m.decisions.splice(i, 1); paintMain(); await save(); }
+
+function context(m){
+  return `Meeting: ${m.title || 'untitled'} on ${m.date || 'unknown date'}\nPeople: ${m.people || 'not listed'}\nAgenda:\n${m.agenda || '(none)'}\nNotes:\n${m.notes || '(none)'}`;
+}
+
+async function summarise(){
+  const m = cur(); if(!m) return;
+  if(!(m.notes || '').trim()){ appToast('Write some notes first', 'info'); $('m-notes').focus(); return; }
+  $('sum-card').hidden = false; const box = $('sum'); box.innerHTML = '<span class="spin"></span>';
+  const out = await appLLM.stream(context(m) + '\n\nWrite the minutes: a two-sentence summary, then "Decisions:" as bullets, ' +
+    'then "Open questions:" as bullets (or "none"). Only what the notes say; do not invent.',
+    {system: 'You write clear, short meeting minutes.', onDelta: (_, all) => { box.textContent = all; }});
+  if(out.startsWith('[error]')){ box.innerHTML = '<span class="err">The AI could not answer: ' + esc(out.slice(8)) + '</span>'; return; }
+  m.summary = out.trim();
+  const dec = out.split(/decisions:/i)[1];
+  if(dec){
+    const picked = dec.split(/open questions:/i)[0].split('\n').map(l => l.replace(/^\s*[-*•]\s*/, '').trim()).filter(l => l && !/^none\.?$/i.test(l));
+    const have = new Set((m.decisions || []).map(d => d.toLowerCase()));
+    m.decisions = (m.decisions || []).concat(picked.filter(d => !have.has(d.toLowerCase())).slice(0, 10));
+  }
+  await save(); paintMain(); appToast('Summary written', 'ok');
+}
+
+async function pullActions(){
+  const m = cur(); if(!m) return;
+  if(!(m.notes || '').trim()){ appToast('Write some notes first', 'info'); return; }
+  const btn = $('pull-btn'); btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Reading the notes';
+  const out = await appLLM(context(m) + '\nToday is ' + TODAY() + '.',
+    'List the action items in the notes as JSON only: [{"text": what, "who": a name from the notes or "", "due": "YYYY-MM-DD" or ""}]. ' +
+    'Only actions someone agreed to do. [] if there are none.');
+  btn.disabled = false; btn.innerHTML = appIcon('check') + ' Pull out actions';
+  if(out.startsWith('[error]')){ appToast('The AI is not available right now', 'err'); return; }
+  let got = null; const j = out.match(/\[[\s\S]*\]/); try{ got = j ? JSON.parse(j[0]) : null; }catch(e){}
+  if(!Array.isArray(got)){ appToast('The AI did not give a list this time', 'err'); return; }
+  const have = new Set((m.actions || []).map(a => a.text.toLowerCase()));
+  const add = got.filter(a => a && typeof a.text === 'string' && a.text.trim() && !have.has(a.text.trim().toLowerCase())).slice(0, 15)
+    .map(a => ({id: uid(), text: a.text.trim().slice(0, 200), who: String(a.who || '').slice(0, 60),
+                due: /^\d{4}-\d{2}-\d{2}$/.test(a.due || '') ? a.due : '', done: false}));
+  m.actions = (m.actions || []).concat(add);
+  paintActs(); paintSide(); await save();
+  appToast(add.length ? 'Added ' + add.length + ' action' + (add.length === 1 ? '' : 's') : 'No new actions found', add.length ? 'ok' : 'info');
+}
+
+function shareM(){
+  const m = cur(); if(!m) return;
+  const acts = (m.actions || []).map(a => `• ${a.done ? '[done] ' : ''}${a.text}${a.who ? ' (' + a.who + ')' : ''}${a.due ? ', by ' + a.due : ''}`);
+  appShare({title: (m.title || 'Meeting') + (m.date ? ', ' + m.date : ''),
+            text: [m.people ? 'With ' + m.people : '', m.summary || '', (m.decisions || []).length ? 'Decisions:\n' + m.decisions.map(d => '• ' + d).join('\n') : '',
+                   acts.length ? 'Actions:\n' + acts.join('\n') : ''].filter(Boolean).join('\n\n')});
+}
+
+async function example(){
+  const d = n => { const x = new Date(); x.setDate(x.getDate() + n); return ymd(x); };
+  const m = {id: uid(), title: 'Launch planning', date: TODAY(), people: 'Ana, Ben, Chloe', at: Date.now(),
+    agenda: 'Launch date\nPricing page\nSupport cover for launch week',
+    notes: 'Ana proposed launching on the 14th, everyone agreed. Pricing page needs the new annual plan; Ben will update the copy by ' + d(3) + '.\n' +
+      'Chloe raised that support is thin that week. We decided to add one contractor for two weeks. Chloe to find someone by ' + d(5) + '.\n' +
+      'Open: do we email existing customers before or after the launch post? Ana to draft both versions.',
+    decisions: [], actions: []};
+  S.meetings.push(m); S.open = m.id; paintSide(); paintMain(); await save(); appToast('Here is an example meeting', 'ok');
+}
+
+$('new-btn').innerHTML = appIcon('plus') + ' New meeting';
+$('find').addEventListener('input', paintSide);
+document.addEventListener('keydown', e => { if((e.metaKey || e.ctrlKey) && e.key === 'Enter' && cur()) summarise(); });
+
+(async () => {
+  const got = await appData.get();
+  if(got && Array.isArray(got.meetings)) S = Object.assign({open: ''}, got);
+  if(S.open && !cur()) S.open = '';
+  paintSide(); paintMain();
+  if(appSurface.desktop) appCopilot.mount({starters: ['What do I owe people this week?', 'Summarise my last three meetings', 'Who has the most open actions?']});
+})();
+window.addEventListener('appdata', async () => { const got = await appData.get(); if(got && Array.isArray(got.meetings)){ S = Object.assign({open: S.open}, got); paintSide(); paintMain(); } });
+</script>

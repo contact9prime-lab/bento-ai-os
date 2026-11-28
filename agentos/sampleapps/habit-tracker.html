@@ -1,0 +1,232 @@
+<style>
+  .ht-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--ln)}
+  .ht-row:first-child{border-top:none}
+  .ht-name{font-weight:650;overflow-wrap:anywhere}
+  .ht-days{display:grid;grid-template-columns:repeat(7,30px);gap:5px}
+  .ht-day{width:30px;height:30px;border-radius:9px;border:1px solid var(--ln2);background:transparent;padding:0;display:grid;place-items:center;
+    color:var(--mut);font-size:11px;cursor:pointer;box-shadow:none}
+  .ht-day.on{background:var(--acc);border-color:var(--acc);color:var(--on-acc)}
+  .ht-day.today{outline:2px solid color-mix(in srgb,var(--acc) 55%,transparent);outline-offset:1px}
+  .ht-day svg{width:15px;height:15px}
+  .ht-head{display:grid;grid-template-columns:repeat(7,30px);gap:5px;font-size:10.5px;color:var(--mut);text-align:center}
+  .ht-meta{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--mut);margin-top:2px}
+  .ht-meta svg{width:13px;height:13px;vertical-align:-2px}
+  .ht-acts button{padding:4px 8px}
+  .ht-acts svg{width:14px;height:14px}
+  .ht-grid{display:grid;grid-template-columns:repeat(28,1fr);gap:3px}
+  .ht-cell{aspect-ratio:1;border-radius:3px;background:color-mix(in srgb,var(--tx) 7%,transparent)}
+  .ht-cell.l1{background:color-mix(in srgb,var(--acc) 35%,transparent)}
+  .ht-cell.l2{background:color-mix(in srgb,var(--acc) 65%,transparent)}
+  .ht-cell.l3{background:var(--acc)}
+  .ht-coach{white-space:pre-wrap;line-height:1.6}
+  .ht-w .ht-day{width:26px;height:26px}
+  .ht-w .item{padding:6px 0}
+  @media (max-width:560px){ .ht-row{grid-template-columns:1fr} .ht-days,.ht-head{grid-template-columns:repeat(7,1fr)} .ht-day{width:100%;height:34px} }
+</style>
+
+<div class="widget-only">
+  <div class="ht-w">
+    <h3>Habits today</h3>
+    <div class="stat"><b id="w-count">0 of 0</b><span>done</span></div>
+    <div class="progress" style="margin:6px 0"><i id="w-bar" style="width:0%"></i></div>
+    <div id="w-next" class="muted"></div>
+  </div>
+</div>
+
+<div class="desktop-only">
+  <div class="hero">
+    <div><h1>Habit Tracker</h1><div class="muted">Small things, every day. Tick them off and keep the streak going.</div></div>
+    <button onclick="showAdd()" id="add-btn"></button>
+  </div>
+
+  <div class="cols">
+    <div class="stat"><b id="k-today">0/0</b><span>done today</span></div>
+    <div class="stat"><b id="k-best">0</b><span>longest streak now</span></div>
+    <div class="stat"><b id="k-rate">0%</b><span>of the last 28 days</span></div>
+  </div>
+
+  <div class="card" id="add-card" hidden>
+    <h2>A new habit</h2>
+    <div class="grid2">
+      <div><label for="h-name">What is it?</label><input id="h-name" maxlength="60" placeholder="e.g. Read 10 pages"></div>
+      <div><label for="h-goal">Days a week</label>
+        <select id="h-goal"><option value="7">Every day</option><option value="6">6 days</option><option value="5">5 days</option>
+          <option value="4">4 days</option><option value="3">3 days</option><option value="2">2 days</option><option value="1">Once a week</option></select></div>
+    </div>
+    <div class="row" style="margin-top:10px"><button onclick="addHabit()">Add the habit</button><button class="ghost" onclick="hideAdd()">Cancel</button></div>
+  </div>
+
+  <div class="card">
+    <div class="spread"><h2>This week</h2><span class="muted" id="week-label"></span></div>
+    <div class="ht-row" style="padding-top:0"><span></span><div class="ht-head" id="head"></div></div>
+    <div id="list"></div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h2>The last four weeks</h2>
+      <div class="ht-grid" id="grid"></div>
+      <p class="muted" style="margin:8px 0 0">Each square is a day; darker means more of your habits were done.</p>
+    </div>
+    <div class="card">
+      <div class="spread"><h2>Your coach</h2>
+        <span class="row"><button class="ghost sm" onclick="coach()" id="coach-btn"></button>
+        <button class="ghost sm" onclick="share()" id="share-btn"></button></span></div>
+      <div id="coach" class="ht-coach muted">Ask the coach once you have a few days of ticks. It reads your history and suggests one small change.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+let S = {habits: []};
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const ymd = d => { d = new Date(d); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); };
+const dayAgo = n => { const d = new Date(); d.setHours(12,0,0,0); d.setDate(d.getDate() - n); return d; };
+const TODAY = () => ymd(new Date());
+const uid = () => Math.random().toString(36).slice(2, 10);
+
+async function save(){ await appData.set(S); }
+
+function streak(h){
+  const done = new Set(h.done || []);
+  let n = 0, i = done.has(TODAY()) ? 0 : 1;
+  while(done.has(ymd(dayAgo(i)))){ n++; i++; }
+  return n;
+}
+function best(h){
+  const days = [...new Set(h.done || [])].sort();
+  let b = 0, run = 0, prev = null;
+  days.forEach(k => { const t = new Date(k + 'T12:00'); run = prev && (t - prev) / 864e5 < 1.5 ? run + 1 : 1; prev = t; b = Math.max(b, run); });
+  return b;
+}
+function thisWeek(h){ const done = new Set(h.done || []); let n = 0; for(let i = 0; i < 7; i++) if(done.has(ymd(dayAgo(i)))) n++; return n; }
+
+function paint(){
+  const days = [6,5,4,3,2,1,0].map(dayAgo);
+  $('head').innerHTML = days.map(d => `<span>${esc(d.toLocaleDateString(undefined, {weekday:'narrow'}))}</span>`).join('');
+  $('week-label').textContent = days[0].toLocaleDateString(undefined, {month:'short', day:'numeric'}) + ' to today';
+  const t = TODAY(), list = $('list');
+  if(!S.habits.length){
+    list.innerHTML = `<div class="empty"><b>No habits yet</b>Add the first small thing you want to do every day.
+      <div class="row" style="margin-top:8px;justify-content:center"><button class="sm" onclick="showAdd()">Add a habit</button>
+      <button class="ghost sm" onclick="example()">Try it with an example</button></div></div>`;
+  }else{
+    list.innerHTML = S.habits.map(h => {
+      const done = new Set(h.done || []), s = streak(h), wk = thisWeek(h);
+      return `<div class="ht-row">
+        <div><div class="ht-name">${esc(h.name)}</div>
+          <div class="ht-meta"><span>${appIcon('fire')} ${s} day${s === 1 ? '' : 's'}</span>
+            <span>${appIcon('target')} ${wk >= h.goal ? 'weekly goal met (' + wk + ' days)' : wk + ' of ' + h.goal + ' days this week'}</span>
+            <span class="ht-acts"><button class="ghost sm" title="Rename" onclick="rename('${h.id}')">${appIcon('edit')}</button>
+            <button class="ghost sm" title="Delete" onclick="remove('${h.id}')">${appIcon('trash')}</button></span></div></div>
+        <div class="ht-days">${days.map(d => { const k = ymd(d), on = done.has(k);
+          return `<button class="ht-day ${on ? 'on' : ''} ${k === t ? 'today' : ''}" title="${esc(d.toDateString())}"
+            aria-pressed="${on}" aria-label="${esc(h.name)} on ${esc(d.toDateString())}" onclick="tick('${h.id}','${k}')">${on ? appIcon('check') : d.getDate()}</button>`; }).join('')}</div>
+      </div>`; }).join('');
+  }
+  // numbers
+  const doneToday = S.habits.filter(h => (h.done || []).includes(t)).length;
+  $('k-today').textContent = doneToday + '/' + S.habits.length;
+  $('k-best').textContent = S.habits.reduce((a, h) => Math.max(a, streak(h)), 0);
+  let have = 0, could = 0;
+  for(let i = 0; i < 28; i++){ const k = ymd(dayAgo(i)); S.habits.forEach(h => { could++; if((h.done || []).includes(k)) have++; }); }
+  $('k-rate').textContent = could ? appFmt.pct(have / could) : '0%';
+  // four weeks
+  const cells = [];
+  for(let i = 27; i >= 0; i--){ const k = ymd(dayAgo(i)); const n = S.habits.filter(h => (h.done || []).includes(k)).length;
+    const f = S.habits.length ? n / S.habits.length : 0;
+    cells.push(`<i class="ht-cell ${f >= .99 ? 'l3' : f >= .5 ? 'l2' : f > 0 ? 'l1' : ''}" title="${k}: ${n} of ${S.habits.length}"></i>`); }
+  $('grid').innerHTML = cells.join('');
+  // widget
+  $('w-count').textContent = doneToday + ' of ' + S.habits.length;
+  $('w-bar').style.width = (S.habits.length ? Math.round(doneToday / S.habits.length * 100) : 0) + '%';
+  const next = S.habits.find(h => !(h.done || []).includes(t));
+  $('w-next').innerHTML = !S.habits.length ? 'Add a habit to start.' : next
+    ? `Next: <b>${esc(next.name)}</b> <button class="sm" onclick="tick('${next.id}','${t}')">Done</button>` : 'All done today.';
+}
+
+async function tick(id, day){
+  const h = S.habits.find(x => x.id === id); if(!h) return;
+  h.done = h.done || [];
+  const t = TODAY(), allBefore = S.habits.length && S.habits.every(x => (x.done || []).includes(t));
+  if(h.done.includes(day)) h.done = h.done.filter(k => k !== day);
+  else{
+    h.done.push(day);
+    const s = streak(h);
+    if(day === t && [7, 30, 100].includes(s)){ appCelebrate(); appToast(s + ' days in a row of ' + h.name, 'ok'); }
+  }
+  h.done = h.done.filter(k => k >= ymd(dayAgo(400)));
+  const allNow = S.habits.every(x => (x.done || []).includes(t));
+  if(!allBefore && allNow){ appCelebrate(); appToast('Everything done today', 'ok'); }
+  paint(); await save();
+}
+
+function showAdd(){ $('add-card').hidden = false; $('h-name').focus(); }
+function hideAdd(){ $('add-card').hidden = true; $('h-name').value = ''; }
+async function addHabit(){
+  const name = $('h-name').value.trim();
+  if(!name){ $('h-name').focus(); return; }
+  if(S.habits.some(h => h.name.toLowerCase() === name.toLowerCase())){ appToast('You already track that one', 'info'); return; }
+  S.habits.push({id: uid(), name, goal: Number($('h-goal').value) || 7, done: [], created: Date.now()});
+  hideAdd(); paint(); await save(); appToast('Added ' + name, 'ok');
+}
+async function rename(id){
+  const h = S.habits.find(x => x.id === id); if(!h) return;
+  const row = [...document.querySelectorAll('.ht-name')].find(el => el.textContent === h.name);
+  if(!row) return;
+  const inp = document.createElement('input'); inp.value = h.name; inp.maxLength = 60;
+  row.replaceWith(inp); inp.focus(); inp.select();
+  const done = async keep => { if(keep && inp.value.trim()) h.name = inp.value.trim(); paint(); await save(); };
+  inp.addEventListener('keydown', e => { if(e.key === 'Enter') done(true); if(e.key === 'Escape') done(false); });
+  inp.addEventListener('blur', () => done(true));
+}
+async function remove(id){
+  const h = S.habits.find(x => x.id === id); if(!h) return;
+  if(!(await appConfirm('Delete "' + h.name + '" and its history?', {danger: true, ok: 'Delete'}))) return;
+  S.habits = S.habits.filter(x => x.id !== id); paint(); await save(); appToast('Deleted', 'ok');
+}
+
+async function coach(){
+  const box = $('coach');
+  if(!S.habits.length){ box.textContent = 'Add a habit first, then come back after a few days.'; return; }
+  box.classList.remove('muted'); box.innerHTML = '<span class="spin"></span>';
+  const lines = S.habits.map(h => { const d = new Set(h.done || []);
+    return `${h.name} (goal ${h.goal}/week): ` + [...Array(28)].map((_, i) => d.has(ymd(dayAgo(27 - i))) ? 'x' : '.').join('') +
+      ` streak ${streak(h)}`; }).join('\n');
+  const out = await appLLM.stream('My habits over the last 28 days, oldest first (x = done, . = missed):\n' + lines +
+    '\n\nAs my coach: one line on what is going well, one on the habit that slips most and on which days, ' +
+    'and ONE small, specific change for next week. Warm and brief, no headings.',
+    {system: 'You are a kind, practical habit coach. Never scold.', onDelta: (_, all) => { box.textContent = all; }});
+  if(out.startsWith('[error]')) box.innerHTML = '<span class="err">The coach could not answer: ' + esc(out.slice(8)) + '</span>';
+}
+
+function share(){
+  if(!S.habits.length){ appToast('Nothing to share yet', 'info'); return; }
+  appShare({title: 'My habits this week', text: S.habits.map(h => `• ${h.name}: ${thisWeek(h)} of ${h.goal} days, ${streak(h)} in a row`).join('\n')});
+}
+
+async function example(){
+  const names = [['Read 10 pages', 7, .85], ['Walk 20 minutes', 5, .7], ['No phone after 10pm', 7, .55], ['Write three lines in a journal', 6, .75]];
+  S.habits = names.map(([name, goal, p], j) => { const done = [];
+    for(let i = 1; i < 28; i++) if(((i * 7 + j * 13) % 100) / 100 < p) done.push(ymd(dayAgo(i)));
+    return {id: uid(), name, goal, done, created: Date.now()}; });
+  paint(); await save(); appToast('Added four example habits', 'ok');
+}
+
+$('add-btn').innerHTML = appIcon('plus') + ' Add a habit';
+$('coach-btn').innerHTML = appIcon('sparkle') + ' Ask the coach';
+$('share-btn').innerHTML = appIcon('share') + ' Share';
+$('h-name').addEventListener('keydown', e => { if(e.key === 'Enter') addHabit(); if(e.key === 'Escape') hideAdd(); });
+
+(async () => {
+  const got = await appData.get();
+  if(got && Array.isArray(got.habits)) S = got;
+  paint();
+  if(appSurface.desktop) appCopilot.mount({starters: ['Which habit am I missing most?', 'Add a habit to drink water', 'How did I do this week?']});
+})();
+window.addEventListener('appdata', async () => { const got = await appData.get(); if(got && Array.isArray(got.habits)){ S = got; paint(); } });
+// the date moves at midnight while the app stays open
+setInterval(() => { if(paint.day !== TODAY()){ paint.day = TODAY(); paint(); } }, 60000);
+paint.day = TODAY();
+</script>

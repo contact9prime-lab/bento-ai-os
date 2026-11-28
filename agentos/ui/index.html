@@ -49398,7 +49398,7 @@ async function regSearch(){
       <span class="reg-kind">${REG_ICON[it.kind]||'·'} ${esc(it.kind)}</span>
       <span class="cn">${esc(it.icon?it.icon+' ':'')}${esc(it.name)}</span>
       <span class="cd">${esc(it.summary||'')}</span>
-      <span class="reg-meta"><span>${esc(it.publisher||'')}</span><span>v${esc(it.latest||'-')}</span>
+      <span class="reg-meta">${it.publisher==='bento'?'<span class="badge ok" title="Published by Bento">Bento</span>':`<span>${esc(it.publisher||'')}</span>`}<span>v${esc(it.latest||'-')}</span>
         <span title="downloads">↓ ${Number(it.downloads||0).toLocaleString()}</span>
         ${it.verdict&&it.verdict!=='pass'?`<span class="reg-flag">${it.verdict==='review'?'has personal details':esc(it.verdict)}</span>`:''}</span>
       <div class="reg-acts"><button class="save" data-get="${i}">Get…</button>
