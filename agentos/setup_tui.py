@@ -776,6 +776,22 @@ HANDLERS = {
 # The loop
 # ---------------------------------------------------------------------------
 
+def news(cfg, store) -> int:
+    """`bento setup --news`: the steps this machine has not met yet (onboarding.NEWS),
+    offered once. Run by `bento update` after it restarts, in a fresh process, because
+    the process that pulled the code imported the old one."""
+    steps = ob.news(cfg, store)
+    for step in steps:
+        ob.news_seen(cfg, step["id"])
+        _save(cfg)
+        print(f"\n{'─' * 60}\n  New in this version: {step['icon']} {step['title']}")
+        try:
+            HANDLERS[step["id"]](cfg, store)
+        except (EOFError, KeyboardInterrupt):
+            print("\n  (left that one) `bento setup` has it any time")
+    return len(steps)
+
+
 def run(cfg=None, store=None) -> None:
     if cfg is None:
         cfg = cfgmod.load_config()

@@ -10557,7 +10557,26 @@ def _update_cli(args) -> int:
     print(("✓ " if started else "✗ ") + msg)
     if other_failed:
         print(f"\n✗ {other_failed}")
+    _update_news(other)
     return 0 if started and not other_failed else 1
+
+
+def _update_news(other) -> None:
+    """After an update, what is new to set up here (the registry sign-in), asked once.
+
+    A fresh process from the updated checkout: this one imported the code from before
+    the pull. Only with a person at the terminal; a cron line or a service is told the
+    command instead."""
+    root = other or Path(__file__).resolve().parent.parent
+    py = Path(root) / ".venv" / "bin" / "python"
+    cmd = [str(py if py.exists() else sys.executable), "-m", "agentos", "setup", "--news"]
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        print("  new to set up here, if anything:  bento setup --news")
+        return
+    try:
+        subprocess.run(cmd, cwd=str(root), timeout=900)
+    except Exception as e:
+        print(f"  could not offer what is new ({type(e).__name__}): bento setup --news")
 
 
 def _service_cli(args) -> int:
@@ -11307,6 +11326,8 @@ def main():
     p_setup = verb("setup", help="set this machine up — the same arc as the desktop wizard, in the terminal")
     p_setup.add_argument("--again", action="store_true",
                          help="walk every step again, skipped ones included — nothing is wiped")
+    p_setup.add_argument("--news", action="store_true",
+                         help="only the steps new since this machine was set up")
     p_setup.add_argument("--user", default="", help="whose setup, on a machine with users")
     p_reset = verb("reset", help="factory reset: wipe everything on this machine and start setup again")
     p_reset.add_argument("--port", type=int, default=0, help="the server's port, if not the configured one")
@@ -12296,6 +12317,9 @@ def main():
             # the hub chooses everything; asking here would answer for it
             sys.exit("  This machine is being set up from the Bento that installed it: nothing to answer here.\n"
                      "  To set it up here instead:  bento pool wait off  then  bento setup")
+        if getattr(args, "news", False):
+            setup_tui.news(cfg, store)
+            return
         if getattr(args, "again", False):
             # the desktop's "Walk me through it": skips and confirmations cleared, the
             # arc from the top — onboarding.restart, which never deletes anything

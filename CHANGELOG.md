@@ -1,6 +1,12 @@
 # Changelog
 
 
+## 0.100.14 — 2026-11-28
+
+- The Bento Registry sign-in now shows up right after an update. A machine that finished setup before the registry
+  existed is offered it once: the desktop opens setup on that step when the page loads after the update, and
+  `bento update` asks in the terminal. A new machine still meets it in setup. `bento setup --news` shows it again.
+
 ## 0.100.13 — 2026-11-27
 
 - Five productivity apps by Bento, ready for the Bento Registry: Focus Sessions, Habit Tracker, Kanban Board,

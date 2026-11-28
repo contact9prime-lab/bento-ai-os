@@ -14708,6 +14708,22 @@ async def api_onboarding(all: int = 0):
     return onboardmod.state(state["cfg"], state["store"], show_all=bool(all))
 
 
+@app.get("/api/onboarding/news")
+async def api_onboarding_news():
+    """Steps this machine is offered once after an update (onboarding.NEWS)."""
+    return {"steps": onboardmod.news(state["cfg"], state["store"])}
+
+
+@app.post("/api/onboarding/news/seen")
+async def api_onboarding_news_seen(body: dict):
+    try:
+        res = onboardmod.news_seen(state["cfg"], str((body or {}).get("step") or ""))
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    cfgmod.save_config(state["cfg"])
+    return res
+
+
 @app.post("/api/onboarding/shape")
 async def api_onboarding_shape(body: dict):
     """The first answer: one agent or a company, what it's for, and whether this
