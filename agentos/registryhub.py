@@ -187,10 +187,40 @@ def masked(email: str) -> str:
     return (user[:2] + "…" if len(user) > 2 else user[:1] + "…") + "@" + dom
 
 
+#: What the registry's sign-in says when it can't send or take a code, in words a person can act on.
+#: The registry's own message is kept after it, because that is what the person running it needs.
+_SEND_FAILED = ("the registry couldn't send the email: its mail sender refused it. "
+                "Try again in a few minutes. If it keeps failing, the registry's email setup needs fixing")
+_TOO_MANY = "too many sign-in codes were asked for. Wait a while, then try again"
+_BAD_CODE = "that code is wrong or has expired. Ask for a new one"
+
+
+def _login_words(e: "HubError", sending: bool) -> "HubError":
+    """A sign-in refusal as a sentence, with what the registry said in brackets."""
+    raw = str(e)
+    low = raw.lower()
+    if sending and ("sending" in low or "smtp" in low or ("mail" in low and e.status >= 500)):
+        words = _SEND_FAILED
+    elif "seconds" in low and "after" in low:
+        words = "a code was just sent. Wait a minute before asking for another"
+    elif e.status == 429 or "rate limit" in low:
+        words = _TOO_MANY
+    elif not sending and ("expired" in low or "invalid" in low or "otp" in low):
+        words = _BAD_CODE
+    elif e.status >= 500:
+        words = "the registry's sign-in had a problem. Try again in a few minutes"
+    else:
+        return e
+    return HubError(f"{words} (the registry said: {raw})", e.status, e.extra)
+
+
 def start_login(email: str) -> dict:
     """Send a sign-in code to this address. A new address becomes an account."""
     email = _clean_email(email)
-    _call("POST", "/auth/v1/otp", {"email": email, "create_user": True})
+    try:
+        _call("POST", "/auth/v1/otp", {"email": email, "create_user": True})
+    except HubError as e:
+        raise _login_words(e, sending=True) from None
     st = _read_state()
     st["pending_email"] = email
     _write_state(st)
@@ -204,7 +234,10 @@ def finish_login(code: str, email: str = "") -> dict:
     code = re.sub(r"\s+", "", code or "")
     if not re.fullmatch(r"[0-9]{6,10}", code):
         raise HubError("the code is the 6 to 10 digits in the email")
-    tok = _call("POST", "/auth/v1/verify", {"type": "email", "email": email, "token": code})
+    try:
+        tok = _call("POST", "/auth/v1/verify", {"type": "email", "email": email, "token": code})
+    except HubError as e:
+        raise _login_words(e, sending=False) from None
     _keep_session(tok)
     st = _read_state()
     st.pop("pending_email", None)

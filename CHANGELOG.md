@@ -1,6 +1,15 @@
 # Changelog
 
 
+## 0.100.16 — 2026-11-28
+
+- **A registry sign-in that fails says why, and stays on screen.** When the registry couldn't send the code
+  (its mail sender refused, too many codes, a code just sent) or a code was wrong, the Store and the setup
+  step showed a toast that was gone in seconds, in the registry's own words. The reason now stays on the card
+  in a sentence, with what the registry said in brackets, and the terminal prints the same sentence.
+- **The code step looks like a code step.** It says "Check your email", has Send again, and an email a
+  browser autofilled into the code box is cleared instead of being sent as the code.
+
 ## 0.100.15 — 2026-11-28
 
 - A chat that started on Telegram or WhatsApp and carried on at the desk now shows on the phone too. Each desk

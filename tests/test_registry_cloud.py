@@ -211,3 +211,39 @@ def test_the_desktop_publishes_the_bytes_it_reported(fake, tmp_path):
         r = c.post("/api/store/registry/install", json={"sha256": got["sha256"]}).json()
         assert r["ok"] and st.get_skill("Reg Tables")["source"] == "bento-registry:skill/reg-tables@1.0.0"
         st.delete_skill(st.get_skill("Reg Tables")["id"])
+
+
+def _refusing(monkeypatch, tmp_path, msg, status):
+    def call(method, path, body=None, token="", headers=None, raw=False):
+        raise hub.HubError(msg, status, {})
+    monkeypatch.setattr(hub, "_call", call)
+    monkeypatch.setattr(hub, "home", lambda: tmp_path)
+
+
+@pytest.mark.parametrize("msg,status,said", [
+    ("Error sending confirmation email", 500, "couldn't send the email"),
+    ("Error sending magic link email", 500, "couldn't send the email"),
+    ("email rate limit exceeded", 429, "too many sign-in codes"),
+    ("For security purposes, you can only request this after 42 seconds.", 429, "a code was just sent"),
+])
+def test_a_code_that_was_not_sent_says_why(monkeypatch, tmp_path, msg, status, said):
+    """Reported as "the email comes but there is no code" with nothing on screen saying why."""
+    _refusing(monkeypatch, tmp_path, msg, status)
+    with pytest.raises(hub.HubError) as e:
+        hub.start_login("ada@example.org")
+    assert said in str(e.value)
+    assert msg in str(e.value), "the registry's own words are kept for whoever runs it"
+
+
+def test_a_wrong_code_says_ask_for_a_new_one(monkeypatch, tmp_path):
+    _refusing(monkeypatch, tmp_path, "Token has expired or is invalid", 403)
+    with pytest.raises(hub.HubError) as e:
+        hub.finish_login("123456", "ada@example.org")
+    assert "wrong or has expired" in str(e.value)
+
+
+def test_the_sign_in_card_keeps_its_error_and_never_sends_an_email_as_a_code():
+    js = (ROOT / "agentos/ui/src/js/25b-registry.js").read_text()
+    assert 'class="reg-err" role="alert"' in js
+    assert "REG.err = 'The code was not sent: '" in js
+    assert "That is your email" in js

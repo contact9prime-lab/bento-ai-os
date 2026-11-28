@@ -8541,6 +8541,11 @@ body.mb-rail #ccpop,body.mb-rail #netpop,body.mb-rail #notifpanel,body.mb-rail #
 .reg-done a{margin-left:6px}
 #reg-get:empty,#ags-fork:empty{display:none}
 .reg-acct .row .pact,.reg-acct .row .endbtn{flex:1 0 auto;white-space:nowrap;padding:0 16px}
+
+/* A sign-in refusal, kept on the card (25b-registry.js regLogin/regVerify). */
+.reg-err{margin:8px 0 0;padding:8px 10px;border-radius:8px;font-size:13px;line-height:1.45;
+  color:var(--err,#e5484d);background:color-mix(in srgb,var(--err,#e5484d) 12%,transparent);
+  border:1px solid color-mix(in srgb,var(--err,#e5484d) 35%,transparent)}
 </style>
 </head>
 <body>
@@ -49296,7 +49301,7 @@ function galPick(){
 
    GUI only by drawing; `bento registry` is the terminal face and the SUI face is
    this same page. State lives in REG (var: the bundle loads this file after 25). */
-var REG = REG || {kind:'', q:'', st:null, items:[], pub:null, rep:null, got:null, step:'', email:'', open:false};
+var REG = REG || {kind:'', q:'', st:null, items:[], pub:null, rep:null, got:null, step:'', email:'', err:'', open:false};
 var REG_KINDS = [['','All'],['app','Apps'],['agent','Agents'],['skill','Skills'],['soul','Souls'],['tool','Tools']];
 var REG_ICON = {app:'▦', agent:'◈', skill:'✎', soul:'☼', tool:'⚙'};
 
@@ -49343,16 +49348,27 @@ async function regAcct(){
   if(st.error){ el.innerHTML = `<p class="mut">${esc(st.error)}</p>`; return }
   if(!st.signed_in){
     const waiting = REG.step==='code';
-    el.innerHTML = `<div class="reg-line"><b>Browse freely.</b> <span class="mut">Sign in with your email to publish.</span></div>
+    const to = st.pending||REG.email;
+    el.innerHTML = `<div class="reg-line">${waiting
+        ? `<b>Check your email.</b> <span class="mut">Type the code we sent to ${esc(to)}.</span>`
+        : `<b>Browse freely.</b> <span class="mut">Sign in with your email to publish.</span>`}</div>
       <div class="row">${waiting
-        ? `<input id="reg-code" inputmode="numeric" autocomplete="one-time-code" placeholder="Code from the email to ${esc(st.pending||REG.email)}">
-           <button class="pact" id="reg-go">Sign in</button><button class="endbtn" id="reg-back">Another email</button>`
-        : `<input id="reg-email" type="email" autocomplete="email" placeholder="you@example.com" value="${esc(REG.email)}">
-           <button class="pact" id="reg-go">Send a code</button>`}</div>`;
+        ? `<input id="reg-code" name="one-time-code" inputmode="numeric" autocomplete="one-time-code" maxlength="10" value="" placeholder="6-digit code" aria-label="Code from the email">
+           <button class="pact" id="reg-go">Sign in</button><button class="endbtn" id="reg-again">Send again</button><button class="endbtn" id="reg-back">Another email</button>`
+        : `<input id="reg-email" type="email" autocomplete="email" placeholder="you@example.com" value="${esc(REG.email)}" aria-label="Your email">
+           <button class="pact" id="reg-go">Send a code</button>`}</div>
+      ${REG.err?`<p class="reg-err" role="alert">${esc(REG.err)}</p>`:''}`;
     el.querySelector('#reg-go').onclick = waiting ? regVerify : regLogin;
     const inp = el.querySelector(waiting?'#reg-code':'#reg-email');
     inp.onkeydown = e=>{if(e.key==='Enter')(waiting?regVerify:regLogin)()};
-    if(waiting) el.querySelector('#reg-back').onclick=()=>{REG.step='';regAcct()};
+    if(waiting){
+      /* A browser may autofill the email into the code box: it is not a code, so it goes. */
+      const tidy = ()=>{ if(/[^0-9\s]/.test(inp.value)) inp.value='' };
+      inp.addEventListener('input', ()=>{ if(inp.value.includes('@')) tidy() });
+      setTimeout(tidy, 300); inp.onfocus = tidy;
+      el.querySelector('#reg-again').onclick = ()=>regLogin(to);
+      el.querySelector('#reg-back').onclick = ()=>{REG.step='';REG.err='';regAcct()};
+    }
     return;
   }
   if(!st.handle){
@@ -49385,20 +49401,37 @@ async function regAcct(){
     const d = await regCall('revoke',{}); if(d.error) return toast(d.error,{kind:'err'}); regAcct()};
 }
 
-async function regLogin(){
-  const v = (document.getElementById('reg-email')||{}).value||'';
-  REG.email = v.trim();
+/* A sign-in refusal stays on the card until the next try: a toast is gone before it is read,
+   and in the setup wizard it can sit behind the wizard. */
+function regBusy(on, label){
+  const b = document.getElementById('reg-go'); if(!b) return;
+  b.disabled = on; if(on){ b.dataset.was = b.textContent; b.textContent = label }
+  else if(b.dataset.was) b.textContent = b.dataset.was;
+}
+async function regLogin(again){
+  if(typeof again==='string') REG.email = again;
+  else REG.email = ((document.getElementById('reg-email')||{}).value||'').trim();
+  if(!REG.email.includes('@')){ REG.err = 'Type your email address first.'; return regAcct() }
+  REG.err = ''; regBusy(true, 'Sending…');
   const d = await regCall('login',{email:REG.email});
-  if(d.error) return toast(d.error,{kind:'err'});
+  regBusy(false);
+  if(d.error){ REG.err = 'The code was not sent: '+d.error+'.'; return regAcct() }
   REG.step = 'code'; toast('a sign-in code is on its way to '+d.to); regAcct();
 }
 async function regVerify(){
-  const code = (document.getElementById('reg-code')||{}).value||'';
+  const code = ((document.getElementById('reg-code')||{}).value||'').replace(/\s+/g,'');
+  if(!/^[0-9]{6,10}$/.test(code)){
+    REG.err = code.includes('@') ? 'That is your email. Type the 6-digit code from the email instead.'
+                                 : 'The code is the 6 digits in the email.';
+    return regAcct();
+  }
+  REG.err = ''; regBusy(true, 'Signing in…');
   const d = await regCall('verify',{code, email:REG.email});
-  if(d.error) return toast(d.error,{kind:'err'});
+  regBusy(false);
+  if(d.error){ REG.err = 'Not signed in: '+d.error+'.'; return regAcct() }
   REG.step = ''; toast('signed in to the Bento registry'); regAcct(); if(REG.open)regPubPaint();
 }
-async function regLogout(){ await regCall('logout',{}); REG.step=''; regAcct(); if(REG.open)regPubPaint() }
+async function regLogout(){ await regCall('logout',{}); REG.step=''; REG.err=''; regAcct(); if(REG.open)regPubPaint() }
 
 /* ---- browsing ---- */
 async function regSearch(){

@@ -48,3 +48,8 @@
 .reg-done a{margin-left:6px}
 #reg-get:empty,#ags-fork:empty{display:none}
 .reg-acct .row .pact,.reg-acct .row .endbtn{flex:1 0 auto;white-space:nowrap;padding:0 16px}
+
+/* A sign-in refusal, kept on the card (25b-registry.js regLogin/regVerify). */
+.reg-err{margin:8px 0 0;padding:8px 10px;border-radius:8px;font-size:13px;line-height:1.45;
+  color:var(--err,#e5484d);background:color-mix(in srgb,var(--err,#e5484d) 12%,transparent);
+  border:1px solid color-mix(in srgb,var(--err,#e5484d) 35%,transparent)}
