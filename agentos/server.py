@@ -8999,8 +8999,12 @@ async def api_hub_versions(kind: str, slug: str):
 async def api_hub_publishables():
     """What this account could publish, kind by kind."""
     st = state["store"]
+    from . import sampleapps
     return {
         "app": [{"id": a["id"], "name": a["name"]} for a in st.list_apps()],
+        # Bento's own apps (agentos/sampleapps, packaged in registry/apps): never installed here,
+        # so the list above never had them, and the Store could not publish them.
+        "samples": [{"id": "sample:" + a["slug"], "name": a["name"]} for a in sampleapps.APPS],
         "agent": [{"id": "", "name": "this agent's team, skills and flows"}],
         "skill": [{"id": s["name"], "name": s["name"]} for s in st.list_skills()],
         "soul": [{"id": "", "name": "this agent's soul"}],
@@ -9015,7 +9019,14 @@ async def api_hub_report(body: dict):
     kind, item = str(body.get("kind") or ""), str(body.get("item") or "")
 
     def build():
-        if kind == "app":
+        if kind == "app" and item.startswith("sample:"):
+            from . import sampleapps
+            slug = item.split(":", 1)[1]
+            if slug not in sampleapps.BY_SLUG:
+                raise hub.HubError(f"there is no Bento app called '{slug}'")
+            pkg = sampleapps.checked_in(slug)
+            name = (pkg.get("manifest") or {}).get("name") or slug
+        elif kind == "app":
             pkg, name = _hub_app_package(item)
         else:
             pkg = hub.package(kind, state["store"], state["cfg"], name=item,
@@ -9037,7 +9048,11 @@ async def api_hub_report(body: dict):
         latest = rows[0]["version"] if rows else ""
     except Exception:
         pass
-    return {**rep, "name": name, "slug": hub.slug_of(name), "latest": latest,
+    summary = ""
+    if kind == "app":
+        from . import sampleapps
+        summary = sampleapps.summary_of(pkg)
+    return {**rep, "name": name, "slug": hub.slug_of(name), "latest": latest, "summary": summary,
             "preview": text[:4000], "status": hub.status()}
 
 

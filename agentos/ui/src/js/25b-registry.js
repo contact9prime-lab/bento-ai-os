@@ -111,11 +111,30 @@ async function regAcct(){
     el.querySelector('#reg-out').onclick = regLogout;
     return;
   }
-  el.innerHTML = `<div class="reg-line reg-ready"><span class="reg-dot" aria-hidden="true"></span>
-      <span>Publishing as <b>${esc(st.handle)}</b> from ${esc(st.machine)}</span> ${pInfo('Signed in as '+st.email+'. This machine signs with key '+st.key_id+'. Its private half never leaves this machine.')}</div>
-      <div class="row"><button class="endbtn" id="reg-out">Sign out</button>
-      <button class="endbtn" id="reg-rev">Stop this machine publishing</button></div>`;
+  el.innerHTML = `<div class="reg-acct-in reg-ready">
+      <div class="reg-acct-t"><b><span class="reg-dot" aria-hidden="true"></span>Publishing as ${esc(st.handle)}</b>
+        <span>From ${esc(st.machine)}, signed in as ${esc(st.email)} ${pInfo('This machine signs what you publish with key '+st.key_id+'. Its private half never leaves this machine.')}</span></div>
+      <div class="reg-acct-acts"><button class="reg-ghost" id="reg-rename">Change name</button>
+        <button class="reg-ghost" id="reg-out">Sign out</button>
+        <button class="reg-ghost" id="reg-rev">Stop this machine publishing</button></div>
+    </div>
+    ${REG.renaming?`<div class="reg-rename">
+        <div class="reg-form-in"><input id="reg-handle" placeholder="lower-case-name" maxlength="32" value="${esc(st.handle)}" aria-label="Publisher name">
+          <button class="pact" id="reg-hgo">Save name</button><button class="reg-ghost" id="reg-hno">Cancel</button></div>
+        <p>It changes on everything you've published. The name bento is kept for the registry's admins.</p></div>`:''}
+    ${REG.err?`<p class="reg-err" role="alert">${esc(REG.err)}</p>`:''}`;
   el.querySelector('#reg-out').onclick = regLogout;
+  el.querySelector('#reg-rename').onclick = ()=>{REG.renaming=!REG.renaming;REG.err='';regAcct()};
+  if(REG.renaming){
+    const save = async()=>{
+      const d = await regCall('handle',{handle:el.querySelector('#reg-handle').value});
+      if(d.error){ REG.err = 'Not changed: '+d.error+'.'; return regAcct() }
+      REG.renaming=false; REG.err=''; toast('you publish as '+d.handle+' now'); regAcct(); if(REG.open)regPubPaint();
+    };
+    el.querySelector('#reg-hgo').onclick = save;
+    el.querySelector('#reg-handle').onkeydown = e=>{if(e.key==='Enter')save()};
+    el.querySelector('#reg-hno').onclick = ()=>{REG.renaming=false;REG.err='';regAcct()};
+  }
   el.querySelector('#reg-rev').onclick = async()=>{
     if(!await osConfirm('Stop this machine publishing?','What it already published stays signed by it. To publish from here again you would register a new key.',{danger:true,confirmText:'Stop it'}))return;
     const d = await regCall('revoke',{}); if(d.error) return toast(d.error,{kind:'err'}); regAcct()};
@@ -258,12 +277,21 @@ async function regPubPaint(){
       <button class="pact" id="rp-check">Check it</button>
     </div>
     <p class="sub mut">Checking reads the package on this machine. Nothing is sent until you press Publish.</p>
+    <p class="sub reg-hint" id="rp-hint"></p>
     <div id="rp-rep"></div>`;
   const fill = ()=>{
     const k = el.querySelector('#rp-kind').value;
     const list = can[k]||[];
-    el.querySelector('#rp-item').innerHTML = list.length ? list.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')
+    const opts = l=>l.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('');
+    const own = k==='app' ? (can.samples||[]) : [];
+    el.querySelector('#rp-item').innerHTML = (list.length||own.length)
+      ? (own.length ? `<optgroup label="Bento's own apps">${opts(own)}</optgroup>`
+                      + (list.length?`<optgroup label="Your apps">${opts(list)}</optgroup>`:'')
+                    : opts(list))
       : '<option value="">nothing of this kind here yet</option>';
+    const hint = el.querySelector('#rp-hint');
+    if(hint) hint.textContent = own.length && st.handle!=='bento'
+      ? `Bento's own apps get the Bento badge when published as bento. You publish as ${st.handle}.` : '';
     el.querySelector('#rp-rep').innerHTML='';
   };
   el.querySelector('#rp-kind').onchange = fill; fill();
@@ -281,7 +309,7 @@ async function regCheck(){
   el.innerHTML = regReportHTML(r) + (r.ok ? `<div class="reg-form reg-meta-form">
       <label>Address<input id="rp-slug" value="${esc(rep.slug||'')}" maxlength="64"></label>
       <label>Version<input id="rp-ver" value="${esc(next)}" maxlength="20"></label>
-      <label class="wide">One line on what it does<input id="rp-sum" maxlength="280"></label>
+      <label class="wide">One line on what it does<input id="rp-sum" maxlength="280" value="${esc(rep.summary||'')}"></label>
       <label class="wide">What changed${rep.latest?` since ${esc(rep.latest)}`:''}<input id="rp-notes" maxlength="2000"></label>
     </div>
     ${r.warnings.length?`<label class="reg-ack"><input type="checkbox" id="rp-ok"><span>I’ve read the personal details marked ! and they’re fine to share</span></label>`:''}
