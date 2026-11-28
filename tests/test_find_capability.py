@@ -302,3 +302,48 @@ def test_a_claude_connector_has_a_bento_twin_for_missions():
     assert company.KIT_MCP["supermetrics"]["curated"] == sm["registry_name"]
     note = executors.capability_note()
     assert "no connectors of your own" in note and "Never build a replacement" in note
+
+
+def test_a_server_added_from_a_readme_can_be_connected_from_a_forwarded_chat():
+    """Reported as the Store's "set it up with AI" for Zerodha's Kite server: the README gave a URL,
+    the chat on Claude Code had no add_mcp_server, and it told the person to do it by hand."""
+    from agentos import executors, tools
+    assert "add_mcp_server" in executors.CAPABILITY_DOOR_TOOLS
+    assert "add_mcp_server" in tools.ALWAYS_ASK, "the person still confirms it on a card"
+
+
+def test_adding_a_server_says_what_came_up(tmp_path, monkeypatch):
+    import asyncio, types
+    from agentos import tools
+
+    class Srv:
+        def __init__(self, status, tools_=(), error=""):
+            self.status, self.tools, self.error = status, [{"name": n} for n in tools_], error
+
+    tb = tools.Toolbox.__new__(tools.Toolbox)
+    for st, want in ((Srv("connected", ["login", "get_ltp"]), "connected with 2 tools: mcp_kite_login, mcp_kite_get_ltp"),
+                     (Srv("error", error="ConnectError: refused"), "did not connect: ConnectError: refused"),
+                     (Srv("authorizing"), "needs a sign-in")):
+        tb.mcp = types.SimpleNamespace(servers={"kite": st})
+        out = asyncio.run(tb._connected_words("kite", "added", wait=0.1))
+        assert want in out, out
+
+
+def test_a_server_added_by_address_alone_is_asked_whether_it_wants_a_sign_in():
+    """Zerodha's Kite answers initialize with 401 + resource_metadata. Saved without `auth`, it sat in
+    `error` ("ExceptionGroup") forever, from add_mcp_server and from the MCP app's form alike."""
+    import inspect
+    from agentos import mcp_oauth, server, tools
+    assert mcp_oauth.needs_probe({"transport": "http", "url": "https://mcp.kite.trade/mcp"})
+    assert not mcp_oauth.needs_probe({"transport": "http", "url": "https://x/mcp", "auth": "oauth"})
+    assert not mcp_oauth.needs_probe({"transport": "http", "url": "https://x/mcp",
+                                      "headers": {"Authorization": "Bearer k"}})
+    assert not mcp_oauth.needs_probe({"transport": "stdio", "command": "npx"})
+    assert "asks_sign_in" in inspect.getsource(tools.Toolbox.add_mcp_server)
+    assert "asks_sign_in" in inspect.getsource(server.api_put_mcp)
+
+
+def test_zerodha_kite_is_in_the_catalogue_as_a_sign_in_server():
+    from agentos import mcp_catalog
+    c = mcp_catalog.get("zerodha-kite")
+    assert c and c["auth"] == "oauth" and c["remote_url"] == "https://mcp.kite.trade/mcp"

@@ -55,11 +55,27 @@ CATEGORIES = [
     ("productivity", "Productivity"),
     ("developer", "Developer"),
     ("marketing", "Marketing & analytics"),
+    ("finance", "Finance & markets"),
 ]
 
 #: Curated first-party servers. `remote_url` + `auth: "oauth"` is the whole config —
 #: no keys, no env, no package to install.
 CATALOG: list[dict] = [
+    {
+        # Probed live 2026-11-28: initialize answers 401 with resource_metadata;
+        # mcp.kite.trade advertises /register (DCR) and S256 PKCE. Zerodha's hosted server
+        # leaves out order placing (its README). Asked for from the Store's search for
+        # "zerodha", where setting it up with AI could not connect it.
+        "key": "zerodha-kite",
+        "title": "Zerodha Kite",
+        "registry_name": "trade.kite/zerodha-kite",
+        "category": "finance",
+        "vendor": "Zerodha",
+        "homepage": "https://github.com/zerodha/kite-mcp-server",
+        "remote_url": "https://mcp.kite.trade/mcp",
+        "description": "Your Zerodha account: holdings, positions, margins, orders and trades, "
+                       "plus live quotes and historical prices. Zerodha's hosted server can't place orders.",
+    },
     {
         # Probed live 2026-11-25: initialize answers 401 with resource_metadata, and
         # api.supermetrics.com advertises a registration_endpoint (DCR) and S256 PKCE.

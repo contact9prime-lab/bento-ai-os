@@ -339,6 +339,35 @@ def _open_browser(url: str) -> bool:
         return False
 
 
+async def asks_sign_in(url: str) -> bool:
+    """Does this address answer like a sign-in server (401 + `resource_metadata`)?
+
+    A server added by URL alone (the MCP app's form, `add_mcp_server` from a README) was saved
+    without `auth`, so one that wants OAuth sat in `error` with "ExceptionGroup" forever. Found
+    with Zerodha's hosted Kite server. One unauthenticated `initialize`, through the guarded
+    client, the same request the connection makes first. Unsure is False: nothing changes."""
+    from . import netguard
+    body = {"jsonrpc": "2.0", "id": 1, "method": "initialize",
+            "params": {"protocolVersion": "2025-06-18", "capabilities": {},
+                       "clientInfo": {"name": "bento", "version": "1"}}}
+    try:
+        async with netguard.client(timeout=8.0) as c:
+            r = await c.post(url, json=body, headers={"Accept": "application/json, text/event-stream"})
+    except Exception:
+        return False
+    www = r.headers.get("www-authenticate", "")
+    return r.status_code == 401 and "resource_metadata" in www
+
+
+def needs_probe(conf: dict) -> bool:
+    """An http server with no way in of its own: no `auth`, no Authorization header."""
+    if not isinstance(conf, dict) or conf.get("transport") != "http" or conf.get("auth"):
+        return False
+    heads = {str(k).lower() for k in (conf.get("headers") or {})}
+    url = str(conf.get("url") or "")
+    return "authorization" not in heads and url.startswith("https://")
+
+
 def provider_for(name: str, url: str, scope: str = ""):
     """An `httpx.Auth` that authorises this server, or None if unsupported."""
     if not HAVE_OAUTH:

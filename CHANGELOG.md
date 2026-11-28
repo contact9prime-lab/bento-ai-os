@@ -7,6 +7,12 @@
   (its mail sender refused, too many codes, a code just sent) or a code was wrong, the Store and the setup
   step showed a toast that was gone in seconds, in the registry's own words. The reason now stays on the card
   in a sentence, with what the registry said in brackets, and the terminal prints the same sentence.
+- **A tool server that needs a sign-in can be added by its address.** Asked from the Store for Zerodha's
+  Kite: the chat on Claude Code had no way to add a server by URL, and added by hand it sat in "error"
+  because Zerodha's server wants a sign-in. `add_mcp_server` is now on the chat's door (still asked on a
+  card), both it and the MCP app's form notice a server that asks for a sign-in and save it as one, and
+  adding a server says what came up: its tools, why it didn't connect, or that a sign-in is waiting.
+  Zerodha Kite is in the built-in catalogue under Finance & markets.
 - **The code step looks like a code step.** It says "Check your email", has Send again, and an email a
   browser autofilled into the code box is cleared instead of being sent as the code.
 
