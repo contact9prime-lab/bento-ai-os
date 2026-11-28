@@ -3552,6 +3552,9 @@ class Toolbox(usersmod.Scoped):
                 conf = {"transport": "http", "url": url.strip(), "enabled": True}
                 if bearer_token.strip():
                     conf["headers"] = {"Authorization": f"Bearer {bearer_token.strip()}"}
+                from . import mcp_oauth
+                if mcp_oauth.needs_probe(conf) and await mcp_oauth.asks_sign_in(conf["url"]):
+                    conf["auth"] = "oauth"
             elif command.strip():
                 conf = {"transport": "stdio", "command": command.strip(),
                         "args": args.strip(), "enabled": True}
@@ -3580,7 +3583,36 @@ class Toolbox(usersmod.Scoped):
             await self.mcp.reload()
         if self.broadcast:
             await self.broadcast({"type": "config"})
+        if action != "remove" and self.mcp:
+            msg = await self._connected_words(key, msg)
         return msg
+
+    async def _connected_words(self, key: str, msg: str, wait: float = 20.0) -> str:
+        """How the server just added came up, in words: its tools, why it didn't, or a sign-in.
+
+        Asked to "connect it and confirm its tools appear", the agent had only "connecting now"
+        to go on. This waits for the first answer (a server that needs a sign-in waits on a person,
+        so that is said rather than waited for)."""
+        srv = (getattr(self.mcp, "servers", None) or {}).get(key)
+        if srv is None:
+            return msg
+        loop = asyncio.get_running_loop()
+        until = loop.time() + wait
+        while srv.status in ("connecting",) and loop.time() < until:
+            await asyncio.sleep(0.25)
+        head = f"added MCP server '{key}'"
+        if srv.status == "connected":
+            names = [t["name"] for t in srv.tools]
+            shown = ", ".join(f"mcp_{key}_{n}" for n in names[:25])
+            more = f" and {len(names) - 25} more" if len(names) > 25 else ""
+            return f"{head}. It is connected with {len(names)} tools: {shown}{more}."
+        if srv.status == "authorizing":
+            return (f"{head}. It needs a sign-in: the person finishes it from MCP Servers "
+                    f"(Sign in on the '{key}' card), then its tools appear as mcp_{key}_*.")
+        if srv.status == "error":
+            return (f"{head}, but it did not connect: {srv.error or 'no reason given'}. "
+                    f"It is saved; fix the address or keys in MCP Servers and it reconnects.")
+        return f"{head}. It is still connecting; its tools will appear as mcp_{key}_*."
 
     async def discover_mcp_servers(self, query: str) -> str:
         """Search the public MCP registry for servers matching a capability the user needs.

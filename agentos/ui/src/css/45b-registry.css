@@ -1,27 +1,89 @@
 /* The Store's Registry tab (25b-registry.js). Colours from the theme's tokens. */
-.reg{display:flex;flex-direction:column;gap:12px}
-.reg-acct{border:1px solid var(--line, rgba(127,127,127,.25));border-radius:12px;padding:10px 12px;
-  background:color-mix(in srgb, var(--bg2) 85%, transparent)}
-.reg-acct .row{margin-top:8px;gap:8px;flex-wrap:wrap}
-.reg-acct .row input{flex:1 1 220px;min-width:0}
-.reg-acct .row button{min-height:var(--tap,40px)}
+.reg{display:flex;flex-direction:column;gap:16px;max-width:1180px;margin:0 auto;width:100%}
+
+/* The heading: what this is, in one line. */
+.reg-hero{display:flex;gap:14px;align-items:center;padding:4px 2px 0}
+.reg-mark{flex:none;width:44px;height:44px;border-radius:12px;display:grid;place-items:center;font-size:22px;
+  color:var(--on-acc);background:var(--acc-grad,var(--acc));box-shadow:0 6px 18px color-mix(in srgb,var(--acc) 30%,transparent)}
+.reg-hero-t{min-width:0}
+.reg-hero h2{margin:0;font-size:var(--fs-xl,20px);line-height:1.2;font-weight:700;letter-spacing:-.01em}
+.reg-hero p{margin:3px 0 0;font-size:var(--fs-sm,13px);color:var(--dim2);line-height:1.45}
+
+/* The account strip: words on the left, a form at its natural size on the right. */
+.reg-acct{border:1px solid var(--line);border-radius:var(--r-lg,14px);padding:14px 16px;
+  background:color-mix(in srgb,var(--bg2) 88%,transparent)}
+.reg-acct-in{display:flex;align-items:center;gap:10px 20px;flex-wrap:wrap}
+.reg-acct-t{display:flex;flex-direction:column;gap:2px;flex:1 1 220px;min-width:0}
+.reg-acct-t b{font-size:var(--fs-md,14px)}
+.reg-acct-t span{font-size:var(--fs-sm,13px);color:var(--dim2);overflow-wrap:anywhere}
+.reg-form-in{display:flex;gap:8px;flex:0 1 440px;min-width:0}
+.reg-form-in input{flex:1 1 auto;min-width:0;min-height:var(--tap,38px)}
+.reg-form-in .pact,.reg-acct .row .pact,.reg-acct .row .endbtn{flex:none;min-height:var(--tap,38px);padding:0 18px;white-space:nowrap}
+.reg-links{flex-basis:100%;display:flex;gap:16px;justify-content:flex-end}
+.reg-link{background:none;border:0;padding:4px 0;min-height:var(--tap,32px);color:var(--acc);font-size:var(--fs-sm,13px);cursor:pointer}
+.reg-link:hover{text-decoration:underline}
+.reg-acct .row{margin-top:10px;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.reg-acct .row input{flex:1 1 220px;max-width:360px;min-width:0;min-height:var(--tap,38px)}
 .reg-line{display:flex;align-items:center;gap:6px;flex-wrap:wrap;line-height:1.45}
 .reg-ready .grow{flex:1}
 .reg-dot{width:8px;height:8px;border-radius:50%;background:var(--ok,#3fb950);flex:none}
+
+/* Search first, then the kinds. */
 .reg-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-.reg-bar input{flex:1 1 220px;min-width:0}
-.reg-kinds{overflow-x:auto;scroll-snap-type:x mandatory;max-width:100%;flex-wrap:nowrap}
-.reg-kinds button{scroll-snap-align:start;min-height:var(--tap,36px);white-space:nowrap}
-.reg-card{display:flex;flex-direction:column;gap:4px}
-.reg-kind{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--txt2,var(--mut))}
-.reg-meta{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--txt2,var(--mut))}
-.reg-flag{color:var(--warn,#d29922);font-weight:600}
-.reg-acts{display:flex;gap:8px;margin-top:6px}
-.reg-acts button{min-height:var(--tap,36px);flex:1}
-.reg-acts .endbtn{flex:0 0 auto}
-.reg-pub{border:1px solid var(--line, rgba(127,127,127,.25));border-radius:12px;padding:10px 12px}
-.reg-pub summary{cursor:pointer;min-height:var(--tap,32px);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.reg-pub[open] summary{margin-bottom:10px}
+.reg-search{flex:1 1 280px;min-width:0;position:relative;display:flex;align-items:center}
+.reg-search svg{position:absolute;left:13px;color:var(--dim2);pointer-events:none}
+.reg-search input{width:100%;min-height:var(--tap,40px);padding-left:38px !important;border-radius:var(--r-md,10px)}
+.reg-kinds{display:flex;gap:4px;padding:3px;border-radius:var(--r-md,10px);border:1px solid var(--line);
+  background:color-mix(in srgb,var(--bg2) 80%,transparent);overflow-x:auto;scroll-snap-type:x mandatory;max-width:100%;flex-wrap:nowrap;scrollbar-width:none}
+.reg-kinds::-webkit-scrollbar{display:none}
+.reg-kinds button{scroll-snap-align:start;min-height:var(--tap,34px);white-space:nowrap;border:0;background:none;color:var(--dim2);
+  padding:0 12px;border-radius:calc(var(--r-md,10px) - 3px);font-size:var(--fs-sm,13px);font-weight:600;cursor:pointer}
+.reg-kinds button:hover{color:var(--txt)}
+.reg-kinds button.on{background:var(--bg4,var(--bg3));color:var(--txt);box-shadow:0 1px 2px rgba(0,0,0,.25)}
+
+/* The listings: a grid that fills the width, every card the same shape. */
+.reg-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+.reg-card{display:flex;flex-direction:column;gap:6px;min-width:0;padding:16px;border-radius:var(--r-lg,14px);
+  border:1px solid var(--line);background:color-mix(in srgb,var(--bg2) 92%,transparent);
+  transition:border-color var(--d-fast,.15s),transform var(--d-fast,.15s),box-shadow var(--d-fast,.15s)}
+.reg-card:hover{border-color:color-mix(in srgb,var(--acc) 55%,var(--line));transform:translateY(-1px);
+  box-shadow:0 8px 24px rgba(0,0,0,.18)}
+.reg-card-top{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.reg-ico{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;font-size:16px;flex:none;
+  background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc)}
+.reg-kind{font-size:11px;text-transform:uppercase;letter-spacing:.07em;font-weight:700;color:var(--dim2)}
+.reg-badge{margin-left:auto;font-size:11px;font-weight:700;padding:2px 8px;border-radius:var(--r-full,99px);
+  color:var(--on-acc);background:var(--acc-grad,var(--acc))}
+.reg-name{margin:0;font-size:var(--fs-md,15px);font-weight:700;line-height:1.3;overflow-wrap:anywhere}
+.reg-sum{margin:0;font-size:var(--fs-sm,13px);color:var(--dim2);line-height:1.45;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:2.9em}
+.reg-flag{align-self:flex-start;font-size:12px;font-weight:600;padding:3px 9px;border-radius:var(--r-full,99px);
+  color:var(--warn,#d29922);background:color-mix(in srgb,var(--warn,#d29922) 14%,transparent);
+  border:1px solid color-mix(in srgb,var(--warn,#d29922) 35%,transparent)}
+.reg-meta{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--dim2);margin-top:auto;padding-top:6px}
+.reg-foot{padding-top:12px;margin-top:6px;border-top:1px solid color-mix(in srgb,var(--line) 70%,transparent);
+  display:flex;align-items:center;justify-content:space-between;gap:10px}
+.reg-foot .pact{min-height:34px !important;padding:0 22px !important;margin:0 !important;align-self:auto !important}
+.reg-meta span:first-child{color:var(--txt);font-weight:600}
+.reg-acts{display:flex;gap:6px;align-items:center;margin-left:auto}
+.reg-acts .pact{min-height:34px !important;padding:0 18px !important;margin:0 !important}
+.reg-ghost{min-height:34px;padding:0 10px;border-radius:var(--r-md,10px);border:1px solid var(--line);background:none;
+  color:var(--dim2);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
+.reg-ghost:hover{color:var(--txt);border-color:var(--dim2)}
+.reg-empty{grid-column:1/-1;display:flex;flex-direction:column;align-items:center;gap:4px;padding:36px 16px;text-align:center;
+  border:1px dashed var(--line);border-radius:var(--r-lg,14px);color:var(--dim2);font-size:var(--fs-sm,13px)}
+.reg-empty span:first-child{font-size:26px;color:var(--acc);margin-bottom:4px}
+.reg-empty b{color:var(--txt);font-size:var(--fs-md,14px)}
+.reg-pub{border:1px solid var(--line);border-radius:var(--r-lg,14px);padding:0;background:color-mix(in srgb,var(--bg2) 88%,transparent)}
+.reg-pub summary{cursor:pointer;list-style:none;min-height:var(--tap,44px);display:flex;align-items:center;gap:14px;padding:14px 16px}
+.reg-pub summary::-webkit-details-marker{display:none}
+.reg-pub-ico{flex:none;width:36px;height:36px;border-radius:10px;display:grid;place-items:center;font-size:17px;
+  background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc)}
+.reg-pub-t{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+.reg-pub-t span{font-size:var(--fs-sm,13px);color:var(--dim2)}
+.reg-chev{font-size:22px;color:var(--dim2);transition:transform var(--d-fast,.15s)}
+.reg-pub[open] .reg-chev{transform:rotate(90deg)}
+#reg-pub-body{padding:0 16px 16px}
 .reg-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;align-items:end}
 .reg-form label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--txt2,var(--mut));min-width:0}
 .reg-form label.wide{grid-column:1/-1}
@@ -47,4 +109,16 @@
 .reg-bad{color:var(--err,#f85149)}
 .reg-done a{margin-left:6px}
 #reg-get:empty,#ags-fork:empty{display:none}
-.reg-acct .row .pact,.reg-acct .row .endbtn{flex:1 0 auto;white-space:nowrap;padding:0 16px}
+
+/* A sign-in refusal, kept on the card (25b-registry.js regLogin/regVerify). */
+.reg-err{margin:12px 0 0;padding:8px 10px;border-radius:8px;font-size:13px;line-height:1.45;
+  color:var(--err,#e5484d);background:color-mix(in srgb,var(--err,#e5484d) 12%,transparent);
+  border:1px solid color-mix(in srgb,var(--err,#e5484d) 35%,transparent)}
+
+/* A phone: the form takes the row, the buttons keep their size. */
+@media (max-width:520px){
+  .reg-form-in{flex-basis:100%}
+  .reg-links{justify-content:flex-start}
+  .reg-grid{grid-template-columns:1fr}
+  .reg-mark{width:38px;height:38px;font-size:19px}
+}

@@ -5823,6 +5823,14 @@ async def api_put_mcp(body: dict):
         for name, conf in servers.items():
             if (why := mcp_client.refusal(conf if isinstance(conf, dict) else {})):
                 return JSONResponse({"error": f"{name}: {why}"}, status_code=403)
+        # a NEW address-only server that wants a sign-in is saved as one (mcp_oauth.asks_sign_in)
+        from . import mcp_oauth
+        before = state["cfg"].get("mcp_servers") or {}
+        for name, conf in servers.items():
+            old = before.get(name) or {}
+            if mcp_oauth.needs_probe(conf) and conf.get("url") != old.get("url") \
+                    and await mcp_oauth.asks_sign_in(conf["url"]):
+                conf["auth"] = "oauth"
         state["cfg"]["mcp_servers"] = servers
         cfgmod.save_config(state["cfg"])
         await state["mcp"].reload()
